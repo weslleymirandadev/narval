@@ -1,0 +1,42 @@
+# Compila arquivos .ll em objetos e agrega em uma lib estática
+
+# Ferramentas necessárias: llvm-link (para unir IR) e llc (para gerar objeto)
+find_program(LLVM_LINK_EXECUTABLE NAMES llvm-link)
+if(NOT LLVM_LINK_EXECUTABLE)
+  message(FATAL_ERROR "llvm-link not found. Please install LLVM tools (llvm).")
+endif()
+find_program(LLC_EXECUTABLE NAMES llc)
+if(NOT LLC_EXECUTABLE)
+  message(FATAL_ERROR "llc not found. Please install LLVM tools (llvm).")
+endif()
+
+# Coleta todos os .ll neste diretório
+file(GLOB LL_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/*.ll")
+
+# Caminhos de saída
+set(STD_BC "${LIB_DIR}/std.bc")
+set(STD_OBJ "${LIB_DIR}/std.o")
+
+# Une todos os .ll em um único bitcode
+add_custom_command(
+  OUTPUT "${STD_BC}"
+  COMMAND ${LLVM_LINK_EXECUTABLE} -o "${STD_BC}" ${LL_SOURCES}
+  DEPENDS ${LL_SOURCES}
+  COMMENT "Linking LLVM IR files -> ${STD_BC}"
+  VERBATIM
+)
+
+# Compila o bitcode único para objeto std.o
+add_custom_command(
+  OUTPUT "${STD_OBJ}"
+  COMMAND ${LLC_EXECUTABLE} -filetype=obj -o "${STD_OBJ}" "${STD_BC}"
+  DEPENDS "${STD_BC}"
+  COMMENT "Compiling ${STD_BC} -> ${STD_OBJ}"
+  VERBATIM
+)
+
+# Alvo para construir o objeto
+add_custom_target(std_o ALL DEPENDS "${STD_OBJ}")
+
+# Exporta o caminho do objeto para o CMake raiz
+set(STD_LL_OBJECT "${STD_OBJ}" CACHE INTERNAL "Single object built from lib/*.ll")
