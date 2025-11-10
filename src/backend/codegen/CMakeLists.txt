@@ -11,7 +11,7 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/generator.test.cpp")
     if(TARGET generator_test)
         target_compile_definitions(generator_test PRIVATE 
             RUPHI_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
-            RUPHI_SOURCE_DIR="${PROJECT_SOURCE_DIR}/include"
+            RUPHI_INCLUDE_DIR="${PROJECT_SOURCE_DIR}/include"
         )
     endif()
 endif()
