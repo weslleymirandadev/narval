@@ -7,7 +7,7 @@
 #include "frontend/module_manager.hpp"
 
 int main(int argc, char* argv[]) {
-    std::string filename = "../test/main.ttn";
+    std::string filename = "../test/main.phi";
     std::string module_name = "main";
 
     ModuleManager module_manager;
