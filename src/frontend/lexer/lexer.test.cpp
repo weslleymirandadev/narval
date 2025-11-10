@@ -1,0 +1,50 @@
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <regex>
+#include "frontend/lexer/lexer.hpp"
+#include "frontend/lexer/token.hpp"
+#include "frontend/module_manager.hpp"
+
+int main(int argc, char* argv[]) {
+    std::string filename = "../test/main.ttn";
+    std::string module_name = "main";
+
+    ModuleManager module_manager;
+    try {
+        std::cout << "Iniciando teste de análise léxica...\n";
+        module_manager.compile_module(module_name, filename, false);
+
+        std::cout << "Tokens gerados para cada módulo:\n";
+        const auto& modules = module_manager.get_modules();
+        for (const auto& [name, module] : modules) {
+            std::cout << "\nMódulo: " << name << "\n";
+            std::cout << "Dependências: ";
+            if (module.dependencies.empty()) {
+                std::cout << "Nenhuma\n";
+            } else {
+                for (const auto& dep : module.dependencies) {
+                    size_t lastSlash = dep.find_last_of("/\\");
+                    std::string fileName = (lastSlash == std::string::npos) ? dep : dep.substr(lastSlash + 1);
+                    size_t lastDot = fileName.find_last_of(".");
+                    std::cout << ((lastDot == std::string::npos) ? fileName : fileName.substr(0, lastDot)) << " ";
+                }
+                std::cout << "\n";
+            }
+            std::cout << "Tokens:\n";
+            for (const auto& token : module.tokens) {
+                std::cout << "  Token: " << get_token_name(token.type)
+                    << ", Lexeme: '" << token.lexeme
+                    << "', Line: " << token.line
+                    << ", Col: " << token.column_start << "-" << token.column_end
+                    << std::endl;
+            }
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Erro durante teste de análise léxica: " << e.what() << "\n";
+        return 1;
+    }
+
+    std::cout << "\nTeste de análise léxica concluído com sucesso.\n";
+    return 0;
+}
