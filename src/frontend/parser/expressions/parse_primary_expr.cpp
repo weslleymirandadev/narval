@@ -4,6 +4,9 @@
 #include "frontend/parser/expressions/parse_array_map_expr.hpp"
 #include "frontend/parser/expressions/parse_vector_expr.hpp"
 #include "frontend/parser/expressions/parse_boolean_literal.hpp"
+#include "frontend/ast/expressions/binary_expr_node.hpp"
+#include <cctype>
+
 std::unique_ptr<Node> parse_primary_expr(Parser* parser) {
     TokenType type = parser->current_token().type;
 
@@ -30,9 +33,95 @@ std::unique_ptr<Node> parse_primary_expr(Parser* parser) {
         }
         case TokenType::STRING: {
             Token strToken = parser->consume_token();
-            auto node = std::make_unique<StringLiteralNode>(strToken.lexeme);
-            node->position = std::move(pos);
-            expr = std::move(node);
+            const std::string& s = strToken.lexeme;
+            size_t i = 0;
+            std::vector<std::unique_ptr<Expr>> parts;
+            std::string litbuf;
+
+            auto flush_literal = [&]() {
+                if (!litbuf.empty()) {
+                    auto litNode = std::make_unique<StringLiteralNode>(litbuf);
+                    parts.push_back(std::unique_ptr<Expr>(static_cast<Expr*>(litNode.release())));
+                    litbuf.clear();
+                }
+            };
+
+            while (i < s.size()) {
+                char c = s[i];
+                if (c == '\\') {
+                    // Escape next char if present for braces
+                    if (i + 1 < s.size() && (s[i + 1] == '{' || s[i + 1] == '}')) {
+                        litbuf.push_back(s[i + 1]);
+                        i += 2;
+                        continue;
+                    }
+                    // Keep backslash as-is for other sequences (lexer may have preserved it)
+                    litbuf.push_back('\\');
+                    i += 1;
+                    continue;
+                }
+                if (c == '{') {
+                    // Find matching unescaped '}'
+                    size_t j = i + 1;
+                    bool found = false;
+                    while (j < s.size()) {
+                        if (s[j] == '\\') { j += 2; continue; }
+                        if (s[j] == '}') { found = true; break; }
+                        ++j;
+                    }
+                    if (!found) {
+                        // Unclosed: treat as literal
+                        litbuf.append(s.substr(i));
+                        i = s.size();
+                        break;
+                    }
+                    // Extract inside and handle escapes inside as raw (escapes are not special for ident)
+                    std::string inside = s.substr(i + 1, j - (i + 1));
+                    // trim
+                    size_t l = 0, r = inside.size();
+                    while (l < r && std::isspace(static_cast<unsigned char>(inside[l]))) ++l;
+                    while (r > l && std::isspace(static_cast<unsigned char>(inside[r - 1]))) --r;
+                    std::string ident = inside.substr(l, r - l);
+                    bool valid = !ident.empty() && (std::isalpha(static_cast<unsigned char>(ident[0])) || ident[0] == '_');
+                    for (size_t k = 1; valid && k < ident.size(); ++k) {
+                        char ch = ident[k];
+                        if (!(std::isalnum(static_cast<unsigned char>(ch)) || ch == '_')) valid = false;
+                    }
+                    if (valid) {
+                        flush_literal();
+                        auto idNode = std::make_unique<IdentifierNode>(ident);
+                        parts.push_back(std::unique_ptr<Expr>(static_cast<Expr*>(idNode.release())));
+                    } else {
+                        // Keep as literal with braces
+                        litbuf.append(s.substr(i, j - i + 1));
+                    }
+                    i = j + 1;
+                    continue;
+                }
+                // default: accumulate literal
+                litbuf.push_back(c);
+                ++i;
+            }
+            flush_literal();
+
+            if (parts.empty()) {
+                auto node = std::make_unique<StringLiteralNode>(std::string());
+                node->position = std::move(pos);
+                expr = std::move(node);
+            } else if (parts.size() == 1) {
+                // single part: return directly
+                parts[0]->position = std::move(pos);
+                expr = std::unique_ptr<Node>(static_cast<Node*>(parts[0].release()));
+            } else {
+                // Build left-associative concatenation chain using '+'
+                std::unique_ptr<Expr> accum = std::move(parts[0]);
+                for (size_t idx = 1; idx < parts.size(); ++idx) {
+                    auto bin = std::make_unique<BinaryExprNode>("+", std::move(accum), std::move(parts[idx]));
+                    accum = std::move(bin);
+                }
+                accum->position = std::move(pos);
+                expr = std::unique_ptr<Node>(static_cast<Node*>(accum.release()));
+            }
             break;
         }
         case TokenType::OPAREN: {
