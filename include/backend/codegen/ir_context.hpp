@@ -330,6 +330,10 @@ public:
         return llvm::BasicBlock::Create(llvm_context, name, current_function);
     }
 
+    llvm::Function* ensure_runtime_func(const std::string& name,
+                                   llvm::ArrayRef<llvm::Type*> paramTypes,
+                                   llvm::Type* retTy = nullptr);
+
     /**
      * Inicializa o cache de tipos LLVM
      */
