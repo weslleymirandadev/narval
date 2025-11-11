@@ -11,6 +11,7 @@ bool rph::Namespace::is_const(std::string k) {
 
 std::shared_ptr<struct rph::Type> rph::Namespace::get_key(std::string k) {
     if (!has_key(k)) {
+        if (parent) return parent->get_key(k);
         throw std::runtime_error(std::string("Key '") + k + "' not found.");
     }
     return names[k];
