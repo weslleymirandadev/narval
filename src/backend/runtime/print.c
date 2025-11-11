@@ -135,39 +135,6 @@ static void print_map(Map* m, int depth) {
     fputs("}", stdout);
 }
 
-/* --- Imprime record --- */
-static void print_record(Record* r, int depth) {
-    if (!r) {
-        fputs("null", stdout);
-        return;
-    }
-
-    uintptr_t ptr = (uintptr_t)r;
-    if (is_visited(ptr)) {
-        fputs("<record[cycle]>", stdout);
-        return;
-    }
-    mark_visited(ptr);
-
-    fputs("{", stdout);
-    int first = 1;
-    for (int i = 0; i < r->field_count; ++i) {
-        if (!r->field_names[i]) continue;
-        if (!first) fputs(", ", stdout);
-        first = 0;
-
-        fputs(r->field_names[i], stdout);
-        fputs(": ", stdout);
-
-        if (depth < 3) {
-            rph_print_value_recursive(r->fields[i], depth + 1);
-        } else {
-            fputs("...", stdout);
-        }
-    }
-    fputs("}", stdout);
-}
-
 /* --- Imprime tuple --- */
 static void print_tuple(Tuple* t, int depth) {
     if (!t) {
@@ -260,20 +227,14 @@ static void rph_print_value_recursive(Value v, int depth) {
             break;
         }
 
-        case TAG_RECORD: {
-            Record* r = (Record*)(intptr_t)v.value;
-            print_record(r, depth);
-            break;
-        }
-
         case TAG_TUPLE: {
             Tuple* t = (Tuple*)(intptr_t)v.value;
             print_tuple(t, depth);
             break;
         }
 
-        case TAG_JSON:
-            fputs("<json>", stdout);
+        case TAG_ANY:
+            fputs("<any>", stdout);
             break;
 
         default: {
