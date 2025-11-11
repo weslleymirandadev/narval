@@ -19,6 +19,11 @@ void LabelStmtNode::codegen(rph::IRGenerationContext& ctx) {
     llvm::Type* ret_ty = rph::ir_utils::llvm_type_from_string(ctx, return_type);
     auto* fn_ty = llvm::FunctionType::get(ret_ty, param_types, false);
     auto* fn = llvm::Function::Create(fn_ty, llvm::Function::ExternalLinkage, name, ctx.get_module());
+
+    // Register function symbol at current (likely global) scope so it can be referenced by name
+    rph::SymbolInfo fn_info(fn, fn->getType(), nullptr, false, true);
+    ctx.get_symbol_table().define_symbol(name, fn_info);
+
     ctx.set_current_function(fn);
     auto* entry = llvm::BasicBlock::Create(ctx.get_context(), "entry", fn);
     ctx.get_builder().SetInsertPoint(entry);
