@@ -3,6 +3,14 @@
 
 namespace rph {
 
+llvm::Function* IRGenerationContext::ensure_runtime_func(const std::string& name,
+                                                        llvm::ArrayRef<llvm::Type*> paramTypes,
+                                                        llvm::Type* retTy) {
+    auto* FT = llvm::FunctionType::get(retTy ? retTy : llvm::Type::getVoidTy(llvm_context), paramTypes, false);
+    auto decl = module.getOrInsertFunction(name, FT);
+    return llvm::cast<llvm::Function>(decl.getCallee());
+}
+
 llvm::Type* IRGenerationContext::rph_type_to_llvm(std::shared_ptr<Type> rph_type) {
     if (!rph_type) {
         return llvm::Type::getVoidTy(llvm_context);
