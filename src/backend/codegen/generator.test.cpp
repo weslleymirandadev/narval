@@ -5,6 +5,7 @@
 #include "frontend/parser/parser.hpp"
 #include "frontend/module_manager.hpp"
 #include "backend/codegen/generate_ir.hpp"
+#include <filesystem>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/TargetParser/Host.h>
@@ -15,9 +16,15 @@
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Support/CodeGen.h>
 
+extern "C" const char* rph_base_dir = nullptr; // visible to C runtime
+static std::string rph_base_dir_storage;
+
 int main(int argc, char* argv[]) {
     std::string filename = "../test/main.phi";
     std::string module_name = "main";
+
+    rph_base_dir_storage = std::filesystem::path(filename).parent_path().string();
+    rph_base_dir = rph_base_dir_storage.c_str();
 
     ModuleManager module_manager;
     try {
