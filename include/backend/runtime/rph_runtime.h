@@ -17,9 +17,8 @@
 #define TAG_ARRAY   5
 #define TAG_VECTOR  6
 #define TAG_MAP     7
-#define TAG_RECORD  8
-#define TAG_TUPLE   9
-#define TAG_JSON    10
+#define TAG_TUPLE   8
+#define TAG_ANY     9
 
 // api
 void create_int(Value* out, int32_t v);
@@ -29,9 +28,8 @@ void create_str(Value* out, const char* s);
 void create_array(Value* out, int size);
 void create_vector(Value* out, int capacity);
 void create_map(Value* out);
-void create_record(Value* out, int count, const char** names);
 void create_tuple(Value* out, int count);
-void create_json(Value* out, Value v);
+void create_any(Value* out, Value v);
 
 // métodos
 void string_to_upper_case(Value* out, Value* self);
@@ -65,5 +63,15 @@ void map_set_impl(Map* m, const char* key, Value val);
 
 void rph_write(Value* v);
 void rph_write_no_nl(Value* v);
+
+// Acesso dinâmico por chave (string)
+int any_has(Value* self, const char* key);
+void any_get(Value* out, Value* self, const char* key);
+void any_set(Value* self, const char* key, Value value);
+
+// Acesso por índice (array/vector)
+int any_index_valid(Value* self, int index);
+void any_get_index(Value* out, Value* self, int index);
+void any_set_index(Value* self, int index, Value value);
 
 #endif /* RUNTIME_H */
