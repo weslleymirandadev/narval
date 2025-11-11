@@ -95,6 +95,19 @@ char* string_repeat(const char* s, int n) {
     return out;
 }
 
+char* string_concat(const char* a, const char* b) {
+    if (!a) a = "";
+    if (!b) b = "";
+    size_t la = strlen(a);
+    size_t lb = strlen(b);
+    char* out = (char*)malloc(la + lb + 1);
+    if (!out) return NULL;
+    memcpy(out, a, la);
+    memcpy(out + la, b, lb);
+    out[la + lb] = '\0';
+    return out;
+}
+
 void string_includes(Value* out, Value* self, Value substr) {
     if (!self || self->type != TAG_STR || substr.type != TAG_STR) {
         create_bool(out, 0);

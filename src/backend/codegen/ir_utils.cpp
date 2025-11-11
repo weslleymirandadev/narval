@@ -162,6 +162,17 @@ llvm::Value* create_binary_op(IRGenerationContext& context, llvm::Value* lhs, ll
         return builder.CreateCall(pow_decl, { lhs, rhs }, "pow");
     }
 
+    if (op == "+") {
+        auto* i8p = llvm::PointerType::getUnqual(get_i8(context));
+        bool lhs_is_str = (lhs_type == i8p);
+        bool rhs_is_str = (rhs_type == i8p);
+        if (lhs_is_str && rhs_is_str) {
+            auto* catTy = llvm::FunctionType::get(i8p, { i8p, i8p }, false);
+            auto* catFn = llvm::cast<llvm::Function>(context.get_module().getOrInsertFunction("string_concat", catTy).getCallee());
+            return builder.CreateCall(catFn, { lhs, rhs }, "strcat");
+        }
+    }
+
     if ((op == "*") && ([&](){
         auto* i8ptr = llvm::PointerType::getUnqual(get_i8(context));
         bool lhs_is_str = (lhs_type == i8ptr);
@@ -361,7 +372,8 @@ static llvm::Type* parse_type_recursive(const std::string& s, size_t& p, IRGener
         llvm::Type* elem = parse_type_recursive(s, p, ctx);
         if (!elem || p >= s.size() || s[p] != '>') return nullptr;
         ++p;
-        return get_vec_struct(ctx, elem)->getPointerTo();
+        // Represent vectors as dynamic Value at runtime
+        return get_value_struct(ctx);
     }
 
     // --- map<K,V> ---
@@ -373,7 +385,8 @@ static llvm::Type* parse_type_recursive(const std::string& s, size_t& p, IRGener
         llvm::Type* val = parse_type_recursive(s, p, ctx);
         if (!val || p >= s.size() || s[p] != '>') return nullptr;
         ++p;
-        return get_map_struct(ctx, key, val)->getPointerTo();
+        // Represent maps as dynamic Value at runtime
+        return get_value_struct(ctx);
     }
 
     // --- [N]T ou []T ---
@@ -388,7 +401,8 @@ static llvm::Type* parse_type_recursive(const std::string& s, size_t& p, IRGener
         if (!elem) return nullptr;
 
         if (num.empty()) {
-            return get_vec_struct(ctx, elem)->getPointerTo();  // int[]
+            // Dynamic arrays as Value
+            return get_value_struct(ctx);
         } else {
             return llvm::ArrayType::get(elem, std::stoi(num)); // [2]int
         }
