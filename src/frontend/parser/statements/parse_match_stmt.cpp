@@ -1,5 +1,6 @@
 #include "frontend/parser/statements/parse_match_stmt.hpp"
 #include "frontend/parser/expressions/parse_expr.hpp"
+#include "frontend/parser/expressions/parse_range_expr.hpp"
 #include "frontend/parser/expressions/parse_primary_expr.hpp"
 #include "frontend/parser/statements/parse_stmt.hpp"
 #include <iostream>
@@ -21,17 +22,28 @@ std::unique_ptr<Node> parse_match_stmt(Parser* parser) {
     auto match = std::make_unique<MatchStmtNode>(std::move(target), std::move(cases), std::move(bodies));
 
     while (parser->not_eof() && parser->current_token().type != TokenType::CBRACE) {
-        auto expr = parse_primary_expr(parser);
+        auto expr = parse_range_expr(parser);
         parser->expect(TokenType::ARROW, "Expected '=>'.");
-        parser->expect(TokenType::OBRACE, "Expected '{'.");
-        CodeBlock body; //tu descobriu? ainda nao
-        while (parser->not_eof() && parser->current_token().type != TokenType::CBRACE){
+        bool has_braces = false;
+        if (parser->current_token().type == TokenType::OBRACE) {
+            parser->expect(TokenType::OBRACE, "Expected '{'.");
+            has_braces = true;
+        }
+        CodeBlock body;
+        if (has_braces) {
+            while (parser->not_eof() && parser->current_token().type != TokenType::CBRACE){
+                auto stmt_node = parse_stmt(parser);
+                auto* stmt_ptr = dynamic_cast<Stmt*>(stmt_node.get());
+                body.push_back(std::unique_ptr<Stmt>(stmt_ptr));
+                stmt_node.release();
+            }
+            parser->expect(TokenType::CBRACE, "Expected '}'.");
+        } else {
             auto stmt_node = parse_stmt(parser);
             auto* stmt_ptr = dynamic_cast<Stmt*>(stmt_node.get());
             body.push_back(std::unique_ptr<Stmt>(stmt_ptr));
             stmt_node.release();
         }
-        parser->consume_token();
         match->cases.push_back(std::unique_ptr<Expr>(static_cast<Expr*>(expr.release())));
         match->bodies.push_back(std::move(body));
         if (parser->current_token().type == TokenType::COMMA) {
@@ -39,10 +51,9 @@ std::unique_ptr<Node> parse_match_stmt(Parser* parser) {
         }
     }
     auto tok = parser->expect(TokenType::CBRACE, "Expected '}'.");
-    pos->col[2] = tok.column_end;
-    pos->pos[2] = tok.position_end; // vou dormir mano, to morrendo tudo bem, vai la, ninguem é d ferrokkkkkk flww boa noite
+    pos->col[1] = tok.column_end;
+    pos->pos[1] = tok.position_end;
     
     match->position = std::move(pos);
     return match;
-    // ja volto    ok
 }
