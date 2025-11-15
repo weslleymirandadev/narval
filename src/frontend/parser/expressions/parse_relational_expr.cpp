@@ -8,16 +8,8 @@ std::unique_ptr<Node> parse_relational_expr(Parser* parser) {
     std::unique_ptr<PositionData> pos = std::make_unique<PositionData>(line, column[0], column[1], position[0], position[1]);
 
     auto left = parse_logical_not_expr(parser);
-    
-    // Don't consume RANGE or INCLUSIVE_RANGE tokens here - they are handled in parse_for_stmt
-    if (parser->current_token().type == TokenType::RANGE || 
-        parser->current_token().type == TokenType::INCLUSIVE_RANGE) {
-        return left;
-    }
-    
+        
     while (
-        parser->current_token().type == TokenType::EQUALS ||
-        parser->current_token().type == TokenType::DIFFERENT ||
         parser->current_token().type == TokenType::LESS_THAN_EQUALS ||
         parser->current_token().type == TokenType::GREATER_THAN_EQUALS ||
         parser->current_token().type == TokenType::LT ||
