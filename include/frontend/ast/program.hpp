@@ -23,6 +23,9 @@
 #include "expressions/map_node.hpp"
 #include "expressions/list_comp_node.hpp"
 #include "expressions/conditional_expr_node.hpp"
+#include "expressions/vector_expr_node.hpp"
+#include "expressions/boolean_literal_node.hpp"
+#include "expressions/range_expr_node.hpp"
 #include "statements/return_stmt_node.hpp"
 #include "statements/declaration_stmt_node.hpp"
 #include "statements/label_stmt_node.hpp"
@@ -378,6 +381,16 @@ private:
                     }
 
                 }
+                break;
+            }
+            case NodeType::RangeExpression: {
+                const auto* rangeExpr = static_cast<const RangeExprNode*>(stmt);
+                std::cout << indent << "RangeExpression:\n";
+                std::cout << indent << "  Start:\n";
+                print_statement(rangeExpr->start.get(), indentNum + 2);
+                std::cout << indent << "  End:\n";
+                print_statement(rangeExpr->end.get(), indentNum + 2);
+                std::cout << indent << "  Inclusive: " << (rangeExpr->inclusive ? "true" : "false") << "\n";
                 break;
             }
             case NodeType::BooleanLiteral: {

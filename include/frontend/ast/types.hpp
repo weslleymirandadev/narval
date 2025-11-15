@@ -41,7 +41,8 @@ enum class NodeType {
     ConditionalExpression,
     MatchStatement,
     ListComprehension,
-    VectorExpression
+    VectorExpression,
+    RangeExpression
 };
 
 class PositionData {
