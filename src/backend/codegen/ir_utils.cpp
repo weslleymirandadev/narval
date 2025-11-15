@@ -292,7 +292,11 @@ llvm::Value* create_function_call(IRGenerationContext& context, llvm::Function* 
 }
 
 llvm::ReturnInst* create_return(IRGenerationContext& context, llvm::Value* value) {
-    return context.get_builder().CreateRet(value ? value : llvm::Constant::getNullValue(get_void(context)));
+    auto& B = context.get_builder();
+    if (!value) {
+        return B.CreateRetVoid();
+    }
+    return B.CreateRet(value);
 }
 
 void create_conditional_branch(IRGenerationContext& context, llvm::Value* condition, llvm::BasicBlock* then_block, llvm::BasicBlock* else_block) {
