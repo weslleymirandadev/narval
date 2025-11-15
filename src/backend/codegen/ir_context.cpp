@@ -86,13 +86,13 @@ llvm::AllocaInst* IRGenerationContext::create_alloca(llvm::Type* type, const std
     // Cria alocação no início da função atual
     if (!current_function) {
         // Se não há função atual, cria na posição atual
-        return builder.CreateAlloca(type, nullptr, name.empty() ? nullptr : name.c_str());
+        return builder.CreateAlloca(type, nullptr, name.empty() ? "" : name);
     }
     
     auto* entry_block = &current_function->getEntryBlock();
     llvm::IRBuilder<llvm::NoFolder> tmp_builder(entry_block, entry_block->begin());
     
-    return tmp_builder.CreateAlloca(type, nullptr, name.empty() ? nullptr : name.c_str());
+    return tmp_builder.CreateAlloca(type, nullptr, name.empty() ? "" : name);
 }
 
 llvm::AllocaInst* IRGenerationContext::create_and_register_variable(
