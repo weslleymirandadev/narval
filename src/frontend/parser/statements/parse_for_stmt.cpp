@@ -1,5 +1,7 @@
 #include "frontend/parser/statements/parse_for_stmt.hpp"
 #include "frontend/parser/expressions/parse_logical_expr.hpp"
+#include "frontend/parser/expressions/parse_range_expr.hpp"
+#include "frontend/ast/expressions/range_expr_node.hpp"
 #include "frontend/parser/statements/parse_stmt.hpp"
 
 static std::vector<std::unique_ptr<Expr>> parse_binding_list(Parser* parser) {
@@ -52,17 +54,14 @@ std::unique_ptr<Node> parse_for_stmt(Parser* parser) {
         bindings = parse_binding_list(parser);  // retorna vector<unique_ptr<Expr>>
         parser->expect(TokenType::COLON, "Expected ':' after for bindings.");
 
-        auto lhs = parse_logical_expr(parser);
-
-        if (parser->current_token().type == TokenType::INCLUSIVE_RANGE || 
-            parser->current_token().type == TokenType::RANGE) {
-            range_inclusive = (parser->current_token().type == TokenType::INCLUSIVE_RANGE);
-            parser->consume_token();
-            auto rhs = parse_logical_expr(parser);
-            range_start = std::unique_ptr<Expr>(static_cast<Expr*>(lhs.release()));
-            range_end = std::unique_ptr<Expr>(static_cast<Expr*>(rhs.release()));
+        auto expr = parse_range_expr(parser);
+        if (expr && expr->kind == NodeType::RangeExpression) {
+            auto* r = static_cast<RangeExprNode*>(expr.get());
+            range_inclusive = r->inclusive;
+            range_start = std::unique_ptr<Expr>(static_cast<Expr*>(r->start->clone()));
+            range_end = std::unique_ptr<Expr>(static_cast<Expr*>(r->end->clone()));
         } else {
-            iterable = std::unique_ptr<Expr>(static_cast<Expr*>(lhs.release()));
+            iterable = std::unique_ptr<Expr>(static_cast<Expr*>(expr.release()));
         }
     } else {
         auto it = parse_logical_expr(parser);
