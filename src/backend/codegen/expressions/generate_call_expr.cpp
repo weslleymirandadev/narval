@@ -64,6 +64,12 @@ llvm::Value* box_value(IRGenerationContext& ctx, llvm::Value* v) {
         llvm::Value* fv = v->getType() == F64 ? v : B.CreateFPExt(v, F64);
         B.CreateCall(f, {alloca, fv});
     }
+    else if (v->getType()->isPointerTy()) {
+        auto* I8P = rph::ir_utils::get_i8_ptr(ctx);
+        llvm::Value* s = (v->getType() == I8P) ? v : B.CreateBitCast(v, I8P);
+        auto* f = ctx.ensure_runtime_func("create_str", {ir_utils::get_value_ptr(ctx), I8P});
+        B.CreateCall(f, {alloca, s});
+    }
     else {
         B.CreateStore(llvm::UndefValue::get(ValueTy), alloca);
     }
