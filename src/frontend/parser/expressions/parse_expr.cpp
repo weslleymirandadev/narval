@@ -5,6 +5,7 @@
 #include "frontend/parser/expressions/parse_call_member_expr.hpp"
 #include "frontend/parser/expressions/parse_unary_expr.hpp"
 #include "frontend/parser/expressions/parse_additive_expr.hpp"
+#include "frontend/parser/expressions/parse_logical_expr.hpp"
 #include "frontend/parser/expressions/parse_assignment_expr.hpp"
 #include "frontend/parser/expressions/parse_vector_expr.hpp"
 #include "frontend/parser/expressions/parse_array_map_expr.hpp"
@@ -45,6 +46,16 @@ std::unique_ptr<Node> parse_expr(Parser* parser) {
     }
 
     switch (parser->next_token().type) {
+        case TokenType::AND:
+        case TokenType::OR:
+        case TokenType::EQUALS:
+        case TokenType::DIFFERENT:
+        case TokenType::LESS_THAN_EQUALS:
+        case TokenType::GREATER_THAN_EQUALS:
+        case TokenType::LT:
+        case TokenType::GT: {
+            return parse_logical_expr(parser);
+        }
         case TokenType::PLUS:
         case TokenType::MINUS:
         case TokenType::MUL:
