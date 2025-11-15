@@ -31,6 +31,6 @@ class MatchStmtNode : public Stmt {
         return new MatchStmtNode(std::move(mark), std::move(casen), std::move(bodas));
     }
 
-    void codegen(rph::IRGenerationContext& ctx) override {};
+    void codegen(rph::IRGenerationContext& ctx) override;
 };
 
