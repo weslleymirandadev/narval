@@ -18,6 +18,16 @@ Token tokenize_operator(const std::string& input, size_t& pos, size_t& line, siz
             pos += 3;
             column += 3;
             return Token(TokenType::INCLUSIVE_RANGE, value, line, start_column, column, start_position, pos, filename);
+        } else if (candidate == "**=") {
+            value = candidate;
+            pos += 3;
+            column += 3;
+            return Token(TokenType::POWER_ASSIGN, value, line, start_column, column, start_position, pos, filename);
+        } else if (candidate == "//=") {
+            value = candidate;
+            pos += 3;
+            column += 3;
+            return Token(TokenType::INTEGER_DIV_ASSIGN, value, line, start_column, column, start_position, pos, filename);
         }
     }
 
@@ -83,6 +93,31 @@ Token tokenize_operator(const std::string& input, size_t& pos, size_t& line, siz
             pos += 2;
             column += 2;
             return Token(TokenType::RANGE, value, line, start_column, column, start_position, pos, filename);
+        } else if (candidate == "+=") {
+            value = candidate;
+            pos += 2;
+            column += 2;
+            return Token(TokenType::PLUS_ASSIGN, value, line, start_column, column, start_position, pos, filename);
+        } else if (candidate == "-=") {
+            value = candidate;
+            pos += 2;
+            column += 2;
+            return Token(TokenType::MINUS_ASSIGN, value, line, start_column, column, start_position, pos, filename);
+        } else if (candidate == "*=") {
+            value = candidate;
+            pos += 2;
+            column += 2;
+            return Token(TokenType::MUL_ASSIGN, value, line, start_column, column, start_position, pos, filename);
+        } else if (candidate == "/=") {
+            value = candidate;
+            pos += 2;
+            column += 2;
+            return Token(TokenType::DIV_ASSIGN, value, line, start_column, column, start_position, pos, filename);
+        } else if (candidate == "%=") {
+            value = candidate;
+            pos += 2;
+            column += 2;
+            return Token(TokenType::MOD_ASSIGN, value, line, start_column, column, start_position, pos, filename);
         }
     }
 
