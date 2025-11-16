@@ -53,7 +53,14 @@ enum class TokenType {
     MOD,
     INTEGER_DIV,
     EOF_TOKEN,
-    UNKNOWN
+    UNKNOWN,
+    PLUS_ASSIGN,
+    MUL_ASSIGN,
+    MINUS_ASSIGN,
+    DIV_ASSIGN,
+    INTEGER_DIV_ASSIGN,
+    POWER_ASSIGN, //that's kinda poetic
+    MOD_ASSIGN
 };
 
 inline const char* get_token_name(TokenType type) {
@@ -108,6 +115,13 @@ inline const char* get_token_name(TokenType type) {
         case TokenType::EOF_TOKEN: return "EOF_TOKEN";
         case TokenType::TRUE: return "TRUE";
         case TokenType::FALSE: return "FALSE";
+        case TokenType::PLUS_ASSIGN: return "PLUS_ASSIGN";
+        case TokenType::MINUS_ASSIGN: return "MINUS_ASSIGN";
+        case TokenType::MUL_ASSIGN: return "MUL_ASSIGN";
+        case TokenType::DIV_ASSIGN: return "DIV_ASSIGN";
+        case TokenType::INTEGER_DIV_ASSIGN: return "INTEGER_DIV_ASSIGN";
+        case TokenType::POWER_ASSIGN: return "POWER_ASSIGN";
+        case TokenType::MOD_ASSIGN: return "MOD_ASSIGN";
         default: return "UNKNOWN";
     }
 }
