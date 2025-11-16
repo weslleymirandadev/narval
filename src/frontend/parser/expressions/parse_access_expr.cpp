@@ -37,8 +37,16 @@ std::unique_ptr<Node> parse_access_expr(Parser* parser, std::unique_ptr<Node> ex
             pos_array->pos[1] = parser->current_token().position_end - 1;
         }
 
-        if (parser->current_token().type == TokenType::ASSIGNMENT) {
-            parser->consume_token(); 
+        if (parser->current_token().type == TokenType::ASSIGNMENT ||
+            parser->current_token().type == TokenType::PLUS_ASSIGN ||
+            parser->current_token().type == TokenType::MINUS_ASSIGN ||
+            parser->current_token().type == TokenType::MUL_ASSIGN ||
+            parser->current_token().type == TokenType::DIV_ASSIGN ||
+            parser->current_token().type == TokenType::INTEGER_DIV_ASSIGN ||
+            parser->current_token().type == TokenType::POWER_ASSIGN ||
+            parser->current_token().type == TokenType::MOD_ASSIGN
+        ) {
+            std::string assign = parser->consume_token().lexeme;
 
             auto value = parse_expr(parser);
 
@@ -54,6 +62,7 @@ std::unique_ptr<Node> parse_access_expr(Parser* parser, std::unique_ptr<Node> ex
 
             std::unique_ptr<Node> assign_node = std::make_unique<AssignmentExprNode>(
                 std::unique_ptr<Expr>(static_cast<Expr*>(access_node.release())),
+                assign,
                 std::unique_ptr<Expr>(static_cast<Expr*>(value.release()))
             );
 

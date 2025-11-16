@@ -133,6 +133,7 @@ private:
                 std::cout << indent << "AssignmentExpression:\n";
                 std::cout << indent << "  Target:\n";
                 print_statement(assignExpr->target.get(), indentNum + 2);
+                std::cout << indent << "  Operator: " << assignExpr->op << std::endl;
                 std::cout << indent << "  Value:\n";
                 print_statement(assignExpr->value.get(), indentNum + 2);
                 break;
