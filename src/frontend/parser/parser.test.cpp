@@ -13,7 +13,7 @@ int main(int argc, char* argv[]) {
     ModuleManager module_manager;
     try {
         std::cout << "Iniciando teste de análise sintática...\n";
-        module_manager.compile_module(module_name, filename, true);
+        module_manager.compile_module(module_name, filename, ENABLE_PARSE);
 
         std::cout << "\nASTs geradas para cada módulo:\n";
         const auto& modules = module_manager.get_modules();
