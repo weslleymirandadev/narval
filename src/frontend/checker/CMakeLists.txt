@@ -7,6 +7,6 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/checker.test.cpp")
     add_executable(checker_test checker.test.cpp ../module_manager.cpp)
-    target_link_libraries(checker_test PRIVATE lexer parser checker)
+    target_link_libraries(checker_test PRIVATE lexer parser checker generator)
     include_directories(${PROJECT_SOURCE_DIR}/include)
 endif()
