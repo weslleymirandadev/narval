@@ -41,7 +41,7 @@ llvm::Type* IRGenerationContext::rph_type_to_llvm(std::shared_ptr<Type> rph_type
                 return llvm::PointerType::get(elem_type, 0);
             }
             return llvm::Type::getInt8Ty(llvm_context); // fallback
-        }
+        }   
         
         case Kind::TUPLE: {
             auto tuple_type = std::static_pointer_cast<Tuple>(rph_type);

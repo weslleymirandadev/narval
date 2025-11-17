@@ -89,11 +89,11 @@ llvm::Value* promote_type(IRGenerationContext& context, llvm::Value* value, llvm
 llvm::Value* promote_rph_type(
     IRGenerationContext& context,
     llvm::Value* value,
-    std::shared_ptr<Type> source_type,
-    std::shared_ptr<Type> target_type
+    std::shared_ptr<Type>& source_type,
+    std::shared_ptr<Type>& target_type
 ) {
     if (!value || !source_type || !target_type) return nullptr;
-    if (source_type->equals(target_type)) return value;
+    if (source_type->equals(*target_type)) return value;
     auto* target_llvm_type = context.rph_type_to_llvm(target_type);
     return promote_type(context, value, target_llvm_type);
 }
@@ -253,7 +253,7 @@ llvm::Value* create_unary_op(IRGenerationContext& context, llvm::Value* operand,
 // === REMOVIDO: infer_llvm_type(Node*) ===
 // O tipo do nó é obtido via checker ou context.rph_type_to_llvm()
 
-llvm::Type* infer_llvm_type(IRGenerationContext& context, std::shared_ptr<Type> type) {
+llvm::Type* infer_llvm_type(IRGenerationContext& context, std::shared_ptr<Type>& type) {
     return type ? llvm_type_from_string(context, type->toString()) : get_void(context);
 }
 
@@ -265,7 +265,7 @@ llvm::BasicBlock* create_and_set_block(IRGenerationContext& context, const std::
     return block;
 }
 
-llvm::Function* create_function(IRGenerationContext& context, const std::string& name, std::shared_ptr<Label> label_type) {
+llvm::Function* create_function(IRGenerationContext& context, const std::string& name, std::unique_ptr<Label>& label_type) {
     if (!label_type) return nullptr;
     std::vector<llvm::Type*> param_types;
     for (const auto& p : label_type->paramstype)

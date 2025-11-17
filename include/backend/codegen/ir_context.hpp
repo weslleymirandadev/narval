@@ -32,7 +32,7 @@ namespace rph {
  */
 struct SymbolInfo {
     llvm::Value* value;              // O valor LLVM (AllocaInst para variáveis, etc)
-    llvm::Type* llvm_type;           // Tipo LLVM correspondente
+    llvm::Type* llvm_type;       // Tipo LLVM correspondente
     std::shared_ptr<Type> rph_type;   // Tipo Ruphi (do checker)
     bool is_allocated;                // Se é uma alocação (AllocaInst) ou não
     bool is_constant;                 // Se é constante
@@ -281,7 +281,7 @@ public:
      * Converte um tipo Ruphi para um tipo LLVM
      */
     llvm::Type* rph_type_to_llvm(std::shared_ptr<Type> rph_type);
-
+    
     /**
      * Obtém o tipo LLVM padrão para um tipo básico
      */
