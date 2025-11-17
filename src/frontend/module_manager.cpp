@@ -1,6 +1,8 @@
 #include "frontend/module_manager.hpp"
 #include "frontend/lexer/lexer.hpp"
 #include "frontend/parser/parser.hpp"
+#include "frontend/checker/checker.hpp"
+#include "frontend/checker/checker_meth.hpp"
 #include <fstream>
 #include <stdexcept>
 #include <iostream>
@@ -17,7 +19,7 @@ std::string ModuleManager::read_file(const std::string& file_path) {
     return source;
 }
 
-void ModuleManager::load_module(const std::string& module_name, const std::string& file_path, bool must_parse) {
+void ModuleManager::load_module(const std::string& module_name, const std::string& file_path, int config) {
     if (modules.find(module_name) != modules.end()) return;
 
     std::string source = read_file(file_path);
@@ -30,20 +32,24 @@ void ModuleManager::load_module(const std::string& module_name, const std::strin
     module.dependencies = lexer.get_imported_modules();
     module.name = lexer.get_module_name();
 
-    if (must_parse) {
+    if (config && ENABLE_PARSE == ENABLE_PARSE) {
         Parser parser;
         module.ast = parser.produce_ast(module.tokens);
+    }
+    if (config && ENABLE_CHECKING == ENABLE_CHECKING) {
+        rph::Checker checker;
+        checker.check_node(module.ast.get());
     }
     modules[module.name] = std::move(module);
 }
 
-void ModuleManager::resolve_dependencies(const std::string& module_name, const std::string& file_path, bool must_parse) {
+void ModuleManager::resolve_dependencies(const std::string& module_name, const std::string& file_path, int config) {
     if (visited.find(module_name) != visited.end()) {
         throw std::runtime_error("Erro: Ciclo de importação detectado com o módulo " + module_name);
     }
 
     visited.insert(module_name);
-    load_module(module_name, file_path, must_parse);
+    load_module(module_name, file_path, config);
 
     auto& module = modules[module_name];
     for (const auto& dep : module.dependencies) {
@@ -52,7 +58,7 @@ void ModuleManager::resolve_dependencies(const std::string& module_name, const s
         if (!std::ifstream(dep_path).good()) {
             throw std::runtime_error("Módulo " + dep + " não encontrado");
         }
-        resolve_dependencies(clean_dep, dep_path, must_parse);
+        resolve_dependencies(clean_dep, dep_path, config);
     }
 
     visited.erase(module_name);
@@ -62,8 +68,8 @@ const std::map<std::string, ModuleManager::Module>& ModuleManager::get_modules()
     return modules;
 }
 
-void ModuleManager::compile_module(const std::string& module_name, const std::string& file_path, bool must_parse) {
-    resolve_dependencies(module_name, file_path, must_parse);
+void ModuleManager::compile_module(const std::string& module_name, const std::string& file_path, int config) {
+    resolve_dependencies(module_name, file_path, config);
 }
 
 std::unique_ptr<Node> ModuleManager::get_combined_ast() {
