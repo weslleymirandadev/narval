@@ -54,14 +54,14 @@ llvm::Value* create_unary_op(
 );
 
 // === Inferência (APENAS com Type) ===
-llvm::Type* infer_llvm_type(IRGenerationContext& context, std::shared_ptr<Type> type);
+llvm::Type* infer_llvm_type(IRGenerationContext& context, Type& type);
 
 // === Controle de fluxo ===
 llvm::BasicBlock* create_and_set_block(IRGenerationContext& context, const std::string& name);
 llvm::Function* create_function(
     IRGenerationContext& context,
     const std::string& name,
-    std::shared_ptr<Label> label_type
+    std::shared_ptr<Label>& label_type
 );
 llvm::Function* create_function(
     IRGenerationContext& context,
