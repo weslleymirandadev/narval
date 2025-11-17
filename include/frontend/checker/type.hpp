@@ -26,7 +26,7 @@ namespace rph {
         std::shared_ptr<Namespace> prototype;
 
         Type(Kind k) : kind(k) {}
-        virtual bool equals(const std::shared_ptr<Type> &other) const { return this->kind == other->kind; };
+        virtual bool equals(const Type &other) const { return this->kind == other.kind; };
         virtual std::string toString() = 0;
 
         std::shared_ptr<Type> get_method(const std::string& name) const;
@@ -70,24 +70,25 @@ namespace rph {
     struct Label : public Type {
         std::vector<std::shared_ptr<Type>> paramstype;
         std::shared_ptr<Type> returntype;
-        Label(std::vector<std::shared_ptr<Type>> params, std::shared_ptr<Type> returns)
+        Label(const std::vector<std::shared_ptr<Type>>& params,
+              const std::shared_ptr<Type>& returns)
             : Type(Kind::LABEL), paramstype(params), returntype(returns) {}
         std::string toString() override;
-        bool equals(const std::shared_ptr<Type> &other) const override;
+        bool equals(const Type &other) const override;
     };
 
     struct Array : public Type {
         std::shared_ptr<Type> element_type;
         size_t size; // 0 = dynamic
 
-        Array(std::shared_ptr<Type> elem, size_t sz = 0)
+        Array(const std::shared_ptr<Type>& elem, size_t sz = 0)
             : Type(Kind::ARRAY), element_type(elem), size(sz) { init_prototype(); }
         void init_prototype();
 
         std::string toString() override {
             return "array[" + element_type->toString() + "]";
         }
-        bool equals(const std::shared_ptr<Type>& other) const override;
+        bool equals(const Type& other) const override;
         std::shared_ptr<Type> get_length() const override {
             return std::make_shared<Int>();
         }
@@ -97,11 +98,11 @@ namespace rph {
         std::vector<std::shared_ptr<Type>> element_type;
         size_t size; // 0 = dynamic
 
-        Tuple(std::vector<std::shared_ptr<Type>> typ) : Type(Kind::TUPLE), element_type(typ) {
+        Tuple(const std::vector<std::shared_ptr<Type>>& typ)
+            : Type(Kind::TUPLE), element_type(typ), size(typ.size()) {
             init_prototype();
         };
         void init_prototype();
-        bool equals(const std::shared_ptr<Type>& other) const override;
-        std::string toString() override;
+        bool equals(const Type& other) const override;
     };
 };

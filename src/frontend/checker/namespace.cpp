@@ -9,7 +9,7 @@ bool rph::Namespace::is_const(std::string k) {
     return consts.find(k) != consts.end();
 }
 
-std::shared_ptr<struct rph::Type> rph::Namespace::get_key(std::string k) {
+std::shared_ptr<rph::Type>& rph::Namespace::get_key(const std::string& k) {
     if (!has_key(k)) {
         if (parent) return parent->get_key(k);
         throw std::runtime_error(std::string("Key '") + k + "' not found.");
@@ -17,7 +17,7 @@ std::shared_ptr<struct rph::Type> rph::Namespace::get_key(std::string k) {
     return names[k];
 }
 
-void rph::Namespace::put_key(std::string k, std::shared_ptr<struct rph::Type> v, bool islocked) {
+void rph::Namespace::put_key(const std::string& k, const std::shared_ptr<rph::Type>& v, bool islocked) {
     if (!is_const(k)) {
         throw std::runtime_error(std::string("'") + k + "' can not be changed.");
     }
@@ -27,11 +27,11 @@ void rph::Namespace::put_key(std::string k, std::shared_ptr<struct rph::Type> v,
         consts[k] = true;
 }
 
-void rph::Namespace::put_key(std::string k, std::shared_ptr<struct Type> v) {
+void rph::Namespace::put_key(const std::string& k, const std::shared_ptr<rph::Type>& v) {
     put_key(k, v, false);
 };
 
-void rph::Namespace::set_key(std::string k, std::shared_ptr<struct rph::Type> v) {
+void rph::Namespace::set_key(const std::string& k, const std::shared_ptr<rph::Type>& v) {
     if (!is_const(k)) {
         throw std::runtime_error(std::string("'") + k + "' can not be changed.");
     }
