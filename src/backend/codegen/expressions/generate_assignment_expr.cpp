@@ -115,13 +115,42 @@ void AssignmentExprNode::codegen(rph::IRGenerationContext& ctx) {
     llvm::Value* rhs = ctx.pop_value();
     if (!rhs) { ctx.push_value(nullptr); return; }
 
+    bool is_simple_assign = (op.empty() || op == "=");
+    std::string bin_op;
+    if (!is_simple_assign) {
+        if (op == "+=") bin_op = "+";
+        else if (op == "-=") bin_op = "-";
+        else if (op == "*=") bin_op = "*";
+        else if (op == "/=") bin_op = "/";
+        else if (op == "//=") bin_op = "//";
+        else if (op == "**=") bin_op = "**";
+        else if (op == "%=") bin_op = "%";
+        else is_simple_assign = true; 
+    }
+
     auto info_opt = ctx.get_symbol_table().lookup_symbol(id->symbol);
     if (info_opt.has_value()) {
         auto info = info_opt.value();
-        // promover tipo se necessário
+        auto& B = ctx.get_builder();
+
+        // Atribuição simples: mantém comportamento existente
+        if (is_simple_assign) {
+            rhs = rph::ir_utils::promote_type(ctx, rhs, info.llvm_type);
+            B.CreateStore(rhs, info.value);
+            ctx.push_value(rhs);
+            return;
+        }
+
+        // Atribuições compostas: carrega o valor atual e aplica o operador binário
+        llvm::Value* current = B.CreateLoad(info.llvm_type, info.value);
         rhs = rph::ir_utils::promote_type(ctx, rhs, info.llvm_type);
-        ctx.get_builder().CreateStore(rhs, info.value);
-        ctx.push_value(rhs);
+        llvm::Value* result = rph::ir_utils::create_binary_op(ctx, current, rhs, bin_op);
+        if (!result) { ctx.push_value(nullptr); return; }
+
+        // Garantir que o resultado tenha o tipo da variável
+        result = rph::ir_utils::promote_type(ctx, result, info.llvm_type);
+        B.CreateStore(result, info.value);
+        ctx.push_value(result);
         return;
     }
 
