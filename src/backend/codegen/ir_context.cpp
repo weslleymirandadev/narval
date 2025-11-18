@@ -82,6 +82,19 @@ llvm::Type* IRGenerationContext::get_llvm_type(Kind kind) {
     return llvm::Type::getVoidTy(llvm_context);
 }
 
+void IRGenerationContext::emit_local_variable_dbg(
+    llvm::AllocaInst* alloca,
+    const std::string& name,
+    const PositionData* pos
+) {
+    // Disabled for now: emitting dbg.declare for locals triggers a crash
+    // in LLVM's DwarfDebug on this toolchain. We keep function-level
+    // debug info (DISubprogram + locations) only.
+    (void)alloca;
+    (void)name;
+    (void)pos;
+}
+
 llvm::AllocaInst* IRGenerationContext::create_alloca(llvm::Type* type, const std::string& name) {
     // Cria alocação no início da função atual
     if (!current_function) {
@@ -106,6 +119,8 @@ llvm::AllocaInst* IRGenerationContext::create_and_register_variable(
     SymbolInfo info(alloca, llvm_type, rph_type, true, is_constant);
     symbol_table.define_symbol(name, info);
     
+    emit_local_variable_dbg(alloca, name, nullptr);
+
     return alloca;
 }
 
