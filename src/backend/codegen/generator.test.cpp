@@ -15,6 +15,7 @@
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Support/CodeGen.h>
+#include <llvm/IR/DIBuilder.h>
 
 extern "C" const char* rph_base_dir = nullptr; // visible to C runtime
 static std::string rph_base_dir_storage;
@@ -36,6 +37,26 @@ int main(int argc, char* argv[]) {
         llvm::IRBuilder<llvm::NoFolder> Builder(Context);
         rph::IRGenerationContext context(Context, Mod, Builder);
 
+        // === Debug info setup (same as main.cpp) ===
+        llvm::DIBuilder DIB(Mod);
+        Mod.addModuleFlag(llvm::Module::Warning, "Debug Info Version", llvm::DEBUG_METADATA_VERSION);
+
+        llvm::DIFile* diFile = DIB.createFile(
+            filename,
+            std::filesystem::path(filename).parent_path().string()
+        );
+
+        llvm::DICompileUnit* cu = DIB.createCompileUnit(
+            llvm::dwarf::DW_LANG_C, // placeholder language id
+            diFile,
+            "ruphi-compiler-test",
+            false,
+            "",
+            0
+        );
+
+        context.set_debug_info(&DIB, cu, diFile, cu);
+
         auto* i32_ty      = llvm::Type::getInt32Ty(Context);
         auto* main_sig    = llvm::FunctionType::get(llvm::Type::getVoidTy(Context), false);
 
@@ -45,6 +66,24 @@ int main(int argc, char* argv[]) {
             "main.start",
             Mod
         );
+
+        // Attach DISubprogram to main.start for better function-level debug info
+        {
+            auto* sub_ty = DIB.createSubroutineType(DIB.getOrCreateTypeArray({}));
+            auto* subp = DIB.createFunction(
+                cu,
+                "main.start",
+                llvm::StringRef(),
+                diFile,
+                1,
+                sub_ty,
+                1,
+                llvm::DINode::FlagZero,
+                llvm::DISubprogram::SPFlagDefinition
+            );
+            main_start->setSubprogram(subp);
+            context.set_debug_scope(subp);
+        }
 
         llvm::BasicBlock* entry_bb = llvm::BasicBlock::Create(Context, "entry", main_start);
         context.get_builder().SetInsertPoint(entry_bb);
@@ -77,6 +116,8 @@ int main(int argc, char* argv[]) {
         // call _exit(retcode); no return
         context.get_builder().CreateCall(exit_fn, {return_value});
         context.get_builder().CreateUnreachable();
+
+        DIB.finalize();
 
         Mod.print(llvm::outs(), nullptr);
 
@@ -125,7 +166,7 @@ int main(int argc, char* argv[]) {
         dest.flush();
 
         std::string link_cmd =
-            std::string("gcc ") + RUPHI_SOURCE_DIR + "/build/lib/runtime.o " +
+            std::string("gcc -g ") + RUPHI_SOURCE_DIR + "/build/lib/runtime.o " +
             RUPHI_SOURCE_DIR + "/build/lib/std.o " +
             "ruphi_module.o -lgc -pthread -ldl -lm -o ruphi_program " +
             "-Wl,-e,main.start " +     // entry point
@@ -133,17 +174,17 @@ int main(int argc, char* argv[]) {
             "-no-pie " +               // opcional
             "-lc -w";                // libc + sem warnings
 
-        const char* rm_cmd = "rm ruphi_module.o ruphi_module.ll";
+        // const char* rm_cmd = "rm ruphi_module.o ruphi_module.ll";
 
         if (system(link_cmd.c_str()) != 0) {
             llvm::errs() << "Falha na linkedição\n";
             return 1;
         }
 
-        if (system(rm_cmd) != 0) {
-            llvm::errs() << "Falha ao remover arquivos temporários\n";
-            return 1;
-        }
+        // if (system(rm_cmd) != 0) {
+        //     llvm::errs() << "Falha ao remover arquivos temporários\n";
+        //     return 1;
+        // }
 
         std::cout << "Compilação concluída: ./ruphi_program\n";
     } catch (const std::exception& e) {
