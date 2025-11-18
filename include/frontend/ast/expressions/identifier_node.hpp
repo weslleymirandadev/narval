@@ -12,7 +12,11 @@ public:
     ~IdentifierNode() override = default;
 
     Node* clone() const override {
-        return new IdentifierNode(symbol);
+        auto* node = new IdentifierNode(symbol);
+        if (position) {
+            node->position = std::make_unique<PositionData>(*position);
+        }
+        return node;
     }
 
     void codegen(rph::IRGenerationContext& ctx) override;

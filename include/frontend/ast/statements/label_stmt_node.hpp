@@ -32,7 +32,11 @@ public:
             cloned_body.push_back(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
         }
 
-        return new LabelStmtNode(name, parameters, return_type, std::move(cloned_body));
+        auto* node = new LabelStmtNode(name, parameters, return_type, std::move(cloned_body));
+        if (position) {
+            node->position = std::make_unique<PositionData>(*position);
+        }
+        return node;
     }
 
     void codegen(rph::IRGenerationContext& ctx) override;

@@ -15,7 +15,11 @@ public:
     Node* clone() const override {
         auto cloned_expr = expr ? std::unique_ptr<Expr>(static_cast<Expr*>(expr->clone())) : nullptr;
         auto cloned_index = index ? std::unique_ptr<Expr>(static_cast<Expr*>(index->clone())) : nullptr;
-        return new AccessExprNode(std::move(cloned_expr), std::move(cloned_index));
+        auto* node = new AccessExprNode(std::move(cloned_expr), std::move(cloned_index));
+        if (position) {
+            node->position = std::make_unique<PositionData>(*position);
+        }
+        return node;
     }
 
     void codegen(rph::IRGenerationContext& ctx) override;

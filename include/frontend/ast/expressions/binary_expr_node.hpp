@@ -17,7 +17,11 @@ public:
     Node* clone() const override {
         auto cloned_left = left ? std::unique_ptr<Expr>(static_cast<Expr*>(left->clone())) : nullptr;
         auto cloned_right = right ? std::unique_ptr<Expr>(static_cast<Expr*>(right->clone())) : nullptr;
-        return new BinaryExprNode(op, std::move(cloned_left), std::move(cloned_right));
+        auto* node = new BinaryExprNode(op, std::move(cloned_left), std::move(cloned_right));
+        if (position) {
+            node->position = std::make_unique<PositionData>(*position);
+        }
+        return node;
     }
 
     void codegen(rph::IRGenerationContext& ctx) override;

@@ -20,11 +20,15 @@ public:
     ~ConditionalExprNode() override = default;
 
     Node* clone() const override {
-        return new ConditionalExprNode(
+        auto* node = new ConditionalExprNode(
             std::unique_ptr<Expr>(static_cast<Expr*>(true_expr->clone())),
             std::unique_ptr<Expr>(static_cast<Expr*>(condition->clone())),
             std::unique_ptr<Expr>(static_cast<Expr*>(false_expr->clone()))
         );
+        if (position) {
+            node->position = std::make_unique<PositionData>(*position);
+        }
+        return node;
     }
 
     void codegen(rph::IRGenerationContext& ctx) override;

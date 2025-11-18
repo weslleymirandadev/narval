@@ -13,14 +13,18 @@ public:
         : Stmt(NodeType::DeclarationStatement), target(std::move(tgt)), value(std::move(val)), typ(tyyp), constant(locked) {};
     
     DeclarationStmtNode(std::unique_ptr<Expr> tgt, std::unique_ptr<Expr> val, std::string tyyp)
-     : Stmt(NodeType::DeclarationStatement), target(std::move(tgt)), value(std::move(val)), typ(tyyp), constant(false) {};
+        : Stmt(NodeType::DeclarationStatement), target(std::move(tgt)), value(std::move(val)), typ(tyyp), constant(false) {};
     
     ~DeclarationStmtNode() override = default;
 
     Node* clone() const override {
         auto cloned_target = target ? std::unique_ptr<Expr>(static_cast<Expr*>(target->clone())) : nullptr;
         auto cloned_value = value ? std::unique_ptr<Expr>(static_cast<Expr*>(value->clone())) : nullptr;
-        return new DeclarationStmtNode(std::move(cloned_target), std::move(cloned_value), this->typ, this->constant);
+        auto* node = new DeclarationStmtNode(std::move(cloned_target), std::move(cloned_value), this->typ, this->constant);
+        if (position) {
+            node->position = std::make_unique<PositionData>(*position);
+        }
+        return node;
     }
 
     void codegen(rph::IRGenerationContext& ctx) override;

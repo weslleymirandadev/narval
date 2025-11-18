@@ -32,12 +32,16 @@ public:
                 std::unique_ptr<Expr>(static_cast<Expr*>(source->clone()))
             ));
         }
-        return new ListCompNode(
+        auto* node = new ListCompNode(
             std::unique_ptr<Expr>(static_cast<Expr*>(elt->clone())),
             std::move(cloned_gens),
             if_cond ? std::unique_ptr<Expr>(static_cast<Expr*>(if_cond->clone())) : nullptr,
             else_expr ? std::unique_ptr<Expr>(static_cast<Expr*>(else_expr->clone())) : nullptr
         );
+        if (position) {
+            node->position = std::make_unique<PositionData>(*position);
+        }
+        return node;
     }
 
     void codegen(rph::IRGenerationContext& ctx) override;

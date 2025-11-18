@@ -19,7 +19,11 @@ public:
         for (const auto& expr : args) {
             cloned_args.push_back(std::unique_ptr<Expr>(static_cast<Expr*>(expr->clone())));
         }
-        return new CallExprNode(std::move(cloned_caller), std::move(cloned_args));
+        auto* node = new CallExprNode(std::move(cloned_caller), std::move(cloned_args));
+        if (position) {
+            node->position = std::make_unique<PositionData>(*position);
+        }
+        return node;
     }
 
     void codegen(rph::IRGenerationContext& ctx) override;

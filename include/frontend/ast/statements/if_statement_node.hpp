@@ -24,7 +24,15 @@ public:
         for (const auto& stmt : alternate) {
             cloned_alternate.push_back(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
         }
-        return new IfStatementNode(std::move(cloned_condition), std::move(cloned_consequent), std::move(cloned_alternate));
+        auto* node = new IfStatementNode(
+            std::move(cloned_condition),
+            std::move(cloned_consequent),
+            std::move(cloned_alternate)
+        );
+        if (position) {
+            node->position = std::make_unique<PositionData>(*position);
+        }
+        return node;
     }
 
     void codegen(rph::IRGenerationContext& ctx) override;

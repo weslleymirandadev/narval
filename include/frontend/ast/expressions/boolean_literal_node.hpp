@@ -10,7 +10,11 @@ class BooleanLiteralNode: public Expr {
         ~BooleanLiteralNode() override = default;
 
         Node* clone() const override {
-            return new BooleanLiteralNode(value);
+            auto* node = new BooleanLiteralNode(value);
+            if (position) {
+                node->position = std::make_unique<PositionData>(*position);
+            }
+            return node;
         }
 
         void codegen(rph::IRGenerationContext& ctx) override;

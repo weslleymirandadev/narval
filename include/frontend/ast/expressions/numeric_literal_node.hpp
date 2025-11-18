@@ -12,7 +12,11 @@ public:
     ~NumericLiteralNode() override = default;
 
     Node* clone() const override {
-        return new NumericLiteralNode(value);
+        auto* node = new NumericLiteralNode(value);
+        if (position) {
+            node->position = std::make_unique<PositionData>(*position);
+        }
+        return node;
     }
 
     void codegen(rph::IRGenerationContext& ctx) override;
