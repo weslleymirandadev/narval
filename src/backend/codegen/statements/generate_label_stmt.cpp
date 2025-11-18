@@ -2,11 +2,14 @@
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
 #include <llvm/IR/Verifier.h>
+#include <llvm/IR/DIBuilder.h>
 
 void LabelStmtNode::codegen(rph::IRGenerationContext& ctx) {
+    ctx.set_debug_location(position.get());
     // Preserve current codegen state
     llvm::Function* prev_func = ctx.get_current_function();
     llvm::BasicBlock* prev_insert_block = ctx.get_builder().GetInsertBlock();
+    llvm::DIScope* prev_scope = ctx.get_debug_scope();
 
     std::vector<llvm::Type*> param_types;
     std::vector<std::string> param_names;
@@ -20,6 +23,27 @@ void LabelStmtNode::codegen(rph::IRGenerationContext& ctx) {
     auto* fn_ty = llvm::FunctionType::get(ret_ty, param_types, false);
     auto* fn = llvm::Function::Create(fn_ty, llvm::Function::ExternalLinkage, name, ctx.get_module());
 
+    if (auto* dib = ctx.get_debug_builder()) {
+        llvm::DIFile* file = ctx.get_debug_file();
+
+        unsigned line = position ? static_cast<unsigned>(position->line) : 0u;
+
+        auto* sub_ty = dib->createSubroutineType(dib->getOrCreateTypeArray({}));
+        auto* subp = dib->createFunction(
+            file,                  // <-- sempre o arquivo, não o escopo atual
+            name,
+            llvm::StringRef(),
+            file,
+            line,
+            sub_ty,
+            line,
+            llvm::DINode::FlagZero,
+            llvm::DISubprogram::SPFlagDefinition
+        );
+        fn->setSubprogram(subp);
+        ctx.set_debug_scope(subp);
+    }
+
     // Register function symbol at current (likely global) scope so it can be referenced by name
     rph::SymbolInfo fn_info(fn, fn->getType(), nullptr, false, true);
     ctx.get_symbol_table().define_symbol(name, fn_info);
@@ -30,15 +54,25 @@ void LabelStmtNode::codegen(rph::IRGenerationContext& ctx) {
 
     unsigned idx = 0;
     for (auto& arg : fn->args()) {
-        if (idx < param_names.size()) arg.setName(param_names[idx++]);
+        if (idx < param_names.size()) {
+            arg.setName(param_names[idx++]);
+        }
     }
 
     ctx.enter_scope();
     if (idx) {
         idx = 0;
         for (auto& arg : fn->args()) {
-            auto* alloca = ctx.create_and_register_variable(std::string(arg.getName()), arg.getType(), nullptr, false);
+            auto* alloca = ctx.create_and_register_variable(
+                std::string(arg.getName()),
+                arg.getType(),
+                nullptr,
+                false
+            );
             ctx.get_builder().CreateStore(&arg, alloca);
+            // Local variable debug info for parameters is temporarily disabled
+            // to avoid crashes inside LLVM's DwarfDebug. The IR still has
+            // function-level DISubprogram and locations.
         }
     }
     for (auto& stmt : body) {
@@ -55,5 +89,8 @@ void LabelStmtNode::codegen(rph::IRGenerationContext& ctx) {
     ctx.set_current_function(prev_func);
     if (prev_insert_block) {
         ctx.get_builder().SetInsertPoint(prev_insert_block);
+    }
+    if (prev_scope) {
+        ctx.set_debug_scope(prev_scope);
     }
 }

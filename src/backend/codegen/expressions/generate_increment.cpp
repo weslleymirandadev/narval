@@ -5,6 +5,7 @@
 #include "frontend/ast/expressions/access_expr_node.hpp"
 
 void IncrementExprNode::codegen(rph::IRGenerationContext& ctx) {
+    ctx.set_debug_location(position.get());
     auto& b = ctx.get_builder();
 
     // Resolve endereço do operando (identifier ou access a array)

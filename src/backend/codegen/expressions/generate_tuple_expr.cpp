@@ -4,6 +4,7 @@
 #include <llvm/IR/DerivedTypes.h>
 
 void TupleExprNode::codegen(rph::IRGenerationContext& ctx) {
+    ctx.set_debug_location(position.get());
     auto& c = ctx.get_context();
     auto& b = ctx.get_builder();
     auto& m = ctx.get_module();

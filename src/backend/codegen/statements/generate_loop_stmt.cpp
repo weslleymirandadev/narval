@@ -2,6 +2,7 @@
 #include "backend/codegen/ir_context.hpp"
 
 void LoopStmtNode::codegen(rph::IRGenerationContext& ctx) {
+    ctx.set_debug_location(position.get());
     auto& b = ctx.get_builder();
     auto* func = ctx.get_current_function();
     if (!func) throw std::runtime_error("loop statement outside of function");

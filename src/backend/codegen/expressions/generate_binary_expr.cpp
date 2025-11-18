@@ -3,6 +3,7 @@
 #include "backend/codegen/ir_utils.hpp"
 
 void BinaryExprNode::codegen(rph::IRGenerationContext& ctx) {
+    ctx.set_debug_location(position.get());
     if (left) left->codegen(ctx);
     auto* lhs_v = ctx.pop_value();
     if (right) right->codegen(ctx);

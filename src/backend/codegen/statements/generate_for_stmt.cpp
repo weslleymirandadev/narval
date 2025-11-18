@@ -4,6 +4,23 @@
 #include "frontend/ast/expressions/identifier_node.hpp"
 
 void ForStmtNode::codegen(rph::IRGenerationContext& ctx) {
+    ctx.set_debug_location(position.get());
+
+    llvm::DIBuilder* dib = ctx.get_debug_builder();
+    llvm::DIFile* dif = ctx.get_debug_file();
+    llvm::DIScope* old_scope = ctx.get_debug_scope();
+    llvm::DIScope* for_scope = old_scope;
+
+    if (dib && dif && position) {
+        for_scope = dib->createLexicalBlock(
+            old_scope ? old_scope : static_cast<llvm::DIScope*>(dif),
+            dif,
+            static_cast<unsigned>(position->line),
+            static_cast<unsigned>(position->col[0] + 1)
+        );
+        ctx.set_debug_scope(for_scope);
+    }
+    
     auto& b = ctx.get_builder();
     auto* func = ctx.get_current_function();
     if (!func) throw std::runtime_error("for statement outside of function");
@@ -353,6 +370,10 @@ void ForStmtNode::codegen(rph::IRGenerationContext& ctx) {
         b.CreateBr(after_bb);
     } else {
         b.CreateBr(after_bb);
+    }
+
+    if (dib && dif && position) {
+        ctx.set_debug_scope(old_scope);
     }
 
     b.SetInsertPoint(after_bb);

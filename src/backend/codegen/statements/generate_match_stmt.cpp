@@ -61,6 +61,7 @@ static llvm::Value* build_match_condition(rph::IRGenerationContext& ctx, Expr* p
 }
 
 void MatchStmtNode::codegen(rph::IRGenerationContext& ctx) {
+    ctx.set_debug_location(position.get());
     auto& b = ctx.get_builder();
     auto& c = ctx.get_context();
 

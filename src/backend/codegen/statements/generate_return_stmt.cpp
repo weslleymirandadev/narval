@@ -3,6 +3,7 @@
 #include "backend/codegen/ir_utils.hpp"
 
 void ReturnStmtNode::codegen(rph::IRGenerationContext& ctx) {
+    ctx.set_debug_location(position.get());
     if (value) {
         value->codegen(ctx);
         auto* v = ctx.pop_value();

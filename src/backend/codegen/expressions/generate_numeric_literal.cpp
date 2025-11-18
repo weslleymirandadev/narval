@@ -4,6 +4,7 @@
 #include <iostream>
 
 void NumericLiteralNode::codegen(rph::IRGenerationContext& context) {
+    context.set_debug_location(position.get());
     // Heurística simples: contém ponto → float; senão int
     if (value.find('.') != std::string::npos) {
         double dbl = std::stod(value);
