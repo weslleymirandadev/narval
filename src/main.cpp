@@ -15,13 +15,23 @@
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Support/CodeGen.h>
+#include <llvm/IR/DIBuilder.h>
 
 extern "C" const char* rph_base_dir = nullptr; // visible to C runtime
 static std::string rph_base_dir_storage;
 
 int main(int argc, char* argv[]) {
-    std::string filename = std::string(argv[1]);
+    std::string filename;
     std::string module_name = "main";
+
+    if (argc >= 2) {
+        filename = argv[1];
+    }
+
+    if (filename.empty()) {
+        std::cerr << "Usage: ruphi <source.phi>\n";
+        return 1;
+    }
 
     // Initialize base dir from source file path (directory containing main.phi)
     rph_base_dir_storage = std::filesystem::path(filename).parent_path().string();
@@ -37,11 +47,28 @@ int main(int argc, char* argv[]) {
         llvm::IRBuilder<llvm::NoFolder> Builder(Context);
         rph::IRGenerationContext context(Context, Mod, Builder);
 
+        // === Debug info setup (same as main.cpp) ===
+        llvm::DIBuilder DIB(Mod);
+        Mod.addModuleFlag(llvm::Module::Warning, "Debug Info Version", llvm::DEBUG_METADATA_VERSION);
+
+        llvm::DIFile* diFile = DIB.createFile(
+            filename,
+            std::filesystem::path(filename).parent_path().string()
+        );
+
+        llvm::DICompileUnit* cu = DIB.createCompileUnit(
+            llvm::dwarf::DW_LANG_C, // placeholder language id
+            diFile,
+            "ruphi-compiler-test",
+            false,
+            "",
+            0
+        );
+
+        context.set_debug_info(&DIB, cu, diFile, cu);
+
         auto* i32_ty      = llvm::Type::getInt32Ty(Context);
-        auto* i8_ty       = llvm::Type::getInt8Ty(Context);
-        auto* i8_ptr_ty   = llvm::PointerType::getUnqual(i8_ty);
-        auto* argv_ty     = llvm::PointerType::getUnqual(i8_ptr_ty);
-        auto* main_sig    = llvm::FunctionType::get(i32_ty, {i32_ty, argv_ty}, false);
+        auto* main_sig    = llvm::FunctionType::get(llvm::Type::getVoidTy(Context), false);
 
         llvm::Function* main_start = llvm::Function::Create(
             main_sig,
@@ -49,6 +76,24 @@ int main(int argc, char* argv[]) {
             "main.start",
             Mod
         );
+
+        // Attach DISubprogram to main.start for better function-level debug info
+        {
+            auto* sub_ty = DIB.createSubroutineType(DIB.getOrCreateTypeArray({}));
+            auto* subp = DIB.createFunction(
+                cu,
+                "main.start",
+                llvm::StringRef(),
+                diFile,
+                1,
+                sub_ty,
+                1,
+                llvm::DINode::FlagZero,
+                llvm::DISubprogram::SPFlagDefinition
+            );
+            main_start->setSubprogram(subp);
+            context.set_debug_scope(subp);
+        }
 
         llvm::BasicBlock* entry_bb = llvm::BasicBlock::Create(Context, "entry", main_start);
         context.get_builder().SetInsertPoint(entry_bb);
@@ -74,11 +119,15 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        context.get_builder().CreateRet(return_value);
+        // declare _exit(int);
+        auto* exit_ty = llvm::FunctionType::get(llvm::Type::getVoidTy(Context), {i32_ty}, false);
+        llvm::FunctionCallee exit_fn = Mod.getOrInsertFunction("_exit", exit_ty);
 
-        if (auto* old_main = Mod.getFunction("main")) {
-            old_main->eraseFromParent();
-        }
+        // call _exit(retcode); no return
+        context.get_builder().CreateCall(exit_fn, {return_value});
+        context.get_builder().CreateUnreachable();
+
+        DIB.finalize();
 
         {
             std::error_code EC;
@@ -126,7 +175,7 @@ int main(int argc, char* argv[]) {
 
         
         std::string link_cmd =
-            std::string("gcc ") + RUPHI_SOURCE_DIR + "/build/lib/runtime.o " +
+            std::string("gcc -g ") + RUPHI_SOURCE_DIR + "/build/lib/runtime.o " +
             RUPHI_SOURCE_DIR + "/build/lib/std.o " +
             "ruphi_module.o -lgc -pthread -ldl -lm -o ruphi_program " +
             "-Wl,-e,main.start " +     // entry point
