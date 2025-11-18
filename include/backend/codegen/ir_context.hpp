@@ -10,6 +10,8 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Type.h>
 #include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/DebugInfoMetadata.h>
+#include <llvm/IR/DIBuilder.h>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -220,6 +222,16 @@ private:
     llvm::Module& module;
     llvm::IRBuilder<llvm::NoFolder>& builder;
 
+    // Debug info (optional; can be null when debug is disabled)
+    llvm::DIBuilder* di_builder = nullptr;
+    llvm::DICompileUnit* di_compile_unit = nullptr;
+    llvm::DIFile* di_file = nullptr;
+    llvm::DIScope* current_debug_scope = nullptr;
+
+    // Runtime debug instrumentation control
+    bool debug_enabled = false;
+    std::string source_file;
+
     SymbolTable symbol_table;
     ControlFlowContext control_flow;
 
@@ -251,6 +263,26 @@ public:
     llvm::Module& get_module() { return module; }
     llvm::IRBuilder<llvm::NoFolder>& get_builder() { return builder; }
 
+    // Debug info wiring (set once from the outside when debug is enabled)
+    void set_debug_info(llvm::DIBuilder* dib, llvm::DICompileUnit* cu, llvm::DIFile* file, llvm::DIScope* scope) {
+        di_builder = dib;
+        di_compile_unit = cu;
+        di_file = file;
+        current_debug_scope = scope;
+    }
+
+    llvm::DIBuilder* get_debug_builder() { return di_builder; }
+    llvm::DIFile* get_debug_file() { return di_file; }
+    llvm::DIScope* get_debug_scope() { return current_debug_scope; }
+    void set_debug_scope(llvm::DIScope* scope) { current_debug_scope = scope; }
+
+    // Runtime debug toggling
+    void set_debug_enabled(bool enabled) { debug_enabled = enabled; }
+    bool is_debug_enabled() const { return debug_enabled; }
+
+    void set_source_file(const std::string& file) { source_file = file; }
+    const std::string& get_source_file() const { return source_file; }
+
     // Gerenciamento de símbolos
     SymbolTable& get_symbol_table() { return symbol_table; }
 
@@ -261,6 +293,25 @@ public:
     void set_current_function(llvm::Function* fn) { current_function = fn; }
     llvm::Function* get_current_function() { return current_function; }
     bool has_current_function() const { return current_function != nullptr; }
+
+    // Debug locations: attach source location (if any) to following IR
+    void set_debug_location(const PositionData* pos) {
+        // If debug info is not configured, do nothing
+        if (!di_builder || !di_file || !current_debug_scope) {
+            return;
+        }
+        // If the node has no position, keep current location (inherit from parent)
+        if (!pos) {
+            return;
+        }
+        auto* loc = llvm::DILocation::get(
+            llvm_context,
+            static_cast<unsigned>(pos->line),
+            static_cast<unsigned>(pos->col[0] + 1),
+            current_debug_scope
+        );
+        builder.SetCurrentDebugLocation(loc);
+    }
 
     // Pilha de avaliação
     void push_value(llvm::Value* v) { eval_stack.push_back(v); }
