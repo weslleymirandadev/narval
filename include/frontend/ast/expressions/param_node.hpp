@@ -23,7 +23,11 @@ public:
     }
 
     Node* clone() const override {
-        return new ParamNode(*this);
+        auto* node = new ParamNode(*this);
+        if (position) {
+            node->position = std::make_unique<PositionData>(*position);
+        }
+        return node;
     }
 
     void codegen(rph::IRGenerationContext& ctx) override;

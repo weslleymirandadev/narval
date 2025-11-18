@@ -17,7 +17,11 @@ public:
         for (const auto& element : elements) {
             cloned_elements.push_back(std::unique_ptr<Expr>(static_cast<Expr*>(element->clone())));
         }
-        return new TupleExprNode(std::move(cloned_elements));
+        auto* node = new TupleExprNode(std::move(cloned_elements));
+        if (position) {
+            node->position = std::make_unique<PositionData>(*position);
+        }
+        return node;
     }
     
     void codegen(rph::IRGenerationContext& ctx) override;

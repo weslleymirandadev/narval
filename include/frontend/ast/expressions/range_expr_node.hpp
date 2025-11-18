@@ -21,7 +21,11 @@ public:
     Node* clone() const override {
         auto s = start ? std::unique_ptr<Expr>(static_cast<Expr*>(start->clone())) : nullptr;
         auto e = end ? std::unique_ptr<Expr>(static_cast<Expr*>(end->clone())) : nullptr;
-        return new RangeExprNode(std::move(s), std::move(e), inclusive);
+        auto* node = new RangeExprNode(std::move(s), std::move(e), inclusive);
+        if (position) {
+            node->position = std::make_unique<PositionData>(*position);
+        }
+        return node;
     }
 
     void codegen(rph::IRGenerationContext& ctx) override;

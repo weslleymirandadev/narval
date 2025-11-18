@@ -28,7 +28,11 @@ class MatchStmtNode : public Stmt {
             }
             bodas.push_back(std::move(body));
         }
-        return new MatchStmtNode(std::move(mark), std::move(casen), std::move(bodas));
+        auto* node = new MatchStmtNode(std::move(mark), std::move(casen), std::move(bodas));
+        if (position) {
+            node->position = std::make_unique<PositionData>(*position);
+        }
+        return node;
     }
 
     void codegen(rph::IRGenerationContext& ctx) override;

@@ -13,7 +13,11 @@ public:
     
     Node* clone() const override {
         auto cloned_value = value ? std::unique_ptr<Expr>(static_cast<Expr*>(value->clone())) : nullptr;
-        return new ReturnStmtNode(std::move(cloned_value));
+        auto* node = new ReturnStmtNode(std::move(cloned_value));
+        if (position) {
+            node->position = std::make_unique<PositionData>(*position);
+        }
+        return node;
     }
 
     void codegen(rph::IRGenerationContext& ctx) override;

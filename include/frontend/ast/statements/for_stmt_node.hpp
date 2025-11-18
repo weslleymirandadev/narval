@@ -56,7 +56,7 @@ public:
             cloned_else.push_back(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
         }
 
-        return new ForStmtNode(
+        auto* node = new ForStmtNode(
             std::move(cloned_bindings),
             std::move(cloned_range_start),
             std::move(cloned_range_end),
@@ -65,6 +65,10 @@ public:
             std::move(cloned_body),
             std::move(cloned_else)
         );
+        if (position) {
+            node->position = std::make_unique<PositionData>(*position);
+        }
+        return node;
     }
 
     void codegen(rph::IRGenerationContext& ctx) override;

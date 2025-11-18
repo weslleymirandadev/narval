@@ -17,7 +17,11 @@ public:
         for (const auto& property : properties) {
             cloned_properties.push_back(std::unique_ptr<Expr>(static_cast<Expr*>(property->clone())));
         }
-        return new MapNode(std::move(cloned_properties));
+        auto* node = new MapNode(std::move(cloned_properties));
+        if (position) {
+            node->position = std::make_unique<PositionData>(*position);
+        }
+        return node;
     }
 
     void codegen(rph::IRGenerationContext& ctx) override;
