@@ -4,6 +4,7 @@
 #include <llvm/IR/DerivedTypes.h>
 
 void RangeExprNode::codegen(rph::IRGenerationContext& ctx) {
+    ctx.set_debug_location(position.get());
     auto& b = ctx.get_builder();
     auto& c = ctx.get_context();
     auto& m = ctx.get_module();

@@ -5,6 +5,7 @@
 #include "frontend/ast/expressions/access_expr_node.hpp"
 
 void AssignmentExprNode::codegen(rph::IRGenerationContext& ctx) {
+    ctx.set_debug_location(position.get());
     if (!target) { ctx.push_value(nullptr); return; }
     // Suporte a atribuição para access expressions: base[index] = value
     if (auto* acc = dynamic_cast<AccessExprNode*>(target.get())) {

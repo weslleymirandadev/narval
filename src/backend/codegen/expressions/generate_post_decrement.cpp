@@ -5,6 +5,7 @@
 #include "backend/codegen/ir_utils.hpp"
 
 void PostDecrementExprNode::codegen(rph::IRGenerationContext& ctx) {
+    ctx.set_debug_location(position.get());
     auto& b = ctx.get_builder();
 
     llvm::Value* addr = nullptr;

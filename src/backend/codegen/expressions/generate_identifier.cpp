@@ -4,6 +4,7 @@
 #include <llvm/Support/raw_ostream.h>
 
 void IdentifierNode::codegen(rph::IRGenerationContext& context) {
+    context.set_debug_location(position.get());
     auto symbol_opt = context.get_symbol_info(symbol);
     if (!symbol_opt) {
         // Intrínseco: 'json' é um objeto especial da linguagem

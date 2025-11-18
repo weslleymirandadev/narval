@@ -3,6 +3,7 @@
 #include "backend/codegen/ir_utils.hpp"
 
 void WhileStmtNode::codegen(rph::IRGenerationContext& ctx) {
+    ctx.set_debug_location(position.get());
     auto& b = ctx.get_builder();
     auto* func = ctx.get_current_function();
     if (!func) throw std::runtime_error("while statement outside of function");

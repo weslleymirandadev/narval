@@ -3,5 +3,6 @@
 #include "backend/codegen/ir_utils.hpp"
 
 void BooleanLiteralNode::codegen(rph::IRGenerationContext& context) {
+    context.set_debug_location(position.get());
     context.push_value(rph::ir_utils::create_bool_constant(context, value));
 }

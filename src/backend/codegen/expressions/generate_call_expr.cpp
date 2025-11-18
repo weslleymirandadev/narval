@@ -186,6 +186,7 @@ llvm::Value* lower_method_call(IRGenerationContext& ctx, llvm::Value* selfAlloca
 } // anonymous namespace
 
 void CallExprNode::codegen(IRGenerationContext& ctx) {
+    ctx.set_debug_location(position.get());
     auto& B = ctx.get_builder();
 
     // === 1. BUILTIN CALLS (write, read, json.load) ===

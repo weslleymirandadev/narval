@@ -3,6 +3,23 @@
 #include "backend/codegen/ir_utils.hpp"
 
 void IfStatementNode::codegen(rph::IRGenerationContext& ctx) {
+    ctx.set_debug_location(position.get());
+
+    llvm::DIBuilder* dib = ctx.get_debug_builder();
+    llvm::DIFile* dif = ctx.get_debug_file();
+    llvm::DIScope* old_scope = ctx.get_debug_scope();
+    llvm::DIScope* if_scope = old_scope;
+
+    if (dib && dif && position) {
+        if_scope = dib->createLexicalBlock(
+            old_scope ? old_scope : static_cast<llvm::DIScope*>(dif),
+            dif,
+            static_cast<unsigned>(position->line),
+            static_cast<unsigned>(position->col[0] + 1)
+        );
+        ctx.set_debug_scope(if_scope);
+    }
+
     if (!condition) throw std::runtime_error("if statement without condition");
     condition->codegen(ctx);
     auto* cond_v = ctx.pop_value();
@@ -101,6 +118,11 @@ void IfStatementNode::codegen(rph::IRGenerationContext& ctx) {
         if (!B.GetInsertBlock()->getTerminator()) {
             B.CreateBr(blocks.merge_block);
         }
+    }
+
+    // Restore debug scope
+    if (dib && dif && position) {
+        ctx.set_debug_scope(old_scope);
     }
 
     // Continue at merge

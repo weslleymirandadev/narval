@@ -3,6 +3,7 @@
 #include "backend/codegen/ir_utils.hpp"
 
 void AccessExprNode::codegen(rph::IRGenerationContext& ctx) {
+    ctx.set_debug_location(position.get());
     // base[ index ]
     if (expr) expr->codegen(ctx);
     llvm::Value* base = ctx.pop_value();

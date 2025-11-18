@@ -3,6 +3,7 @@
 #include "backend/codegen/ir_utils.hpp"
 
 void LogicalNotExprNode::codegen(rph::IRGenerationContext& ctx) {
+    ctx.set_debug_location(position.get());
     if (operand) operand->codegen(ctx);
     llvm::Value* v = ctx.pop_value();
     if (!v) { ctx.push_value(nullptr); return; }

@@ -3,6 +3,7 @@
 #include "frontend/ast/expressions/identifier_node.hpp"
 
 void DeclarationStmtNode::codegen(rph::IRGenerationContext& context) {
+    context.set_debug_location(position.get());
     auto* id_node = static_cast<IdentifierNode*>(target.get());
     const std::string& symbol = id_node->symbol;
 
