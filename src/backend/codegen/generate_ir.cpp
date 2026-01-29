@@ -52,11 +52,17 @@ static void declare_runtime(IRGenerationContext& context) {
         auto decl = M.getOrInsertFunction("create_array", llvm::FunctionType::get(VoidTy, {ValuePtr, I32}, false));
     }
 
-    // rph_write(Value*)
+    // rph_write(Value*) - função builtin para escrita com nova linha
     M.getOrInsertFunction("rph_write", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy)}, false));
 
-    // rph_read() -> i8*
+    // rph_write_no_nl(Value*) - função builtin para escrita sem nova linha
+    M.getOrInsertFunction("rph_write_no_nl", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy)}, false));
+
+    // rph_read() -> i8* - função builtin para leitura
     M.getOrInsertFunction("rph_read", llvm::FunctionType::get(I8Ptr, {}, false));
+
+    // json_load(Value*, const char*) - função builtin para carregar JSON
+    M.getOrInsertFunction("json_load", llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
 
     // String methods (names aligned with runtime)
     {
