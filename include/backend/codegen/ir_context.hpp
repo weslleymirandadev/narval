@@ -294,6 +294,12 @@ public:
     llvm::Function* get_current_function() { return current_function; }
     bool has_current_function() const { return current_function != nullptr; }
 
+    void emit_local_variable_dbg(
+        llvm::AllocaInst* alloca,
+        const std::string& name,
+        const PositionData* pos
+    );
+
     // Debug locations: attach source location (if any) to following IR
     void set_debug_location(const PositionData* pos) {
         // If debug info is not configured, do nothing
@@ -327,9 +333,16 @@ public:
     // Checker de tipos
     void set_type_checker(void* checker) { type_checker_ptr = checker; }
     void* get_type_checker() { return type_checker_ptr; }
+    
+    /**
+     * Resolve um tipo Ruphi, resolvendo variáveis de tipo e instanciando tipos polimórficos
+     * Retorna um tipo concreto que pode ser convertido para LLVM
+     */
+    std::shared_ptr<Type> resolve_type(std::shared_ptr<Type> rph_type);
 
     /**
      * Converte um tipo Ruphi para um tipo LLVM
+     * Resolve automaticamente variáveis de tipo e tipos polimórficos antes da conversão
      */
     llvm::Type* rph_type_to_llvm(std::shared_ptr<Type> rph_type);
     

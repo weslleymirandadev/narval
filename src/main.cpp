@@ -4,6 +4,7 @@
 #include "frontend/lexer/lexer.hpp"
 #include "frontend/parser/parser.hpp"
 #include "frontend/module_manager.hpp"
+#include "frontend/checker/checker.hpp"
 #include "backend/codegen/generate_ir.hpp"
 #include <filesystem>
 #include <llvm/Support/raw_ostream.h>
@@ -42,10 +43,17 @@ int main(int argc, char* argv[]) {
         module_manager.compile_module(module_name, filename, true);
         auto ast = module_manager.get_combined_ast();
 
+        // Criar checker para inferência de tipos
+        rph::Checker checker;
+        // Verificar tipos antes da geração de código
+        if (ast) {
+            checker.check_node(ast.get());
+        }
+
         llvm::LLVMContext Context;
         llvm::Module Mod("ruphi_module", Context);
         llvm::IRBuilder<llvm::NoFolder> Builder(Context);
-        rph::IRGenerationContext context(Context, Mod, Builder);
+        rph::IRGenerationContext context(Context, Mod, Builder, &checker);
 
         // === Debug info setup (same as main.cpp) ===
         llvm::DIBuilder DIB(Mod);
