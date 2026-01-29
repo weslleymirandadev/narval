@@ -2,6 +2,7 @@
 #include <memory>
 
 std::shared_ptr<rph::Type>& rph::Checker::check_node(Node* node) {
+  try {
     switch (node->kind) {
         case NodeType::NumericLiteral:
         case NodeType::StringLiteral:
@@ -13,6 +14,13 @@ std::shared_ptr<rph::Type>& rph::Checker::check_node(Node* node) {
         case NodeType::DeclarationStatement:
           return check_decl_stmt(this, node);
         default:
-          return getty("void");
+          return gettyptr("void");
     }
+  } catch (std::exception& e) {
+    std::cerr << "Error at line " << node->position->line << ", " << node->position->col[0]
+     << "-" << node->position->col[1] << ": "
+    << e.what() << std::endl;
+    err = true;
+    return gettyptr("void");
+  }
 }
