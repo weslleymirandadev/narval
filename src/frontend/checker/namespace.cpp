@@ -1,4 +1,5 @@
 #include "frontend/checker/namespace.hpp"
+#include "frontend/checker/type.hpp"
 #include <stdexcept>
 
 bool rph::Namespace::has_key(std::string k) {
@@ -18,7 +19,7 @@ std::shared_ptr<rph::Type>& rph::Namespace::get_key(const std::string& k) {
 }
 
 void rph::Namespace::put_key(const std::string& k, const std::shared_ptr<rph::Type>& v, bool islocked) {
-    if (!is_const(k)) {
+    if (is_const(k)) {
         throw std::runtime_error(std::string("'") + k + "' can not be changed.");
     }
 
@@ -37,4 +38,26 @@ void rph::Namespace::set_key(const std::string& k, const std::shared_ptr<rph::Ty
     }
 
     names[k] = v;
+}
+
+void rph::Namespace::collect_free_vars(std::unordered_set<int>& free_vars) const {
+    // Coletar variáveis livres de todas as variáveis neste namespace
+    for (const auto& pair : names) {
+        const auto& type = pair.second;
+        if (type) {
+            // Se for tipo polimórfico, coletar apenas variáveis livres (não quantificadas)
+            if (type->kind == Kind::POLY_TYPE) {
+                auto poly = std::static_pointer_cast<const PolyType>(type);
+                poly->collect_free_vars(free_vars);
+            } else {
+                // Para tipos não polimórficos, coletar todas as variáveis livres
+                type->collect_free_vars(free_vars);
+            }
+        }
+    }
+    
+    // Coletar também do namespace pai (escopo superior)
+    if (parent) {
+        parent->collect_free_vars(free_vars);
+    }
 }
