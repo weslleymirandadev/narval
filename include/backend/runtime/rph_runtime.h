@@ -64,6 +64,9 @@ void map_set_impl(Map* m, const char* key, Value val);
 void rph_write(Value* v);
 void rph_write_no_nl(Value* v);
 
+// JSON operations
+void json_load(Value* out, const char* filename);
+
 // Acesso dinâmico por chave (string)
 int any_has(Value* self, const char* key);
 void any_get(Value* out, Value* self, const char* key);
