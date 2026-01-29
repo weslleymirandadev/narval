@@ -5,6 +5,7 @@ namespace rph {
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace rph {
     class Namespace {
@@ -21,5 +22,8 @@ namespace rph {
             void put_key(const std::string& k, const std::shared_ptr<rph::Type>& v, bool islocked);
             void put_key(const std::string& k, const std::shared_ptr<rph::Type>& v);
             void set_key(const std::string& k, const std::shared_ptr<rph::Type>& v);
+            
+            // Coletar variáveis de tipo livres de todas as variáveis neste namespace e nos pais
+            void collect_free_vars(std::unordered_set<int>& free_vars) const;
     };
 }
