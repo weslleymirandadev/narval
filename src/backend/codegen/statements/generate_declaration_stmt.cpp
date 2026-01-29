@@ -1,5 +1,6 @@
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
+#include "frontend/checker/checker.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
 
 void DeclarationStmtNode::codegen(rph::IRGenerationContext& context) {
@@ -7,8 +8,39 @@ void DeclarationStmtNode::codegen(rph::IRGenerationContext& context) {
     auto* id_node = static_cast<IdentifierNode*>(target.get());
     const std::string& symbol = id_node->symbol;
 
-    llvm::Type* decl_ty = rph::ir_utils::llvm_type_from_string(context, typ);
-    if (!decl_ty) return;
+    std::shared_ptr<rph::Type> rph_type = nullptr;
+    llvm::Type* decl_ty = nullptr;
+
+    // Tentar obter tipo inferido do checker se disponível
+    if (context.get_type_checker()) {
+        auto* checker = static_cast<rph::Checker*>(context.get_type_checker());
+        try {
+            // Obter tipo inferido/resolvido do checker
+            if (typ == "automatic") {
+                // Para tipo automático, usar inferência
+                rph_type = checker->infer_expr(value.get());
+            } else {
+                // Para tipo explícito, verificar com o checker
+                auto& checked_type = checker->check_node(this);
+                rph_type = checked_type;
+            }
+            
+            // Resolver tipo (resolve variáveis de tipo e instancia polimórficos)
+            if (rph_type) {
+                rph_type = context.resolve_type(rph_type);
+                decl_ty = context.rph_type_to_llvm(rph_type);
+            }
+        } catch (std::exception& e) {
+            // Se houver erro no checker, continuar com método tradicional
+            // (pode ser que o checker não tenha sido executado ainda)
+        }
+    }
+
+    // Se não conseguiu obter tipo do checker, usar método tradicional
+    if (!decl_ty) {
+        decl_ty = rph::ir_utils::llvm_type_from_string(context, typ);
+        if (!decl_ty) return;
+    }
 
     // Se houver inicializador, usamos o tipo dele para decidir a alocação.
     // Quando o inicializador já é um Value (ex.: arrays criados via create_array),
@@ -40,7 +72,7 @@ void DeclarationStmtNode::codegen(rph::IRGenerationContext& context) {
     rph::SymbolInfo info(
         alloca,
         stored_ty,
-        nullptr,           // rph_type pode ser nullptr por enquanto
+        rph_type,          // Armazenar tipo Ruphi resolvido para uso posterior
         true,              // is_allocated
         constant           // is_constant
     );
