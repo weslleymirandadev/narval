@@ -22,7 +22,21 @@ std::unique_ptr<Node> parse_match_stmt(Parser* parser) {
     auto match = std::make_unique<MatchStmtNode>(std::move(target), std::move(cases), std::move(bodies));
 
     while (parser->not_eof() && parser->current_token().type != TokenType::CBRACE) {
-        auto expr = parse_range_expr(parser);
+        std::unique_ptr<Node> expr;
+        // Aceitar _ ou default como padrão catch-all
+        if (parser->current_token().type == TokenType::UNDERSCORE) {
+            size_t line = parser->current_token().line;
+            size_t column[2] = { parser->current_token().column_start, parser->current_token().column_end };
+            size_t position[2] = { parser->current_token().position_start, parser->current_token().position_end };
+            std::unique_ptr<PositionData> pos = std::make_unique<PositionData>(line, column[0], column[1], position[0], position[1]);
+            parser->consume_token(); // consume '_'
+            // Criar um IdentifierNode com símbolo "default" para compatibilidade com código existente
+            auto id_node = std::make_unique<IdentifierNode>("default");
+            id_node->position = std::move(pos);
+            expr = std::move(id_node);
+        } else {
+            expr = parse_range_expr(parser);
+        }
         parser->expect(TokenType::ARROW, "Expected '=>'.");
         bool has_braces = false;
         if (parser->current_token().type == TokenType::OBRACE) {
