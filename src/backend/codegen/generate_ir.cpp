@@ -51,6 +51,9 @@ static void declare_runtime(IRGenerationContext& context) {
     {
         auto decl = M.getOrInsertFunction("create_array", llvm::FunctionType::get(VoidTy, {ValuePtr, I32}, false));
     }
+    {
+        auto decl = M.getOrInsertFunction("create_vector", llvm::FunctionType::get(VoidTy, {ValuePtr, I32}, false));
+    }
 
     // rph_write(Value*) - função builtin para escrita com nova linha
     M.getOrInsertFunction("rph_write", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy)}, false));
@@ -83,14 +86,6 @@ static void declare_runtime(IRGenerationContext& context) {
         );
     }
 
-    // Array methods
-    {
-        auto decl = M.getOrInsertFunction("array_push_method", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::PointerType::getUnqual(ValueTy), ValueTy}, false));
-    }
-    {
-        auto decl = M.getOrInsertFunction("array_pop_method", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::PointerType::getUnqual(ValueTy)}, false));
-    }
-
     // Array wrappers used by codegen for indexing
     {
         // Do NOT mark the first parameter as sret; the C runtime expects a plain pointer.
@@ -103,6 +98,32 @@ static void declare_runtime(IRGenerationContext& context) {
         M.getOrInsertFunction(
             "array_set_index_v",
             llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy), I32, llvm::PointerType::getUnqual(ValueTy)}, false)
+        );
+    }
+
+    // Vector methods
+    {
+        M.getOrInsertFunction(
+            "vector_push_method",
+            llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr, ValuePtr}, false)
+        );
+    }
+    {
+        M.getOrInsertFunction(
+            "vector_pop_method",
+            llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false)
+        );
+    }
+    {
+        M.getOrInsertFunction(
+            "vector_get_method",
+            llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr, I32}, false)
+        );
+    }
+    {
+        M.getOrInsertFunction(
+            "vector_set_method",
+            llvm::FunctionType::get(VoidTy, {ValuePtr, I32, ValuePtr}, false)
         );
     }
 }

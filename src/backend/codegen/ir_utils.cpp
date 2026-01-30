@@ -121,25 +121,32 @@ llvm::Value* create_comparison(IRGenerationContext& context, llvm::Value* lhs, l
         }
     }
 
+    // Converter tipos diferentes (int <-> float)
     if (lhs_type != rhs->getType()) {
         if (lhs_type->isIntegerTy() && rhs->getType()->isFloatingPointTy()) {
             lhs = builder.CreateSIToFP(lhs, rhs->getType());
+            lhs_type = lhs->getType(); // Atualizar tipo após conversão
         } else if (lhs_type->isFloatingPointTy() && rhs->getType()->isIntegerTy()) {
             rhs = builder.CreateSIToFP(rhs, lhs_type);
         }
     }
+    
+    // Após conversão, ambos devem ter o mesmo tipo - usar o tipo atualizado
+    auto* final_type = lhs->getType();
+    bool is_float = final_type->isFloatingPointTy();
+    bool is_int = final_type->isIntegerTy() || final_type->isPointerTy();
 
-    if (op == "==") return lhs_type->isFloatingPointTy()
+    if (op == "==") return is_float
         ? builder.CreateFCmpOEQ(lhs, rhs, "cmpeq") : builder.CreateICmpEQ(lhs, rhs, "cmpeq");
-    if (op == "!=") return lhs_type->isFloatingPointTy()
+    if (op == "!=") return is_float
         ? builder.CreateFCmpONE(lhs, rhs, "cmpne") : builder.CreateICmpNE(lhs, rhs, "cmpne");
-    if (op == "<") return lhs_type->isFloatingPointTy()
+    if (op == "<") return is_float
         ? builder.CreateFCmpOLT(lhs, rhs, "cmplt") : builder.CreateICmpSLT(lhs, rhs, "cmplt");
-    if (op == ">") return lhs_type->isFloatingPointTy()
+    if (op == ">") return is_float
         ? builder.CreateFCmpOGT(lhs, rhs, "cmpgt") : builder.CreateICmpSGT(lhs, rhs, "cmpgt");
-    if (op == "<=") return lhs_type->isFloatingPointTy()
+    if (op == "<=") return is_float
         ? builder.CreateFCmpOLE(lhs, rhs, "cmple") : builder.CreateICmpSLE(lhs, rhs, "cmple");
-    if (op == ">=") return lhs_type->isFloatingPointTy()
+    if (op == ">=") return is_float
         ? builder.CreateFCmpOGE(lhs, rhs, "cmpge") : builder.CreateICmpSGE(lhs, rhs, "cmpge");
 
     return nullptr;
@@ -363,22 +370,79 @@ static llvm::Type* parse_type_recursive(const std::string& s, size_t& p, IRGener
     if (p >= s.size()) return nullptr;
 
     // --- Primitivos ---
-    if (s.substr(p, 3) == "int") { p += 3; return get_i32(ctx); }
-    if (s.substr(p, 5) == "float") { p += 5; return get_f64(ctx); }
-    if (s.substr(p, 4) == "bool") { p += 4; return get_i1(ctx); }
+    if (s.substr(p, 3) == "int") { 
+        p += 3;
+        // Verificar se é array: int[10]
+        if (p < s.size() && s[p] == '[') {
+            ++p;
+            std::string num;
+            while (p < s.size() && std::isdigit(s[p])) num += s[p++];
+            if (p < s.size() && s[p] == ']') {
+                ++p;
+                if (!num.empty()) {
+                    return llvm::ArrayType::get(get_i32(ctx), std::stoi(num));
+                }
+            }
+            return nullptr; // Erro de parsing
+        }
+        return get_i32(ctx); 
+    }
+    if (s.substr(p, 5) == "float") { 
+        p += 5;
+        // Verificar se é array: float[10]
+        if (p < s.size() && s[p] == '[') {
+            ++p;
+            std::string num;
+            while (p < s.size() && std::isdigit(s[p])) num += s[p++];
+            if (p < s.size() && s[p] == ']') {
+                ++p;
+                if (!num.empty()) {
+                    return llvm::ArrayType::get(get_f64(ctx), std::stoi(num));
+                }
+            }
+            return nullptr; // Erro de parsing
+        }
+        return get_f64(ctx); 
+    }
+    if (s.substr(p, 4) == "bool") { 
+        p += 4;
+        // Verificar se é array: bool[10]
+        if (p < s.size() && s[p] == '[') {
+            ++p;
+            std::string num;
+            while (p < s.size() && std::isdigit(s[p])) num += s[p++];
+            if (p < s.size() && s[p] == ']') {
+                ++p;
+                if (!num.empty()) {
+                    return llvm::ArrayType::get(get_i1(ctx), std::stoi(num));
+                }
+            }
+            return nullptr; // Erro de parsing
+        }
+        return get_i1(ctx); 
+    }
+    if (s.substr(p, 6) == "string") {
+        p += 6;
+        // Verificar se é array: string[10]
+        if (p < s.size() && s[p] == '[') {
+            ++p;
+            std::string num;
+            while (p < s.size() && std::isdigit(s[p])) num += s[p++];
+            if (p < s.size() && s[p] == ']') {
+                ++p;
+                if (!num.empty()) {
+                    return llvm::ArrayType::get(get_i8_ptr(ctx), std::stoi(num));
+                }
+            }
+            return nullptr; // Erro de parsing
+        }
+        return get_i8_ptr(ctx);
+    }
     if (s.substr(p, 3) == "str") { p += 3; return get_i8_ptr(ctx); }
+    if (s.substr(p, 6) == "vector") { p += 6; return get_value_ptr(ctx); }
     if (s.substr(p, 4) == "json") { p += 4; return get_value_ptr(ctx); }
     if (s.substr(p, 4) == "void") { p += 4; return get_void(ctx); }
 
-    // --- vec<T> ---
-    if (s.substr(p, 4) == "vec<") {
-        p += 4;
-        llvm::Type* elem = parse_type_recursive(s, p, ctx);
-        if (!elem || p >= s.size() || s[p] != '>') return nullptr;
-        ++p;
-        // Represent vectors as dynamic Value at runtime
-        return get_value_struct(ctx);
-    }
 
     // --- map<K,V> ---
     if (s.substr(p, 4) == "map<") {

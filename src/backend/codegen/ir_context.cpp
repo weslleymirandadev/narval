@@ -1,4 +1,5 @@
 #include "backend/codegen/ir_context.hpp"
+#include "backend/codegen/ir_utils.hpp"
 #include "frontend/checker/checker.hpp"
 #include "frontend/checker/unification.hpp"
 #include <optional>
@@ -63,6 +64,10 @@ std::shared_ptr<Type> IRGenerationContext::resolve_type(std::shared_ptr<Type> rp
                 auto resolved_elem = resolve_type(array_type->element_type);
                 return std::make_shared<Array>(resolved_elem, array_type->size);
             }
+            return rph_type;
+        }
+        case Kind::VECTOR: {
+            // Vector não precisa resolução (não tem variáveis de tipo)
             return rph_type;
         }
         case Kind::TUPLE: {
@@ -131,7 +136,13 @@ llvm::Type* IRGenerationContext::rph_type_to_llvm(std::shared_ptr<Type> rph_type
                 return llvm::PointerType::get(elem_type, 0);
             }
             return llvm::Type::getInt8Ty(llvm_context); // fallback
-        }   
+        }
+        
+        case Kind::VECTOR: {
+            // Vector usa Vector no runtime (tamanho variável, heterogêneo)
+            // Retornar ponteiro genérico (será tratado como Value* no runtime)
+            return ir_utils::get_value_ptr(*this);
+        }
         
         case Kind::TUPLE: {
             auto tuple_type = std::static_pointer_cast<Tuple>(rph_type);
