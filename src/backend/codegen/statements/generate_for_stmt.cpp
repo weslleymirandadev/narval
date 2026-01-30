@@ -205,6 +205,9 @@ void ForStmtNode::codegen(rph::IRGenerationContext& ctx) {
         auto* cond = b.CreateICmpSLT(i_val, len, "itcond");
         b.CreateCondBr(cond, body_bb, exit_bb);
 
+        // Enter loop context for break/continue support
+        ctx.get_control_flow().enter_loop("for.iterable", header_bb, body_bb, step_bb, exit_bb);
+        
         b.SetInsertPoint(body_bb);
         
         llvm::Value* elemVal = nullptr;
@@ -267,7 +270,9 @@ void ForStmtNode::codegen(rph::IRGenerationContext& ctx) {
             if (stmt) stmt->codegen(ctx);
         }
         ctx.exit_scope();
-        b.CreateBr(step_bb);
+        if (!b.GetInsertBlock()->getTerminator()) {
+            b.CreateBr(step_bb);
+        }
 
         b.SetInsertPoint(step_bb);
         auto* one = llvm::ConstantInt::get(i32, 1);
@@ -276,6 +281,7 @@ void ForStmtNode::codegen(rph::IRGenerationContext& ctx) {
         b.CreateBr(header_bb);
 
         b.SetInsertPoint(exit_bb);
+        ctx.get_control_flow().exit_loop();
         if (else_bb) {
             auto* ran = b.CreateLoad(llvm::Type::getInt1Ty(ctx.get_context()), executed);
             b.CreateCondBr(ran, after_bb, else_bb);
@@ -323,6 +329,9 @@ void ForStmtNode::codegen(rph::IRGenerationContext& ctx) {
     auto* step_bb   = llvm::BasicBlock::Create(ctx.get_context(), "for.step",   func);
     auto* exit_bb   = llvm::BasicBlock::Create(ctx.get_context(), "for.exit",   func);
 
+    // Enter loop context for break/continue support
+    ctx.get_control_flow().enter_loop("for.range", header_bb, body_bb, step_bb, exit_bb);
+
     auto* i_alloca = ctx.create_and_register_variable(id0->symbol, i32, nullptr, false);
     b.CreateStore(start_v, i_alloca);
     b.CreateBr(header_bb);
@@ -349,7 +358,9 @@ void ForStmtNode::codegen(rph::IRGenerationContext& ctx) {
         if (stmt) stmt->codegen(ctx);
     }
     ctx.exit_scope();
-    b.CreateBr(step_bb);
+    if (!b.GetInsertBlock()->getTerminator()) {
+        b.CreateBr(step_bb);
+    }
 
     b.SetInsertPoint(step_bb);
     auto* one = llvm::ConstantInt::get(i32, 1);
@@ -358,6 +369,7 @@ void ForStmtNode::codegen(rph::IRGenerationContext& ctx) {
     b.CreateBr(header_bb);
 
     b.SetInsertPoint(exit_bb);
+    ctx.get_control_flow().exit_loop();
     if (else_bb) {
         auto* ran = b.CreateLoad(llvm::Type::getInt1Ty(ctx.get_context()), executed);
         b.CreateCondBr(ran, after_bb, else_bb);
