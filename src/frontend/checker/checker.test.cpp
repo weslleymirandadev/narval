@@ -26,6 +26,7 @@ int main(int argc, char* argv[]) {
         
         // Criar checker para análise detalhada
         rph::Checker checker;
+        checker.set_source_file(filename);
         
         std::cout << "Verificando tipos inferidos...\n\n";
         
@@ -51,14 +52,37 @@ int main(int argc, char* argv[]) {
                             std::shared_ptr<rph::Type> inferred_type = nullptr;
                             if (stmt->kind == NodeType::DeclarationStatement) {
                                 auto* decl = static_cast<DeclarationStmtNode*>(stmt.get());
-                                if (decl->value) {
-                                    inferred_type = checker.infer_expr(decl->value.get());
-                                    // Resolver tipo após inferência
-                                    inferred_type = checker.unify_ctx.resolve(inferred_type);
+                                // Para declarações, obter tipo do namespace após verificação
+                                try {
+                                    auto* id = static_cast<IdentifierNode*>(decl->target.get());
+                                    auto& type = checker.scope->get_key(id->symbol);
+                                    // Resolver tipo (pode ser polimórfico ou ter variáveis de tipo)
+                                    inferred_type = checker.unify_ctx.resolve(type);
+                                    // Se ainda for polimórfico após resolução, tentar instanciar
+                                    if (inferred_type && inferred_type->kind == rph::Kind::POLY_TYPE) {
+                                        auto poly = std::static_pointer_cast<rph::PolyType>(inferred_type);
+                                        int next_id = checker.unify_ctx.get_next_var_id();
+                                        inferred_type = poly->instantiate(next_id);
+                                        inferred_type = checker.unify_ctx.resolve(inferred_type);
+                                    }
+                                    // Se o tipo resolvido for Void, tentar inferir do value diretamente
+                                    if (!inferred_type || inferred_type->kind == rph::Kind::VOID) {
+                                        if (decl->value) {
+                                            inferred_type = checker.infer_expr(decl->value.get());
+                                            inferred_type = checker.unify_ctx.resolve(inferred_type);
+                                        }
+                                    }
+                                } catch (...) {
+                                    // Se não encontrar no namespace, inferir do value
+                                    if (decl->value) {
+                                        inferred_type = checker.infer_expr(decl->value.get());
+                                        inferred_type = checker.unify_ctx.resolve(inferred_type);
+                                    }
                                 }
                             } else if (stmt->kind == NodeType::BinaryExpression || 
                                       stmt->kind == NodeType::CallExpression ||
                                       stmt->kind == NodeType::ArrayExpression ||
+                                      stmt->kind == NodeType::VectorExpression ||
                                       stmt->kind == NodeType::TupleExpression ||
                                       stmt->kind == NodeType::AssignmentExpression) {
                                 inferred_type = checker.infer_expr(stmt.get());

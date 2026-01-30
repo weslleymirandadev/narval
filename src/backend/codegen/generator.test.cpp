@@ -32,10 +32,40 @@ int main(int argc, char* argv[]) {
         module_manager.compile_module(module_name, filename, true);
         auto ast = module_manager.get_combined_ast();
 
+        // Criar checker para inferência de tipos
+        rph::Checker checker;
+        // Verificar tipos antes da geração de código
+        if (ast) {
+            checker.check_node(ast.get());
+        }
+
+        // Inicializar target ANTES de criar o módulo para configurar DataLayout corretamente
+        llvm::InitializeNativeTarget();
+        llvm::InitializeNativeTargetAsmPrinter();
+        llvm::InitializeNativeTargetAsmParser();
+
+        auto target_triple = llvm::sys::getDefaultTargetTriple();
+        std::string error;
+        const llvm::Target* target = llvm::TargetRegistry::lookupTarget(target_triple, error);
+        if (!target) {
+            std::cerr << "Erro de target: " << error << "\n";
+            return 1;
+        }
+
+        llvm::TargetOptions opt;
+        std::unique_ptr<llvm::TargetMachine> target_machine(
+            target->createTargetMachine(target_triple, "generic", "", opt, llvm::Reloc::PIC_)
+        );
+
         llvm::LLVMContext Context;
         llvm::Module Mod("ruphi_module", Context);
+        Mod.setTargetTriple(target_triple);
+        Mod.setDataLayout(target_machine->createDataLayout());
+        
         llvm::IRBuilder<llvm::NoFolder> Builder(Context);
-        rph::IRGenerationContext context(Context, Mod, Builder);
+        rph::IRGenerationContext context(Context, Mod, Builder, &checker);
+        
+        // Manter target_machine para uso posterior na emissão de código objeto
 
         // === Debug info setup (same as main.cpp) ===
         llvm::DIBuilder DIB(Mod);
@@ -128,27 +158,6 @@ int main(int argc, char* argv[]) {
                 Mod.print(ir_out, nullptr);
             }
         }
-
-        llvm::InitializeNativeTarget();
-        llvm::InitializeNativeTargetAsmPrinter();
-        llvm::InitializeNativeTargetAsmParser();
-
-        auto target_triple = llvm::sys::getDefaultTargetTriple();
-        Mod.setTargetTriple(target_triple);
-
-        std::string error;
-        const llvm::Target* target = llvm::TargetRegistry::lookupTarget(target_triple, error);
-        if (!target) {
-            llvm::errs() << "Erro de target: " << error << "\n";
-            return 1;
-        }
-
-        llvm::TargetOptions opt;
-        std::unique_ptr<llvm::TargetMachine> target_machine(
-            target->createTargetMachine(target_triple, "generic", "", opt, llvm::Reloc::PIC_)
-        );
-
-        Mod.setDataLayout(target_machine->createDataLayout());
 
         std::error_code EC;
         llvm::raw_fd_ostream dest("ruphi_module.o", EC, llvm::sys::fs::OF_None);
