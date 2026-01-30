@@ -9,6 +9,14 @@
 
 namespace rph {
     class Checker {
+        private:
+            std::vector<std::string> lines;
+            size_t line_count = 0;
+            std::string current_filename;
+            
+            void read_lines(const std::string& filename);
+            void print_error_context(const PositionData* pos);
+            
         public:
             std::vector<std::shared_ptr<rph::Namespace>> namespaces;
             std::shared_ptr<rph::Namespace> scope;
@@ -26,5 +34,9 @@ namespace rph {
             std::shared_ptr<Type> infer_type(Node* node);
             std::shared_ptr<Type> infer_expr(Node* node);
             std::unordered_set<int> get_free_vars_in_env();
+            
+            // Gerenciamento de arquivo fonte para erros
+            void set_source_file(const std::string& filename);
+            void error(Node* node, const std::string& message);
     };
 } 

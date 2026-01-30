@@ -17,10 +17,7 @@ std::shared_ptr<rph::Type>& rph::Checker::check_node(Node* node) {
           return gettyptr("void");
     }
   } catch (std::exception& e) {
-    std::cerr << "Error at line " << node->position->line << ", " << node->position->col[0]
-     << "-" << node->position->col[1] << ": "
-    << e.what() << std::endl;
-    err = true;
+    error(node, e.what());
     return gettyptr("void");
   }
 }

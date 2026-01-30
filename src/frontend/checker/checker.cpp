@@ -6,6 +6,15 @@
 #include <memory>
 #include <unordered_set>
 #include <algorithm>
+#include <fstream>
+#include <cmath>
+#include <iostream>
+#include <algorithm>
+
+constexpr size_t MAX_LINE_LENGTH = 1024;
+constexpr const char* ANSI_BOLD = "\x1b[1m";
+constexpr const char* ANSI_RESET = "\x1b[0m";
+constexpr const char* ANSI_RED = "\x1b[31m";
 
 rph::Checker::Checker() {
     auto globalnamespace = std::make_shared<Namespace>();
@@ -26,7 +35,52 @@ rph::Type& rph::Checker::getty(std::string ty) {
 }
 
 std::shared_ptr<rph::Type>& rph::Checker::gettyptr(std::string ty){
-    return types.at(ty);
+    // Verificar se já existe no cache
+    auto it = types.find(ty);
+    if (it != types.end()) {
+        return it->second;
+    }
+    
+    // Parsear tipos compostos: vector, int[10], string[5], etc.
+    
+    // Tipo vector
+    if (ty == "vector") {
+        auto vec_type = std::make_shared<rph::Vector>();
+        types[ty] = vec_type;
+        return types[ty];
+    }
+    
+    // Tipo array: int[10], string[5], etc.
+    // Formato: base_type[size]
+    size_t bracket_pos = ty.find('[');
+    if (bracket_pos != std::string::npos && bracket_pos > 0) {
+        std::string base_type_str = ty.substr(0, bracket_pos);
+        size_t close_bracket = ty.find(']', bracket_pos);
+        if (close_bracket != std::string::npos) {
+            std::string size_str = ty.substr(bracket_pos + 1, close_bracket - bracket_pos - 1);
+            try {
+                int size = std::stoi(size_str);
+                if (size > 0) {
+                    // Obter tipo base
+                    auto& base_type = gettyptr(base_type_str);
+                    auto arr_type = std::make_shared<rph::Array>(base_type, size);
+                    types[ty] = arr_type;
+                    return types[ty];
+                }
+            } catch (...) {
+                // Não é um número válido
+            }
+        }
+    }
+    
+    // Tipo não encontrado
+    // Não temos Node aqui, então usar erro genérico
+    std::cerr << ANSI_BOLD << current_filename << ": "
+              << ANSI_RED << "ERROR" << ANSI_RESET << ANSI_BOLD << ": "
+              << "Unknown type: " << ty << ANSI_RESET << "\n\n";
+    err = true;
+    // Retornar void como fallback
+    return types["void"];
 }
 void rph::Checker::push_scope() {
     auto ns = std::make_shared<Namespace>(scope);
@@ -51,6 +105,71 @@ std::unordered_set<int> rph::Checker::get_free_vars_in_env() {
     }
     
     return free_vars;
+}
+
+void rph::Checker::read_lines(const std::string& filename) {
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        // Se não conseguir abrir, apenas limpar linhas (erro será reportado sem contexto)
+        lines.clear();
+        line_count = 0;
+        return;
+    }
+
+    std::string line;
+    while (std::getline(file, line)) {
+        if (line.size() > MAX_LINE_LENGTH) {
+            // Linha muito longa, truncar
+            line = line.substr(0, MAX_LINE_LENGTH);
+        }
+        lines.push_back(line);
+    }
+    line_count = lines.size();
+}
+
+void rph::Checker::print_error_context(const PositionData* pos) {
+    if (!pos || lines.empty() || pos->line == 0 || pos->line > line_count) {
+        return;
+    }
+
+    std::string line_content = lines[pos->line - 1];
+    std::replace(line_content.begin(), line_content.end(), '\n', ' ');
+
+    std::cerr << " " << pos->line << " |   " << line_content << "\n";
+
+    int line_width = pos->line > 0 ? static_cast<int>(std::log10(pos->line) + 1) : 1;
+    std::cerr << std::string(line_width, ' ') << "  |";
+    std::cerr << std::string(pos->col[0] - 1 + 3, ' ');
+
+    std::cerr << ANSI_RED;
+    for (size_t i = pos->col[0]; i < pos->col[1] && i <= line_content.length(); ++i) {
+        std::cerr << "^";
+    }
+    std::cerr << ANSI_RESET << "\n\n";
+}
+
+void rph::Checker::set_source_file(const std::string& filename) {
+    current_filename = filename;
+    read_lines(filename);
+}
+
+void rph::Checker::error(Node* node, const std::string& message) {
+    if (!node || !node->position) {
+        std::cerr << ANSI_BOLD << current_filename << ": "
+                  << ANSI_RED << "ERROR" << ANSI_RESET << ANSI_BOLD << ": "
+                  << message << ANSI_RESET << "\n\n";
+        err = true;
+        return;
+    }
+    
+    PositionData* pos = node->position.get();
+    std::cerr << ANSI_BOLD
+              << current_filename << ":" << pos->line << ":" << pos->col[0] << ": "
+              << ANSI_RED << "ERROR" << ANSI_RESET << ANSI_BOLD << ": "
+              << message << ANSI_RESET << "\n";
+
+    print_error_context(pos);
+    err = true;
 }
 
 std::shared_ptr<rph::Type> rph::Checker::infer_type(Node* node) {
@@ -204,27 +323,65 @@ std::shared_ptr<rph::Type> rph::Checker::infer_expr(Node* node) {
         }
         case NodeType::ArrayExpression: {
             const auto* arr = static_cast<ArrayExprNode*>(node);
+            
+            // Array vazio ou com tamanho variável → Vector
             if (arr->elements.empty()) {
-                // Array vazio - criar variável de tipo para elemento
-                auto elem_type = unify_ctx.new_type_var();
-                return std::make_shared<Array>(elem_type);
+                return std::make_shared<Vector>();
             }
             
             // Inferir tipo do primeiro elemento
             auto first_type = infer_expr(arr->elements[0].get());
+            first_type = unify_ctx.resolve(first_type);
             
-            // Unificar todos os elementos com o primeiro
+            // Tentar unificar todos os elementos com o primeiro
+            bool all_same_type = true;
             for (size_t i = 1; i < arr->elements.size(); i++) {
                 auto elem_type = infer_expr(arr->elements[i].get());
-                try {
-                    unify_ctx.unify(first_type, elem_type);
-                } catch (std::runtime_error& e) {
-                    throw std::runtime_error("Array element type error: " + std::string(e.what()));
+                elem_type = unify_ctx.resolve(elem_type);
+                
+                // Verificar se tipos são compatíveis (mesmo tipo ou coerção int->float)
+                bool types_compatible = false;
+                if (first_type->equals(elem_type)) {
+                    types_compatible = true;
+                } else {
+                    // Verificar coerção int -> float
+                    bool first_is_int = first_type->kind == Kind::INT;
+                    bool first_is_float = first_type->kind == Kind::FLOAT;
+                    bool elem_is_int = elem_type->kind == Kind::INT;
+                    bool elem_is_float = elem_type->kind == Kind::FLOAT;
+                    
+                    if ((first_is_int && elem_is_float) || (first_is_float && elem_is_int)) {
+                        types_compatible = true;
+                        // Promover para float
+                        if (first_is_int) {
+                            first_type = gettyptr("float");
+                        }
+                    }
+                }
+                
+                if (!types_compatible) {
+                    // Tipos incompatíveis → Vector
+                    all_same_type = false;
+                    break;
                 }
             }
             
-            first_type = unify_ctx.resolve(first_type);
-            return std::make_shared<Array>(first_type);
+            // Se todos têm mesmo tipo (ou coerção válida), criar Array com tamanho fixo
+            if (all_same_type) {
+                first_type = unify_ctx.resolve(first_type);
+                // Verificar se não é variável de tipo não resolvida
+                if (first_type->kind != Kind::TYPE_VAR) {
+                    return std::make_shared<Array>(first_type, arr->elements.size());
+                }
+            }
+            
+            // Caso contrário, criar Vector (heterogêneo ou tamanho variável)
+            return std::make_shared<Vector>();
+        }
+        case NodeType::VectorExpression: {
+            // VectorExpression sempre cria Vector (tamanho variável, heterogêneo)
+            const auto* vec = static_cast<VectorExprNode*>(node);
+            return std::make_shared<Vector>();
         }
         case NodeType::TupleExpression: {
             const auto* tup = static_cast<TupleExprNode*>(node);
