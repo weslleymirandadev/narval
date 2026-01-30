@@ -42,7 +42,7 @@ bool rph::Array::equals(const rph::Type& other) const {
     if (other.kind != rph::Kind::ARRAY) return false;
     auto other_array = dynamic_cast<const Array*>(&other);
     if (!other_array) return false;
-    return element_type->equals(*other_array->element_type);
+    return size == other_array->size && element_type->equals(*other_array->element_type);
 }
 
 bool rph::Tuple::equals(const rph::Type& other) const {
@@ -86,6 +86,29 @@ namespace rph {
 
     void Array::init_prototype() {
         prototype = std::make_shared<rph::Namespace>();
+    }
+
+    void Vector::init_prototype() {
+        prototype = std::make_shared<rph::Namespace>();
+        
+        // Registrar métodos builtin para Vector: push e pop
+        // Estes métodos são tratados especialmente no codegen (generate_call_expr.cpp)
+        // Aqui apenas registramos tipos genéricos para permitir verificação de tipos
+        
+        // push: aceita 1 argumento de qualquer tipo, retorna void
+        // Usamos um tipo polimórfico para aceitar qualquer tipo de argumento
+        // O tipo real será inferido durante a verificação de tipos
+        auto push_param_type = std::make_shared<rph::TypeVar>(-1); // ID temporário, será resolvido durante inferência
+        std::vector<std::shared_ptr<rph::Type>> push_params = {push_param_type};
+        auto push_type = std::make_shared<rph::Label>(push_params, std::make_shared<rph::Void>());
+        prototype->put_key("push", push_type, true);
+        
+        // pop: não aceita argumentos, retorna o elemento removido (tipo genérico)
+        // O tipo de retorno será inferido durante a verificação de tipos
+        auto pop_return_type = std::make_shared<rph::TypeVar>(-2); // ID temporário, será resolvido durante inferência
+        std::vector<std::shared_ptr<rph::Type>> pop_params = {};
+        auto pop_type = std::make_shared<rph::Label>(pop_params, pop_return_type);
+        prototype->put_key("pop", pop_type, true);
     }
 
     void Tuple::init_prototype() {

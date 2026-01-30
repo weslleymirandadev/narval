@@ -79,7 +79,15 @@ namespace rph {
                     case Kind::ARRAY: {
                         auto a1 = std::static_pointer_cast<Array>(t1);
                         auto a2 = std::static_pointer_cast<Array>(t2);
+                        // Arrays devem ter mesmo tamanho e tipo de elemento
+                        if (a1->size != a2->size) {
+                            throw std::runtime_error("Type error: array size mismatch");
+                        }
                         unify(a1->element_type, a2->element_type);
+                        return;
+                    }
+                    case Kind::VECTOR: {
+                        // Vectors são sempre compatíveis entre si
                         return;
                     }
                     case Kind::TUPLE: {
@@ -147,6 +155,10 @@ namespace rph {
                 case Kind::ARRAY: {
                     auto a = std::static_pointer_cast<Array>(t);
                     return occurs_in(var, a->element_type);
+                }
+                case Kind::VECTOR: {
+                    // Vector não tem variáveis de tipo
+                    return false;
                 }
                 case Kind::TUPLE: {
                     auto tu = std::static_pointer_cast<Tuple>(t);

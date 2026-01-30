@@ -246,14 +246,14 @@ namespace rph {
 
     struct Array : public Type {
         std::shared_ptr<Type> element_type;
-        size_t size; // 0 = dynamic
+        size_t size; // tamanho fixo (sempre > 0 para arrays)
 
-        Array(const std::shared_ptr<Type>& elem, size_t sz = 0)
+        Array(const std::shared_ptr<Type>& elem, size_t sz)
             : Type(Kind::ARRAY), element_type(elem), size(sz) { init_prototype(); }
         void init_prototype();
 
         std::string toString() override {
-            return "array[" + element_type->toString() + "]";
+            return "array<" + element_type->toString() + ">";
         }
         bool equals(const Type& other) const override;
         std::shared_ptr<Type> get_length() const override {
@@ -266,6 +266,31 @@ namespace rph {
         
         std::shared_ptr<Type> substitute(const std::unordered_map<int, std::shared_ptr<Type>>& subst) const override {
             return std::make_shared<Array>(element_type->substitute(subst), size);
+        }
+    };
+
+    struct Vector : public Type {
+        // Vector heterogêneo ou de tamanho variável
+        // Não tem tipo de elemento específico (pode conter qualquer tipo)
+        Vector() : Type(Kind::VECTOR) { init_prototype(); }
+        void init_prototype();
+
+        std::string toString() override {
+            return "vector";
+        }
+        bool equals(const Type& other) const override {
+            return other.kind == Kind::VECTOR;
+        }
+        std::shared_ptr<Type> get_length() const override {
+            return std::make_shared<Int>();
+        }
+        
+        void collect_free_vars(std::unordered_set<int>& free_vars) const override {
+            // Vector não tem variáveis de tipo livres
+        }
+        
+        std::shared_ptr<Type> substitute(const std::unordered_map<int, std::shared_ptr<Type>>& subst) const override {
+            return std::make_shared<Vector>();
         }
     };
 
