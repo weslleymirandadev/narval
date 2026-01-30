@@ -13,6 +13,10 @@ std::shared_ptr<rph::Type>& rph::Checker::check_node(Node* node) {
           return check_program_stmt(this, node);
         case NodeType::DeclarationStatement:
           return check_decl_stmt(this, node);
+        case NodeType::BreakStatement:
+        case NodeType::ContinueStatement:
+          // break e continue não têm tipo, apenas controle de fluxo
+          return gettyptr("void");
         default:
           return gettyptr("void");
     }
