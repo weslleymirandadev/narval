@@ -20,6 +20,9 @@ enum class TokenType {
     FOR,
     WHILE,
     LOOP,
+    BREAK,
+    CONTINUE,
+    UNDERSCORE,
     ELIPSIS,
     IMPORT,
     LABEL,
@@ -94,6 +97,9 @@ inline const char* get_token_name(TokenType type) {
         case TokenType::FOR: return "FOR";
         case TokenType::WHILE: return "WHILE";
         case TokenType::LOOP: return "LOOP";
+        case TokenType::BREAK: return "BREAK";
+        case TokenType::CONTINUE: return "CONTINUE";
+        case TokenType::UNDERSCORE: return "UNDERSCORE";
         case TokenType::ELIPSIS: return "ELIPSIS";
         case TokenType::IMPORT: return "IMPORT";
         case TokenType::INCLUSIVE_RANGE: return "INCLUSIVE_RANGE";
