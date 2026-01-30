@@ -29,6 +29,8 @@
 
 // Statements
 #include "statements/return_stmt_node.hpp"
+#include "statements/break_stmt_node.hpp"
+#include "statements/continue_stmt_node.hpp"
 #include "statements/declaration_stmt_node.hpp"
 #include "statements/label_stmt_node.hpp"
 #include "statements/if_statement_node.hpp"

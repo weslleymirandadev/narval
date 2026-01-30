@@ -35,6 +35,8 @@ enum class NodeType {
     TupleExpression,
     StringLiteral,
     ReturnStatement,
+    BreakStatement,
+    ContinueStatement,
     ForStatement,
     LoopStatement,
     WhileStatement,
