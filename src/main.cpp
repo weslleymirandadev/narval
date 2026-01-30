@@ -45,6 +45,7 @@ int main(int argc, char* argv[]) {
 
         // Criar checker para inferência de tipos
         rph::Checker checker;
+        checker.set_source_file(filename);
         // Verificar tipos antes da geração de código
         if (ast) {
             checker.check_node(ast.get());

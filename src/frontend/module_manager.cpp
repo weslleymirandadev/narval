@@ -38,6 +38,7 @@ void ModuleManager::load_module(const std::string& module_name, const std::strin
     }
     if (config && ENABLE_CHECKING == ENABLE_CHECKING) {
         rph::Checker checker;
+        checker.set_source_file(file_path);
         checker.check_node(module.ast.get());
     }
     modules[module.name] = std::move(module);
