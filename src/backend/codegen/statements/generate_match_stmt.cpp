@@ -2,6 +2,7 @@
 #include "frontend/ast/expressions/range_expr_node.hpp"
 #include "frontend/ast/expressions/binary_expr_node.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
+#include "frontend/ast/expressions/numeric_literal_node.hpp"
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
 #include <llvm/IR/DerivedTypes.h>
@@ -47,16 +48,46 @@ static llvm::Value* build_match_condition(rph::IRGenerationContext& ctx, Expr* p
         return b.CreateAnd(ge, end_cmp, "in.range");
     }
 
-    // Identifier 'default' is handled at a higher level (no condition)
+    // Identifier 'default' or '_' is handled at a higher level (no condition)
     if (auto* id = dynamic_cast<IdentifierNode*>(pattern)) {
-        (void)id; // no-op here
-        return nullptr;
+        if (id->symbol == "default" || id->symbol == "_") {
+            return nullptr; // no-op here, handled at match level
+        }
     }
 
     // Fallback: equality comparison with target
     pattern->codegen(ctx);
     llvm::Value* v = ctx.pop_value();
     if (!v || !target_val) return nullptr;
+    
+    // Verificar se há incompatibilidade de tipos (string vs int)
+    auto* i8p = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(c));
+    auto* i32 = llvm::Type::getInt32Ty(c);
+    
+    // Se target é string (i8*) e pattern é int, converter string para int
+    // Isso acontece quando read() retorna string e comparamos com números
+    if (target_val->getType() == i8p && v->getType() == i32) {
+        // Chamar atoi para converter string para int
+        auto* atoi_ty = llvm::FunctionType::get(i32, {i8p}, false);
+        auto* atoi_fn = llvm::cast<llvm::Function>(
+            ctx.get_module().getOrInsertFunction("atoi", atoi_ty).getCallee()
+        );
+        llvm::Value* target_int = b.CreateCall(atoi_fn, {target_val}, "strtoint");
+        // Agora ambos são i32, fazer comparação direta
+        return b.CreateICmpEQ(target_int, v, "matcheq");
+    }
+    
+    // Se target é int e pattern é string, converter pattern para int
+    if (target_val->getType() == i32 && v->getType() == i8p) {
+        auto* atoi_ty = llvm::FunctionType::get(i32, {i8p}, false);
+        auto* atoi_fn = llvm::cast<llvm::Function>(
+            ctx.get_module().getOrInsertFunction("atoi", atoi_ty).getCallee()
+        );
+        llvm::Value* pattern_int = b.CreateCall(atoi_fn, {v}, "strtoint");
+        return b.CreateICmpEQ(target_val, pattern_int, "matcheq");
+    }
+    
+    // Caso padrão: usar create_comparison que já trata outros casos (int/float, string/string, etc)
     return rph::ir_utils::create_comparison(ctx, target_val, v, "==");
 }
 
@@ -94,10 +125,10 @@ void MatchStmtNode::codegen(rph::IRGenerationContext& ctx) {
     size_t default_index = (size_t)-1;
 
     for (size_t i = 0; i < cases.size(); ++i) {
-        // Determine if this is a default case: Identifier("default")
+        // Determine if this is a default case: Identifier("default") or Identifier("_")
         bool is_default = false;
         if (auto* id = dynamic_cast<IdentifierNode*>(cases[i].get())) {
-            if (id->symbol == "default") is_default = true;
+            if (id->symbol == "default" || id->symbol == "_") is_default = true;
         }
 
         // Create blocks for this case

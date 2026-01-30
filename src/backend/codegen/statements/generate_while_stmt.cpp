@@ -12,6 +12,9 @@ void WhileStmtNode::codegen(rph::IRGenerationContext& ctx) {
     auto* body_bb = llvm::BasicBlock::Create(ctx.get_context(), "while.body", func);
     auto* exit_bb = llvm::BasicBlock::Create(ctx.get_context(), "while.exit", func);
 
+    // Enter loop context for break/continue support
+    ctx.get_control_flow().enter_loop("while", cond_bb, body_bb, cond_bb, exit_bb);
+
     b.CreateBr(cond_bb);
     b.SetInsertPoint(cond_bb);
     llvm::Value* cond_v = nullptr;
@@ -31,8 +34,11 @@ void WhileStmtNode::codegen(rph::IRGenerationContext& ctx) {
         if (stmt) stmt->codegen(ctx);
     }
     ctx.exit_scope();
-    // loop back to cond
-    b.CreateBr(cond_bb);
+    // loop back to cond (continue também vai para cond_bb)
+    if (!b.GetInsertBlock()->getTerminator()) {
+        b.CreateBr(cond_bb);
+    }
 
     b.SetInsertPoint(exit_bb);
+    ctx.get_control_flow().exit_loop();
 }

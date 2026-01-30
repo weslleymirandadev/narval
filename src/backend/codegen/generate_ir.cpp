@@ -63,6 +63,9 @@ static void declare_runtime(IRGenerationContext& context) {
 
     // rph_read() -> i8* - função builtin para leitura
     M.getOrInsertFunction("rph_read", llvm::FunctionType::get(I8Ptr, {}, false));
+    
+    // atoi(const char*) -> i32 - função C padrão para conversão string->int (usada no match)
+    M.getOrInsertFunction("atoi", llvm::FunctionType::get(I32, {I8Ptr}, false));
 
     // json_load(Value*, const char*) - função builtin para carregar JSON
     M.getOrInsertFunction("json_load", llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
