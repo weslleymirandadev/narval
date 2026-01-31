@@ -176,14 +176,12 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
         
         IdentifierNode* indexId = nullptr;
         std::vector<IdentifierNode*> elemBindings;
+        bool has_explicit_index = false;
         if (!bindings.empty()) {
-            size_t start = 0;
-            if (bindings.size() >= 2) {
-                indexId = dynamic_cast<IdentifierNode*>(bindings[0].get());
-                if (!indexId) throw std::runtime_error("for iterable index binding must be identifier");
-                start = 1;
-            }
-            for (size_t k = start; k < bindings.size(); ++k) {
+            // Se há apenas 1 binding, é o elemento
+            // Se há 2+ bindings, todos são campos para desempacotar (como Python)
+            // Não tratamos o primeiro como índice explícito - o índice é sempre implícito
+            for (size_t k = 0; k < bindings.size(); ++k) {
                 auto* id = dynamic_cast<IdentifierNode*>(bindings[k].get());
                 if (!id) throw std::runtime_error("for iterable element binding must be identifier");
                 elemBindings.push_back(id);
@@ -196,7 +194,8 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
         auto* exit_bb   = llvm::BasicBlock::Create(ctx.get_context(), "for.iter.exit",   func);
 
         
-        auto* i_alloca = ctx.create_and_register_variable(indexId ? indexId->symbol : std::string("__idx"), i32, nullptr, false);
+        // Criar índice implícito (sempre __idx, não exposto ao usuário)
+        auto* i_alloca = ctx.create_and_register_variable("__idx", i32, nullptr, false);
         b.CreateStore(llvm::ConstantInt::get(i32, 0), i_alloca);
         b.CreateBr(header_bb);
 
@@ -235,7 +234,52 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
             elemVal = b.CreateLoad(elemTy, elemPtr);
         }
         if (!elemBindings.empty()) {
-            if (elemTy->isStructTy()) {
+            // Verificar se é uma tupla runtime (Value com TAG_TUPLE)
+            auto* valueStruct = nv::ir_utils::get_value_struct(ctx);
+            bool is_runtime_tuple = (elemTy == valueStruct);
+            
+            if (is_runtime_tuple) {
+                // É uma tupla runtime - usar tuple_get_impl para extrair campos
+                // tuple_get_impl(Value* self, int index) retorna Value por valor
+                // Mas como retorna por valor, precisamos usar uma função wrapper ou acessar diretamente
+                // Vamos acessar diretamente a estrutura Tuple através do ponteiro armazenado no Value
+                
+                // Armazenar o Value da tupla temporariamente
+                auto* tupleTmp = ctx.create_alloca(valueStruct, "tuple.tmp");
+                b.CreateStore(elemVal, tupleTmp);
+                
+                // Extrair o ponteiro Tuple* do campo value (índice 1) do Value
+                auto* tupleValuePtr = b.CreateStructGEP(valueStruct, tupleTmp, 1); // campo value
+                auto* tuplePtrInt = b.CreateLoad(llvm::Type::getInt64Ty(llctx), tupleValuePtr);
+                
+                // Definir estrutura Tuple: { Value* fields, i32 field_count }
+                auto* tupleStructTy = llvm::StructType::get(llctx, {
+                    llvm::PointerType::getUnqual(valueStruct), // fields
+                    i32  // field_count
+                });
+                auto* tuplePtr = b.CreateIntToPtr(tuplePtrInt, llvm::PointerType::getUnqual(tupleStructTy));
+                
+                // Para cada binding, extrair o campo correspondente da tupla
+                // Em Python: for i, j in [(1,2), (3,4)] → i recebe fields[0], j recebe fields[1]
+                size_t num_bindings = elemBindings.size();
+                
+                // Primeiro, obter o ponteiro para fields (fazer uma vez, reutilizar)
+                auto* fieldsPtr = b.CreateStructGEP(tupleStructTy, tuplePtr, 0); // campo fields (índice 0)
+                auto* fieldsArray = b.CreateLoad(llvm::PointerType::getUnqual(valueStruct), fieldsPtr);
+                
+                for (size_t fi = 0; fi < num_bindings; ++fi) {
+                    // Acessar fields[fi] da tupla
+                    // CreateInBoundsGEP espera um array de índices
+                    std::vector<llvm::Value*> indices = {llvm::ConstantInt::get(i32, fi)};
+                    auto* fieldPtr = b.CreateInBoundsGEP(valueStruct, fieldsArray, indices);
+                    auto* fieldVal = b.CreateLoad(valueStruct, fieldPtr);
+                    
+                    // Armazenar no binding correspondente
+                    auto sym = ctx.get_symbol_table().lookup_symbol(elemBindings[fi]->symbol);
+                    llvm::Value* dst = sym.has_value() ? sym->value : (llvm::Value*)ctx.create_and_register_variable(elemBindings[fi]->symbol, valueStruct, nullptr, false);
+                    b.CreateStore(fieldVal, dst);
+                }
+            } else if (elemTy->isStructTy()) {
                 auto* sEl = llvm::cast<llvm::StructType>(elemTy);
                 if (elemBindings.size() == 1) {
                     auto* tmp = ctx.create_alloca(elemTy, "el.tmp");
@@ -316,13 +360,40 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
     }
 
     auto* i32 = llvm::Type::getInt32Ty(ctx.get_context());
+    auto* i8p = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(ctx.get_context()));
+    auto* i8 = llvm::Type::getInt8Ty(ctx.get_context());
+    
     range_start->codegen(ctx);
     auto* start_v = ctx.pop_value();
     range_end->codegen(ctx);
     auto* end_v   = ctx.pop_value();
     if (!start_v || !end_v) throw std::runtime_error("for statement without start or end value");
-    if (start_v->getType() != i32) start_v = nv::ir_utils::promote_type(ctx, start_v, i32);
-    if (end_v->getType()   != i32) end_v   = nv::ir_utils::promote_type(ctx, end_v,   i32);
+    
+    // Verificar se é range de caracteres (strings de caractere único)
+    bool start_is_string = start_v->getType() == i8p;
+    bool end_is_string = end_v->getType() == i8p;
+    
+    if (start_is_string && end_is_string) {
+        // Range de caracteres: extrair primeiro caractere de cada string e converter para i32
+        // start[0]
+        auto* start_char_ptr = b.CreateGEP(i8, start_v, {llvm::ConstantInt::get(i32, 0)}, "start.char.ptr");
+        auto* start_char = b.CreateLoad(i8, start_char_ptr, "start.char.val");
+        start_v = b.CreateZExt(start_char, i32, "start.i32");
+        
+        // end[0]
+        auto* end_char_ptr = b.CreateGEP(i8, end_v, {llvm::ConstantInt::get(i32, 0)}, "end.char.ptr");
+        auto* end_char = b.CreateLoad(i8, end_char_ptr, "end.char.val");
+        end_v = b.CreateZExt(end_char, i32, "end.i32");
+    } else {
+        // Range numérico: converter para i32
+        if (start_v->getType() != i32) start_v = nv::ir_utils::promote_type(ctx, start_v, i32);
+        if (end_v->getType()   != i32) end_v   = nv::ir_utils::promote_type(ctx, end_v,   i32);
+    }
+    
+    // Garantir que ambos são i32
+    if (start_v->getType() != i32 || end_v->getType() != i32) {
+        throw std::runtime_error("for statement range bounds must be convertible to i32");
+    }
 
     auto* header_bb = llvm::BasicBlock::Create(ctx.get_context(), "for.header", func);
     auto* body_bb   = llvm::BasicBlock::Create(ctx.get_context(), "for.body",   func);
