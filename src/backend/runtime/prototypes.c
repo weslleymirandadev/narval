@@ -1,4 +1,4 @@
-#include "backend/runtime/rph_runtime.h"
+#include "backend/runtime/nv_runtime.h"
 #include "backend/runtime/prototypes.h"
 
 StringVTable string_vtable_instance = {

@@ -5,15 +5,15 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IR/IRBuilder.h>
 
-namespace rph {
+namespace nv {
 
 static llvm::StructType* get_or_create_value_ty(llvm::LLVMContext& C) {
-    if (auto* T = llvm::StructType::getTypeByName(C, "rph.rt.Value")) return T;
+    if (auto* T = llvm::StructType::getTypeByName(C, "nv.rt.Value")) return T;
     auto* i32 = llvm::Type::getInt32Ty(C);
     auto* i64 = llvm::Type::getInt64Ty(C);
     auto* i8  = llvm::Type::getInt8Ty(C);
     auto* i8p = llvm::PointerType::getUnqual(i8);
-    return llvm::StructType::create(C, {i32, i64, i8p}, "rph.rt.Value");
+    return llvm::StructType::create(C, {i32, i64, i8p}, "nv.rt.Value");
 }
 
 static void declare_runtime(IRGenerationContext& context) {
@@ -55,14 +55,14 @@ static void declare_runtime(IRGenerationContext& context) {
         auto decl = M.getOrInsertFunction("create_vector", llvm::FunctionType::get(VoidTy, {ValuePtr, I32}, false));
     }
 
-    // rph_write(Value*) - função builtin para escrita com nova linha
-    M.getOrInsertFunction("rph_write", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy)}, false));
+    // nv_write(Value*) - função builtin para escrita com nova linha
+    M.getOrInsertFunction("nv_write", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy)}, false));
 
-    // rph_write_no_nl(Value*) - função builtin para escrita sem nova linha
-    M.getOrInsertFunction("rph_write_no_nl", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy)}, false));
+    // nv_write_no_nl(Value*) - função builtin para escrita sem nova linha
+    M.getOrInsertFunction("nv_write_no_nl", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy)}, false));
 
-    // rph_read() -> i8* - função builtin para leitura
-    M.getOrInsertFunction("rph_read", llvm::FunctionType::get(I8Ptr, {}, false));
+    // nv_read() -> i8* - função builtin para leitura
+    M.getOrInsertFunction("nv_read", llvm::FunctionType::get(I8Ptr, {}, false));
     
     // atoi(const char*) -> i32 - função C padrão para conversão string->int (usada no match)
     M.getOrInsertFunction("atoi", llvm::FunctionType::get(I32, {I8Ptr}, false));
@@ -149,4 +149,4 @@ void generate_ir(
     context.exit_scope();
 }
 
-} // namespace rph
+} // namespace nv

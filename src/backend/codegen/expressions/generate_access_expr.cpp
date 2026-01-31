@@ -2,7 +2,7 @@
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
 
-void AccessExprNode::codegen(rph::IRGenerationContext& ctx) {
+void AccessExprNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
     // base[ index ]
     if (expr) expr->codegen(ctx);
@@ -14,12 +14,12 @@ void AccessExprNode::codegen(rph::IRGenerationContext& ctx) {
     auto& c = ctx.get_context();
 
     // If base is a runtime Value aggregate, use array_get_index_v
-    auto* ValueTy = rph::ir_utils::get_value_struct(ctx);
-    auto* ValuePtr = rph::ir_utils::get_value_ptr(ctx);
+    auto* ValueTy = nv::ir_utils::get_value_struct(ctx);
+    auto* ValuePtr = nv::ir_utils::get_value_ptr(ctx);
     if (base && base->getType() == ValueTy) {
         // ensure index is i32
         auto* I32 = llvm::Type::getInt32Ty(c);
-        if (idx_v && idx_v->getType() != I32) idx_v = rph::ir_utils::promote_type(ctx, idx_v, I32);
+        if (idx_v && idx_v->getType() != I32) idx_v = nv::ir_utils::promote_type(ctx, idx_v, I32);
         if (!idx_v) idx_v = llvm::ConstantInt::get(I32, 0);
 
         auto decl_get = ctx.get_module().getOrInsertFunction(

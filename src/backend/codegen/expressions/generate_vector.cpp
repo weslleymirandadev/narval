@@ -3,7 +3,7 @@
 #include "backend/codegen/ir_utils.hpp"
 #include <llvm/IR/DerivedTypes.h>
 
-void VectorExprNode::codegen(rph::IRGenerationContext& ctx) {
+void VectorExprNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
     auto& b = ctx.get_builder();
     auto& c = ctx.get_context();
@@ -11,8 +11,8 @@ void VectorExprNode::codegen(rph::IRGenerationContext& ctx) {
     unsigned N = static_cast<unsigned>(elements.size());
 
     // Create runtime vector Value via create_vector(out, capacity)
-    auto* ValueTy = rph::ir_utils::get_value_struct(ctx);
-    auto* ValuePtr = rph::ir_utils::get_value_ptr(ctx);
+    auto* ValueTy = nv::ir_utils::get_value_struct(ctx);
+    auto* ValuePtr = nv::ir_utils::get_value_ptr(ctx);
     auto* outVec = ctx.create_alloca(ValueTy, "vec.val");
 
     auto decl_create_vector = ctx.get_module().getOrInsertFunction(
@@ -72,7 +72,7 @@ void VectorExprNode::codegen(rph::IRGenerationContext& ctx) {
                         auto decl = ctx.get_module().getOrInsertFunction("create_float", llvm::FunctionType::get(llvm::Type::getVoidTy(c), {ValuePtr, F64}, false));
                         b.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {boxedFld, fp});
                     } else if (fldTy->isPointerTy()) {
-                        auto i8p = rph::ir_utils::get_i8_ptr(ctx);
+                        auto i8p = nv::ir_utils::get_i8_ptr(ctx);
                         auto decl = ctx.get_module().getOrInsertFunction("create_str", llvm::FunctionType::get(llvm::Type::getVoidTy(c), {ValuePtr, i8p}, false));
                         auto* casted = b.CreateBitCast(fldVal, i8p);
                         b.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {boxedFld, casted});
@@ -101,7 +101,7 @@ void VectorExprNode::codegen(rph::IRGenerationContext& ctx) {
             auto decl = ctx.get_module().getOrInsertFunction("create_float", llvm::FunctionType::get(llvm::Type::getVoidTy(c), {ValuePtr, F64}, false));
             b.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp, fp});
         } else if (any->getType()->isPointerTy()) {
-            auto i8p = rph::ir_utils::get_i8_ptr(ctx);
+            auto i8p = nv::ir_utils::get_i8_ptr(ctx);
             auto decl = ctx.get_module().getOrInsertFunction("create_str", llvm::FunctionType::get(llvm::Type::getVoidTy(c), {ValuePtr, i8p}, false));
             auto* casted = b.CreateBitCast(any, i8p);
             b.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp, casted});

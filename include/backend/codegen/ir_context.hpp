@@ -23,11 +23,11 @@
 #include "frontend/ast/ast.hpp"
 
 // Forward declarations
-namespace rph {
+namespace nv {
     class Checker;
 }
 
-namespace rph {
+namespace nv {
 
 /**
  * Estrutura para armazenar informações de um símbolo LLVM
@@ -35,16 +35,16 @@ namespace rph {
 struct SymbolInfo {
     llvm::Value* value;              // O valor LLVM (AllocaInst para variáveis, etc)
     llvm::Type* llvm_type;       // Tipo LLVM correspondente
-    std::shared_ptr<Type> rph_type;   // Tipo Ruphi (do checker)
+    std::shared_ptr<Type> nv_type;   // Tipo Narval (do checker)
     bool is_allocated;                // Se é uma alocação (AllocaInst) ou não
     bool is_constant;                 // Se é constante
 
     // Necessário para uso com unordered_map::operator[]
     SymbolInfo()
-        : value(nullptr), llvm_type(nullptr), rph_type(nullptr), is_allocated(false), is_constant(false) {}
+        : value(nullptr), llvm_type(nullptr), nv_type(nullptr), is_allocated(false), is_constant(false) {}
 
-    SymbolInfo(llvm::Value* val, llvm::Type* llvm_ty, std::shared_ptr<Type> rph_ty, bool allocated = false, bool constant = false)
-        : value(val), llvm_type(llvm_ty), rph_type(rph_ty), is_allocated(allocated), is_constant(constant) {}
+    SymbolInfo(llvm::Value* val, llvm::Type* llvm_ty, std::shared_ptr<Type> nv_ty, bool allocated = false, bool constant = false)
+        : value(val), llvm_type(llvm_ty), nv_type(nv_ty), is_allocated(allocated), is_constant(constant) {}
 };
 
 /**
@@ -242,7 +242,7 @@ private:
     // Função atual sendo gerada
     llvm::Function* current_function;
 
-    // Mapeamento de tipos Ruphi para tipos LLVM
+    // Mapeamento de tipos Narval para tipos LLVM
     std::unordered_map<Kind, llvm::Type*> type_cache;
 
     // Pilha de avaliação para resultados de expressões
@@ -335,16 +335,16 @@ public:
     void* get_type_checker() { return type_checker_ptr; }
     
     /**
-     * Resolve um tipo Ruphi, resolvendo variáveis de tipo e instanciando tipos polimórficos
+     * Resolve um tipo Narval, resolvendo variáveis de tipo e instanciando tipos polimórficos
      * Retorna um tipo concreto que pode ser convertido para LLVM
      */
-    std::shared_ptr<Type> resolve_type(std::shared_ptr<Type> rph_type);
+    std::shared_ptr<Type> resolve_type(std::shared_ptr<Type> nv_type);
 
     /**
-     * Converte um tipo Ruphi para um tipo LLVM
+     * Converte um tipo Narval para um tipo LLVM
      * Resolve automaticamente variáveis de tipo e tipos polimórficos antes da conversão
      */
-    llvm::Type* rph_type_to_llvm(std::shared_ptr<Type> rph_type);
+    llvm::Type* nv_type_to_llvm(std::shared_ptr<Type> nv_type);
     
     /**
      * Obtém o tipo LLVM padrão para um tipo básico
@@ -362,7 +362,7 @@ public:
     llvm::AllocaInst* create_and_register_variable(
         const std::string& name,
         llvm::Type* llvm_type,
-        std::shared_ptr<Type> rph_type,
+        std::shared_ptr<Type> nv_type,
         bool is_constant = false
     );
 
@@ -413,5 +413,5 @@ private:
     }
 };
 
-} // namespace rph
+} // namespace nv
 

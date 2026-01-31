@@ -4,7 +4,7 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/IR/DIBuilder.h>
 
-void LabelStmtNode::codegen(rph::IRGenerationContext& ctx) {
+void LabelStmtNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
     // Preserve current codegen state
     llvm::Function* prev_func = ctx.get_current_function();
@@ -16,10 +16,10 @@ void LabelStmtNode::codegen(rph::IRGenerationContext& ctx) {
     for (auto& p : parameters) {
         for (auto& kv : p.parameter) {
             param_names.push_back(kv.first);
-            param_types.push_back(rph::ir_utils::llvm_type_from_string(ctx, kv.second));
+            param_types.push_back(nv::ir_utils::llvm_type_from_string(ctx, kv.second));
         }
     }
-    llvm::Type* ret_ty = rph::ir_utils::llvm_type_from_string(ctx, return_type);
+    llvm::Type* ret_ty = nv::ir_utils::llvm_type_from_string(ctx, return_type);
     auto* fn_ty = llvm::FunctionType::get(ret_ty, param_types, false);
     auto* fn = llvm::Function::Create(fn_ty, llvm::Function::ExternalLinkage, name, ctx.get_module());
 
@@ -45,7 +45,7 @@ void LabelStmtNode::codegen(rph::IRGenerationContext& ctx) {
     }
 
     // Register function symbol at current (likely global) scope so it can be referenced by name
-    rph::SymbolInfo fn_info(fn, fn->getType(), nullptr, false, true);
+    nv::SymbolInfo fn_info(fn, fn->getType(), nullptr, false, true);
     ctx.get_symbol_table().define_symbol(name, fn_info);
 
     ctx.set_current_function(fn);

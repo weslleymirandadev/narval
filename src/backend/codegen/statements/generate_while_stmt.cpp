@@ -2,7 +2,7 @@
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
 
-void WhileStmtNode::codegen(rph::IRGenerationContext& ctx) {
+void WhileStmtNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
     auto& b = ctx.get_builder();
     auto* func = ctx.get_current_function();

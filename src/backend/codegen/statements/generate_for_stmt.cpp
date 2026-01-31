@@ -3,7 +3,7 @@
 #include "backend/codegen/ir_utils.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
 
-void ForStmtNode::codegen(rph::IRGenerationContext& ctx) {
+void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
 
     llvm::DIBuilder* dib = ctx.get_debug_builder();
@@ -53,9 +53,9 @@ void ForStmtNode::codegen(rph::IRGenerationContext& ctx) {
         auto* ty = iter_val->getType();
         // If we got a pointer to runtime Value, load it
         if (ty->isPointerTy()) {
-            auto* valuePrphy = rph::ir_utils::get_value_ptr(ctx);
+            auto* valuePrphy = nv::ir_utils::get_value_ptr(ctx);
             if (ty == valuePrphy) {
-                iter_val = b.CreateLoad(rph::ir_utils::get_value_struct(ctx), iter_val);
+                iter_val = b.CreateLoad(nv::ir_utils::get_value_struct(ctx), iter_val);
                 ty = iter_val->getType();
             }
         }
@@ -63,11 +63,11 @@ void ForStmtNode::codegen(rph::IRGenerationContext& ctx) {
         if (ty->isIntegerTy()) {
             kind = IterKind::Count;
             auto* i32 = llvm::Type::getInt32Ty(llctx);
-            if (ty != i32) iter_val = rph::ir_utils::promote_type(ctx, iter_val, i32);
+            if (ty != i32) iter_val = nv::ir_utils::promote_type(ctx, iter_val, i32);
             len = iter_val;
             elemTy = i32;
         } else
-        if (ty->isStructTy() && llvm::cast<llvm::StructType>(ty)->hasName() && llvm::cast<llvm::StructType>(ty)->getName() == "rph.array.view") {
+        if (ty->isStructTy() && llvm::cast<llvm::StructType>(ty)->hasName() && llvm::cast<llvm::StructType>(ty)->getName() == "nv.array.view") {
             auto* s = llvm::cast<llvm::StructType>(ty);
             kind = IterKind::View;
             auto* viewAlloca = ctx.create_alloca(s, "iter.view");
@@ -113,18 +113,18 @@ void ForStmtNode::codegen(rph::IRGenerationContext& ctx) {
         } else if (ty->isStructTy()) {
             // Accept a generic array view struct passed by value: { i32 len, ptr data }
             auto* s = llvm::cast<llvm::StructType>(ty);
-            // First, handle runtime Value arrays: rph.rt.Value with TAG_ARRAY
-            auto* valueStruct = rph::ir_utils::get_value_struct(ctx);
+            // First, handle runtime Value arrays: nv.rt.Value with TAG_ARRAY
+            auto* valueStruct = nv::ir_utils::get_value_struct(ctx);
             auto* i64 = llvm::Type::getInt64Ty(llctx);
-            // Default structs (that are not named rph.array.view handled above) are treated as runtime Value containers
-            if ((s == valueStruct) || (s->hasName() && s->getName() == "rph.rt.Value")) {
+            // Default structs (that are not named nv.array.view handled above) are treated as runtime Value containers
+            if ((s == valueStruct) || (s->hasName() && s->getName() == "nv.rt.Value")) {
                 // Treat as runtime Value and iterate its array payload
                 kind = IterKind::RTArray;
                 // Alloca with the actual struct type 's'
                 auto* valAllocaUntyped = ctx.create_alloca(s, "iter.rtarray");
                 b.CreateStore(iter_val, valAllocaUntyped);
                 // Bitcast to Value* for runtime helpers
-                auto* vprphy = rph::ir_utils::get_value_ptr(ctx);
+                auto* vprphy = nv::ir_utils::get_value_ptr(ctx);
                 auto* valAlloca = b.CreateBitCast(valAllocaUntyped, vprphy);
                 // Load field 1 (integral) as pointer-sized integer then inttoptr to Array*
                 auto* f1Ptr = b.CreateStructGEP(s, valAllocaUntyped, 1);
@@ -132,7 +132,7 @@ void ForStmtNode::codegen(rph::IRGenerationContext& ctx) {
                 auto* rawInt = b.CreateLoad(f1Ty, f1Ptr);
                 llvm::Value* raw64 = rawInt;
                 if (f1Ty != i64) raw64 = b.CreateZExt(rawInt, i64);
-                auto* valPrphy = rph::ir_utils::get_value_ptr(ctx);
+                auto* valPrphy = nv::ir_utils::get_value_ptr(ctx);
                 auto* arrStruct = llvm::StructType::get(llctx, { valPrphy, i32, i32 });
                 auto* arrPrphy = llvm::PointerType::getUnqual(arrStruct);
                 auto* arrPtr = b.CreateIntToPtr(raw64, arrPrphy);
@@ -142,7 +142,7 @@ void ForStmtNode::codegen(rph::IRGenerationContext& ctx) {
                 // Keep Value* pointer for element access via array_get_index_v
                 data_ptr_val = valAlloca;
                 elemTy = valueStruct;
-            } else if ((s->hasName() && s->getName() == "rph.array.view") || ((s->getNumElements() >= 2) && s->getElementType(1)->isPointerTy())) {
+            } else if ((s->hasName() && s->getName() == "nv.array.view") || ((s->getNumElements() >= 2) && s->getElementType(1)->isPointerTy())) {
                 kind = IterKind::View;
                 auto* viewAlloca = ctx.create_alloca(s, "iter.view");
                 b.CreateStore(iter_val, viewAlloca);
@@ -215,7 +215,7 @@ void ForStmtNode::codegen(rph::IRGenerationContext& ctx) {
             elemVal = i_val;
         } else if (kind == IterKind::RTArray) {
             // Use runtime helper to get element Value into a temp
-            auto* valueStruct = rph::ir_utils::get_value_struct(ctx);
+            auto* valueStruct = nv::ir_utils::get_value_struct(ctx);
             auto* tmp = ctx.create_alloca(valueStruct, "el.val");
             // declare void @array_get_index_v(ptr, ptr, i32)
             auto* voidTy = llvm::Type::getVoidTy(llctx);
@@ -321,8 +321,8 @@ void ForStmtNode::codegen(rph::IRGenerationContext& ctx) {
     range_end->codegen(ctx);
     auto* end_v   = ctx.pop_value();
     if (!start_v || !end_v) throw std::runtime_error("for statement without start or end value");
-    if (start_v->getType() != i32) start_v = rph::ir_utils::promote_type(ctx, start_v, i32);
-    if (end_v->getType()   != i32) end_v   = rph::ir_utils::promote_type(ctx, end_v,   i32);
+    if (start_v->getType() != i32) start_v = nv::ir_utils::promote_type(ctx, start_v, i32);
+    if (end_v->getType()   != i32) end_v   = nv::ir_utils::promote_type(ctx, end_v,   i32);
 
     auto* header_bb = llvm::BasicBlock::Create(ctx.get_context(), "for.header", func);
     auto* body_bb   = llvm::BasicBlock::Create(ctx.get_context(), "for.body",   func);

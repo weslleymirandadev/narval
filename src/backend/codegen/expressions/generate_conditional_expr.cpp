@@ -2,7 +2,7 @@
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
 
-void ConditionalExprNode::codegen(rph::IRGenerationContext& ctx) {
+void ConditionalExprNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
     auto& b = ctx.get_builder();
     auto* func = ctx.get_current_function();
@@ -27,7 +27,7 @@ void ConditionalExprNode::codegen(rph::IRGenerationContext& ctx) {
     if (true_expr) true_expr->codegen(ctx);
     llvm::Value* tv = ctx.pop_value();
     if (!tv) tv = llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.get_context()), 0);
-    tv = rph::ir_utils::promote_type(ctx, tv, llvm::Type::getInt32Ty(ctx.get_context()));
+    tv = nv::ir_utils::promote_type(ctx, tv, llvm::Type::getInt32Ty(ctx.get_context()));
     b.CreateBr(merge_bb);
     auto* then_end = b.GetInsertBlock();
 
@@ -36,7 +36,7 @@ void ConditionalExprNode::codegen(rph::IRGenerationContext& ctx) {
     if (false_expr) false_expr->codegen(ctx);
     llvm::Value* fv = ctx.pop_value();
     if (!fv) fv = llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.get_context()), 0);
-    fv = rph::ir_utils::promote_type(ctx, fv, llvm::Type::getInt32Ty(ctx.get_context()));
+    fv = nv::ir_utils::promote_type(ctx, fv, llvm::Type::getInt32Ty(ctx.get_context()));
     b.CreateBr(merge_bb);
     auto* else_end = b.GetInsertBlock();
 

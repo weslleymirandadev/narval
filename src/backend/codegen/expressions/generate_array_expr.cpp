@@ -4,15 +4,15 @@
 #include "frontend/checker/checker.hpp"
 #include <llvm/IR/DerivedTypes.h>
 
-void ArrayExprNode::codegen(rph::IRGenerationContext& ctx) {
+void ArrayExprNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
     auto& b = ctx.get_builder();
     auto& c = ctx.get_context();
 
     unsigned N = static_cast<unsigned>(elements.size());
 
-    auto* ValueTy = rph::ir_utils::get_value_struct(ctx);
-    auto* ValuePtr = rph::ir_utils::get_value_ptr(ctx);
+    auto* ValueTy = nv::ir_utils::get_value_struct(ctx);
+    auto* ValuePtr = nv::ir_utils::get_value_ptr(ctx);
     auto* outArr = ctx.create_alloca(ValueTy, "arr.val");
 
     // Determinar se é Array ou Vector baseado no tipo inferido pelo checker
@@ -20,15 +20,15 @@ void ArrayExprNode::codegen(rph::IRGenerationContext& ctx) {
     bool is_vector = false;
     size_t declared_array_size = 0;
     if (ctx.get_type_checker()) {
-        auto* checker = static_cast<rph::Checker*>(ctx.get_type_checker());
+        auto* checker = static_cast<nv::Checker*>(ctx.get_type_checker());
         try {
             auto inferred_type = checker->infer_expr(this);
             inferred_type = ctx.resolve_type(inferred_type);
-            if (inferred_type && inferred_type->kind == rph::Kind::VECTOR) {
+            if (inferred_type && inferred_type->kind == nv::Kind::VECTOR) {
                 is_vector = true;
-            } else if (inferred_type && inferred_type->kind == rph::Kind::ARRAY) {
+            } else if (inferred_type && inferred_type->kind == nv::Kind::ARRAY) {
                 // Verificar tamanho do array declarado
-                auto* arr_type = static_cast<rph::Array*>(inferred_type.get());
+                auto* arr_type = static_cast<nv::Array*>(inferred_type.get());
                 declared_array_size = arr_type->size;
                 
                 // Verificar se o número de elementos não excede o tamanho declarado
@@ -81,8 +81,8 @@ void ArrayExprNode::codegen(rph::IRGenerationContext& ctx) {
             if (any->getType() != F64) fp = b.CreateFPExt(any, F64);
             auto decl = ctx.get_module().getOrInsertFunction("create_float", llvm::FunctionType::get(llvm::Type::getVoidTy(c), {ValuePtr, F64}, false));
             b.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp, fp});
-        } else if (any->getType() == rph::ir_utils::get_i8_ptr(ctx)) {
-            auto decl = ctx.get_module().getOrInsertFunction("create_str", llvm::FunctionType::get(llvm::Type::getVoidTy(c), {ValuePtr, rph::ir_utils::get_i8_ptr(ctx)}, false));
+        } else if (any->getType() == nv::ir_utils::get_i8_ptr(ctx)) {
+            auto decl = ctx.get_module().getOrInsertFunction("create_str", llvm::FunctionType::get(llvm::Type::getVoidTy(c), {ValuePtr, nv::ir_utils::get_i8_ptr(ctx)}, false));
             b.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp, any});
         } else {
             b.CreateStore(llvm::UndefValue::get(ValueTy), tmp);

@@ -3,7 +3,7 @@
 #include "backend/codegen/ir_utils.hpp"
 #include <llvm/IR/DerivedTypes.h>
 
-void TupleExprNode::codegen(rph::IRGenerationContext& ctx) {
+void TupleExprNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
     auto& c = ctx.get_context();
     auto& b = ctx.get_builder();
@@ -11,11 +11,11 @@ void TupleExprNode::codegen(rph::IRGenerationContext& ctx) {
     unsigned N = static_cast<unsigned>(elements.size());
 
     // Tipos úteis
-    auto* ValueTy = rph::ir_utils::get_value_struct(ctx);
-    auto* ValuePtr = rph::ir_utils::get_value_ptr(ctx);
+    auto* ValueTy = nv::ir_utils::get_value_struct(ctx);
+    auto* ValuePtr = nv::ir_utils::get_value_ptr(ctx);
     auto* I32 = llvm::Type::getInt32Ty(c);
     auto* F64 = llvm::Type::getDoubleTy(c);
-    auto* I8P = rph::ir_utils::get_i8_ptr(ctx);
+    auto* I8P = nv::ir_utils::get_i8_ptr(ctx);
 
     // Declarações do runtime
     auto ensure_create_tuple = [&]() {

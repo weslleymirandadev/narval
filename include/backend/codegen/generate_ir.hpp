@@ -9,8 +9,8 @@
 #include "frontend/ast/ast.hpp"
 #include "backend/codegen/ir_context.hpp"
 
-namespace rph {
+namespace nv {
 
 void generate_ir(std::unique_ptr<Node> node, IRGenerationContext& context);
 
-} // namespace rph
+} // namespace nv

@@ -16,25 +16,25 @@ constexpr const char* ANSI_BOLD = "\x1b[1m";
 constexpr const char* ANSI_RESET = "\x1b[0m";
 constexpr const char* ANSI_RED = "\x1b[31m";
 
-rph::Checker::Checker() {
+nv::Checker::Checker() {
     auto globalnamespace = std::make_shared<Namespace>();
     namespaces.push_back(globalnamespace);
     scope = globalnamespace;
-    types["int"] = std::make_shared<rph::Int>();
-    types["string"] = std::make_shared<rph::String>();
-    types["float"] = std::make_shared<rph::Float>();
-    types["bool"] = std::make_shared<rph::Boolean>();
-    types["void"] = std::make_shared<rph::Void>();
+    types["int"] = std::make_shared<nv::Int>();
+    types["string"] = std::make_shared<nv::String>();
+    types["float"] = std::make_shared<nv::Float>();
+    types["bool"] = std::make_shared<nv::Boolean>();
+    types["void"] = std::make_shared<nv::Void>();
     
     // Registrar funções builtin do runtime
     register_builtins(*this);
 }
 
-rph::Type& rph::Checker::getty(std::string ty) {
+nv::Type& nv::Checker::getty(std::string ty) {
     return *types.at(ty);
 }
 
-std::shared_ptr<rph::Type>& rph::Checker::gettyptr(std::string ty){
+std::shared_ptr<nv::Type>& nv::Checker::gettyptr(std::string ty){
     // Verificar se já existe no cache
     auto it = types.find(ty);
     if (it != types.end()) {
@@ -45,7 +45,7 @@ std::shared_ptr<rph::Type>& rph::Checker::gettyptr(std::string ty){
     
     // Tipo vector
     if (ty == "vector") {
-        auto vec_type = std::make_shared<rph::Vector>();
+        auto vec_type = std::make_shared<nv::Vector>();
         types[ty] = vec_type;
         return types[ty];
     }
@@ -63,7 +63,7 @@ std::shared_ptr<rph::Type>& rph::Checker::gettyptr(std::string ty){
                 if (size > 0) {
                     // Obter tipo base
                     auto& base_type = gettyptr(base_type_str);
-                    auto arr_type = std::make_shared<rph::Array>(base_type, size);
+                    auto arr_type = std::make_shared<nv::Array>(base_type, size);
                     types[ty] = arr_type;
                     return types[ty];
                 }
@@ -82,18 +82,18 @@ std::shared_ptr<rph::Type>& rph::Checker::gettyptr(std::string ty){
     // Retornar void como fallback
     return types["void"];
 }
-void rph::Checker::push_scope() {
+void nv::Checker::push_scope() {
     auto ns = std::make_shared<Namespace>(scope);
     namespaces.push_back(ns);
     scope = ns;
 }
 
-void rph::Checker::pop_scope() {
+void nv::Checker::pop_scope() {
     namespaces.pop_back();
     scope = namespaces[namespaces.size() - 1];
 }
 
-std::unordered_set<int> rph::Checker::get_free_vars_in_env() {
+std::unordered_set<int> nv::Checker::get_free_vars_in_env() {
     std::unordered_set<int> free_vars;
     
     // Coletar variáveis livres de todas as variáveis no ambiente atual
@@ -107,7 +107,7 @@ std::unordered_set<int> rph::Checker::get_free_vars_in_env() {
     return free_vars;
 }
 
-void rph::Checker::read_lines(const std::string& filename) {
+void nv::Checker::read_lines(const std::string& filename) {
     std::ifstream file(filename);
     if (!file.is_open()) {
         // Se não conseguir abrir, apenas limpar linhas (erro será reportado sem contexto)
@@ -127,7 +127,7 @@ void rph::Checker::read_lines(const std::string& filename) {
     line_count = lines.size();
 }
 
-void rph::Checker::print_error_context(const PositionData* pos) {
+void nv::Checker::print_error_context(const PositionData* pos) {
     if (!pos || lines.empty() || pos->line == 0 || pos->line > line_count) {
         return;
     }
@@ -148,12 +148,12 @@ void rph::Checker::print_error_context(const PositionData* pos) {
     std::cerr << ANSI_RESET << "\n\n";
 }
 
-void rph::Checker::set_source_file(const std::string& filename) {
+void nv::Checker::set_source_file(const std::string& filename) {
     current_filename = filename;
     read_lines(filename);
 }
 
-void rph::Checker::error(Node* node, const std::string& message) {
+void nv::Checker::error(Node* node, const std::string& message) {
     if (!node || !node->position) {
         std::cerr << ANSI_BOLD << current_filename << ": "
                   << ANSI_RED << "ERROR" << ANSI_RESET << ANSI_BOLD << ": "
@@ -172,11 +172,11 @@ void rph::Checker::error(Node* node, const std::string& message) {
     err = true;
 }
 
-std::shared_ptr<rph::Type> rph::Checker::infer_type(Node* node) {
+std::shared_ptr<nv::Type> nv::Checker::infer_type(Node* node) {
     return infer_expr(node);
 }
 
-std::shared_ptr<rph::Type> rph::Checker::infer_expr(Node* node) {
+std::shared_ptr<nv::Type> nv::Checker::infer_expr(Node* node) {
     switch (node->kind) {
         case NodeType::NumericLiteral: {
             const auto* vl = static_cast<NumericLiteralNode*>(node);

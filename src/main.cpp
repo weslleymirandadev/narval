@@ -18,8 +18,8 @@
 #include <llvm/Support/CodeGen.h>
 #include <llvm/IR/DIBuilder.h>
 
-extern "C" const char* rph_base_dir = nullptr; // visible to C runtime
-static std::string rph_base_dir_storage;
+extern "C" const char* nv_base_dir = nullptr; // visible to C runtime
+static std::string nv_base_dir_storage;
 
 int main(int argc, char* argv[]) {
     std::string filename;
@@ -30,13 +30,13 @@ int main(int argc, char* argv[]) {
     }
 
     if (filename.empty()) {
-        std::cerr << "Usage: ruphi <source.phi>\n";
+        std::cerr << "Usage: narval <source.nv>\n";
         return 1;
     }
 
-    // Initialize base dir from source file path (directory containing main.phi)
-    rph_base_dir_storage = std::filesystem::path(filename).parent_path().string();
-    rph_base_dir = rph_base_dir_storage.c_str();
+    // Initialize base dir from source file path (directory containing main.nv)
+    nv_base_dir_storage = std::filesystem::path(filename).parent_path().string();
+    nv_base_dir = nv_base_dir_storage.c_str();
 
     ModuleManager module_manager;
     try {
@@ -44,7 +44,7 @@ int main(int argc, char* argv[]) {
         auto ast = module_manager.get_combined_ast();
 
         // Criar checker para inferência de tipos
-        rph::Checker checker;
+        nv::Checker checker;
         checker.set_source_file(filename);
         // Verificar tipos antes da geração de código
         if (ast) {
@@ -52,9 +52,9 @@ int main(int argc, char* argv[]) {
         }
 
         llvm::LLVMContext Context;
-        llvm::Module Mod("ruphi_module", Context);
+        llvm::Module Mod("narval_module", Context);
         llvm::IRBuilder<llvm::NoFolder> Builder(Context);
-        rph::IRGenerationContext context(Context, Mod, Builder, &checker);
+        nv::IRGenerationContext context(Context, Mod, Builder, &checker);
 
         // === Debug info setup (same as main.cpp) ===
         llvm::DIBuilder DIB(Mod);
@@ -68,7 +68,7 @@ int main(int argc, char* argv[]) {
         llvm::DICompileUnit* cu = DIB.createCompileUnit(
             llvm::dwarf::DW_LANG_C, // placeholder language id
             diFile,
-            "ruphi-compiler-test",
+            "narval-compiler-test",
             false,
             "",
             0
@@ -108,7 +108,7 @@ int main(int argc, char* argv[]) {
         context.get_builder().SetInsertPoint(entry_bb);
         context.set_current_function(main_start);
 
-        rph::generate_ir(std::move(ast), context);
+        nv::generate_ir(std::move(ast), context);
 
         llvm::Value* return_value = nullptr;
         if (context.has_value()) {
@@ -140,7 +140,7 @@ int main(int argc, char* argv[]) {
 
         {
             std::error_code EC;
-            llvm::raw_fd_ostream ir_out("ruphi_module.ll", EC, llvm::sys::fs::OF_Text);
+            llvm::raw_fd_ostream ir_out("narval_module.ll", EC, llvm::sys::fs::OF_Text);
             if (!EC) {
                 Mod.print(ir_out, nullptr);
             }
@@ -168,7 +168,7 @@ int main(int argc, char* argv[]) {
         Mod.setDataLayout(target_machine->createDataLayout());
 
         std::error_code EC;
-        llvm::raw_fd_ostream dest("ruphi_module.o", EC, llvm::sys::fs::OF_None);
+        llvm::raw_fd_ostream dest("narval_module.o", EC, llvm::sys::fs::OF_None);
         if (EC) {
             llvm::errs() << "Falha ao abrir .o: " << EC.message() << "\n";
             return 1;
@@ -184,15 +184,15 @@ int main(int argc, char* argv[]) {
 
         
         std::string link_cmd =
-            std::string("gcc -g ") + RUPHI_SOURCE_DIR + "/build/lib/runtime.o " +
-            RUPHI_SOURCE_DIR + "/build/lib/std.o " +
-            "ruphi_module.o -lgc -pthread -ldl -lm -o ruphi_program " +
+            std::string("gcc -g ") + NARVAL_SOURCE_DIR + "/build/lib/runtime.o " +
+            NARVAL_SOURCE_DIR + "/build/lib/std.o " +
+            "narval_module.o -lgc -pthread -ldl -lm -o narval_program " +
             "-Wl,-e,main.start " +     // entry point
             "-nostartfiles " +         // sem crt0, _start
             "-no-pie " +               // opcional
             "-lc -w";                // libc + sem warnings
 
-        const char* rm_cmd = "rm ruphi_module.o ruphi_module.ll";
+        const char* rm_cmd = "rm narval_module.o narval_module.ll";
 
         if (system(link_cmd.c_str()) != 0) {
             llvm::errs() << "Falha na linkedição\n";

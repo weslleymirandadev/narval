@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
-#include "backend/runtime/rph_runtime.h"
+#include "backend/runtime/nv_runtime.h"
 
 /* Prototypes to help detect kind even if type tag is corrupted */
 extern void* string_prototype;
@@ -37,7 +37,7 @@ static void print_indent(int depth) {
     for (int i = 0; i < depth; ++i) fputs("  ", stdout);
 }
 
-static void rph_print_value_recursive(Value v, int depth);
+static void nv_print_value_recursive(Value v, int depth);
 
 /* Normalize type tag based on prototype, to guard against ABI/tag corruption */
 static inline Value normalize_value(Value v) {
@@ -66,7 +66,7 @@ static void print_array(Array* a, int depth) {
     for (int i = 0; i < a->size; ++i) {
         if (i > 0) fputs(", ", stdout);
         if (depth < 3) {  // limite de profundidade
-            rph_print_value_recursive(a->elements[i], depth + 1);
+            nv_print_value_recursive(a->elements[i], depth + 1);
         } else {
             fputs("...", stdout);
         }
@@ -92,7 +92,7 @@ static void print_vector(Vector* vec, int depth) {
     for (int i = 0; i < vec->size; ++i) {
         if (i > 0) fputs(", ", stdout);
         if (depth < 3) {
-            rph_print_value_recursive(vec->elements[i], depth + 1);
+            nv_print_value_recursive(vec->elements[i], depth + 1);
         } else {
             fputs("...", stdout);
         }
@@ -127,7 +127,7 @@ static void print_map(Map* m, int depth) {
         fputs("\": ", stdout);
 
         if (depth < 3) {
-            rph_print_value_recursive(m->values[i], depth + 1);
+            nv_print_value_recursive(m->values[i], depth + 1);
         } else {
             fputs("...", stdout);
         }
@@ -153,7 +153,7 @@ static void print_tuple(Tuple* t, int depth) {
     for (int i = 0; i < t->field_count; ++i) {
         if (i > 0) fputs(", ", stdout);
         if (depth < 3) {
-            rph_print_value_recursive(t->fields[i], depth + 1);
+            nv_print_value_recursive(t->fields[i], depth + 1);
         } else {
             fputs("...", stdout);
         }
@@ -162,7 +162,7 @@ static void print_tuple(Tuple* t, int depth) {
 }
 
 /* --- Função principal recursiva --- */
-static void rph_print_value_recursive(Value v, int depth) {
+static void nv_print_value_recursive(Value v, int depth) {
     v = normalize_value(v);
     switch (v.type) {
         case TAG_INT: {
@@ -277,10 +277,10 @@ static void rph_print_value_recursive(Value v, int depth) {
 /* ============================================================= */
 
 __attribute__((force_align_arg_pointer))
-void rph_write(Value* v) {
+void nv_write(Value* v) {
     visited_count = 0;  // reset a cada chamada
     if (v) {
-        rph_print_value_recursive(*v, 0);
+        nv_print_value_recursive(*v, 0);
     } else {
         fputs("null", stdout);
     }
@@ -289,10 +289,10 @@ void rph_write(Value* v) {
 }
 
 __attribute__((force_align_arg_pointer))
-void rph_write_no_nl(Value* v) {
+void nv_write_no_nl(Value* v) {
     visited_count = 0;  // reset a cada chamada
     if (v) {
-        rph_print_value_recursive(*v, 0);
+        nv_print_value_recursive(*v, 0);
     } else {
         fputs("null", stdout);
     }

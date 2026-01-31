@@ -3,7 +3,7 @@
 #include "backend/codegen/ir_utils.hpp"
 #include <llvm/IR/DerivedTypes.h>
 
-void RangeExprNode::codegen(rph::IRGenerationContext& ctx) {
+void RangeExprNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
     auto& b = ctx.get_builder();
     auto& c = ctx.get_context();
@@ -20,12 +20,12 @@ void RangeExprNode::codegen(rph::IRGenerationContext& ctx) {
         throw std::runtime_error("range expression requires both start and end");
     }
 
-    if (s->getType() != I32) s = rph::ir_utils::promote_type(ctx, s, I32);
-    if (e->getType() != I32) e = rph::ir_utils::promote_type(ctx, e, I32);
+    if (s->getType() != I32) s = nv::ir_utils::promote_type(ctx, s, I32);
+    if (e->getType() != I32) e = nv::ir_utils::promote_type(ctx, e, I32);
 
     // Prepare runtime types
-    auto* ValueTy  = rph::ir_utils::get_value_struct(ctx);
-    auto* ValuePtr = rph::ir_utils::get_value_ptr(ctx);
+    auto* ValueTy  = nv::ir_utils::get_value_struct(ctx);
+    auto* ValuePtr = nv::ir_utils::get_value_ptr(ctx);
 
     // out vector value aggregate
     auto* outVec = ctx.create_alloca(ValueTy, "range.vec");

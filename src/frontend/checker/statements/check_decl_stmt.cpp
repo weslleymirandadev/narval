@@ -33,7 +33,7 @@ namespace {
     }
 }
 
-std::shared_ptr<rph::Type>& check_decl_stmt(rph::Checker* ch, Node* node) {
+std::shared_ptr<nv::Type>& check_decl_stmt(nv::Checker* ch, Node* node) {
     auto* decl = static_cast<DeclarationStmtNode*>(node);
     auto* name = static_cast<IdentifierNode*>(decl->target.get());
     
@@ -76,8 +76,8 @@ std::shared_ptr<rph::Type>& check_decl_stmt(rph::Checker* ch, Node* node) {
         auto resolved_dtype = ch->unify_ctx.resolve(dtype);
         
         // Verificar tamanho de array se o tipo declarado é Array
-        if (resolved_dtype->kind == rph::Kind::ARRAY) {
-            auto* arr_type = static_cast<rph::Array*>(resolved_dtype.get());
+        if (resolved_dtype->kind == nv::Kind::ARRAY) {
+            auto* arr_type = static_cast<nv::Array*>(resolved_dtype.get());
             size_t declared_size = arr_type->size;
             
             // Contar elementos no valor

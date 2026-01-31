@@ -28,5 +28,5 @@ public:
         return node;
     }
 
-    void codegen(rph::IRGenerationContext& ctx) override;
+    void codegen(nv::IRGenerationContext& ctx) override;
 };

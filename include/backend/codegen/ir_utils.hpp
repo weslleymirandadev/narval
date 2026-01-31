@@ -10,7 +10,7 @@
 #include <vector>
 #include <string>
 
-namespace rph {
+namespace nv {
 namespace ir_utils {
 
 struct IfElseBlocks {
@@ -27,7 +27,7 @@ llvm::Value* create_bool_constant(IRGenerationContext& context, bool value);
 
 // === Coerção ===
 llvm::Value* promote_type(IRGenerationContext& context, llvm::Value* value, llvm::Type* target_type);
-llvm::Value* promote_rph_type(
+llvm::Value* promote_nv_type(
     IRGenerationContext& context,
     llvm::Value* value,
     std::shared_ptr<Type> source_type,
@@ -102,4 +102,4 @@ llvm::Type* llvm_type_from_string(IRGenerationContext& ctx, const std::string& t
 static llvm::Type* parse_type_recursive(const std::string& s, size_t& p, IRGenerationContext& ctx);
 
 } // namespace ir_utils
-} // namespace rph
+} // namespace nv

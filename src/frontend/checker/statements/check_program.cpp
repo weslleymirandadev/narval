@@ -13,7 +13,7 @@
 
 namespace {
     // Helper: verifica se um identifier existe no escopo atual ou em escopos pais
-    bool identifier_exists(rph::Checker* checker, const std::string& symbol) {
+    bool identifier_exists(nv::Checker* checker, const std::string& symbol) {
         try {
             checker->scope->get_key(symbol);
             return true;
@@ -25,7 +25,7 @@ namespace {
     // Converte AssignmentExpression em DeclarationStmtNode quando o identifier não existe
     std::unique_ptr<Stmt> convert_assignment_to_declaration(
         AssignmentExprNode* assign_node,
-        rph::Checker* checker
+        nv::Checker* checker
     ) {
         // Verificar se o target é um Identifier
         if (assign_node->target->kind != NodeType::Identifier) {
@@ -67,7 +67,7 @@ namespace {
     }
     
     // Processa recursivamente um CodeBlock convertendo assignments não declarados
-    void process_codeblock(CodeBlock& body, rph::Checker* checker) {
+    void process_codeblock(CodeBlock& body, nv::Checker* checker) {
         for (size_t i = 0; i < body.size(); i++) {
             auto& stmt = body[i];
             
@@ -127,7 +127,7 @@ namespace {
     }
 }
 
-std::shared_ptr<rph::Type>& check_program_stmt(rph::Checker* ch, Node* node) {
+std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
     auto* program = static_cast<Program*>(node);
 
     // Primeira passagem: converter AssignmentExpression não declarados em declarações

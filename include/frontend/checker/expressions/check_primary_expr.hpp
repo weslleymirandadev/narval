@@ -4,4 +4,4 @@
 #include "frontend/checker/checker.hpp"
 #include "frontend/ast/ast.hpp"
 
-std::shared_ptr<rph::Type>& check_primary_expr(rph::Checker* ch, Node* node);
+std::shared_ptr<nv::Type>& check_primary_expr(nv::Checker* ch, Node* node);

@@ -2,10 +2,10 @@
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
 
-void LogicalNotExprNode::codegen(rph::IRGenerationContext& ctx) {
+void LogicalNotExprNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
     if (operand) operand->codegen(ctx);
     llvm::Value* v = ctx.pop_value();
     if (!v) { ctx.push_value(nullptr); return; }
-    ctx.push_value(rph::ir_utils::create_unary_op(ctx, v, "not"));
+    ctx.push_value(nv::ir_utils::create_unary_op(ctx, v, "not"));
 }

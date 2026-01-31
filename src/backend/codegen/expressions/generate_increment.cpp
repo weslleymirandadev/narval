@@ -4,7 +4,7 @@
 #include "frontend/ast/expressions/identifier_node.hpp"
 #include "frontend/ast/expressions/access_expr_node.hpp"
 
-void IncrementExprNode::codegen(rph::IRGenerationContext& ctx) {
+void IncrementExprNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
     auto& b = ctx.get_builder();
 
@@ -18,16 +18,16 @@ void IncrementExprNode::codegen(rph::IRGenerationContext& ctx) {
         auto info = info_opt.value();
         addr = info.value; elemTy = info.llvm_type;
     } else if (auto* acc = dynamic_cast<AccessExprNode*>(operand.get())) {
-        // base[index] em rph.array.view -> obter i32* data e calcular GEP
+        // base[index] em nv.array.view -> obter i32* data e calcular GEP
         if (acc->expr) acc->expr->codegen(ctx);
         llvm::Value* base = ctx.pop_value();
         if (!base || !base->getType()->isStructTy()) { ctx.push_value(nullptr); return; }
         auto* viewTy = llvm::cast<llvm::StructType>(base->getType());
-        if (!viewTy->hasName() || viewTy->getName() != "rph.array.view") { ctx.push_value(nullptr); return; }
+        if (!viewTy->hasName() || viewTy->getName() != "nv.array.view") { ctx.push_value(nullptr); return; }
         if (acc->index) acc->index->codegen(ctx);
         llvm::Value* idx_v = ctx.pop_value();
         auto* i32 = llvm::Type::getInt32Ty(ctx.get_context());
-        if (!idx_v || idx_v->getType() != i32) idx_v = rph::ir_utils::promote_type(ctx, idx_v, i32);
+        if (!idx_v || idx_v->getType() != i32) idx_v = nv::ir_utils::promote_type(ctx, idx_v, i32);
         auto* allocaView = ctx.create_alloca(viewTy, "inc.view");
         b.CreateStore(base, allocaView);
         auto* dataPtr = b.CreateStructGEP(viewTy, allocaView, 1);

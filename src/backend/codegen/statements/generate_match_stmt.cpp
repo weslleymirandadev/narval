@@ -7,7 +7,7 @@
 #include "backend/codegen/ir_utils.hpp"
 #include <llvm/IR/DerivedTypes.h>
 
-static llvm::Value* build_match_condition(rph::IRGenerationContext& ctx, Expr* pattern, llvm::Value* target_val) {
+static llvm::Value* build_match_condition(nv::IRGenerationContext& ctx, Expr* pattern, llvm::Value* target_val) {
     auto& b = ctx.get_builder();
     auto& c = ctx.get_context();
 
@@ -37,9 +37,9 @@ static llvm::Value* build_match_condition(rph::IRGenerationContext& ctx, Expr* p
         if (!s || !e || !target_val) return nullptr;
 
         auto* I32 = llvm::Type::getInt32Ty(c);
-        if (target_val->getType() != I32) target_val = rph::ir_utils::promote_type(ctx, target_val, I32);
-        if (s->getType() != I32) s = rph::ir_utils::promote_type(ctx, s, I32);
-        if (e->getType() != I32) e = rph::ir_utils::promote_type(ctx, e, I32);
+        if (target_val->getType() != I32) target_val = nv::ir_utils::promote_type(ctx, target_val, I32);
+        if (s->getType() != I32) s = nv::ir_utils::promote_type(ctx, s, I32);
+        if (e->getType() != I32) e = nv::ir_utils::promote_type(ctx, e, I32);
 
         auto* ge = b.CreateICmpSGE(target_val, s, "in.ge");
         llvm::Value* end_cmp = rng->inclusive
@@ -88,10 +88,10 @@ static llvm::Value* build_match_condition(rph::IRGenerationContext& ctx, Expr* p
     }
     
     // Caso padrão: usar create_comparison que já trata outros casos (int/float, string/string, etc)
-    return rph::ir_utils::create_comparison(ctx, target_val, v, "==");
+    return nv::ir_utils::create_comparison(ctx, target_val, v, "==");
 }
 
-void MatchStmtNode::codegen(rph::IRGenerationContext& ctx) {
+void MatchStmtNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
     auto& b = ctx.get_builder();
     auto& c = ctx.get_context();

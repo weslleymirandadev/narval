@@ -1,7 +1,7 @@
 #include "frontend/ast/statements/loop_stmt_node.hpp"
 #include "backend/codegen/ir_context.hpp"
 
-void LoopStmtNode::codegen(rph::IRGenerationContext& ctx) {
+void LoopStmtNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
     auto& b = ctx.get_builder();
     auto* func = ctx.get_current_function();

@@ -61,8 +61,8 @@ void vector_set_impl(Vector* v, int i, Value val);
 Value map_get_impl(Map* m, const char* key);
 void map_set_impl(Map* m, const char* key, Value val);
 
-void rph_write(Value* v);
-void rph_write_no_nl(Value* v);
+void nv_write(Value* v);
+void nv_write_no_nl(Value* v);
 
 // JSON operations
 void json_load(Value* out, const char* filename);

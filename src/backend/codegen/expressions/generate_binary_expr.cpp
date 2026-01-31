@@ -2,7 +2,7 @@
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
 
-void BinaryExprNode::codegen(rph::IRGenerationContext& ctx) {
+void BinaryExprNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
     if (left) left->codegen(ctx);
     auto* lhs_v = ctx.pop_value();
@@ -28,10 +28,10 @@ void BinaryExprNode::codegen(rph::IRGenerationContext& ctx) {
 
     // Comparisons
     if (op == "==" || op == "!=" || op == "<" || op == ">" || op == "<=" || op == ">=") {
-        ctx.push_value(rph::ir_utils::create_comparison(ctx, lhs_v, rhs_v, op));
+        ctx.push_value(nv::ir_utils::create_comparison(ctx, lhs_v, rhs_v, op));
         return;
     }
 
     // Arithmetic
-    ctx.push_value(rph::ir_utils::create_binary_op(ctx, lhs_v, rhs_v, op));
+    ctx.push_value(nv::ir_utils::create_binary_op(ctx, lhs_v, rhs_v, op));
 }

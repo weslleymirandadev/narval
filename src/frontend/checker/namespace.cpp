@@ -2,15 +2,15 @@
 #include "frontend/checker/type.hpp"
 #include <stdexcept>
 
-bool rph::Namespace::has_key(std::string k) {
+bool nv::Namespace::has_key(std::string k) {
     return names.find(k) != names.end();
 }
 
-bool rph::Namespace::is_const(std::string k) {
+bool nv::Namespace::is_const(std::string k) {
     return consts.find(k) != consts.end();
 }
 
-std::shared_ptr<rph::Type>& rph::Namespace::get_key(const std::string& k) {
+std::shared_ptr<nv::Type>& nv::Namespace::get_key(const std::string& k) {
     if (!has_key(k)) {
         if (parent) return parent->get_key(k);
         throw std::runtime_error(std::string("Key '") + k + "' not found.");
@@ -18,7 +18,7 @@ std::shared_ptr<rph::Type>& rph::Namespace::get_key(const std::string& k) {
     return names[k];
 }
 
-void rph::Namespace::put_key(const std::string& k, const std::shared_ptr<rph::Type>& v, bool islocked) {
+void nv::Namespace::put_key(const std::string& k, const std::shared_ptr<nv::Type>& v, bool islocked) {
     if (is_const(k)) {
         throw std::runtime_error(std::string("'") + k + "' can not be changed.");
     }
@@ -28,11 +28,11 @@ void rph::Namespace::put_key(const std::string& k, const std::shared_ptr<rph::Ty
         consts[k] = true;
 }
 
-void rph::Namespace::put_key(const std::string& k, const std::shared_ptr<rph::Type>& v) {
+void nv::Namespace::put_key(const std::string& k, const std::shared_ptr<nv::Type>& v) {
     put_key(k, v, false);
 };
 
-void rph::Namespace::set_key(const std::string& k, const std::shared_ptr<rph::Type>& v) {
+void nv::Namespace::set_key(const std::string& k, const std::shared_ptr<nv::Type>& v) {
     if (!is_const(k)) {
         throw std::runtime_error(std::string("'") + k + "' can not be changed.");
     }
@@ -40,7 +40,7 @@ void rph::Namespace::set_key(const std::string& k, const std::shared_ptr<rph::Ty
     names[k] = v;
 }
 
-void rph::Namespace::collect_free_vars(std::unordered_set<int>& free_vars) const {
+void nv::Namespace::collect_free_vars(std::unordered_set<int>& free_vars) const {
     // Coletar variáveis livres de todas as variáveis neste namespace
     for (const auto& pair : names) {
         const auto& type = pair.second;
