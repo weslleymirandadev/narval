@@ -11,6 +11,9 @@ void RangeExprNode::codegen(nv::IRGenerationContext& ctx) {
 
     // Evaluate bounds
     llvm::Type* I32 = llvm::Type::getInt32Ty(c);
+    auto* I8P = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(c));
+    auto* I8 = llvm::Type::getInt8Ty(c);
+    
     if (start) start->codegen(ctx);
     llvm::Value* s = ctx.has_value() ? ctx.pop_value() : nullptr;
     if (end) end->codegen(ctx);
@@ -20,8 +23,31 @@ void RangeExprNode::codegen(nv::IRGenerationContext& ctx) {
         throw std::runtime_error("range expression requires both start and end");
     }
 
-    if (s->getType() != I32) s = nv::ir_utils::promote_type(ctx, s, I32);
-    if (e->getType() != I32) e = nv::ir_utils::promote_type(ctx, e, I32);
+    // Verificar se é range de caracteres (strings de caractere único)
+    bool start_is_string = s->getType() == I8P;
+    bool end_is_string = e->getType() == I8P;
+    
+    if (start_is_string && end_is_string) {
+        // Range de caracteres: extrair primeiro caractere de cada string e converter para i32
+        // start[0]
+        auto* start_char_ptr = b.CreateGEP(I8, s, {b.getInt32(0)}, "start.char.ptr");
+        auto* start_char = b.CreateLoad(I8, start_char_ptr, "start.char.val");
+        s = b.CreateZExt(start_char, I32, "start.i32");
+        
+        // end[0]
+        auto* end_char_ptr = b.CreateGEP(I8, e, {b.getInt32(0)}, "end.char.ptr");
+        auto* end_char = b.CreateLoad(I8, end_char_ptr, "end.char.val");
+        e = b.CreateZExt(end_char, I32, "end.i32");
+    } else {
+        // Range numérico: converter para i32
+        if (s->getType() != I32) s = nv::ir_utils::promote_type(ctx, s, I32);
+        if (e->getType() != I32) e = nv::ir_utils::promote_type(ctx, e, I32);
+    }
+    
+    // Garantir que ambos são i32
+    if (s->getType() != I32 || e->getType() != I32) {
+        throw std::runtime_error("range expression bounds must be convertible to i32");
+    }
 
     // Prepare runtime types
     auto* ValueTy  = nv::ir_utils::get_value_struct(ctx);
