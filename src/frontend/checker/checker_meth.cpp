@@ -13,6 +13,8 @@ std::shared_ptr<nv::Type>& nv::Checker::check_node(Node* node) {
           return check_program_stmt(this, node);
         case NodeType::DeclarationStatement:
           return check_decl_stmt(this, node);
+        case NodeType::MatchStatement:
+          return check_match_stmt(this, node);
         case NodeType::BreakStatement:
         case NodeType::ContinueStatement:
           // break e continue não têm tipo, apenas controle de fluxo
