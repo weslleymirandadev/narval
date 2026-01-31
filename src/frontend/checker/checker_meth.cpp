@@ -1,7 +1,7 @@
 #include "frontend/checker/checker_meth.hpp"
 #include <memory>
 
-std::shared_ptr<rph::Type>& rph::Checker::check_node(Node* node) {
+std::shared_ptr<nv::Type>& nv::Checker::check_node(Node* node) {
   try {
     switch (node->kind) {
         case NodeType::NumericLiteral:

@@ -3,12 +3,12 @@
 #include "backend/codegen/ir_utils.hpp"
 #include <iostream>
 
-void NumericLiteralNode::codegen(rph::IRGenerationContext& context) {
+void NumericLiteralNode::codegen(nv::IRGenerationContext& context) {
     context.set_debug_location(position.get());
     // Heurística simples: contém ponto → float; senão int
     if (value.find('.') != std::string::npos) {
         double dbl = std::stod(value);
-        context.push_value(rph::ir_utils::create_float_constant(context, dbl));
+        context.push_value(nv::ir_utils::create_float_constant(context, dbl));
         return;
     }
 
@@ -36,7 +36,7 @@ void NumericLiteralNode::codegen(rph::IRGenerationContext& context) {
     }
 
     int32_t integer = std::stoi(value, nullptr, base);
-    context.push_value(rph::ir_utils::create_int_constant(context, integer));
+    context.push_value(nv::ir_utils::create_int_constant(context, integer));
 }
 
 

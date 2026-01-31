@@ -1,13 +1,13 @@
-#include "backend/runtime/rph_runtime.h"
+#include "backend/runtime/nv_runtime.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 // Weak default for base directory; strong definitions in drivers override this
 #if defined(__GNUC__)
-__attribute__((weak)) const char* rph_base_dir = NULL;
+__attribute__((weak)) const char* nv_base_dir = NULL;
 #else
-const char* rph_base_dir = NULL;
+const char* nv_base_dir = NULL;
 #endif
 
 static Value json_parse_value(const char** ptr);
@@ -114,8 +114,8 @@ static int is_absolute_path(const char* p) {
 }
 
 void json_load(Value* out, const char* filename) {
-    /* rph_base_dir may be provided by the generated program; weak default here */
-    const char* base = rph_base_dir; // no env vars
+    /* nv_base_dir may be provided by the generated program; weak default here */
+    const char* base = nv_base_dir; // no env vars
     char* fullpath = NULL;
     if (filename && !is_absolute_path(filename) && base && base[0]) {
         size_t bl = strlen(base);

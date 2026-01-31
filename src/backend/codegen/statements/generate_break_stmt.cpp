@@ -1,7 +1,7 @@
 #include "frontend/ast/statements/break_stmt_node.hpp"
 #include "backend/codegen/ir_context.hpp"
 
-void BreakStmtNode::codegen(rph::IRGenerationContext& ctx) {
+void BreakStmtNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
     auto& b = ctx.get_builder();
     

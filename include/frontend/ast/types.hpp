@@ -4,10 +4,10 @@
 
 // Forward declarations to avoid circular dependencies
 namespace llvm { class Value; }
-namespace rph { class IRGenerationContext; }
+namespace nv { class IRGenerationContext; }
 
 template <typename T>
-using RphList = std::vector<T>;
+using NvList = std::vector<T>;
 
 enum class NodeType {
     Program,
@@ -64,17 +64,17 @@ public:
     explicit Node(NodeType k) : kind(k) {}
     virtual ~Node() = default;
     virtual Node* clone() const = 0;
-    virtual void codegen(rph::IRGenerationContext& ctx) = 0;
+    virtual void codegen(nv::IRGenerationContext& ctx) = 0;
 };
 
 class Stmt : public Node {
 public:
     explicit Stmt(NodeType k) : Node(k) {}
     // Statements não retornam valores; geração é por efeito no contexto
-    virtual void codegen(rph::IRGenerationContext& ctx) override {}
+    virtual void codegen(nv::IRGenerationContext& ctx) override {}
 };
 
-using CodeBlock = RphList<std::unique_ptr<Stmt>>;
+using CodeBlock = NvList<std::unique_ptr<Stmt>>;
 
 class Expr : public Stmt {
 public:

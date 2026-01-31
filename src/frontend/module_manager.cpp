@@ -37,7 +37,7 @@ void ModuleManager::load_module(const std::string& module_name, const std::strin
         module.ast = parser.produce_ast(module.tokens);
     }
     if (config && ENABLE_CHECKING == ENABLE_CHECKING) {
-        rph::Checker checker;
+        nv::Checker checker;
         checker.set_source_file(file_path);
         checker.check_node(module.ast.get());
     }

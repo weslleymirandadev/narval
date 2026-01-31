@@ -2,7 +2,7 @@
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
 
-void IfStatementNode::codegen(rph::IRGenerationContext& ctx) {
+void IfStatementNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
 
     llvm::DIBuilder* dib = ctx.get_debug_builder();
@@ -34,8 +34,8 @@ void IfStatementNode::codegen(rph::IRGenerationContext& ctx) {
         );
     }
 
-    auto blocks = rph::ir_utils::create_if_else_structure(ctx, "if");
-    rph::ir_utils::create_conditional_branch(ctx, cond_v, blocks.then_block, blocks.else_block);
+    auto blocks = nv::ir_utils::create_if_else_structure(ctx, "if");
+    nv::ir_utils::create_conditional_branch(ctx, cond_v, blocks.then_block, blocks.else_block);
 
     auto& B = ctx.get_builder();
 
@@ -80,8 +80,8 @@ void IfStatementNode::codegen(rph::IRGenerationContext& ctx) {
             }
 
             // Create blocks for this elif
-            auto elif_blocks = rph::ir_utils::create_if_else_structure(ctx, "elif");
-            rph::ir_utils::create_conditional_branch(ctx, elif_cond, elif_blocks.then_block, elif_blocks.else_block);
+            auto elif_blocks = nv::ir_utils::create_if_else_structure(ctx, "elif");
+            nv::ir_utils::create_conditional_branch(ctx, elif_cond, elif_blocks.then_block, elif_blocks.else_block);
 
             // Elif then: execute its consequent, then jump to merge
             B.SetInsertPoint(elif_blocks.then_block);

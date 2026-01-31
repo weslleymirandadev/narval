@@ -4,7 +4,7 @@
 #include "frontend/ast/expressions/access_expr_node.hpp"
 #include "backend/codegen/ir_utils.hpp"
 
-void PostIncrementExprNode::codegen(rph::IRGenerationContext& ctx) {
+void PostIncrementExprNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
     auto& b = ctx.get_builder();
 
@@ -21,11 +21,11 @@ void PostIncrementExprNode::codegen(rph::IRGenerationContext& ctx) {
         llvm::Value* base = ctx.pop_value();
         if (!base || !base->getType()->isStructTy()) { ctx.push_value(nullptr); return; }
         auto* viewTy = llvm::cast<llvm::StructType>(base->getType());
-        if (!viewTy->hasName() || viewTy->getName() != "rph.array.view") { ctx.push_value(nullptr); return; }
+        if (!viewTy->hasName() || viewTy->getName() != "nv.array.view") { ctx.push_value(nullptr); return; }
         if (acc->index) acc->index->codegen(ctx);
         llvm::Value* idx_v = ctx.pop_value();
         auto* i32 = llvm::Type::getInt32Ty(ctx.get_context());
-        if (!idx_v || idx_v->getType() != i32) idx_v = rph::ir_utils::promote_type(ctx, idx_v, i32);
+        if (!idx_v || idx_v->getType() != i32) idx_v = nv::ir_utils::promote_type(ctx, idx_v, i32);
         auto* allocaView = ctx.create_alloca(viewTy, "pinc.view");
         b.CreateStore(base, allocaView);
         auto* dataPtr = b.CreateStructGEP(viewTy, allocaView, 1);

@@ -7,7 +7,7 @@
 #include <cctype>
 #include <iostream>
 
-namespace rph {
+namespace nv {
 namespace ir_utils {
 
 // === Cache e helpers ===
@@ -86,7 +86,7 @@ llvm::Value* promote_type(IRGenerationContext& context, llvm::Value* value, llvm
     return value;
 }
 
-llvm::Value* promote_rph_type(
+llvm::Value* promote_nv_type(
     IRGenerationContext& context,
     llvm::Value* value,
     std::shared_ptr<Type>& source_type,
@@ -94,7 +94,7 @@ llvm::Value* promote_rph_type(
 ) {
     if (!value || !source_type || !target_type) return nullptr;
     if (source_type->equals(*target_type)) return value;
-    auto* target_llvm_type = context.rph_type_to_llvm(target_type);
+    auto* target_llvm_type = context.nv_type_to_llvm(target_type);
     return promote_type(context, value, target_llvm_type);
 }
 
@@ -258,7 +258,7 @@ llvm::Value* create_unary_op(IRGenerationContext& context, llvm::Value* operand,
 }
 
 // === REMOVIDO: infer_llvm_type(Node*) ===
-// O tipo do nó é obtido via checker ou context.rph_type_to_llvm()
+// O tipo do nó é obtido via checker ou context.nv_type_to_llvm()
 
 llvm::Type* infer_llvm_type(IRGenerationContext& context, std::shared_ptr<Type>& type) {
     return type ? llvm_type_from_string(context, type->toString()) : get_void(context);
@@ -276,8 +276,8 @@ llvm::Function* create_function(IRGenerationContext& context, const std::string&
     if (!label_type) return nullptr;
     std::vector<llvm::Type*> param_types;
     for (const auto& p : label_type->paramstype)
-        param_types.push_back(context.rph_type_to_llvm(p));
-    auto* ret_type = context.rph_type_to_llvm(label_type->returntype);
+        param_types.push_back(context.nv_type_to_llvm(p));
+    auto* ret_type = context.nv_type_to_llvm(label_type->returntype);
     auto* ft = llvm::FunctionType::get(ret_type, param_types, false);
     auto* func = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, name, context.get_module());
     context.set_current_function(func);
@@ -342,8 +342,8 @@ llvm::Type* get_i8(IRGenerationContext& ctx)  { return llvm::Type::getInt8Ty(ctx
 llvm::Type* get_i8_ptr(IRGenerationContext& ctx) { return llvm::PointerType::getUnqual(get_i8(ctx)); }
 
 llvm::StructType* get_value_struct(IRGenerationContext& ctx) {
-    auto* t = llvm::StructType::getTypeByName(ctx.get_context(), "rph.rt.Value");
-    if (!t) t = llvm::StructType::create(ctx.get_context(), { get_i32(ctx), get_i64(ctx), get_i8_ptr(ctx) }, "rph.rt.Value");
+    auto* t = llvm::StructType::getTypeByName(ctx.get_context(), "nv.rt.Value");
+    if (!t) t = llvm::StructType::create(ctx.get_context(), { get_i32(ctx), get_i64(ctx), get_i8_ptr(ctx) }, "nv.rt.Value");
     return t;
 }
 llvm::PointerType* get_value_ptr(IRGenerationContext& ctx) { return llvm::PointerType::getUnqual(get_value_struct(ctx)); }
@@ -497,4 +497,4 @@ static llvm::Type* parse_type_recursive(const std::string& s, size_t& p, IRGener
 }
 
 } // namespace ir_utils
-} // namespace rph
+} // namespace nv

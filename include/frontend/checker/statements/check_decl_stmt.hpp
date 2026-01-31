@@ -4,4 +4,4 @@
 #include "frontend/checker/checker.hpp"
 #include "frontend/ast/ast.hpp"
 
-std::shared_ptr<rph::Type>& check_decl_stmt(rph::Checker* ch, Node* node);
+std::shared_ptr<nv::Type>& check_decl_stmt(nv::Checker* ch, Node* node);

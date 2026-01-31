@@ -2,7 +2,7 @@ declare i8* @malloc(i64)
 declare i32 @getchar()
 declare void @free(i8*)
 
-define i8* @rph_read() {
+define i8* @nv_read() {
   %buffer_size = alloca i64
   store i64 128, i64* %buffer_size
 

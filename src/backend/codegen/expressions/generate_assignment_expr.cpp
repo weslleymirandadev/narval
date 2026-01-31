@@ -4,7 +4,7 @@
 #include "frontend/ast/expressions/identifier_node.hpp"
 #include "frontend/ast/expressions/access_expr_node.hpp"
 
-void AssignmentExprNode::codegen(rph::IRGenerationContext& ctx) {
+void AssignmentExprNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
     if (!target) { ctx.push_value(nullptr); return; }
     // Suporte a atribuição para access expressions: base[index] = value
@@ -23,12 +23,12 @@ void AssignmentExprNode::codegen(rph::IRGenerationContext& ctx) {
         auto& B = ctx.get_builder();
         auto& C = ctx.get_context();
         auto& M = ctx.get_module();
-        auto* ValueTy = rph::ir_utils::get_value_struct(ctx);
-        auto* ValuePtr = rph::ir_utils::get_value_ptr(ctx);
+        auto* ValueTy = nv::ir_utils::get_value_struct(ctx);
+        auto* ValuePtr = nv::ir_utils::get_value_ptr(ctx);
         auto* I32 = llvm::Type::getInt32Ty(C);
 
         // Coagir índice para i32
-        if (idx_v && idx_v->getType() != I32) idx_v = rph::ir_utils::promote_type(ctx, idx_v, I32);
+        if (idx_v && idx_v->getType() != I32) idx_v = nv::ir_utils::promote_type(ctx, idx_v, I32);
         if (!idx_v) idx_v = llvm::ConstantInt::get(I32, 0);
 
         // Preparar self (Value*)
@@ -54,8 +54,8 @@ void AssignmentExprNode::codegen(rph::IRGenerationContext& ctx) {
                 if (any->getType() != F64) fp = B.CreateFPExt(any, F64);
                 auto decl = M.getOrInsertFunction("create_float", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, F64}, false));
                 B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp, fp});
-            } else if (any->getType() == rph::ir_utils::get_i8_ptr(ctx)) {
-                auto decl = M.getOrInsertFunction("create_str", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, rph::ir_utils::get_i8_ptr(ctx)}, false));
+            } else if (any->getType() == nv::ir_utils::get_i8_ptr(ctx)) {
+                auto decl = M.getOrInsertFunction("create_str", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, nv::ir_utils::get_i8_ptr(ctx)}, false));
                 B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp, any});
             } else {
                 B.CreateStore(llvm::UndefValue::get(ValueTy), tmp);
@@ -136,7 +136,7 @@ void AssignmentExprNode::codegen(rph::IRGenerationContext& ctx) {
 
         // Atribuição simples: mantém comportamento existente
         if (is_simple_assign) {
-            rhs = rph::ir_utils::promote_type(ctx, rhs, info.llvm_type);
+            rhs = nv::ir_utils::promote_type(ctx, rhs, info.llvm_type);
             B.CreateStore(rhs, info.value);
             ctx.push_value(rhs);
             return;
@@ -144,25 +144,25 @@ void AssignmentExprNode::codegen(rph::IRGenerationContext& ctx) {
 
         // Atribuições compostas: carrega o valor atual e aplica o operador binário
         llvm::Value* current = B.CreateLoad(info.llvm_type, info.value);
-        rhs = rph::ir_utils::promote_type(ctx, rhs, info.llvm_type);
-        llvm::Value* result = rph::ir_utils::create_binary_op(ctx, current, rhs, bin_op);
+        rhs = nv::ir_utils::promote_type(ctx, rhs, info.llvm_type);
+        llvm::Value* result = nv::ir_utils::create_binary_op(ctx, current, rhs, bin_op);
         if (!result) { ctx.push_value(nullptr); return; }
 
         // Garantir que o resultado tenha o tipo da variável
-        result = rph::ir_utils::promote_type(ctx, result, info.llvm_type);
+        result = nv::ir_utils::promote_type(ctx, result, info.llvm_type);
         B.CreateStore(result, info.value);
         ctx.push_value(result);
         return;
     }
 
     // fallback: criar variável com tipo apropriado
-    auto* ValueTy = rph::ir_utils::get_value_struct(ctx);
+    auto* ValueTy = nv::ir_utils::get_value_struct(ctx);
     llvm::Type* chosenTy = nullptr;
     if (rhs->getType() == ValueTy) {
         chosenTy = ValueTy;
     } else {
         chosenTy = llvm::Type::getInt32Ty(ctx.get_context());
-        rhs = rph::ir_utils::promote_type(ctx, rhs, chosenTy);
+        rhs = nv::ir_utils::promote_type(ctx, rhs, chosenTy);
     }
     auto* alloca = ctx.create_and_register_variable(id->symbol, chosenTy, nullptr, false);
     ctx.get_builder().CreateStore(rhs, alloca);

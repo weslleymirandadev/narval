@@ -1,7 +1,7 @@
 #include "frontend/ast/statements/continue_stmt_node.hpp"
 #include "backend/codegen/ir_context.hpp"
 
-void ContinueStmtNode::codegen(rph::IRGenerationContext& ctx) {
+void ContinueStmtNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
     auto& b = ctx.get_builder();
     

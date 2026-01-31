@@ -10,7 +10,7 @@
 #include "frontend/ast/ast.hpp"
 
 int main(int argc, char* argv[]) {
-    std::string filename = argc > 1 ? argv[1] : "../test/main.phi";
+    std::string filename = argc > 1 ? argv[1] : "../test/main.nv";
     std::string module_name = "main";
 
     ModuleManager module_manager;
@@ -25,7 +25,7 @@ int main(int argc, char* argv[]) {
         const auto& modules = module_manager.get_modules();
         
         // Criar checker para análise detalhada
-        rph::Checker checker;
+        nv::Checker checker;
         checker.set_source_file(filename);
         
         std::cout << "Verificando tipos inferidos...\n\n";
@@ -49,7 +49,7 @@ int main(int argc, char* argv[]) {
                         stmt_num++;
                         try {
                             // Tentar inferir tipo se for expressão ou declaração
-                            std::shared_ptr<rph::Type> inferred_type = nullptr;
+                            std::shared_ptr<nv::Type> inferred_type = nullptr;
                             if (stmt->kind == NodeType::DeclarationStatement) {
                                 auto* decl = static_cast<DeclarationStmtNode*>(stmt.get());
                                 // Para declarações, obter tipo do namespace após verificação
@@ -59,14 +59,14 @@ int main(int argc, char* argv[]) {
                                     // Resolver tipo (pode ser polimórfico ou ter variáveis de tipo)
                                     inferred_type = checker.unify_ctx.resolve(type);
                                     // Se ainda for polimórfico após resolução, tentar instanciar
-                                    if (inferred_type && inferred_type->kind == rph::Kind::POLY_TYPE) {
-                                        auto poly = std::static_pointer_cast<rph::PolyType>(inferred_type);
+                                    if (inferred_type && inferred_type->kind == nv::Kind::POLY_TYPE) {
+                                        auto poly = std::static_pointer_cast<nv::PolyType>(inferred_type);
                                         int next_id = checker.unify_ctx.get_next_var_id();
                                         inferred_type = poly->instantiate(next_id);
                                         inferred_type = checker.unify_ctx.resolve(inferred_type);
                                     }
                                     // Se o tipo resolvido for Void, tentar inferir do value diretamente
-                                    if (!inferred_type || inferred_type->kind == rph::Kind::VOID) {
+                                    if (!inferred_type || inferred_type->kind == nv::Kind::VOID) {
                                         if (decl->value) {
                                             inferred_type = checker.infer_expr(decl->value.get());
                                             inferred_type = checker.unify_ctx.resolve(inferred_type);

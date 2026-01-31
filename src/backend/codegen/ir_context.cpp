@@ -4,7 +4,7 @@
 #include "frontend/checker/unification.hpp"
 #include <optional>
 
-namespace rph {
+namespace nv {
 
 llvm::Function* IRGenerationContext::ensure_runtime_func(const std::string& name,
                                                         llvm::ArrayRef<llvm::Type*> paramTypes,
@@ -14,14 +14,14 @@ llvm::Function* IRGenerationContext::ensure_runtime_func(const std::string& name
     return llvm::cast<llvm::Function>(decl.getCallee());
 }
 
-std::shared_ptr<Type> IRGenerationContext::resolve_type(std::shared_ptr<Type> rph_type) {
-    if (!rph_type) {
+std::shared_ptr<Type> IRGenerationContext::resolve_type(std::shared_ptr<Type> nv_type) {
+    if (!nv_type) {
         return nullptr;
     }
     
     // Se for tipo polimórfico, instanciar com novas variáveis de tipo
-    if (rph_type->kind == Kind::POLY_TYPE) {
-        auto poly = std::static_pointer_cast<PolyType>(rph_type);
+    if (nv_type->kind == Kind::POLY_TYPE) {
+        auto poly = std::static_pointer_cast<PolyType>(nv_type);
         // Obter contexto de unificação do checker se disponível
         if (type_checker_ptr) {
             auto* checker = static_cast<Checker*>(type_checker_ptr);
@@ -34,8 +34,8 @@ std::shared_ptr<Type> IRGenerationContext::resolve_type(std::shared_ptr<Type> rp
     }
     
     // Se for variável de tipo, resolver através do contexto de unificação
-    if (rph_type->kind == Kind::TYPE_VAR) {
-        auto tv = std::static_pointer_cast<TypeVar>(rph_type);
+    if (nv_type->kind == Kind::TYPE_VAR) {
+        auto tv = std::static_pointer_cast<TypeVar>(nv_type);
         // Resolver variável de tipo (path compression)
         auto resolved = tv->resolve();
         
@@ -57,21 +57,21 @@ std::shared_ptr<Type> IRGenerationContext::resolve_type(std::shared_ptr<Type> rp
     }
     
     // Para tipos compostos, resolver recursivamente
-    switch (rph_type->kind) {
+    switch (nv_type->kind) {
         case Kind::ARRAY: {
-            auto array_type = std::static_pointer_cast<Array>(rph_type);
+            auto array_type = std::static_pointer_cast<Array>(nv_type);
             if (array_type && array_type->element_type) {
                 auto resolved_elem = resolve_type(array_type->element_type);
                 return std::make_shared<Array>(resolved_elem, array_type->size);
             }
-            return rph_type;
+            return nv_type;
         }
         case Kind::VECTOR: {
             // Vector não precisa resolução (não tem variáveis de tipo)
-            return rph_type;
+            return nv_type;
         }
         case Kind::TUPLE: {
-            auto tuple_type = std::static_pointer_cast<Tuple>(rph_type);
+            auto tuple_type = std::static_pointer_cast<Tuple>(nv_type);
             if (tuple_type) {
                 std::vector<std::shared_ptr<Type>> resolved_elems;
                 for (const auto& elem : tuple_type->element_type) {
@@ -79,10 +79,10 @@ std::shared_ptr<Type> IRGenerationContext::resolve_type(std::shared_ptr<Type> rp
                 }
                 return std::make_shared<Tuple>(resolved_elems);
             }
-            return rph_type;
+            return nv_type;
         }
         case Kind::LABEL: {
-            auto label_type = std::static_pointer_cast<Label>(rph_type);
+            auto label_type = std::static_pointer_cast<Label>(nv_type);
             if (label_type) {
                 std::vector<std::shared_ptr<Type>> resolved_params;
                 for (const auto& param : label_type->paramstype) {
@@ -91,27 +91,27 @@ std::shared_ptr<Type> IRGenerationContext::resolve_type(std::shared_ptr<Type> rp
                 auto resolved_ret = resolve_type(label_type->returntype);
                 return std::make_shared<Label>(resolved_params, resolved_ret);
             }
-            return rph_type;
+            return nv_type;
         }
         default:
             // Tipos básicos não precisam resolução
-            return rph_type;
+            return nv_type;
     }
 }
 
-llvm::Type* IRGenerationContext::rph_type_to_llvm(std::shared_ptr<Type> rph_type) {
-    if (!rph_type) {
+llvm::Type* IRGenerationContext::nv_type_to_llvm(std::shared_ptr<Type> nv_type) {
+    if (!nv_type) {
         return llvm::Type::getVoidTy(llvm_context);
     }
     
     // Resolver tipo antes de converter (resolve variáveis de tipo e instancia polimórficos)
-    rph_type = resolve_type(rph_type);
+    nv_type = resolve_type(nv_type);
     
-    if (!rph_type) {
+    if (!nv_type) {
         return llvm::Type::getVoidTy(llvm_context);
     }
 
-    switch (rph_type->kind) {
+    switch (nv_type->kind) {
         case Kind::INT:
             return llvm::Type::getInt32Ty(llvm_context);
         
@@ -128,9 +128,9 @@ llvm::Type* IRGenerationContext::rph_type_to_llvm(std::shared_ptr<Type> rph_type
             return llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(llvm_context));
         
         case Kind::ARRAY: {
-            auto array_type = std::static_pointer_cast<Array>(rph_type);
+            auto array_type = std::static_pointer_cast<Array>(nv_type);
             if (array_type && array_type->element_type) {
-                auto elem_type = rph_type_to_llvm(array_type->element_type);
+                auto elem_type = nv_type_to_llvm(array_type->element_type);
                 // Array como estrutura ou ponteiro para o primeiro elemento
                 // Por enquanto, retornamos ponteiro para o elemento
                 return llvm::PointerType::get(elem_type, 0);
@@ -145,11 +145,11 @@ llvm::Type* IRGenerationContext::rph_type_to_llvm(std::shared_ptr<Type> rph_type
         }
         
         case Kind::TUPLE: {
-            auto tuple_type = std::static_pointer_cast<Tuple>(rph_type);
+            auto tuple_type = std::static_pointer_cast<Tuple>(nv_type);
             if (tuple_type) {
                 std::vector<llvm::Type*> elem_types;
                 for (const auto& elem : tuple_type->element_type) {
-                    elem_types.push_back(rph_type_to_llvm(elem));
+                    elem_types.push_back(nv_type_to_llvm(elem));
                 }
                 return llvm::StructType::get(llvm_context, elem_types);
             }
@@ -157,13 +157,13 @@ llvm::Type* IRGenerationContext::rph_type_to_llvm(std::shared_ptr<Type> rph_type
         }
         
         case Kind::LABEL: {
-            auto label_type = std::static_pointer_cast<Label>(rph_type);
+            auto label_type = std::static_pointer_cast<Label>(nv_type);
             if (label_type) {
                 std::vector<llvm::Type*> param_types;
                 for (const auto& param : label_type->paramstype) {
-                    param_types.push_back(rph_type_to_llvm(param));
+                    param_types.push_back(nv_type_to_llvm(param));
                 }
-                auto ret_type = rph_type_to_llvm(label_type->returntype);
+                auto ret_type = nv_type_to_llvm(label_type->returntype);
                 return llvm::FunctionType::get(ret_type, param_types, false)->getPointerTo();
             }
             return llvm::Type::getVoidTy(llvm_context); // fallback
@@ -212,12 +212,12 @@ llvm::AllocaInst* IRGenerationContext::create_alloca(llvm::Type* type, const std
 llvm::AllocaInst* IRGenerationContext::create_and_register_variable(
     const std::string& name,
     llvm::Type* llvm_type,
-    std::shared_ptr<Type> rph_type,
+    std::shared_ptr<Type> nv_type,
     bool is_constant
 ) {
     auto alloca = create_alloca(llvm_type, name);
     
-    SymbolInfo info(alloca, llvm_type, rph_type, true, is_constant);
+    SymbolInfo info(alloca, llvm_type, nv_type, true, is_constant);
     symbol_table.define_symbol(name, info);
     
     emit_local_variable_dbg(alloca, name, nullptr);
@@ -257,7 +257,7 @@ bool IRGenerationContext::store_symbol(const std::string& name, llvm::Value* val
     }
     
     // Tenta atualizar o símbolo (pode não ser uma alocação)
-    SymbolInfo new_info(value, value->getType(), info.rph_type, false, info.is_constant);
+    SymbolInfo new_info(value, value->getType(), info.nv_type, false, info.is_constant);
     return symbol_table.update_symbol(name, new_info);
 }
 

@@ -3,13 +3,13 @@
 #include "backend/codegen/ir_utils.hpp"
 #include <llvm/Support/raw_ostream.h>
 
-void IdentifierNode::codegen(rph::IRGenerationContext& context) {
+void IdentifierNode::codegen(nv::IRGenerationContext& context) {
     context.set_debug_location(position.get());
     auto symbol_opt = context.get_symbol_info(symbol);
     if (!symbol_opt) {
         // Intrínseco: 'json' é um objeto especial da linguagem
         if (symbol == "json") {
-            auto* I8P = rph::ir_utils::get_i8_ptr(context);
+            auto* I8P = nv::ir_utils::get_i8_ptr(context);
             auto* nullJson = llvm::Constant::getNullValue(I8P);
             context.push_value(nullJson);
             return;
@@ -20,7 +20,7 @@ void IdentifierNode::codegen(rph::IRGenerationContext& context) {
         return;
     }
 
-    const rph::SymbolInfo& info = symbol_opt.value();
+    const nv::SymbolInfo& info = symbol_opt.value();
 
     // Se for uma alocação (variável local), precisamos carregar o valor
     if (info.is_allocated) {
