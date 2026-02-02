@@ -374,89 +374,89 @@ std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
                 continue;  // Pular este símbolo se não existir
             }
             
-            // Procurar o símbolo no AST do módulo e inferir seu tipo
+            // Procurar o símbolo primeiro no escopo do módulo (mais confiável após check_node)
             std::shared_ptr<nv::Type> symbol_type = nullptr;
             bool is_constant = false;
             bool symbol_found = false;
             
-            for (const auto& stmt : program->get_statements()) {
-                // Variáveis declaradas
-                if (stmt->kind == NodeType::DeclarationStatement) {
-                    auto* decl = static_cast<DeclarationStmtNode*>(stmt.get());
-                    if (decl->target && decl->target->kind == NodeType::Identifier) {
-                        auto* id = static_cast<IdentifierNode*>(decl->target.get());
-                        if (id->symbol == item.name) {
-                            // Inferir o tipo da declaração
-                            symbol_type = module_checker.infer_expr(decl->target.get());
-                            is_constant = decl->constant;
-                            symbol_found = true;
-                            break;
-                        }
-                    }
+            try {
+                auto& scope_type = module_checker.scope->get_key(item.name);
+                symbol_type = scope_type;
+                // Verificar se é função (constante) ou variável
+                if (scope_type->kind == nv::Kind::POLY_TYPE) {
+                    auto poly = std::static_pointer_cast<nv::PolyType>(scope_type);
+                    is_constant = (poly->body->kind == nv::Kind::DEF);
+                } else {
+                    is_constant = (scope_type->kind == nv::Kind::DEF);
                 }
-                // Funções (def)
-                else if (stmt->kind == NodeType::DefStatement) {
-                    auto* def = static_cast<DefStmtNode*>(stmt.get());
-                    if (def->name == item.name) {
-                        // Construir o tipo da função diretamente do DefStmtNode
-                        // Obter tipos dos parâmetros
-                        std::vector<std::shared_ptr<nv::Type>> param_types;
-                        for (const auto& param : def->parameters) {
-                            // ParamNode tem um map parameter onde a chave é o nome e o valor é o tipo
-                            // Como só precisamos do tipo, pegamos o primeiro valor do map
-                            if (!param.parameter.empty()) {
-                                auto type_it = param.parameter.begin();
-                                std::string param_type_str = type_it->second;  // O valor é o tipo
-                                auto param_type = module_checker.gettyptr(param_type_str);
-                                param_types.push_back(param_type);
+                symbol_found = true;
+            } catch (std::runtime_error&) {
+                // Se não encontrou no escopo, procurar no AST como fallback
+                for (const auto& stmt : program->get_statements()) {
+                    // Variáveis declaradas
+                    if (stmt->kind == NodeType::DeclarationStatement) {
+                        auto* decl = static_cast<DeclarationStmtNode*>(stmt.get());
+                        if (decl->target && decl->target->kind == NodeType::Identifier) {
+                            auto* id = static_cast<IdentifierNode*>(decl->target.get());
+                            if (id->symbol == item.name) {
+                                // Inferir o tipo da declaração
+                                symbol_type = module_checker.infer_expr(decl->target.get());
+                                is_constant = decl->constant;
+                                symbol_found = true;
+                                break;
                             }
                         }
-                        
-                        // Obter tipo de retorno
-                        auto return_type = module_checker.gettyptr(def->return_type);
-                        
-                        // Criar tipo de função
-                        symbol_type = std::make_shared<nv::Def>(param_types, return_type);
-                        
-                        // Não generalizar aqui - a função já tem tipos concretos
-                        // A generalização será feita quando necessário durante a inferência
-                        
-                        is_constant = true;  // Funções são constantes
-                        symbol_found = true;
-                        break;
                     }
-                }
-                // Assignments que criam variáveis (serão convertidos em declarações pelo checker)
-                else if (stmt->kind == NodeType::AssignmentExpression) {
-                    auto* assign = static_cast<AssignmentExprNode*>(stmt.get());
-                    if (assign->target && assign->target->kind == NodeType::Identifier) {
-                        auto* id = static_cast<IdentifierNode*>(assign->target.get());
-                        if (id->symbol == item.name) {
-                            // Inferir o tipo do assignment (será convertido em declaração)
-                            symbol_type = module_checker.infer_expr(assign->target.get());
-                            is_constant = false;  // Assignments criam variáveis mutáveis
+                    // Funções (def)
+                    else if (stmt->kind == NodeType::DefStatement) {
+                        auto* def = static_cast<DefStmtNode*>(stmt.get());
+                        if (def->name == item.name) {
+                            // Construir o tipo da função diretamente do DefStmtNode
+                            // Obter tipos dos parâmetros
+                            std::vector<std::shared_ptr<nv::Type>> param_types;
+                            for (const auto& param : def->parameters) {
+                                // ParamNode tem um map parameter onde a chave é o nome e o valor é o tipo
+                                if (!param.parameter.empty()) {
+                                    auto type_it = param.parameter.begin();
+                                    std::string param_type_str = type_it->second;  // O valor é o tipo
+                                    auto param_type = module_checker.gettyptr(param_type_str);
+                                    param_types.push_back(param_type);
+                                }
+                            }
+                            
+                            // Obter tipo de retorno
+                            auto return_type = module_checker.gettyptr(def->return_type);
+                            
+                            // Criar tipo de função
+                            symbol_type = std::make_shared<nv::Def>(param_types, return_type);
+                            
+                            is_constant = true;  // Funções são constantes
                             symbol_found = true;
                             break;
+                        }
+                    }
+                    // Assignments que criam variáveis (serão convertidos em declarações pelo checker)
+                    else if (stmt->kind == NodeType::AssignmentExpression) {
+                        auto* assign = static_cast<AssignmentExprNode*>(stmt.get());
+                        if (assign->target && assign->target->kind == NodeType::Identifier) {
+                            auto* id = static_cast<IdentifierNode*>(assign->target.get());
+                            if (id->symbol == item.name) {
+                                // Inferir o tipo do assignment (será convertido em declaração)
+                                symbol_type = module_checker.infer_expr(assign->target.get());
+                                is_constant = false;  // Assignments criam variáveis mutáveis
+                                symbol_found = true;
+                                break;
+                            }
                         }
                     }
                 }
             }
             
-            if (!symbol_type && !symbol_found) {
-                // Tentar obter do escopo do módulo como fallback
-                try {
-                    auto& scope_type = module_checker.scope->get_key(item.name);
-                    symbol_type = scope_type;
-                    is_constant = (scope_type->kind == nv::Kind::DEF);
-                    symbol_found = true;
-                } catch (std::runtime_error&) {
-                    // Símbolo não encontrado - já reportamos erro acima, apenas continuar
-                    continue;
-                }
-            }
-            
-            if (!symbol_type) {
+            if (!symbol_type || !symbol_found) {
                 // Não conseguimos obter o tipo do símbolo
+                std::ostringstream oss;
+                oss << "Identifier '" << item.name << "' not found in module.";
+                report_import_error(ch, import_stmt, oss.str(), &item);
                 continue;
             }
             
