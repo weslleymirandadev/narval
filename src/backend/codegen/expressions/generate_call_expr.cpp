@@ -82,9 +82,23 @@ void emit_write(IRGenerationContext& ctx, llvm::Value* v, bool newline = true) {
     if (!v) {
         v = llvm::UndefValue::get(ir_utils::get_value_struct(ctx));
     }
-    auto* boxed = box_value(ctx, v);
+    
+    auto* ValueTy = ir_utils::get_value_struct(ctx);
+    auto* ValuePtr = ir_utils::get_value_ptr(ctx);
+    llvm::Value* boxed = nullptr;
+    
+    // Se já é Value struct, apenas criar alloca e passar ponteiro
+    if (v->getType() == ValueTy) {
+        auto* alloca = ctx.get_builder().CreateAlloca(ValueTy, nullptr, "write_val");
+        ctx.get_builder().CreateStore(v, alloca);
+        boxed = alloca;
+    } else {
+        // Caso contrário, embrulhar usando box_value
+        boxed = box_value(ctx, v);
+    }
+    
     const char* name = newline ? "nv_write" : "nv_write_no_nl";
-    auto* fn = ctx.ensure_runtime_func(name, {ir_utils::get_value_ptr(ctx)});
+    auto* fn = ctx.ensure_runtime_func(name, {ValuePtr});
     ctx.get_builder().CreateCall(fn, {boxed});
 }
 
@@ -97,12 +111,33 @@ llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name
         if (args.empty()) {
             auto* empty = B.CreateGlobalStringPtr("");
             emit_write(ctx, empty);
+            // Return an undef Value for empty write
+            return llvm::UndefValue::get(ir_utils::get_value_struct(ctx));
         } else {
+            // Generate code for the argument
             args[0]->codegen(ctx);
-            emit_write(ctx, ctx.pop_value());
+            // Get the value but keep it on the stack conceptually
+            llvm::Value* val = ctx.pop_value();
+            
+            // Emit write with the value (this will box it internally)
+            emit_write(ctx, val);
+            
+            // Return the original value so it can be used as program return value
+            // IMPORTANT: We need to preserve the value by creating a copy in an alloca
+            // This ensures the value survives optimization and is available for program return
+            auto* ValueTy = ir_utils::get_value_struct(ctx);
+            if (val->getType() == ValueTy) {
+                // Create a copy in an alloca to preserve the value
+                auto* preserve_alloca = B.CreateAlloca(ValueTy, nullptr, "write_result");
+                B.CreateStore(val, preserve_alloca);
+                // Load it back to ensure it's preserved
+                return B.CreateLoad(ValueTy, preserve_alloca, "write_preserved");
+            } else {
+                // Box the value to return it as a Value struct
+                llvm::Value* boxed = box_value(ctx, val);
+                return B.CreateLoad(ValueTy, boxed);
+            }
         }
-        // Return an undef Value to signal handled builtin and push a Value-like result
-        return llvm::UndefValue::get(ir_utils::get_value_struct(ctx));
     }
 
     if (name == "read") {
