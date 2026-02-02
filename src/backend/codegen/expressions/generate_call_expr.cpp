@@ -34,7 +34,7 @@ const MethodInfo vector_methods[] = {
 llvm::Value* box_value(IRGenerationContext& ctx, llvm::Value* v) {
     auto& B = ctx.get_builder();
     auto* ValueTy = ir_utils::get_value_struct(ctx);
-    auto* alloca = B.CreateAlloca(ValueTy, nullptr, "boxed");
+    auto* alloca = ctx.create_alloca(ValueTy, "boxed");
 
     // Handle null values gracefully
     if (!v) {
@@ -89,7 +89,7 @@ void emit_write(IRGenerationContext& ctx, llvm::Value* v, bool newline = true) {
     
     // Se já é Value struct, apenas criar alloca e passar ponteiro
     if (v->getType() == ValueTy) {
-        auto* alloca = ctx.get_builder().CreateAlloca(ValueTy, nullptr, "write_val");
+        auto* alloca = ctx.create_alloca(ValueTy, "write_val");
         ctx.get_builder().CreateStore(v, alloca);
         boxed = alloca;
     } else {
@@ -128,7 +128,7 @@ llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name
             auto* ValueTy = ir_utils::get_value_struct(ctx);
             if (val->getType() == ValueTy) {
                 // Create a copy in an alloca to preserve the value
-                auto* preserve_alloca = B.CreateAlloca(ValueTy, nullptr, "write_result");
+                auto* preserve_alloca = ctx.create_alloca(ValueTy, "write_result");
                 B.CreateStore(val, preserve_alloca);
                 // Load it back to ensure it's preserved
                 return B.CreateLoad(ValueTy, preserve_alloca, "write_preserved");
@@ -164,13 +164,13 @@ llvm::Value* lower_method_call(IRGenerationContext& ctx, llvm::Value* selfAlloca
     // String methods (explicit signatures)
     if (method == "toUpperCase") {
         auto* fn = ctx.ensure_runtime_func("string_to_upper_case", {ValuePtr, ValuePtr});
-        auto* out = B.CreateAlloca(ValueTy, nullptr, "out");
+        auto* out = ctx.create_alloca(ValueTy, "out");
         B.CreateCall(fn, {out, selfAlloca});
         return B.CreateLoad(ValueTy, out);
     } else if (method == "replace") {
         if (argv.size() < 2) return nullptr;
         auto* fn = ctx.ensure_runtime_func("string_replace", {ValuePtr, ValuePtr, ValuePtr, ValuePtr});
-        auto* out = B.CreateAlloca(ValueTy, nullptr, "out");
+        auto* out = ctx.create_alloca(ValueTy, "out");
         llvm::Value* a0 = box_value(ctx, argv[0]);
         llvm::Value* a1 = box_value(ctx, argv[1]);
         B.CreateCall(fn, {out, selfAlloca, a0, a1});
@@ -178,7 +178,7 @@ llvm::Value* lower_method_call(IRGenerationContext& ctx, llvm::Value* selfAlloca
     } else if (method == "includes") {
         if (argv.empty()) return nullptr;
         auto* fn = ctx.ensure_runtime_func("string_includes", {ValuePtr, ValuePtr, ValueTy});
-        auto* out = B.CreateAlloca(ValueTy, nullptr, "out");
+        auto* out = ctx.create_alloca(ValueTy, "out");
         llvm::Value* v = B.CreateLoad(ValueTy, box_value(ctx, argv[0]));
         B.CreateCall(fn, {out, selfAlloca, v});
         return B.CreateLoad(ValueTy, out);
@@ -188,19 +188,19 @@ llvm::Value* lower_method_call(IRGenerationContext& ctx, llvm::Value* selfAlloca
     if (method == "push") {
         if (argv.empty()) return nullptr;
         auto* fn = ctx.ensure_runtime_func("vector_push_method", {ValuePtr, ValuePtr, ValuePtr});
-        auto* out = B.CreateAlloca(ValueTy, nullptr, "out");
+        auto* out = ctx.create_alloca(ValueTy, "out");
         llvm::Value* valPtr = box_value(ctx, argv[0]);
         B.CreateCall(fn, {out, selfAlloca, valPtr});
         return B.CreateLoad(ValueTy, out);
     } else if (method == "pop") {
         auto* fn = ctx.ensure_runtime_func("vector_pop_method", {ValuePtr, ValuePtr});
-        auto* out = B.CreateAlloca(ValueTy, nullptr, "out");
+        auto* out = ctx.create_alloca(ValueTy, "out");
         B.CreateCall(fn, {out, selfAlloca});
         return B.CreateLoad(ValueTy, out);
     } else if (method == "get") {
         if (argv.empty()) return nullptr;
         auto* fn = ctx.ensure_runtime_func("vector_get_method", {ValuePtr, ValuePtr, llvm::Type::getInt32Ty(ctx.get_context())});
-        auto* out = B.CreateAlloca(ValueTy, nullptr, "out");
+        auto* out = ctx.create_alloca(ValueTy, "out");
         auto* I32 = llvm::Type::getInt32Ty(ctx.get_context());
         llvm::Value* idx = argv[0]->getType()->isIntegerTy(32) ? argv[0] : B.CreateSExtOrTrunc(argv[0], I32);
         B.CreateCall(fn, {out, selfAlloca, idx});
@@ -277,7 +277,7 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
                         {ValuePtr, I8P},
                         llvm::Type::getVoidTy(ctx.get_context())
                     );
-                    auto* outAlloca = ctx.get_builder().CreateAlloca(ValueTy, nullptr, "json_out");
+                    auto* outAlloca = ctx.create_alloca(ValueTy, "json_out");
                     ctx.get_builder().CreateCall(fn, {outAlloca, filename});
                     llvm::Value* loaded = ctx.get_builder().CreateLoad(ValueTy, outAlloca);
                     ctx.push_value(loaded);
@@ -334,7 +334,7 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
             // Se o argumento é Value struct mas a função espera tipo primitivo, extrair o valor
             if (arg_val && arg_val->getType() == ValueTy && param_types[i] != ValueTy) {
                 // Extrair valor primitivo do Value struct
-                auto* tmp_alloca = B.CreateAlloca(ValueTy, nullptr, "arg_tmp");
+                auto* tmp_alloca = ctx.create_alloca(ValueTy, "arg_tmp");
                 B.CreateStore(arg_val, tmp_alloca);
                 
                 // Garantir tipo correto
@@ -448,7 +448,7 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
         if (!call->getType()->isVoidTy()) {
             if (call->getType() != ValueTy) {
                 // Converter retorno primitivo para Value struct
-                auto* ret_alloca = B.CreateAlloca(ValueTy, nullptr, "ret_val");
+                auto* ret_alloca = ctx.create_alloca(ValueTy, "ret_val");
                 auto* ValuePtr = ir_utils::get_value_ptr(ctx);
                 
                 if (call->getType() == I32) {

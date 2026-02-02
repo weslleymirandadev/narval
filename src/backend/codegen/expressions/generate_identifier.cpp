@@ -162,7 +162,7 @@ void IdentifierNode::codegen(nv::IRGenerationContext& context) {
         
         // Garantir que o tipo está correto usando ensure_value_type
         // Criar alloca temporário para passar para ensure_value_type
-        auto* temp_alloca = B.CreateAlloca(ValueTy, nullptr, symbol + "_ensure");
+        auto* temp_alloca = context.create_alloca(ValueTy, symbol + "_ensure");
         B.CreateStore(loaded_value, temp_alloca);
         
         // Chamar ensure_value_type para garantir que a tag está correta
