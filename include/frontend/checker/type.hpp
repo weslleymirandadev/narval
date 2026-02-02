@@ -18,6 +18,7 @@ namespace nv {
         ARRAY,
         TUPLE,
         VECTOR,
+        MAP,
         TYPE_VAR,
         POLY_TYPE,
         ERROR
@@ -329,6 +330,42 @@ namespace nv {
                 new_elements.push_back(elem->substitute(subst));
             }
             return std::make_shared<Tuple>(new_elements);
+        }
+    };
+
+    struct Map : public Type {
+        std::shared_ptr<Type> key_type;
+        std::shared_ptr<Type> value_type;
+
+        Map(const std::shared_ptr<Type>& key, const std::shared_ptr<Type>& val)
+            : Type(Kind::MAP), key_type(key), value_type(val) { init_prototype(); }
+        void init_prototype();
+        
+        std::string toString() override {
+            return "map<" + key_type->toString() + ", " + value_type->toString() + ">";
+        }
+        
+        bool equals(const Type& other) const override {
+            if (other.kind != Kind::MAP) return false;
+            const Map* m = static_cast<const Map*>(&other);
+            return key_type->equals(*m->key_type) && value_type->equals(*m->value_type);
+        }
+        
+        bool equals(std::shared_ptr<Type>& other) const override {
+            return equals(*other);
+        }
+        
+        std::shared_ptr<Type> get_length() const override {
+            return std::make_shared<Int>();
+        }
+        
+        void collect_free_vars(std::unordered_set<int>& free_vars) const override {
+            key_type->collect_free_vars(free_vars);
+            value_type->collect_free_vars(free_vars);
+        }
+        
+        std::shared_ptr<Type> substitute(const std::unordered_map<int, std::shared_ptr<Type>>& subst) const override {
+            return std::make_shared<Map>(key_type->substitute(subst), value_type->substitute(subst));
         }
     };
 };

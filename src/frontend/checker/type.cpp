@@ -114,4 +114,8 @@ namespace nv {
     void Tuple::init_prototype() {
         prototype = std::make_shared<nv::Namespace>();
     }
+
+    void Map::init_prototype() {
+        prototype = std::make_shared<nv::Namespace>();
+    }
 }

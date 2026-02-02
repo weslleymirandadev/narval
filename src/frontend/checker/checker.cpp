@@ -3,6 +3,12 @@
 #include "frontend/checker/unification.hpp"
 #include "frontend/checker/builtins.hpp"
 #include "frontend/checker/expressions/check_call_expr.hpp"
+#include "frontend/checker/expressions/check_primary_expr.hpp"
+#include "frontend/checker/expressions/check_binary_expr.hpp"
+#include "frontend/checker/expressions/check_assignment_expr.hpp"
+#include "frontend/checker/expressions/check_array_expr.hpp"
+#include "frontend/checker/expressions/check_tuple_expr.hpp"
+#include "frontend/checker/expressions/check_vector_expr.hpp"
 #include "frontend/checker/checker_meth.hpp"
 #include "frontend/ast/ast.hpp"
 #include <memory>
@@ -242,233 +248,36 @@ std::shared_ptr<nv::Type> nv::Checker::infer_expr(Node* node) {
     // O método error() já previne duplicação usando reported_errors
     
     switch (node->kind) {
-        case NodeType::NumericLiteral: {
-            const auto* vl = static_cast<NumericLiteralNode*>(node);
-            if (vl->value.find('.') != std::string::npos) {
-                return gettyptr("float");
-            }
-            return gettyptr("int");
-        }
+        case NodeType::NumericLiteral:
         case NodeType::StringLiteral:
-            return gettyptr("string");
         case NodeType::BooleanLiteral:
-            return gettyptr("bool");
         case NodeType::Identifier: {
-            const auto* id = static_cast<IdentifierNode*>(node);
-            // Verificar se o identificador existe antes de tentar acessá-lo
-            // Usar try-catch apenas para detectar, mas converter para error() imediatamente
-            try {
-                auto& var_type = scope->get_key(id->symbol);
-                // Se for tipo polimórfico, instanciar
-                if (var_type->kind == Kind::POLY_TYPE) {
-                    auto poly = std::static_pointer_cast<PolyType>(var_type);
-                    int next_id = unify_ctx.get_next_var_id();
-                    return poly->instantiate(next_id);
-                }
-                return var_type;
-            } catch (std::runtime_error&) {
-                // Identificador não encontrado - reportar erro formatado (mesmo formato do parser)
-                // Nunca propagar runtime_error, apenas usar error() do checker
-                
-                // Criar chave única baseada em conteúdo para evitar duplicação entre ASTs clonados
-                // Formato: filename:line:col:symbol
-                std::string error_key_str;
-                if (node->position) {
-                    std::ostringstream key_oss;
-                    key_oss << to_absolute_path(current_filename) << ":" 
-                            << node->position->line << ":" 
-                            << node->position->col[0] << ":" 
-                            << id->symbol;
-                    error_key_str = key_oss.str();
-                }
-                
-                // Verificar se o erro já foi reportado globalmente (entre checkers/ASTs diferentes)
-                if (!error_key_str.empty() && 
-                    reported_identifier_errors.find(error_key_str) != reported_identifier_errors.end()) {
-                    err = true;  // Manter flag de erro, mas não reportar novamente
-                    return gettyptr("void");
-                }
-                
-                std::ostringstream oss;
-                oss << "Identifier '" << id->symbol << "' not found.";
-                error(const_cast<Node*>(node), oss.str());
-                
-                // Marcar como reportado globalmente
-                if (!error_key_str.empty()) {
-                    reported_identifier_errors.insert(error_key_str);
-                }
-                
-                return gettyptr("void");
-            }
+            auto& result = check_primary_expr(this, node);
+            return result;
         }
-        case NodeType::BinaryExpression: {
-            const auto* bin = static_cast<BinaryExprNode*>(node);
-            auto left_type = infer_expr(bin->left.get());
-            
-            // Se há erros, parar imediatamente
-            if (err) {
-                return gettyptr("void");
-            }
-            
-            auto right_type = infer_expr(bin->right.get());
-            
-            // Se há erros, parar imediatamente
-            if (err) {
-                return gettyptr("void");
-            }
-            
-            // Resolver tipos antes de unificar
-            left_type = unify_ctx.resolve(left_type);
-            right_type = unify_ctx.resolve(right_type);
-            
-            // Verificar coerção implícita int -> float antes de unificar
-            bool left_is_int = left_type->kind == Kind::INT;
-            bool left_is_float = left_type->kind == Kind::FLOAT;
-            bool right_is_int = right_type->kind == Kind::INT;
-            bool right_is_float = right_type->kind == Kind::FLOAT;
-            
-            // Se um é int e outro é float, promover int para float
-            if (left_is_int && right_is_float) {
-                left_type = gettyptr("float");
-            } else if (left_is_float && right_is_int) {
-                right_type = gettyptr("float");
-            }
-            
-            // Unificar tipos dos operandos
-            try {
-                unify_ctx.unify(left_type, right_type);
-            } catch (std::runtime_error& e) {
-                throw std::runtime_error("Binary expression type error: " + std::string(e.what()));
-            }
-            
-            // Resolver tipos após unificação
-            left_type = unify_ctx.resolve(left_type);
-            
-            // Determinar tipo de retorno baseado no operador
-            if (bin->op == "+" || bin->op == "-" || bin->op == "*" || bin->op == "/" || bin->op == "%") {
-                // Operadores aritméticos retornam o tipo dos operandos (promovido se necessário)
-                // Se havia int e float, o resultado já é float
-                return left_type;
-            } else if (bin->op == "==" || bin->op == "!=" || bin->op == "<" || 
-                       bin->op == ">" || bin->op == "<=" || bin->op == ">=") {
-                // Operadores de comparação retornam bool
-                return gettyptr("bool");
-            } else if (bin->op == "&&" || bin->op == "||") {
-                // Operadores lógicos retornam bool
-                unify_ctx.unify(left_type, gettyptr("bool"));
-                return gettyptr("bool");
-            }
-            
-            return left_type;
-        }
+        
+        case NodeType::BinaryExpression:
+            return check_binary_expr(this, node);
+        
         case NodeType::CallExpression: {
             // Delegar para check_call_expr para evitar duplicação de lógica e erros duplicados
             // check_call_expr já faz toda a verificação necessária e reporta erros corretamente
             auto& result = check_call_expr(this, node);
             return result;
         }
-        case NodeType::ArrayExpression: {
-            const auto* arr = static_cast<ArrayExprNode*>(node);
-            
-            // Array vazio ou com tamanho variável → Vector
-            if (arr->elements.empty()) {
-                return std::make_shared<Vector>();
-            }
-            
-            // Inferir tipo do primeiro elemento
-            auto first_type = infer_expr(arr->elements[0].get());
-            first_type = unify_ctx.resolve(first_type);
-            
-            // Tentar unificar todos os elementos com o primeiro
-            bool all_same_type = true;
-            for (size_t i = 1; i < arr->elements.size(); i++) {
-                auto elem_type = infer_expr(arr->elements[i].get());
-                elem_type = unify_ctx.resolve(elem_type);
-                
-                // Verificar se tipos são compatíveis (mesmo tipo ou coerção int->float)
-                bool types_compatible = false;
-                if (first_type->equals(elem_type)) {
-                    types_compatible = true;
-                } else {
-                    // Verificar coerção int -> float
-                    bool first_is_int = first_type->kind == Kind::INT;
-                    bool first_is_float = first_type->kind == Kind::FLOAT;
-                    bool elem_is_int = elem_type->kind == Kind::INT;
-                    bool elem_is_float = elem_type->kind == Kind::FLOAT;
-                    
-                    if ((first_is_int && elem_is_float) || (first_is_float && elem_is_int)) {
-                        types_compatible = true;
-                        // Promover para float
-                        if (first_is_int) {
-                            first_type = gettyptr("float");
-                        }
-                    }
-                }
-                
-                if (!types_compatible) {
-                    // Tipos incompatíveis → Vector
-                    all_same_type = false;
-                    break;
-                }
-            }
-            
-            // Se todos têm mesmo tipo (ou coerção válida), criar Array com tamanho fixo
-            if (all_same_type) {
-                first_type = unify_ctx.resolve(first_type);
-                // Verificar se não é variável de tipo não resolvida
-                if (first_type->kind != Kind::TYPE_VAR) {
-                    return std::make_shared<Array>(first_type, arr->elements.size());
-                }
-            }
-            
-            // Caso contrário, criar Vector (heterogêneo ou tamanho variável)
-            return std::make_shared<Vector>();
-        }
-        case NodeType::VectorExpression: {
-            // VectorExpression sempre cria Vector (tamanho variável, heterogêneo)
-            const auto* vec = static_cast<VectorExprNode*>(node);
-            return std::make_shared<Vector>();
-        }
-        case NodeType::TupleExpression: {
-            const auto* tup = static_cast<TupleExprNode*>(node);
-            std::vector<std::shared_ptr<Type>> elem_types;
-            for (const auto& elem : tup->elements) {
-                elem_types.push_back(infer_expr(elem.get()));
-            }
-            return std::make_shared<Tuple>(elem_types);
-        }
-        case NodeType::AssignmentExpression: {
-            const auto* assign = static_cast<AssignmentExprNode*>(node);
-            auto left_type = infer_expr(assign->target.get());
-            auto right_type = infer_expr(assign->value.get());
-            
-            // Resolver tipos antes de unificar
-            left_type = unify_ctx.resolve(left_type);
-            right_type = unify_ctx.resolve(right_type);
-            
-            // Verificar coerção implícita int -> float
-            bool left_is_int = left_type->kind == Kind::INT;
-            bool left_is_float = left_type->kind == Kind::FLOAT;
-            bool right_is_int = right_type->kind == Kind::INT;
-            bool right_is_float = right_type->kind == Kind::FLOAT;
-            
-            // Se um é int e outro é float, promover int para float
-            if (left_is_int && right_is_float) {
-                left_type = gettyptr("float");
-            } else if (left_is_float && right_is_int) {
-                right_type = gettyptr("float");
-            }
-            
-            try {
-                unify_ctx.unify(left_type, right_type);
-            } catch (std::runtime_error& e) {
-                throw std::runtime_error("Assignment type error: " + std::string(e.what()));
-            }
-            
-            // Resolver tipo após unificação
-            right_type = unify_ctx.resolve(right_type);
-            return right_type;
-        }
+        
+        case NodeType::ArrayExpression:
+            return check_array_expr(this, node);
+        
+        case NodeType::VectorExpression:
+            return check_vector_expr(this, node);
+        
+        case NodeType::TupleExpression:
+            return check_tuple_expr(this, node);
+        
+        case NodeType::AssignmentExpression:
+            return check_assignment_expr(this, node);
+        
         default:
             // Para outros tipos, usar verificação tradicional
             return check_node(node);

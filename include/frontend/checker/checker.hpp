@@ -25,6 +25,8 @@ namespace nv {
             std::string current_filename;  // Nome do arquivo fonte atual (para erros e resolução de imports)
             // Usar ponteiro do nó como chave para evitar duplicação - o ponteiro é único e não muda
             std::unordered_set<const void*> reported_errors;  // Nós que já tiveram erros reportados (usando ponteiro como chave)
+            // Rastrear tipo de retorno da função atual (para verificação de return statements)
+            std::shared_ptr<Type> current_return_type = nullptr;
             Checker();
             nv::Type& getty(std::string ty);
             std::shared_ptr<nv::Type>& gettyptr(std::string ty);
