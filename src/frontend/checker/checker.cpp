@@ -2,6 +2,8 @@
 #include "frontend/checker/type.hpp"
 #include "frontend/checker/unification.hpp"
 #include "frontend/checker/builtins.hpp"
+#include "frontend/checker/expressions/check_call_expr.hpp"
+#include "frontend/checker/checker_meth.hpp"
 #include "frontend/ast/ast.hpp"
 #include <memory>
 #include <unordered_set>
@@ -10,13 +12,53 @@
 #include <cmath>
 #include <iostream>
 #include <algorithm>
+#include <filesystem>
+#include <sstream>
 
 constexpr size_t MAX_LINE_LENGTH = 1024;
 constexpr const char* ANSI_BOLD = "\x1b[1m";
 constexpr const char* ANSI_RESET = "\x1b[0m";
 constexpr const char* ANSI_RED = "\x1b[31m";
 
+// Conjunto estático para rastrear erros de identificador já reportados (evitar duplicação entre checkers/ASTs clonados)
+// Usa chave composta: filename:line:col:symbol
+static std::unordered_set<std::string> reported_identifier_errors;
+
+namespace {
+    // Converte um caminho relativo em absoluto
+    std::string to_absolute_path(const std::string& path) {
+        if (path.empty()) {
+            return path;
+        }
+        
+        try {
+            std::filesystem::path file_path(path);
+            
+            // Se já é absoluto, tentar normalizar
+            if (file_path.is_absolute()) {
+                try {
+                    return std::filesystem::canonical(file_path).string();
+                } catch (const std::filesystem::filesystem_error&) {
+                    return std::filesystem::absolute(file_path).string();
+                }
+            }
+            
+            // Se é relativo, converter para absoluto
+            try {
+                return std::filesystem::canonical(std::filesystem::absolute(file_path)).string();
+            } catch (const std::filesystem::filesystem_error&) {
+                return std::filesystem::absolute(file_path).string();
+            }
+        } catch (const std::exception&) {
+            // Se falhar, retornar o caminho original
+            return path;
+        }
+    }
+}
+
 nv::Checker::Checker() {
+    err = false;  // Inicializar flag de erro
+    reported_errors.clear();  // Inicializar conjunto de erros reportados
     auto globalnamespace = std::make_shared<Namespace>();
     namespaces.push_back(globalnamespace);
     scope = globalnamespace;
@@ -75,7 +117,8 @@ std::shared_ptr<nv::Type>& nv::Checker::gettyptr(std::string ty){
     
     // Tipo não encontrado
     // Não temos Node aqui, então usar erro genérico
-    std::cerr << ANSI_BOLD << current_filename << ": "
+    std::string abs_filename = to_absolute_path(current_filename);
+    std::cerr << ANSI_BOLD << abs_filename << ": "
               << ANSI_RED << "ERROR" << ANSI_RESET << ANSI_BOLD << ": "
               << "Unknown type: " << ty << ANSI_RESET << "\n\n";
     err = true;
@@ -128,7 +171,7 @@ void nv::Checker::read_lines(const std::string& filename) {
 }
 
 void nv::Checker::print_error_context(const PositionData* pos) {
-    if (!pos || lines.empty() || pos->line == 0 || pos->line > line_count) {
+    if (!pos || lines.empty() || pos->line == 0 || pos->line - 1 >= line_count) {
         return;
     }
 
@@ -142,7 +185,7 @@ void nv::Checker::print_error_context(const PositionData* pos) {
     std::cerr << std::string(pos->col[0] - 1 + 3, ' ');
 
     std::cerr << ANSI_RED;
-    for (size_t i = pos->col[0]; i < pos->col[1] && i <= line_content.length(); ++i) {
+    for (size_t i = pos->col[0]; i < pos->col[1]; ++i) {
         std::cerr << "^";
     }
     std::cerr << ANSI_RESET << "\n\n";
@@ -154,22 +197,39 @@ void nv::Checker::set_source_file(const std::string& filename) {
 }
 
 void nv::Checker::error(Node* node, const std::string& message) {
+    // Evitar reportar o mesmo erro duas vezes usando o ponteiro do nó
+    // O ponteiro do nó é único e não muda, então é a forma mais confiável de identificar o mesmo erro
+    if (node && reported_errors.find(reinterpret_cast<const void*>(node)) != reported_errors.end()) {
+        err = true;  // Manter flag de erro, mas não reportar novamente
+        return;
+    }
+    
+    std::string abs_filename = to_absolute_path(current_filename);
+    
+    // Marcar este nó como tendo tido erro reportado ANTES de reportar
+    // para evitar que seja reportado novamente em chamadas recursivas
+    if (node) {
+        reported_errors.insert(reinterpret_cast<const void*>(node));
+    }
+    
     if (!node || !node->position) {
-        std::cerr << ANSI_BOLD << current_filename << ": "
+        std::cerr << ANSI_BOLD << abs_filename << ": "
                   << ANSI_RED << "ERROR" << ANSI_RESET << ANSI_BOLD << ": "
                   << message << ANSI_RESET << "\n\n";
         err = true;
+        std::cerr.flush();
         return;
     }
     
     PositionData* pos = node->position.get();
     std::cerr << ANSI_BOLD
-              << current_filename << ":" << pos->line << ":" << pos->col[0] << ": "
+              << abs_filename << ":" << pos->line << ":" << pos->col[0] << ": "
               << ANSI_RED << "ERROR" << ANSI_RESET << ANSI_BOLD << ": "
               << message << ANSI_RESET << "\n";
 
     print_error_context(pos);
     err = true;
+    std::cerr.flush();  // Garantir que a mensagem foi exibida antes de continuar
 }
 
 std::shared_ptr<nv::Type> nv::Checker::infer_type(Node* node) {
@@ -177,6 +237,10 @@ std::shared_ptr<nv::Type> nv::Checker::infer_type(Node* node) {
 }
 
 std::shared_ptr<nv::Type> nv::Checker::infer_expr(Node* node) {
+    // Não parar mesmo se houver erros anteriores - continuar verificando
+    // para reportar todos os erros possíveis
+    // O método error() já previne duplicação usando reported_errors
+    
     switch (node->kind) {
         case NodeType::NumericLiteral: {
             const auto* vl = static_cast<NumericLiteralNode*>(node);
@@ -191,19 +255,67 @@ std::shared_ptr<nv::Type> nv::Checker::infer_expr(Node* node) {
             return gettyptr("bool");
         case NodeType::Identifier: {
             const auto* id = static_cast<IdentifierNode*>(node);
-            auto& var_type = scope->get_key(id->symbol);
-            // Se for tipo polimórfico, instanciar
-            if (var_type->kind == Kind::POLY_TYPE) {
-                auto poly = std::static_pointer_cast<PolyType>(var_type);
-                int next_id = unify_ctx.get_next_var_id();
-                return poly->instantiate(next_id);
+            // Verificar se o identificador existe antes de tentar acessá-lo
+            // Usar try-catch apenas para detectar, mas converter para error() imediatamente
+            try {
+                auto& var_type = scope->get_key(id->symbol);
+                // Se for tipo polimórfico, instanciar
+                if (var_type->kind == Kind::POLY_TYPE) {
+                    auto poly = std::static_pointer_cast<PolyType>(var_type);
+                    int next_id = unify_ctx.get_next_var_id();
+                    return poly->instantiate(next_id);
+                }
+                return var_type;
+            } catch (std::runtime_error&) {
+                // Identificador não encontrado - reportar erro formatado (mesmo formato do parser)
+                // Nunca propagar runtime_error, apenas usar error() do checker
+                
+                // Criar chave única baseada em conteúdo para evitar duplicação entre ASTs clonados
+                // Formato: filename:line:col:symbol
+                std::string error_key_str;
+                if (node->position) {
+                    std::ostringstream key_oss;
+                    key_oss << to_absolute_path(current_filename) << ":" 
+                            << node->position->line << ":" 
+                            << node->position->col[0] << ":" 
+                            << id->symbol;
+                    error_key_str = key_oss.str();
+                }
+                
+                // Verificar se o erro já foi reportado globalmente (entre checkers/ASTs diferentes)
+                if (!error_key_str.empty() && 
+                    reported_identifier_errors.find(error_key_str) != reported_identifier_errors.end()) {
+                    err = true;  // Manter flag de erro, mas não reportar novamente
+                    return gettyptr("void");
+                }
+                
+                std::ostringstream oss;
+                oss << "Identifier '" << id->symbol << "' not found.";
+                error(const_cast<Node*>(node), oss.str());
+                
+                // Marcar como reportado globalmente
+                if (!error_key_str.empty()) {
+                    reported_identifier_errors.insert(error_key_str);
+                }
+                
+                return gettyptr("void");
             }
-            return var_type;
         }
         case NodeType::BinaryExpression: {
             const auto* bin = static_cast<BinaryExprNode*>(node);
             auto left_type = infer_expr(bin->left.get());
+            
+            // Se há erros, parar imediatamente
+            if (err) {
+                return gettyptr("void");
+            }
+            
             auto right_type = infer_expr(bin->right.get());
+            
+            // Se há erros, parar imediatamente
+            if (err) {
+                return gettyptr("void");
+            }
             
             // Resolver tipos antes de unificar
             left_type = unify_ctx.resolve(left_type);
@@ -250,76 +362,10 @@ std::shared_ptr<nv::Type> nv::Checker::infer_expr(Node* node) {
             return left_type;
         }
         case NodeType::CallExpression: {
-            const auto* call = static_cast<CallExprNode*>(node);
-            auto func_type = infer_expr(call->caller.get());
-            func_type = unify_ctx.resolve(func_type);
-            
-            // Se não for função, criar tipo de função com variáveis de tipo
-            if (func_type->kind != Kind::DEF) {
-                // Tentar unificar com tipo de função
-                auto ret_type = unify_ctx.new_type_var();
-                std::vector<std::shared_ptr<Type>> param_types;
-                for (const auto& arg : call->args) {
-                    param_types.push_back(infer_expr(arg.get()));
-                }
-                auto expected_func = std::make_shared<Def>(param_types, ret_type);
-                try {
-                    unify_ctx.unify(func_type, expected_func);
-                } catch (std::runtime_error& e) {
-                    throw std::runtime_error("Call expression type error: " + std::string(e.what()));
-                }
-                func_type = unify_ctx.resolve(func_type);
-                if (func_type->kind == Kind::DEF) {
-                    auto def = std::static_pointer_cast<Def>(func_type);
-                    return def->returntype;
-                }
-            } else {
-                auto def = std::static_pointer_cast<Def>(func_type);
-                
-                // Verificar se é uma função builtin com argumentos opcionais
-                bool is_builtin_varargs = false;
-                std::string func_name;
-                if (call->caller->kind == NodeType::Identifier) {
-                    auto* id = static_cast<IdentifierNode*>(call->caller.get());
-                    func_name = id->symbol;
-                    // Verificar se é builtin com varargs
-                    auto it = std::find_if(BUILTIN_FUNCTIONS.begin(), BUILTIN_FUNCTIONS.end(),
-                        [&func_name](const BuiltinFunction& b) { return b.name == func_name; });
-                    if (it != BUILTIN_FUNCTIONS.end() && it->accepts_varargs) {
-                        is_builtin_varargs = true;
-                        if (!builtin_accepts_args(*it, call->args.size())) {
-                            throw std::runtime_error("Function '" + func_name + "' argument count mismatch: " +
-                                                    std::to_string(it->min_args) + " to " + 
-                                                    (it->max_args == 0 ? "unlimited" : std::to_string(it->max_args)) +
-                                                    " expected, got " + std::to_string(call->args.size()));
-                        }
-                    }
-                }
-                
-                // Verificar número de argumentos
-                if (!is_builtin_varargs && call->args.size() != def->paramstype.size()) {
-                    throw std::runtime_error("Function call argument count mismatch: expected " + 
-                                            std::to_string(def->paramstype.size()) + 
-                                            ", got " + std::to_string(call->args.size()));
-                }
-                
-                // Unificar tipos dos argumentos com tipos dos parâmetros
-                // Para funções com varargs, unificar apenas os argumentos fornecidos
-                if (call->args.size() > 0) {
-                    size_t max_args = std::min(call->args.size(), def->paramstype.size());
-                    for (size_t i = 0; i < max_args; i++) {
-                        auto arg_type = infer_expr(call->args[i].get());
-                        try {
-                            unify_ctx.unify(arg_type, def->paramstype[i]);
-                        } catch (std::runtime_error& e) {
-                            throw std::runtime_error("Function call argument type error: " + std::string(e.what()));
-                        }
-                    }
-                }
-                return def->returntype;
-            }
-            
-            return unify_ctx.new_type_var();
+            // Delegar para check_call_expr para evitar duplicação de lógica e erros duplicados
+            // check_call_expr já faz toda a verificação necessária e reporta erros corretamente
+            auto& result = check_call_expr(this, node);
+            return result;
         }
         case NodeType::ArrayExpression: {
             const auto* arr = static_cast<ArrayExprNode*>(node);
