@@ -133,12 +133,46 @@ void AssignmentExprNode::codegen(nv::IRGenerationContext& ctx) {
     if (info_opt.has_value()) {
         auto info = info_opt.value();
         auto& B = ctx.get_builder();
+        auto* ValueTy = nv::ir_utils::get_value_struct(ctx);
+        auto* ValuePtr = nv::ir_utils::get_value_ptr(ctx);
+        auto& C = ctx.get_context();
+        auto* I32 = llvm::Type::getInt32Ty(C);
+        auto* F64 = llvm::Type::getDoubleTy(C);
 
-        // Atribuição simples: mantém comportamento existente
+        // Atribuição simples: se a variável é ValueTy, embrulhar o valor primitivo
         if (is_simple_assign) {
-            rhs = nv::ir_utils::promote_type(ctx, rhs, info.llvm_type);
-            B.CreateStore(rhs, info.value);
-            ctx.push_value(rhs);
+            // Se a variável é do tipo Value, embrulhar o valor primitivo antes de armazenar
+            if (info.llvm_type == ValueTy && rhs->getType() != ValueTy) {
+                auto* tmp_alloca = B.CreateAlloca(ValueTy, nullptr, id->symbol + "_assign");
+                
+                // Embrulhar valor primitivo em Value struct
+                if (rhs->getType()->isIntegerTy(1)) {
+                    auto* f = ctx.ensure_runtime_func("create_bool", {ValuePtr, I32});
+                    B.CreateCall(f, {tmp_alloca, B.CreateZExt(rhs, I32)});
+                } else if (rhs->getType()->isIntegerTy()) {
+                    auto* f = ctx.ensure_runtime_func("create_int", {ValuePtr, I32});
+                    llvm::Value* iv = rhs->getType()->isIntegerTy(32) ? rhs : B.CreateSExtOrTrunc(rhs, I32);
+                    B.CreateCall(f, {tmp_alloca, iv});
+                } else if (rhs->getType()->isFloatingPointTy()) {
+                    auto* f = ctx.ensure_runtime_func("create_float", {ValuePtr, F64});
+                    llvm::Value* fp = rhs->getType() == F64 ? rhs : B.CreateFPExt(rhs, F64);
+                    B.CreateCall(f, {tmp_alloca, fp});
+                } else if (rhs->getType() == nv::ir_utils::get_i8_ptr(ctx)) {
+                    auto* f = ctx.ensure_runtime_func("create_str", {ValuePtr, nv::ir_utils::get_i8_ptr(ctx)});
+                    B.CreateCall(f, {tmp_alloca, rhs});
+                } else {
+                    B.CreateStore(llvm::UndefValue::get(ValueTy), tmp_alloca);
+                }
+                
+                auto* boxed = B.CreateLoad(ValueTy, tmp_alloca);
+                B.CreateStore(boxed, info.value);
+                ctx.push_value(boxed);
+            } else {
+                // Comportamento original para tipos não-Value
+                rhs = nv::ir_utils::promote_type(ctx, rhs, info.llvm_type);
+                B.CreateStore(rhs, info.value);
+                ctx.push_value(rhs);
+            }
             return;
         }
 
@@ -155,16 +189,99 @@ void AssignmentExprNode::codegen(nv::IRGenerationContext& ctx) {
         return;
     }
 
-    // fallback: criar variável com tipo apropriado
+    // fallback: verificar se já existe uma variável global ou criar nova
+    bool is_global = (ctx.get_current_function() == nullptr);
     auto* ValueTy = nv::ir_utils::get_value_struct(ctx);
     llvm::Type* chosenTy = nullptr;
-    if (rhs->getType() == ValueTy) {
+    llvm::Value* storage = nullptr;
+    
+    if (is_global) {
+        // Variável global: sempre usar Value struct
         chosenTy = ValueTy;
+        
+        auto& M = ctx.get_module();
+        auto& B = ctx.get_builder();
+        auto& C = ctx.get_context();
+        auto* ValuePtr = nv::ir_utils::get_value_ptr(ctx);
+        auto* I32 = llvm::Type::getInt32Ty(C);
+        auto* F64 = llvm::Type::getDoubleTy(C);
+        
+        // Verificar se já existe um GlobalVariable com esse nome (pode ter sido criado por import)
+        llvm::GlobalVariable* global = M.getGlobalVariable(id->symbol);
+        
+        if (!global) {
+            // Criar variável global inicializada como zero
+            global = new llvm::GlobalVariable(
+                M, ValueTy, false,
+                llvm::GlobalValue::InternalLinkage,  // linkage interno (módulos combinados)
+                llvm::Constant::getNullValue(ValueTy),  // inicializar como zero
+                id->symbol
+            );
+        }
+        
+        // Inicializar diretamente no GlobalVariable usando um ponteiro para ele
+        // Criar um ponteiro para o GlobalVariable (Value*)
+        auto* global_ptr = B.CreateBitCast(global, ValuePtr);
+        
+        // Embrulhar valor primitivo em Value struct diretamente no GlobalVariable
+        if (rhs->getType() == ValueTy) {
+            // Já é Value, apenas copiar diretamente
+            B.CreateStore(rhs, global);
+            rhs = B.CreateLoad(ValueTy, global);  // Para retornar o valor
+        } else if (rhs->getType()->isIntegerTy(1)) {
+            auto* f = ctx.ensure_runtime_func("create_bool", {ValuePtr, I32});
+            B.CreateCall(f, {global_ptr, B.CreateZExt(rhs, I32)});
+            rhs = B.CreateLoad(ValueTy, global);  // Para retornar o valor embrulhado
+        } else if (rhs->getType()->isIntegerTy()) {
+            auto* f = ctx.ensure_runtime_func("create_int", {ValuePtr, I32});
+            llvm::Value* iv = rhs->getType()->isIntegerTy(32) ? rhs : B.CreateSExtOrTrunc(rhs, I32);
+            B.CreateCall(f, {global_ptr, iv});
+            rhs = B.CreateLoad(ValueTy, global);  // Para retornar o valor embrulhado
+        } else if (rhs->getType()->isFloatingPointTy()) {
+            auto* f = ctx.ensure_runtime_func("create_float", {ValuePtr, F64});
+            llvm::Value* fp = rhs->getType() == F64 ? rhs : B.CreateFPExt(rhs, F64);
+            B.CreateCall(f, {global_ptr, fp});
+            rhs = B.CreateLoad(ValueTy, global);  // Para retornar o valor embrulhado
+        } else if (rhs->getType() == nv::ir_utils::get_i8_ptr(ctx)) {
+            auto* f = ctx.ensure_runtime_func("create_str", {ValuePtr, nv::ir_utils::get_i8_ptr(ctx)});
+            B.CreateCall(f, {global_ptr, rhs});
+            rhs = B.CreateLoad(ValueTy, global);  // Para retornar o valor embrulhado
+        } else {
+            B.CreateStore(llvm::UndefValue::get(ValueTy), global);
+            rhs = B.CreateLoad(ValueTy, global);  // Para retornar o valor
+        }
+        
+        storage = global;
+        
+        // Garantir que o GlobalVariable está registrado na tabela de símbolos
+        // (pode ter sido criado por import mas não registrado ainda, ou vice-versa)
+        auto existing_info = ctx.get_symbol_table().lookup_symbol(id->symbol);
+        if (!existing_info.has_value() || existing_info.value().value != global) {
+            // Registrar na tabela de símbolos se não estiver ou se for diferente
+            nv::SymbolInfo info(
+                global,
+                chosenTy,
+                nullptr,
+                false,  // não é alocação local
+                false   // não é constante
+            );
+            ctx.get_symbol_table().define_symbol(id->symbol, info);
+        }
     } else {
-        chosenTy = llvm::Type::getInt32Ty(ctx.get_context());
-        rhs = nv::ir_utils::promote_type(ctx, rhs, chosenTy);
+        // Variável local: comportamento original
+        if (rhs->getType() == ValueTy) {
+            chosenTy = ValueTy;
+        } else {
+            chosenTy = llvm::Type::getInt32Ty(ctx.get_context());
+            rhs = nv::ir_utils::promote_type(ctx, rhs, chosenTy);
+        }
+        storage = ctx.create_and_register_variable(id->symbol, chosenTy, nullptr, false);
+        ctx.get_builder().CreateStore(rhs, storage);
+        
+        // Para variáveis locais, o registro já foi feito por create_and_register_variable
     }
-    auto* alloca = ctx.create_and_register_variable(id->symbol, chosenTy, nullptr, false);
-    ctx.get_builder().CreateStore(rhs, alloca);
+    
+    // Para variáveis globais, o registro já foi feito acima quando verificamos se já existia
+    // Para variáveis locais, o registro já foi feito por create_and_register_variable
     ctx.push_value(rhs);
 }
