@@ -17,7 +17,7 @@
 std::string ModuleManager::read_file(const std::string& file_path) {
     std::ifstream file(file_path);
     if (!file.is_open()) {
-        throw std::runtime_error("Erro ao abrir o arquivo: " + file_path);
+        throw std::runtime_error("Failed to open file: " + file_path);
     }
     std::string source((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     file.close();
@@ -52,7 +52,7 @@ void ModuleManager::load_module(const std::string& module_name, const std::strin
 
 void ModuleManager::resolve_dependencies(const std::string& module_name, const std::string& file_path, int config) {
     if (visited.find(module_name) != visited.end()) {
-        throw std::runtime_error("Erro: Ciclo de importação detectado com o módulo " + module_name);
+        throw std::runtime_error("Error: Import cycle detected with module " + module_name);
     }
 
     visited.insert(module_name);
@@ -64,7 +64,7 @@ void ModuleManager::resolve_dependencies(const std::string& module_name, const s
         std::string clean_dep = std::regex_replace(import_info.module_path, std::regex("\""), "");
         std::string dep_path = (std::filesystem::path(module.directory) / (clean_dep)).string();
         if (!std::ifstream(dep_path).good()) {
-            throw std::runtime_error("Módulo " + import_info.module_path + " não encontrado");
+            throw std::runtime_error("Module " + import_info.module_path + " not found");
         }
         resolve_dependencies(clean_dep, dep_path, config);
     }
@@ -83,7 +83,7 @@ void ModuleManager::resolve_dependencies(const std::string& module_name, const s
             std::string clean_dep = std::regex_replace(dep, std::regex("\""), "");
             std::string dep_path = (std::filesystem::path(module.directory) / (clean_dep)).string();
             if (!std::ifstream(dep_path).good()) {
-                throw std::runtime_error("Módulo " + dep + " não encontrado");
+                throw std::runtime_error("Module " + dep + " not found");
             }
             resolve_dependencies(clean_dep, dep_path, config);
         }
