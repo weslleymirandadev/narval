@@ -4,6 +4,7 @@
 #include "frontend/checker/checker.hpp"
 #include "frontend/checker/checker_meth.hpp"
 #include "frontend/ast/statements/declaration_stmt_node.hpp"
+#include "frontend/ast/statements/def_stmt_node.hpp"
 #include "frontend/ast/expressions/assignment_expr_node.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
 #include <fstream>
@@ -125,9 +126,10 @@ std::unique_ptr<Node> ModuleManager::get_combined_ast(const std::string& main_mo
             }
             
             // Adicionar identificadores importados ao conjunto
+            // IMPORTANTE: Usar o nome original (name), não o alias
+            // Porque a declaração no módulo exportado usa o nome original
             for (const auto& [name, alias] : import_info.imports) {
-                std::string symbol_name = alias.empty() ? name : alias;
-                imported_symbols[dep_name].insert(symbol_name);
+                imported_symbols[dep_name].insert(name);  // Sempre usar nome original
             }
         }
     }
@@ -198,6 +200,12 @@ std::unique_ptr<Node> ModuleManager::get_combined_ast(const std::string& main_mo
                         if (imported_from_this.find(id->symbol) != imported_from_this.end()) {
                             combined_program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
                         }
+                    }
+                } else if (stmt->kind == NodeType::DefStatement) {
+                    // Incluir funções (defs) que foram importadas
+                    auto* def = static_cast<DefStmtNode*>(stmt.get());
+                    if (imported_from_this.find(def->name) != imported_from_this.end()) {
+                        combined_program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
                     }
                 }
                 // Não incluir outros tipos de statements (CallExpression, IfStatement, etc.)
