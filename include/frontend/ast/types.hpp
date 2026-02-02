@@ -17,7 +17,7 @@ enum class NodeType {
     BinaryExpression,
     AssignmentExpression,
     DeclarationStatement,
-    LabelStatement,
+    DefStatement,
     Parameter,
     IfStatement,
     LogicalNotExpression,

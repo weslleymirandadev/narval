@@ -47,7 +47,7 @@ namespace nv {
                 auto param_type = checker.unify_ctx.new_type_var();
                 std::vector<std::shared_ptr<Type>> param_types = {param_type};
                 
-                func_type = std::make_shared<Label>(param_types, builtin.return_type);
+                func_type = std::make_shared<Def>(param_types, builtin.return_type);
                 
                 // Generalizar tipo (criar tipo polimórfico)
                 // Coletar variáveis livres (apenas a variável do parâmetro)
@@ -56,7 +56,7 @@ namespace nv {
                 func_type = checker.unify_ctx.generalize(func_type, free_vars);
             } else {
                 // Tipo não polimórfico - usar tipos especificados
-                func_type = std::make_shared<Label>(builtin.param_types, builtin.return_type);
+                func_type = std::make_shared<Def>(builtin.param_types, builtin.return_type);
             }
             
             // Registrar no escopo global como constante

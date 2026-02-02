@@ -81,15 +81,15 @@ std::shared_ptr<Type> IRGenerationContext::resolve_type(std::shared_ptr<Type> nv
             }
             return nv_type;
         }
-        case Kind::LABEL: {
-            auto label_type = std::static_pointer_cast<Label>(nv_type);
-            if (label_type) {
+        case Kind::DEF: {
+            auto def_type = std::static_pointer_cast<Def>(nv_type);
+            if (def_type) {
                 std::vector<std::shared_ptr<Type>> resolved_params;
-                for (const auto& param : label_type->paramstype) {
+                for (const auto& param : def_type->paramstype) {
                     resolved_params.push_back(resolve_type(param));
                 }
-                auto resolved_ret = resolve_type(label_type->returntype);
-                return std::make_shared<Label>(resolved_params, resolved_ret);
+                auto resolved_ret = resolve_type(def_type->returntype);
+                return std::make_shared<Def>(resolved_params, resolved_ret);
             }
             return nv_type;
         }
@@ -156,14 +156,14 @@ llvm::Type* IRGenerationContext::nv_type_to_llvm(std::shared_ptr<Type> nv_type) 
             return llvm::Type::getVoidTy(llvm_context); // fallback
         }
         
-        case Kind::LABEL: {
-            auto label_type = std::static_pointer_cast<Label>(nv_type);
-            if (label_type) {
+        case Kind::DEF: {
+            auto def_type = std::static_pointer_cast<Def>(nv_type);
+            if (def_type) {
                 std::vector<llvm::Type*> param_types;
-                for (const auto& param : label_type->paramstype) {
+                for (const auto& param : def_type->paramstype) {
                     param_types.push_back(nv_type_to_llvm(param));
                 }
-                auto ret_type = nv_type_to_llvm(label_type->returntype);
+                auto ret_type = nv_type_to_llvm(def_type->returntype);
                 return llvm::FunctionType::get(ret_type, param_types, false)->getPointerTo();
             }
             return llvm::Type::getVoidTy(llvm_context); // fallback

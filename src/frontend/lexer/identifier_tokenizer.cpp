@@ -24,7 +24,7 @@ Token tokenize_identifier_or_keyword(const std::string& input, size_t& pos, size
     else if (value == "break") type = TokenType::BREAK;
     else if (value == "continue") type = TokenType::CONTINUE;
     else if (value == "lock") type = TokenType::LOCK;
-    else if (value == "label") type = TokenType::LABEL;
+    else if (value == "def") type = TokenType::DEF;
     else if (value == "return") type = TokenType::RETURN;
     else if (value == "true") type = TokenType::TRUE;
     else if (value == "false") type = TokenType::FALSE;

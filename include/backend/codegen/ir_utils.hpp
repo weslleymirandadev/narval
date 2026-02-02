@@ -61,7 +61,7 @@ llvm::BasicBlock* create_and_set_block(IRGenerationContext& context, const std::
 llvm::Function* create_function(
     IRGenerationContext& context,
     const std::string& name,
-    std::shared_ptr<Label>& label_type
+    std::shared_ptr<Def>& def_type
 );
 llvm::Function* create_function(
     IRGenerationContext& context,

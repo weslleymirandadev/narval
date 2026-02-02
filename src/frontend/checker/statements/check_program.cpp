@@ -7,7 +7,7 @@
 #include "frontend/ast/statements/for_stmt_node.hpp"
 #include "frontend/ast/statements/while_stmt_node.hpp"
 #include "frontend/ast/statements/loop_stmt_node.hpp"
-#include "frontend/ast/statements/label_stmt_node.hpp"
+#include "frontend/ast/statements/def_stmt_node.hpp"
 #include "frontend/ast/statements/match_stmt_node.hpp"
 #include <stdexcept>
 
@@ -108,9 +108,9 @@ namespace {
                     process_codeblock(loop_stmt->body, checker);
                     break;
                 }
-                case NodeType::LabelStatement: {
-                    auto* label_stmt = static_cast<LabelStmtNode*>(stmt.get());
-                    process_codeblock(label_stmt->body, checker);
+                case NodeType::DefStatement: {
+                    auto* def_stmt = static_cast<DefStmtNode*>(stmt.get());
+                    process_codeblock(def_stmt->body, checker);
                     break;
                 }
                 case NodeType::MatchStatement: {
