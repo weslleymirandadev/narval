@@ -1,6 +1,8 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <cstdlib>
+#include <unistd.h>
 #include "frontend/lexer/lexer.hpp"
 #include "frontend/parser/parser.hpp"
 #include "frontend/module_manager.hpp"
@@ -16,6 +18,12 @@
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Support/CodeGen.h>
 #include <llvm/IR/DIBuilder.h>
+#include <regex>
+
+constexpr const char* ANSI_BOLD = "\x1b[1m";
+constexpr const char* ANSI_RESET = "\x1b[0m";
+constexpr const char* ANSI_RED = "\x1b[31m";
+constexpr const char* ANSI_WHITE = "\x1b[37m";
 
 extern "C" const char* nv_base_dir = nullptr; // visible to C runtime
 static std::string nv_base_dir_storage;
@@ -34,9 +42,14 @@ int main(int argc, char* argv[]) {
 
         // Criar checker para inferência de tipos
         nv::Checker checker;
+        checker.set_source_file(filename);  // Definir filename para erros corretos
         // Verificar tipos antes da geração de código
         if (ast) {
             checker.check_node(ast.get());
+            // Se houver erros no checker, abortar antes da geração de código
+            if (checker.err) {
+                return 1;
+            }
         }
 
         // Inicializar target ANTES de criar o módulo para configurar DataLayout corretamente
@@ -48,7 +61,7 @@ int main(int argc, char* argv[]) {
         std::string error;
         const llvm::Target* target = llvm::TargetRegistry::lookupTarget(target_triple, error);
         if (!target) {
-            std::cerr << "Erro de target: " << error << "\n";
+            std::cerr << "Target error: " << error << "\n";
             return 1;
         }
 
@@ -64,6 +77,7 @@ int main(int argc, char* argv[]) {
         
         llvm::IRBuilder<llvm::NoFolder> Builder(Context);
         nv::IRGenerationContext context(Context, Mod, Builder, &checker);
+        context.set_source_file(filename);  // Definir filename para erros corretos
         
         // Manter target_machine para uso posterior na emissão de código objeto
 
@@ -197,7 +211,20 @@ int main(int argc, char* argv[]) {
 
         std::cout << "Compilação concluída: ./narval_program\n";
     } catch (const std::exception& e) {
-        std::cerr << "Erro: " << e.what() << "\n";
+        std::string error_msg = e.what();
+        
+        // Verificar se é uma mensagem de módulo não encontrado
+        std::regex module_not_found_regex(R"(Module\s+([^\s]+)\s+not found)");
+        std::smatch match;
+        
+        if (std::regex_search(error_msg, match, module_not_found_regex)) {
+            // Formatar: ERROR em vermelho negrito, :, "Module ", nome do módulo em negrito branco, " not found."
+            std::cerr << ANSI_BOLD << ANSI_RED << "ERROR" << ANSI_RESET << ANSI_BOLD << ": " << ANSI_RESET
+                      << "Module " << ANSI_BOLD << ANSI_WHITE << match[1].str() << ANSI_RESET << " not found." << "\n";
+        } else {
+            // Para outras mensagens, usar formatação padrão
+            std::cerr << "Error: " << error_msg << "\n";
+        }
         return 1;
     }
 
