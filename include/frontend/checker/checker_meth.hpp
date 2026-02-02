@@ -3,4 +3,5 @@
 #include "frontend/checker/statements/check_program.hpp"
 #include "frontend/checker/statements/check_decl_stmt.hpp"
 #include "frontend/checker/statements/check_match_stmt.hpp"
+#include "frontend/checker/statements/check_import_stmt.hpp"
 #include "frontend/checker/checker.hpp"

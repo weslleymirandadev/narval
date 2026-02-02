@@ -1,4 +1,6 @@
 #include "frontend/checker/checker_meth.hpp"
+#include "frontend/checker/statements/check_import_stmt.hpp"
+#include "frontend/checker/expressions/check_call_expr.hpp"
 #include <memory>
 
 std::shared_ptr<nv::Type>& nv::Checker::check_node(Node* node) {
@@ -16,9 +18,9 @@ std::shared_ptr<nv::Type>& nv::Checker::check_node(Node* node) {
         case NodeType::MatchStatement:
           return check_match_stmt(this, node);
         case NodeType::ImportStatement:
-          // Import statements são resolvidos pelo module_manager antes do checking
-          // Não há verificação adicional necessária aqui
-          return gettyptr("void");
+          return check_import_stmt(this, node);
+        case NodeType::CallExpression:
+          return check_call_expr(this, node);
         case NodeType::BreakStatement:
         case NodeType::ContinueStatement:
           // break e continue não têm tipo, apenas controle de fluxo
