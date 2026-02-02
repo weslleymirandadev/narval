@@ -1,5 +1,6 @@
 #include "backend/runtime/nv_runtime.h"
 #include <stdio.h>
+#include <stdlib.h>
 
 void create_tuple(Value* out, int field_count) {
     Tuple* t = (Tuple*)malloc(sizeof(Tuple));
@@ -18,6 +19,8 @@ void create_tuple(Value* out, int field_count) {
     out->type = TAG_TUPLE;
     out->value = (int64_t)(intptr_t)t;
     out->prototype = NULL;
+    out->type_info = NULL;
+    out->flags = 0;
 }
 
 Value tuple_get_impl(Value* self, int index) {

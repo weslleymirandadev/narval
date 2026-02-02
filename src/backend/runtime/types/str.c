@@ -1,8 +1,16 @@
 #include "backend/runtime/nv_runtime.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
 
 extern void* string_prototype;
 
 void create_str(Value* out, const char* s) {
+    if (!out) {
+        fputs("FATAL: create_str called with NULL pointer\n", stderr);
+        return;
+    }
     if (!s) s = "";
     size_t len = strlen(s);
     char* data = (char*)malloc(len + 1);
@@ -14,6 +22,8 @@ void create_str(Value* out, const char* s) {
     out->type = TAG_STR;
     out->value = (int64_t)(intptr_t)data;
     out->prototype = string_prototype;
+    out->type_info = NULL;
+    out->flags = 0;
 }
 
 void string_to_upper_case(Value* out, Value* self) {

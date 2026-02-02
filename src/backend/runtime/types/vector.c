@@ -1,4 +1,6 @@
 #include "backend/runtime/nv_runtime.h"
+#include <stdio.h>
+#include <stdlib.h>
 
 extern void* vector_prototype;
 
@@ -20,6 +22,8 @@ void create_vector(Value* out, int capacity) {
     out->type = TAG_VECTOR;
     out->value = (int64_t)(intptr_t)vec;
     out->prototype = vector_prototype;
+    out->type_info = NULL;
+    out->flags = 0;
 }
 
 void vector_push_method(Value* out, Value* self, const Value* value) {

@@ -1,4 +1,7 @@
 #include "backend/runtime/nv_runtime.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 extern void* map_prototype;
 
@@ -21,6 +24,8 @@ void create_map(Value* out) {
     out->type = TAG_MAP;
     out->value = (int64_t)(intptr_t)m;
     out->prototype = map_prototype;
+    out->type_info = NULL;
+    out->flags = 0;
 }
 
 void map_get_method(Value* out, Value* self, const char* key) {
