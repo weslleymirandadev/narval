@@ -4,6 +4,7 @@
 #include <memory>
 #include "frontend/ast/ast.hpp"
 #include "frontend/lexer/token.hpp"
+#include "frontend/lexer/lexer.hpp"
 
 class Parser {
     private:
@@ -13,6 +14,7 @@ class Parser {
         std::vector<std::string> lines;
         size_t line_count = 0;
         size_t index = 0;
+        std::vector<ImportInfo> import_infos;
 
         void read_lines(const std::string& filename);
         void print_error_context(const Token& token);
@@ -29,5 +31,5 @@ class Parser {
         Token consume_token();
         Token next_token() const;
         Token expect(TokenType expectedType, const std::string& errorMsg);
-        std::unique_ptr<Node> produce_ast(const std::vector<Token>& tokens);
+        std::unique_ptr<Node> produce_ast(const std::vector<Token>& tokens, const std::vector<ImportInfo>& imports = {});
 };

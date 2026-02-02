@@ -1,5 +1,6 @@
 #include "frontend/parser/parser.hpp"
 #include "frontend/parser/statements/parse_stmt.hpp"
+#include "frontend/ast/statements/import_stmt_node.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -112,13 +113,15 @@ Token Parser::expect(TokenType expected_type, const std::string& error_msg) {
     return prev;
 }
 
-std::unique_ptr<Node> Parser::produce_ast(const std::vector<Token>& tokens) {
+std::unique_ptr<Node> Parser::produce_ast(const std::vector<Token>& tokens, const std::vector<ImportInfo>& imports) {
     this->tokens = tokens;
+    this->import_infos = imports;
     token_count = tokens.size();
     index = 0;
     has_errors = false;
     lines.clear();
     line_count = 0;
+    size_t import_index = 0;
 
     if (!tokens.empty()) {
         try {
@@ -133,7 +136,23 @@ std::unique_ptr<Node> Parser::produce_ast(const std::vector<Token>& tokens) {
     while (not_eof()) {
         Token current = current_token();
         if (current.type == TokenType::IMPORT) {
-            consume_token(); // Ignora import (gerenciado pelo ModuleManager)
+            // Cria nó ImportStatement usando as informações do lexer
+            if (import_index < import_infos.size()) {
+                const auto& import_info = import_infos[import_index];
+                std::vector<ImportItem> items;
+                for (const auto& [name, alias] : import_info.imports) {
+                    items.emplace_back(name, alias);
+                }
+                
+                auto import_stmt = std::make_unique<ImportStmtNode>(import_info.module_path, items);
+                import_stmt->position = std::make_unique<PositionData>(
+                    current.line, current.column_start, current.column_end,
+                    current.position_start, current.position_end
+                );
+                program->add_statement(std::move(import_stmt));
+                import_index++;
+            }
+            consume_token();
             continue;
         }
         try {

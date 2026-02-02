@@ -19,12 +19,13 @@ class ModuleManager {
             std::string directory;
             std::vector<Token> tokens;
             std::vector<std::string> dependencies;
+            std::vector<ImportInfo> import_infos;
             std::unique_ptr<Node> ast;
         };
         
         ModuleManager() = default;
         void compile_module(const std::string& module_name, const std::string& file_path, int config);
-        std::unique_ptr<Node> get_combined_ast();
+        std::unique_ptr<Node> get_combined_ast(const std::string& main_module_name = "");
         const std::map<std::string, Module>& get_modules() const;
 
     private:
