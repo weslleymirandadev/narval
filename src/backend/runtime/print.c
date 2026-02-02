@@ -39,12 +39,17 @@ static void print_indent(int depth) {
 
 static void nv_print_value_recursive(Value v, int depth);
 
-/* Normalize type tag based on prototype, to guard against ABI/tag corruption */
+/* Normalize type tag based on prototype and type_info, with better type tracking */
 static inline Value normalize_value(Value v) {
+    // Garantir tipo correto usando ensure_value_type
+    ensure_value_type(&v);
+    
+    // Normalizar baseado em prototype se necessário
     if (v.prototype == string_prototype && v.type != TAG_STR) v.type = TAG_STR;
     if (v.prototype == array_prototype  && v.type != TAG_ARRAY) v.type = TAG_ARRAY;
     if (v.prototype == vector_prototype && v.type != TAG_VECTOR) v.type = TAG_VECTOR;
     if (v.prototype == map_prototype    && v.type != TAG_MAP) v.type = TAG_MAP;
+    
     return v;
 }
 
@@ -161,10 +166,64 @@ static void print_tuple(Tuple* t, int depth) {
     fputs(")", stdout);
 }
 
-/* --- Função principal recursiva --- */
+/* --- Imprime tipo customizado struct-like --- */
+static void print_custom_struct(const Value* v, int depth) {
+    TypeInfo* info = get_value_type_info(v);
+    if (!info || !info->field_names || info->field_count == 0) {
+        fputs("<custom>", stdout);
+        return;
+    }
+    
+    Value* fields = (Value*)(intptr_t)v->value;
+    if (!fields) {
+        fputs("null", stdout);
+        return;
+    }
+    
+    uintptr_t ptr = (uintptr_t)fields;
+    if (is_visited(ptr)) {
+        fprintf(stdout, "<%s[cycle]>", info->type_name);
+        return;
+    }
+    mark_visited(ptr);
+    
+    fprintf(stdout, "%s{", info->type_name);
+    int first = 1;
+    for (int i = 0; i < info->field_count; ++i) {
+        if (!first) fputs(", ", stdout);
+        first = 0;
+        
+        if (info->field_names[i]) {
+            fputs(info->field_names[i], stdout);
+            fputs(": ", stdout);
+        } else {
+            char buf[32];
+            snprintf(buf, sizeof(buf), "field%d", i);
+            fputs(buf, stdout);
+            fputs(": ", stdout);
+        }
+        
+        if (depth < 3) {
+            nv_print_value_recursive(fields[i], depth + 1);
+        } else {
+            fputs("...", stdout);
+        }
+    }
+    fputs("}", stdout);
+}
+
+/* --- Função principal recursiva com melhor rastreio de tipos --- */
 static void nv_print_value_recursive(Value v, int depth) {
+    // Normalizar e garantir tipo correto
     v = normalize_value(v);
-    switch (v.type) {
+    
+    // Garantir que o tipo está correto antes de imprimir
+    ensure_value_type(&v);
+    
+    // Obter tipo validado
+    int32_t type = get_value_type(&v);
+    
+    switch (type) {
         case TAG_INT: {
             char buf[32];
             snprintf(buf, sizeof(buf), "%ld", v.value);
@@ -233,11 +292,29 @@ static void nv_print_value_recursive(Value v, int depth) {
             break;
         }
 
-        case TAG_ANY:
-            fputs("<any>", stdout);
-            break;
-
+        case TAG_CUSTOM:
         default: {
+            // Tipos customizados: usar printer customizado se disponível
+            if (type >= TAG_CUSTOM) {
+                TypeInfo* info = get_value_type_info(&v);
+                if (info) {
+                    // Se tem printer customizado, usar
+                    if (info->printer) {
+                        info->printer(&v);
+                        break;
+                    }
+                    // Se é struct-like, imprimir como struct
+                    if (info->field_names && info->field_count > 0) {
+                        print_custom_struct(&v, depth);
+                        break;
+                    }
+                }
+                // Fallback: imprimir nome do tipo
+                const char* type_name = get_type_name(type);
+                fprintf(stdout, "<%s>", type_name);
+                break;
+            }
+            
             /* Last-chance: try prototype-based guess */
             if (v.prototype == string_prototype) {
                 char* s = (char*)(intptr_t)v.value;
@@ -265,7 +342,9 @@ static void nv_print_value_recursive(Value v, int depth) {
             } else if (v.prototype == map_prototype) {
                 print_map((Map*)(intptr_t)v.value, depth);
             } else {
-                fputs("<unknown>", stdout);
+                // Tipo desconhecido - mostrar informações de debug
+                const char* type_name = get_type_name(type);
+                fprintf(stdout, "<unknown:%s>", type_name);
             }
             break;
         }
@@ -280,6 +359,8 @@ __attribute__((force_align_arg_pointer))
 void nv_write(Value* v) {
     visited_count = 0;  // reset a cada chamada
     if (v) {
+        // Garantir tipo correto antes de imprimir
+        ensure_value_type(v);
         nv_print_value_recursive(*v, 0);
     } else {
         fputs("null", stdout);
@@ -292,6 +373,8 @@ __attribute__((force_align_arg_pointer))
 void nv_write_no_nl(Value* v) {
     visited_count = 0;  // reset a cada chamada
     if (v) {
+        // Garantir tipo correto antes de imprimir
+        ensure_value_type(v);
         nv_print_value_recursive(*v, 0);
     } else {
         fputs("null", stdout);

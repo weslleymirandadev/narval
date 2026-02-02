@@ -1,8 +1,14 @@
 #include "backend/runtime/nv_runtime.h"
+#include <string.h>
 
 void create_any(Value* out, Value v) {
+    if (!out) return;
     *out = v;
     out->type = TAG_ANY;
+    // Preservar type_info se existir
+    if (v.type_info) {
+        out->type_info = v.type_info;
+    }
 }
 
 int any_has(Value* self, const char* key) {

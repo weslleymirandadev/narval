@@ -1,4 +1,6 @@
 #include "backend/runtime/nv_runtime.h"
+#include <stdio.h>
+#include <stdlib.h>
 
 extern void* array_prototype;
 
@@ -20,6 +22,8 @@ void create_array(Value* out, int size) {
     out->type = TAG_ARRAY;
     out->value = (int64_t)(intptr_t)arr;
     out->prototype = array_prototype;
+    out->type_info = NULL;
+    out->flags = 0;
 }
 
 static Value value_clone(Value v) {
