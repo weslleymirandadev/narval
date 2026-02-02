@@ -38,6 +38,7 @@
 #include "statements/loop_stmt_node.hpp"
 #include "statements/while_stmt_node.hpp"
 #include "statements/match_stmt_node.hpp"
+#include "statements/import_stmt_node.hpp"
 
 // Program
 #include "program.hpp"

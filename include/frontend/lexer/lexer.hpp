@@ -7,6 +7,13 @@
 #include <unordered_map>
 #include "frontend/lexer/token.hpp"
 
+struct ImportInfo {
+    std::string module_path;
+    std::vector<std::pair<std::string, std::string>> imports; // (name, alias) - alias vazio se não houver
+    
+    ImportInfo(const std::string& path) : module_path(path) {}
+};
+
 class Lexer {
     private:
         std::string input;
@@ -16,7 +23,8 @@ class Lexer {
         size_t line;
         size_t column;
         size_t position;
-        std::vector<std::string> imported_modules;
+        std::vector<std::string> imported_modules; // Mantido para compatibilidade temporária
+        std::vector<ImportInfo> import_infos;      // Nova estrutura para importações detalhadas
         std::string module_name;
         
     public:
@@ -28,5 +36,6 @@ class Lexer {
         bool is_operator_start(char c);
         std::vector<Token> tokenize();
         const std::vector<std::string>& get_imported_modules() const;
+        const std::vector<ImportInfo>& get_import_infos() const;
         const std::string& get_module_name() const;
 };
