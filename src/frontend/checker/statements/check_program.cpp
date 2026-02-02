@@ -130,16 +130,21 @@ namespace {
 std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
     auto* program = static_cast<Program*>(node);
 
-    // Primeira passagem: converter AssignmentExpression não declarados em declarações
+    // Primeira passagem: processar imports ANTES de tudo para registrar símbolos no escopo
+    for (auto& el : program->body) {
+        if (el->kind == NodeType::ImportStatement) {
+            ch->check_node(el.get());
+        }
+    }
+
+    // Segunda passagem: converter AssignmentExpression não declarados em declarações
     // Processa recursivamente todos os blocos de código (incluindo aninhados)
     process_codeblock(program->body, ch);
 
-    // Segunda passagem: processar todos os statements (incluindo os convertidos)
+    // Terceira passagem: processar todos os statements restantes (incluindo os convertidos)
     for (auto& el : program->body) {
-        try {
+        if (el->kind != NodeType::ImportStatement) {
             ch->check_node(el.get());
-        } catch (std::runtime_error e) {
-            std::cerr << "Error: " << e.what() << std::endl;
         }
     }
 

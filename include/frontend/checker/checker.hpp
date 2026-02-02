@@ -12,7 +12,6 @@ namespace nv {
         private:
             std::vector<std::string> lines;
             size_t line_count = 0;
-            std::string current_filename;
             
             void read_lines(const std::string& filename);
             void print_error_context(const PositionData* pos);
@@ -23,6 +22,9 @@ namespace nv {
             std::unordered_map<std::string, std::shared_ptr<Type>> types;
             UnificationContext unify_ctx;
             bool err;
+            std::string current_filename;  // Nome do arquivo fonte atual (para erros e resolução de imports)
+            // Usar ponteiro do nó como chave para evitar duplicação - o ponteiro é único e não muda
+            std::unordered_set<const void*> reported_errors;  // Nós que já tiveram erros reportados (usando ponteiro como chave)
             Checker();
             nv::Type& getty(std::string ty);
             std::shared_ptr<nv::Type>& gettyptr(std::string ty);
