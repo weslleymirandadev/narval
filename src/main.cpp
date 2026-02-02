@@ -6,6 +6,7 @@
 #include "frontend/module_manager.hpp"
 #include "frontend/checker/checker.hpp"
 #include "backend/codegen/generate_ir.hpp"
+#include "backend/codegen/ir_utils.hpp"
 #include <filesystem>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/FileSystem.h>
@@ -41,7 +42,7 @@ int main(int argc, char* argv[]) {
     ModuleManager module_manager;
     try {
         module_manager.compile_module(module_name, filename, true);
-        auto ast = module_manager.get_combined_ast();
+        auto ast = module_manager.get_combined_ast(module_name);
 
         // Criar checker para inferência de tipos
         nv::Checker checker;
@@ -109,6 +110,33 @@ int main(int argc, char* argv[]) {
         context.set_current_function(main_start);
 
         nv::generate_ir(std::move(ast), context);
+        
+        // IMPORTANTE: Finalizar inicializações de globais DEPOIS de gerar o código principal
+        // Isso garante que todas as declarações foram processadas
+        context.finalize_global_inits(65535);
+        
+        // Chamar explicitamente a função de inicialização no início de main.start
+        // Isso garante que os globais sejam inicializados mesmo se @llvm.global_ctors não funcionar
+        // (devido ao uso de -nostartfiles e -Wl,-e,main.start)
+        auto* init_func_name = "nv.global.init.65535";
+        auto* init_func = Mod.getFunction(init_func_name);
+        if (init_func) {
+            // Salvar o ponto de inserção atual
+            auto* saved_insert_point = context.get_builder().GetInsertBlock();
+            auto saved_insert_iter = context.get_builder().GetInsertPoint();
+            
+            // Inserir a chamada no início do entry block (antes de qualquer outra instrução)
+            auto* entry_block = &main_start->getEntryBlock();
+            context.get_builder().SetInsertPoint(entry_block, entry_block->begin());
+            context.get_builder().CreateCall(init_func);
+            
+            // Restaurar o ponto de inserção original
+            if (saved_insert_point && saved_insert_iter != saved_insert_point->end()) {
+                context.get_builder().SetInsertPoint(saved_insert_iter);
+            } else if (saved_insert_point) {
+                context.get_builder().SetInsertPoint(&saved_insert_point->back());
+            }
+        }
 
         llvm::Value* return_value = nullptr;
         if (context.has_value()) {
@@ -119,7 +147,28 @@ int main(int argc, char* argv[]) {
         }
 
         if (return_value->getType() != i32_ty) {
-            if (return_value->getType()->isIntegerTy()) {
+            auto* ValueTy = nv::ir_utils::get_value_struct(context);
+            auto* ValuePtr = nv::ir_utils::get_value_ptr(context);
+            // Check if it's a Value struct - extract the integer value from it
+            if (return_value->getType() == ValueTy) {
+                // Ensure the value type is correct before extracting
+                auto* tmp_alloca = context.get_builder().CreateAlloca(ValueTy, nullptr, "return_val_tmp");
+                context.get_builder().CreateStore(return_value, tmp_alloca);
+                
+                // Call ensure_value_type to guarantee the tag is correct
+                auto* ensure_func = context.ensure_runtime_func("ensure_value_type", {ValuePtr});
+                context.get_builder().CreateCall(ensure_func, {tmp_alloca});
+                
+                // Extract integer value from Value struct (field 1 contains the value as i64)
+                // The type tag (field 0) should be TAG_INT after ensure_value_type
+                auto* valuePtr = context.get_builder().CreateStructGEP(ValueTy, tmp_alloca, 1);
+                auto* i64_ty = llvm::Type::getInt64Ty(Context);
+                auto* value64 = context.get_builder().CreateLoad(i64_ty, valuePtr, "value64");
+                
+                // Convert to i32 (truncate from i64)
+                // Note: For TAG_INT, the value is stored directly in the i64 field
+                return_value = context.get_builder().CreateTrunc(value64, i32_ty, "int_val");
+            } else if (return_value->getType()->isIntegerTy()) {
                 return_value = context.get_builder().CreateIntCast(return_value, i32_ty, true);
             } else if (return_value->getType()->isFloatingPointTy()) {
                 return_value = context.get_builder().CreateFPToSI(return_value, i32_ty);

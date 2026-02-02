@@ -30,7 +30,7 @@ int main(int argc, char* argv[]) {
     ModuleManager module_manager;
     try {
         module_manager.compile_module(module_name, filename, true);
-        auto ast = module_manager.get_combined_ast();
+        auto ast = module_manager.get_combined_ast("main");
 
         // Criar checker para inferência de tipos
         nv::Checker checker;

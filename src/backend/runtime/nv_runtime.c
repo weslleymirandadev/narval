@@ -10,3 +10,9 @@ void* string_prototype = (void*)&string_vtable_instance;
 void* array_prototype  = (void*)&array_vtable_instance;
 void* vector_prototype = (void*)&vector_vtable;
 void* map_prototype    = (void*)&map_vtable;
+
+// Inicialização do runtime (chamada automaticamente se necessário)
+__attribute__((constructor))
+static void init_runtime(void) {
+    init_type_registry();
+}
