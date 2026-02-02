@@ -206,6 +206,9 @@ std::vector<Token> Lexer::tokenize()
                     
                     std::string import_name = ident_token.lexeme;
                     std::string alias;
+                    size_t item_line = ident_token.line;
+                    size_t item_col_start = ident_token.column_start;
+                    size_t item_col_end = ident_token.column_end;
                     
                     skip_whitespace();
                     
@@ -227,9 +230,14 @@ std::vector<Token> Lexer::tokenize()
                         }
                         
                         alias = alias_token.lexeme;
+                        // Usar posição do alias se houver
+                        item_line = alias_token.line;
+                        item_col_start = alias_token.column_start;
+                        item_col_end = alias_token.column_end;
                     }
                     
                     import_info.imports.push_back({import_name, alias});
+                    import_info.import_items.emplace_back(import_name, alias, item_line, item_col_start, item_col_end);
                     
                     skip_whitespace();
                     

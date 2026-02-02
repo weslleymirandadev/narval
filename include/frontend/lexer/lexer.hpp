@@ -7,9 +7,21 @@
 #include <unordered_map>
 #include "frontend/lexer/token.hpp"
 
+struct ImportItemInfo {
+    std::string name;
+    std::string alias;
+    size_t line;
+    size_t col_start;
+    size_t col_end;
+    
+    ImportItemInfo(const std::string& n, const std::string& a, size_t l, size_t cs, size_t ce)
+        : name(n), alias(a), line(l), col_start(cs), col_end(ce) {}
+};
+
 struct ImportInfo {
     std::string module_path;
-    std::vector<std::pair<std::string, std::string>> imports; // (name, alias) - alias vazio se não houver
+    std::vector<std::pair<std::string, std::string>> imports; // (name, alias) - alias vazio se não houver (mantido para compatibilidade)
+    std::vector<ImportItemInfo> import_items; // Nova estrutura com posições
     
     ImportInfo(const std::string& path) : module_path(path) {}
 };

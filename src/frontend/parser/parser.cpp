@@ -6,11 +6,44 @@
 #include <sstream>
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 
 constexpr size_t MAX_LINE_LENGTH = 1024;
 constexpr const char* ANSI_BOLD = "\x1b[1m";
 constexpr const char* ANSI_RESET = "\x1b[0m";
 constexpr const char* ANSI_RED = "\x1b[31m";
+
+namespace {
+    // Converte um caminho relativo em absoluto
+    std::string to_absolute_path(const std::string& path) {
+        if (path.empty()) {
+            return path;
+        }
+        
+        try {
+            std::filesystem::path file_path(path);
+            
+            // Se já é absoluto, tentar normalizar
+            if (file_path.is_absolute()) {
+                try {
+                    return std::filesystem::canonical(file_path).string();
+                } catch (const std::filesystem::filesystem_error&) {
+                    return std::filesystem::absolute(file_path).string();
+                }
+            }
+            
+            // Se é relativo, converter para absoluto
+            try {
+                return std::filesystem::canonical(std::filesystem::absolute(file_path)).string();
+            } catch (const std::filesystem::filesystem_error&) {
+                return std::filesystem::absolute(file_path).string();
+            }
+        } catch (const std::exception&) {
+            // Se falhar, retornar o caminho original
+            return path;
+        }
+    }
+}
 
 void Parser::read_lines(const std::string& filename) {
     std::ifstream file(filename);
@@ -55,8 +88,9 @@ bool Parser::has_error() const {
 
 void Parser::error(const std::string& message) {
     Token token = current_token();
+    std::string abs_filename = to_absolute_path(token.filename);
     std::cerr << ANSI_BOLD
-              << token.filename << ":" << token.line << ":" << token.column_start << ": "
+              << abs_filename << ":" << token.line << ":" << token.column_start << ": "
               << ANSI_RED << "ERROR" << ANSI_RESET << ANSI_BOLD << ": "
               << message << ANSI_RESET << "\n";
 
@@ -140,14 +174,35 @@ std::unique_ptr<Node> Parser::produce_ast(const std::vector<Token>& tokens, cons
             if (import_index < import_infos.size()) {
                 const auto& import_info = import_infos[import_index];
                 std::vector<ImportItem> items;
-                for (const auto& [name, alias] : import_info.imports) {
-                    items.emplace_back(name, alias);
+                // Usar import_items se disponível (com posições), senão usar imports (compatibilidade)
+                if (!import_info.import_items.empty()) {
+                    for (const auto& item_info : import_info.import_items) {
+                        items.emplace_back(item_info.name, item_info.alias, item_info.line, item_info.col_start, item_info.col_end);
+                    }
+                } else {
+                    for (const auto& [name, alias] : import_info.imports) {
+                        items.emplace_back(name, alias);
+                    }
                 }
                 
-                auto import_stmt = std::make_unique<ImportStmtNode>(import_info.module_path, items);
+                // Procurar o token STRING correspondente ao module_path
+                // O token STRING vem antes do token IMPORT na lista de tokens
+                Token string_token = current;
+                // Procurar para trás pelo token STRING que corresponde ao module_path
+                for (int i = static_cast<int>(index) - 1; i >= 0; --i) {
+                    if (tokens[i].type == TokenType::STRING && 
+                        tokens[i].lexeme == import_info.module_path &&
+                        tokens[i].filename == current.filename) {
+                        string_token = tokens[i];
+                        break;
+                    }
+                }
+                
+                auto import_stmt = std::make_unique<ImportStmtNode>(import_info.module_path, items, current.filename);
+                // Usar a posição do token STRING (que contém o caminho do módulo)
                 import_stmt->position = std::make_unique<PositionData>(
-                    current.line, current.column_start, current.column_end,
-                    current.position_start, current.position_end
+                    string_token.line, string_token.column_start, string_token.column_end,
+                    string_token.position_start, string_token.position_end
                 );
                 program->add_statement(std::move(import_stmt));
                 import_index++;
