@@ -2,6 +2,81 @@
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
 #include <llvm/Support/raw_ostream.h>
+#include <filesystem>
+#include <fstream>
+#include <algorithm>
+#include <cmath>
+#include <sstream>
+#include <vector>
+
+constexpr const char* ANSI_BOLD = "\x1b[1m";
+constexpr const char* ANSI_RESET = "\x1b[0m";
+constexpr const char* ANSI_RED = "\x1b[31m";
+
+namespace {
+    // Converte um caminho relativo em absoluto (mesma lógica do checker)
+    std::string to_absolute_path(const std::string& path) {
+        if (path.empty()) return path;
+        try {
+            std::filesystem::path file_path(path);
+            if (file_path.is_absolute()) {
+                try { return std::filesystem::canonical(file_path).string(); }
+                catch (const std::filesystem::filesystem_error&) { return std::filesystem::absolute(file_path).string(); }
+            }
+            try { return std::filesystem::canonical(std::filesystem::absolute(file_path)).string(); }
+            catch (const std::filesystem::filesystem_error&) { return std::filesystem::absolute(file_path).string(); }
+        } catch (const std::exception&) {
+            return path;
+        }
+    }
+    
+    // Reporta erro no mesmo formato do checker/parser
+    void report_error(const std::string& filename, const PositionData* pos, const std::string& message) {
+        std::string abs_filename = to_absolute_path(filename);
+        
+        if (!pos || pos->line == 0) {
+            std::cerr << ANSI_BOLD << abs_filename << ": "
+                      << ANSI_RED << "ERROR" << ANSI_RESET << ANSI_BOLD << ": "
+                      << message << ANSI_RESET << "\n\n";
+            return;
+        }
+        
+        // Ler linhas do arquivo para contexto
+        std::vector<std::string> lines;
+        std::ifstream file(abs_filename);
+        if (file.is_open()) {
+            std::string line;
+            while (std::getline(file, line)) {
+                lines.push_back(line);
+            }
+            file.close();
+        }
+        
+        std::cerr << ANSI_BOLD << abs_filename << ":" << pos->line << ":" << pos->col[0] << ": "
+                  << ANSI_RED << "ERROR" << ANSI_RESET << ANSI_BOLD << ": "
+                  << message << ANSI_RESET << "\n";
+        
+        // Mostrar contexto (mesmo formato do checker)
+        if (pos->line > 0 && pos->line - 1 < lines.size()) {
+            std::string line_content = lines[pos->line - 1];
+            std::replace(line_content.begin(), line_content.end(), '\n', ' ');
+            std::cerr << " " << pos->line << " |   " << line_content << "\n";
+            
+            int line_width = pos->line > 0 ? static_cast<int>(std::log10(pos->line) + 1) : 1;
+            std::cerr << std::string(line_width, ' ') << "  |";
+            std::cerr << std::string(pos->col[0] - 1 + 3, ' ');
+            
+            std::cerr << ANSI_RED;
+            for (size_t i = pos->col[0]; i < pos->col[1]; ++i) {
+                std::cerr << "^";
+            }
+            std::cerr << ANSI_RESET << "\n\n";
+        } else {
+            std::cerr << "\n";
+        }
+        return;
+    }
+}
 
 void IdentifierNode::codegen(nv::IRGenerationContext& context) {
     context.set_debug_location(position.get());
@@ -14,8 +89,8 @@ void IdentifierNode::codegen(nv::IRGenerationContext& context) {
             context.push_value(nullJson);
             return;
         }
-        // Erro: variável não declarada
-        llvm::errs() << "Erro: identificador '" << symbol << "' não encontrado.\n";
+        // Error: variable not declared - este erro já deve ter sido reportado pelo checker
+        // Apenas retornar nullptr para evitar crash
         context.push_value(nullptr);
         return;
     }
@@ -55,8 +130,8 @@ void IdentifierNode::codegen(nv::IRGenerationContext& context) {
             context.get_symbol_table().define_symbol(symbol, updated_info);
             actual_value = function;
         } else {
-            // Variável/função ainda não foi criada, erro
-            llvm::errs() << "Erro: identificador '" << symbol << "' não encontrado (importado mas não declarado).\n";
+            // Variable/function not yet created - este erro já deve ter sido reportado pelo checker
+            // Apenas retornar nullptr para evitar crash e duplicação de erros
             context.push_value(nullptr);
             return;
         }
