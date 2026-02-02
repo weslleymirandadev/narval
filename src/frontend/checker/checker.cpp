@@ -255,26 +255,26 @@ std::shared_ptr<nv::Type> nv::Checker::infer_expr(Node* node) {
             func_type = unify_ctx.resolve(func_type);
             
             // Se não for função, criar tipo de função com variáveis de tipo
-            if (func_type->kind != Kind::LABEL) {
+            if (func_type->kind != Kind::DEF) {
                 // Tentar unificar com tipo de função
                 auto ret_type = unify_ctx.new_type_var();
                 std::vector<std::shared_ptr<Type>> param_types;
                 for (const auto& arg : call->args) {
                     param_types.push_back(infer_expr(arg.get()));
                 }
-                auto expected_func = std::make_shared<Label>(param_types, ret_type);
+                auto expected_func = std::make_shared<Def>(param_types, ret_type);
                 try {
                     unify_ctx.unify(func_type, expected_func);
                 } catch (std::runtime_error& e) {
                     throw std::runtime_error("Call expression type error: " + std::string(e.what()));
                 }
                 func_type = unify_ctx.resolve(func_type);
-                if (func_type->kind == Kind::LABEL) {
-                    auto label = std::static_pointer_cast<Label>(func_type);
-                    return label->returntype;
+                if (func_type->kind == Kind::DEF) {
+                    auto def = std::static_pointer_cast<Def>(func_type);
+                    return def->returntype;
                 }
             } else {
-                auto label = std::static_pointer_cast<Label>(func_type);
+                auto def = std::static_pointer_cast<Def>(func_type);
                 
                 // Verificar se é uma função builtin com argumentos opcionais
                 bool is_builtin_varargs = false;
@@ -297,26 +297,26 @@ std::shared_ptr<nv::Type> nv::Checker::infer_expr(Node* node) {
                 }
                 
                 // Verificar número de argumentos
-                if (!is_builtin_varargs && call->args.size() != label->paramstype.size()) {
+                if (!is_builtin_varargs && call->args.size() != def->paramstype.size()) {
                     throw std::runtime_error("Function call argument count mismatch: expected " + 
-                                            std::to_string(label->paramstype.size()) + 
+                                            std::to_string(def->paramstype.size()) + 
                                             ", got " + std::to_string(call->args.size()));
                 }
                 
                 // Unificar tipos dos argumentos com tipos dos parâmetros
                 // Para funções com varargs, unificar apenas os argumentos fornecidos
                 if (call->args.size() > 0) {
-                    size_t max_args = std::min(call->args.size(), label->paramstype.size());
+                    size_t max_args = std::min(call->args.size(), def->paramstype.size());
                     for (size_t i = 0; i < max_args; i++) {
                         auto arg_type = infer_expr(call->args[i].get());
                         try {
-                            unify_ctx.unify(arg_type, label->paramstype[i]);
+                            unify_ctx.unify(arg_type, def->paramstype[i]);
                         } catch (std::runtime_error& e) {
                             throw std::runtime_error("Function call argument type error: " + std::string(e.what()));
                         }
                     }
                 }
-                return label->returntype;
+                return def->returntype;
             }
             
             return unify_ctx.new_type_var();

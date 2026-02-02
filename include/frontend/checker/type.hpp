@@ -14,7 +14,7 @@ namespace nv {
         FLOAT,
         BOOL,
         VOID,
-        LABEL,
+        DEF,
         ARRAY,
         TUPLE,
         VECTOR,
@@ -218,12 +218,12 @@ namespace nv {
         std::string toString() override { return "()"; }
     };
 
-    struct Label : public Type {
+    struct Def : public Type {
         std::vector<std::shared_ptr<Type>> paramstype;
         std::shared_ptr<Type> returntype;
-        Label(const std::vector<std::shared_ptr<Type>>& params,
+        Def(const std::vector<std::shared_ptr<Type>>& params,
               const std::shared_ptr<Type>& returns)
-            : Type(Kind::LABEL), paramstype(params), returntype(returns) {}
+            : Type(Kind::DEF), paramstype(params), returntype(returns) {}
         std::string toString() override;
         bool equals(const Type &other) const override;
         
@@ -240,7 +240,7 @@ namespace nv {
                 new_params.push_back(param->substitute(subst));
             }
             auto new_ret = returntype->substitute(subst);
-            return std::make_shared<Label>(new_params, new_ret);
+            return std::make_shared<Def>(new_params, new_ret);
         }
     };
 

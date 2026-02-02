@@ -1,9 +1,9 @@
-#include "frontend/parser/statements/parse_label_stmt.hpp"
+#include "frontend/parser/statements/parse_def_stmt.hpp"
 #include "frontend/parser/statements/parse_stmt.hpp"
 #include "frontend/parser/expressions/parse_args.hpp"
 #include "frontend/parser/expressions/parse_type.hpp"
 
-std::unique_ptr<Node> parse_label_stmt(Parser* parser) {
+std::unique_ptr<Node> parse_def_stmt(Parser* parser) {
     size_t line = parser->current_token().line;
     size_t column[2] = { parser->current_token().column_start, parser->current_token().column_end };
     size_t position[2] = { parser->current_token().position_start, parser->current_token().position_end };
@@ -11,12 +11,12 @@ std::unique_ptr<Node> parse_label_stmt(Parser* parser) {
 
     parser->consume_token();
 
-    auto label_name = parser->expect(TokenType::IDENTIFIER, "Expected label identifier");
+    auto def_name = parser->expect(TokenType::IDENTIFIER, "Expected def identifier");
 
     parser->expect(TokenType::OPAREN, "Expected '(' .");
 
-    auto label_node = std::make_unique<LabelStmtNode>(
-        label_name.lexeme,
+    auto def_node = std::make_unique<DefStmtNode>(
+        def_name.lexeme,
         std::vector<ParamNode>{},
         "void",
         std::vector<std::unique_ptr<Stmt>>{}
@@ -38,7 +38,7 @@ std::unique_ptr<Node> parse_label_stmt(Parser* parser) {
         ParamNode param_node(param);
         param_node.position = std::move(pos_param);
 
-        label_node->parameters.push_back(param_node);
+        def_node->parameters.push_back(param_node);
 
         if (parser->current_token().type == TokenType::COMMA) {
             parser->consume_token();
@@ -51,7 +51,7 @@ std::unique_ptr<Node> parse_label_stmt(Parser* parser) {
 
     if (parser->current_token().type == TokenType::COLON) {
         parser->consume_token();
-        label_node->return_type = parse_type(parser);
+        def_node->return_type = parse_type(parser);
     }
 
     parser->expect(TokenType::OBRACE, "Expected '{'.");
@@ -59,16 +59,16 @@ std::unique_ptr<Node> parse_label_stmt(Parser* parser) {
     while (parser->not_eof() && parser->current_token().type != TokenType::CBRACE) {
         auto stmt = parse_stmt(parser);
         if (stmt) {
-            label_node->body.push_back(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt.release())));
+            def_node->body.push_back(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt.release())));
         }
     }
 
     parser->expect(TokenType::CBRACE, "Expected '}'.");
 
-    if (label_node && label_node->position) {
-        pos->col[1] = label_node->position->col[1];
-        pos->pos[1] = label_node->position->pos[1];
+    if (def_node && def_node->position) {
+        pos->col[1] = def_node->position->col[1];
+        pos->pos[1] = def_node->position->pos[1];
     }
 
-    return label_node;
+    return def_node;
 }

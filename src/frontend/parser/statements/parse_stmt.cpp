@@ -1,5 +1,5 @@
 #include "frontend/parser/statements/parse_stmt.hpp"
-#include "frontend/parser/statements/parse_label_stmt.hpp"
+#include "frontend/parser/statements/parse_def_stmt.hpp"
 #include "frontend/parser/expressions/parse_expr.hpp"
 #include "frontend/parser/statements/parse_if_stmt.hpp"
 #include "frontend/parser/statements/parse_return_stmt.hpp"
@@ -12,7 +12,7 @@
 
 std::unique_ptr<Node> parse_stmt(Parser* parser) {
     switch (parser->current_token().type) {
-        case TokenType::LABEL: return parse_label_stmt(parser);
+        case TokenType::DEF: return parse_def_stmt(parser);
         case TokenType::IF: return parse_if_stmt(parser);
         case TokenType::RETURN: return parse_return_stmt(parser);
         case TokenType::BREAK: return parse_break_stmt(parser);

@@ -1,10 +1,10 @@
-#include "frontend/ast/statements/label_stmt_node.hpp"
+#include "frontend/ast/statements/def_stmt_node.hpp"
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/IR/DIBuilder.h>
 
-void LabelStmtNode::codegen(nv::IRGenerationContext& ctx) {
+void DefStmtNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
     // Preserve current codegen state
     llvm::Function* prev_func = ctx.get_current_function();
@@ -47,6 +47,13 @@ void LabelStmtNode::codegen(nv::IRGenerationContext& ctx) {
     // Register function symbol at current (likely global) scope so it can be referenced by name
     nv::SymbolInfo fn_info(fn, fn->getType(), nullptr, false, true);
     ctx.get_symbol_table().define_symbol(name, fn_info);
+    
+    // IMPORTANTE: Se esta função foi importada com um alias, também atualizar a entrada do alias
+    // Verificar se há alguma entrada na tabela de símbolos com nullptr que deveria apontar para esta função
+    // Isso acontece quando fazemos "import teste as nigger" e depois a função "teste" é criada
+    // Não temos acesso direto aos aliases, então vamos verificar todas as entradas no escopo atual
+    // e atualizar aquelas que têm nullptr mas deveriam apontar para esta função
+    // (Isso é uma heurística - idealmente teríamos um mapeamento de alias -> nome original)
 
     ctx.set_current_function(fn);
     auto* entry = llvm::BasicBlock::Create(ctx.get_context(), "entry", fn);

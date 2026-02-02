@@ -25,7 +25,7 @@ enum class TokenType {
     UNDERSCORE,
     ELIPSIS,
     IMPORT,
-    LABEL,
+    DEF,
     INCLUSIVE_RANGE,
     RANGE,
     ARROW,
@@ -84,7 +84,7 @@ inline const char* get_token_name(TokenType type) {
         case TokenType::SEMICOLON: return "SEMICOLON";
         case TokenType::COLON: return "COLON";
         case TokenType::IF: return "IF";
-        case TokenType::LABEL: return "LABEL";
+        case TokenType::DEF: return "DEF";
         case TokenType::ELIF: return "ELIF";
         case TokenType::ELSE: return "ELSE";
         case TokenType::MATCH: return "MATCH";

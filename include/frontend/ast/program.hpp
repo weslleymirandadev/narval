@@ -28,7 +28,7 @@
 #include "expressions/range_expr_node.hpp"
 #include "statements/return_stmt_node.hpp"
 #include "statements/declaration_stmt_node.hpp"
-#include "statements/label_stmt_node.hpp"
+#include "statements/def_stmt_node.hpp"
 #include "statements/if_statement_node.hpp"
 #include "statements/for_stmt_node.hpp"
 #include "statements/loop_stmt_node.hpp"
@@ -154,21 +154,21 @@ private:
                 std::cout << indent << "  Locked: " << (declStmt->constant ? "yes" : "no") << std::endl;
                 break;
             }
-            case NodeType::LabelStatement: {
-                const auto* labelStmt = static_cast<const LabelStmtNode*>(stmt);
-                std::cout << indent << "LabelStatement: " << labelStmt->name << "\n";
+            case NodeType::DefStatement: {
+                const auto* defStmt = static_cast<const DefStmtNode*>(stmt);
+                std::cout << indent << "DefStatement: " << defStmt->name << "\n";
                 std::cout << indent << "  Args:\n";
 
-                for (const auto& param : labelStmt->parameters) {
+                for (const auto& param : defStmt->parameters) {
                     for (const auto& [arg_name, arg_type] : param.parameter) {
                         std::cout << indent << "    " << arg_name << ": " << arg_type << "\n";
                     }
                 }
 
-                std::cout << indent << "  Return Type: " << labelStmt->return_type << "\n";
+                std::cout << indent << "  Return Type: " << defStmt->return_type << "\n";
                 std::cout << indent << "  Body:\n";
 
-                for (const auto& bodyStmt : labelStmt->body) {
+                for (const auto& bodyStmt : defStmt->body) {
                     print_statement(bodyStmt.get(), indentNum + 2);
                 }
 
