@@ -133,6 +133,7 @@ void AssignmentExprNode::codegen(nv::IRGenerationContext& ctx) {
     if (info_opt.has_value()) {
         auto info = info_opt.value();
         auto& B = ctx.get_builder();
+        auto& M = ctx.get_module();
         auto* ValueTy = nv::ir_utils::get_value_struct(ctx);
         auto* ValuePtr = nv::ir_utils::get_value_ptr(ctx);
         auto& C = ctx.get_context();
@@ -143,23 +144,23 @@ void AssignmentExprNode::codegen(nv::IRGenerationContext& ctx) {
         if (is_simple_assign) {
             // Se a variável é do tipo Value, embrulhar o valor primitivo antes de armazenar
             if (info.llvm_type == ValueTy && rhs->getType() != ValueTy) {
-                auto* tmp_alloca = B.CreateAlloca(ValueTy, nullptr, id->symbol + "_assign");
+                auto* tmp_alloca = ctx.create_alloca(ValueTy, id->symbol + "_assign");
                 
                 // Embrulhar valor primitivo em Value struct
                 if (rhs->getType()->isIntegerTy(1)) {
-                    auto* f = ctx.ensure_runtime_func("create_bool", {ValuePtr, I32});
-                    B.CreateCall(f, {tmp_alloca, B.CreateZExt(rhs, I32)});
+                    auto decl = M.getOrInsertFunction("create_bool", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, I32}, false));
+                    B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp_alloca, B.CreateZExt(rhs, I32)});
                 } else if (rhs->getType()->isIntegerTy()) {
-                    auto* f = ctx.ensure_runtime_func("create_int", {ValuePtr, I32});
+                    auto decl = M.getOrInsertFunction("create_int", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, I32}, false));
                     llvm::Value* iv = rhs->getType()->isIntegerTy(32) ? rhs : B.CreateSExtOrTrunc(rhs, I32);
-                    B.CreateCall(f, {tmp_alloca, iv});
+                    B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp_alloca, iv});
                 } else if (rhs->getType()->isFloatingPointTy()) {
-                    auto* f = ctx.ensure_runtime_func("create_float", {ValuePtr, F64});
+                    auto decl = M.getOrInsertFunction("create_float", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, F64}, false));
                     llvm::Value* fp = rhs->getType() == F64 ? rhs : B.CreateFPExt(rhs, F64);
-                    B.CreateCall(f, {tmp_alloca, fp});
+                    B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp_alloca, fp});
                 } else if (rhs->getType() == nv::ir_utils::get_i8_ptr(ctx)) {
-                    auto* f = ctx.ensure_runtime_func("create_str", {ValuePtr, nv::ir_utils::get_i8_ptr(ctx)});
-                    B.CreateCall(f, {tmp_alloca, rhs});
+                    auto decl = M.getOrInsertFunction("create_str", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, nv::ir_utils::get_i8_ptr(ctx)}, false));
+                    B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp_alloca, rhs});
                 } else {
                     B.CreateStore(llvm::UndefValue::get(ValueTy), tmp_alloca);
                 }
