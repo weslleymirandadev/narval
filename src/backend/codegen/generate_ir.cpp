@@ -13,7 +13,8 @@ static llvm::StructType* get_or_create_value_ty(llvm::LLVMContext& C) {
     auto* i64 = llvm::Type::getInt64Ty(C);
     auto* i8  = llvm::Type::getInt8Ty(C);
     auto* i8p = llvm::PointerType::getUnqual(i8);
-    return llvm::StructType::create(C, {i32, i64, i8p}, "nv.rt.Value");
+    // Value struct: { int32_t type; int64_t value; void* prototype; void* type_info; uint32_t flags; }
+    return llvm::StructType::create(C, {i32, i64, i8p, i8p, i32}, "nv.rt.Value");
 }
 
 static void declare_runtime(IRGenerationContext& context) {
@@ -60,6 +61,9 @@ static void declare_runtime(IRGenerationContext& context) {
 
     // nv_write_no_nl(Value*) - função builtin para escrita sem nova linha
     M.getOrInsertFunction("nv_write_no_nl", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy)}, false));
+    
+    // ensure_value_type(Value*) - helper para garantir que um Value tenha a tag correta
+    M.getOrInsertFunction("ensure_value_type", llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
 
     // nv_read() -> i8* - função builtin para leitura
     M.getOrInsertFunction("nv_read", llvm::FunctionType::get(I8Ptr, {}, false));
