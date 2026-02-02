@@ -99,9 +99,44 @@ llvm::Value* promote_nv_type(
     return promote_type(context, value, target_llvm_type);
 }
 
+// Helper: extrai valor numérico de um Value (assume TAG_INT)
+static llvm::Value* extract_int_from_value(IRGenerationContext& context, llvm::Value* val) {
+    if (!val) return nullptr;
+    auto* valueStruct = get_value_struct(context);
+    if (val->getType() != valueStruct) return val; // Não é Value, retornar como está
+    
+    auto& builder = context.get_builder();
+    auto* i32 = get_i32(context);
+    auto* i64 = get_i64(context);
+    
+    // Armazenar Value temporariamente
+    auto* tmp = context.create_alloca(valueStruct, "val.tmp");
+    builder.CreateStore(val, tmp);
+    
+    // Extrair valor (campo 1) e converter para i32
+    // Assumimos que é TAG_INT - em runtime será verificado
+    auto* valuePtr = builder.CreateStructGEP(valueStruct, tmp, 1);
+    auto* value64 = builder.CreateLoad(i64, valuePtr);
+    auto* value32 = builder.CreateTrunc(value64, i32, "int.val");
+    
+    return value32;
+}
+
 llvm::Value* create_comparison(IRGenerationContext& context, llvm::Value* lhs, llvm::Value* rhs, const std::string& op) {
     if (!lhs || !rhs) return nullptr;
     auto& builder = context.get_builder();
+    auto* valueStruct = get_value_struct(context);
+    
+    // Se ambos são Value, extrair valores numéricos
+    if (lhs->getType() == valueStruct && rhs->getType() == valueStruct) {
+        lhs = extract_int_from_value(context, lhs);
+        rhs = extract_int_from_value(context, rhs);
+    } else if (lhs->getType() == valueStruct) {
+        lhs = extract_int_from_value(context, lhs);
+    } else if (rhs->getType() == valueStruct) {
+        rhs = extract_int_from_value(context, rhs);
+    }
+    
     auto* lhs_type = lhs->getType();
 
     // String (i8*) content comparison via strcmp
@@ -151,29 +186,6 @@ llvm::Value* create_comparison(IRGenerationContext& context, llvm::Value* lhs, l
         ? builder.CreateFCmpOGE(lhs, rhs, "cmpge") : builder.CreateICmpSGE(lhs, rhs, "cmpge");
 
     return nullptr;
-}
-
-// Helper: extrai valor numérico de um Value (assume TAG_INT)
-static llvm::Value* extract_int_from_value(IRGenerationContext& context, llvm::Value* val) {
-    if (!val) return nullptr;
-    auto* valueStruct = get_value_struct(context);
-    if (val->getType() != valueStruct) return val; // Não é Value, retornar como está
-    
-    auto& builder = context.get_builder();
-    auto* i32 = get_i32(context);
-    auto* i64 = get_i64(context);
-    
-    // Armazenar Value temporariamente
-    auto* tmp = context.create_alloca(valueStruct, "val.tmp");
-    builder.CreateStore(val, tmp);
-    
-    // Extrair valor (campo 1) e converter para i32
-    // Assumimos que é TAG_INT - em runtime será verificado
-    auto* valuePtr = builder.CreateStructGEP(valueStruct, tmp, 1);
-    auto* value64 = builder.CreateLoad(i64, valuePtr);
-    auto* value32 = builder.CreateTrunc(value64, i32, "int.val");
-    
-    return value32;
 }
 
 llvm::Value* create_binary_op(IRGenerationContext& context, llvm::Value* lhs, llvm::Value* rhs, const std::string& op) {

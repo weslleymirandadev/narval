@@ -7,6 +7,7 @@
 #include "frontend/parser/expressions/parse_logical_not_expr.hpp"
 #include "frontend/parser/expressions/parse_relational_expr.hpp"
 #include "frontend/parser/expressions/parse_equality_expr.hpp"
+#include "frontend/parser/expressions/parse_postfix_expr.hpp"
 #include "frontend/ast/expressions/binary_expr_node.hpp"
 
 std::unique_ptr<Node> parse_access_expr(Parser* parser, std::unique_ptr<Node> expr) {
@@ -265,10 +266,25 @@ std::unique_ptr<Node> parse_access_expr(Parser* parser, std::unique_ptr<Node> ex
                 bpos = std::make_unique<PositionData>(bline, bcolumn[0], bcolumn[1], bposition[0], bposition[1]);
             }
 
+            // Verificar se há operadores de incremento/decremento após a expressão
+            if (
+                parser->current_token().type == TokenType::INCREMENT ||
+                parser->current_token().type == TokenType::DECREMENT
+            ) {
+                return parse_postfix_expr(parser, std::move(left));
+            }
+
             return left;
         }
 
    } else {
+        // Verificar se há operadores de incremento/decremento após a expressão
+        if (
+            parser->current_token().type == TokenType::INCREMENT ||
+            parser->current_token().type == TokenType::DECREMENT
+        ) {
+            return parse_postfix_expr(parser, std::move(expr));
+        }
         return expr;
    }
 }

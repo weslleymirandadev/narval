@@ -1,5 +1,6 @@
 #include "backend/runtime/nv_runtime.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* ============================================================= */
@@ -52,6 +53,8 @@ void ensure_value_type(Value* v) {
     }
     
     // Se o tipo é 0 ou inválido, tentar inferir
+    // IMPORTANTE: Não inferir tipo para valores que já têm tipo definido (incluindo TAG_FLOAT)
+    // A inferência só deve acontecer quando o tipo é realmente desconhecido (0 ou inválido)
     if (v->type == 0 || (v->type > TAG_ANY && v->prototype == NULL)) {
         // Inferir tipo baseado em prototype
         if (v->prototype == string_prototype) {
@@ -63,12 +66,12 @@ void ensure_value_type(Value* v) {
         } else if (v->prototype == map_prototype) {
             v->type = TAG_MAP;
         } else if (v->prototype == NULL) {
-            // Tentar inferir tipo primitivo
-            if (v->value >= -2147483648LL && v->value <= 2147483647LL) {
-                v->type = TAG_INT;
-            } else {
-                v->type = TAG_ANY;
-            }
+            // IMPORTANTE: Não podemos inferir se é int ou float apenas pelo valor numérico
+            // Um float pode ter um valor que, quando interpretado como int64, está dentro do range de int32
+            // Portanto, se não temos informação de tipo, não devemos assumir que é int
+            // Deixar como TAG_ANY para evitar conversão incorreta
+            // A inferência de tipo primitivo só deve acontecer quando temos certeza absoluta
+            v->type = TAG_ANY;
         } else {
             v->type = TAG_ANY;
         }
