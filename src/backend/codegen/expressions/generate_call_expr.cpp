@@ -310,16 +310,92 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
     caller->codegen(ctx);
     llvm::Value* callee = ctx.pop_value();
 
-    std::vector<llvm::Value*> argv;
-    for (auto& a : args) {
-        a->codegen(ctx);
-        argv.push_back(ctx.pop_value());
+    // Verificar se callee é válido antes de fazer cast
+    if (!callee) {
+        ctx.push_value(nullptr);
+        return;
     }
 
     if (auto* F = llvm::dyn_cast<llvm::Function>(callee)) {
+        // Obter tipos dos parâmetros da função
+        auto* func_ty = F->getFunctionType();
+        std::vector<llvm::Type*> param_types(func_ty->param_begin(), func_ty->param_end());
+        
+        std::vector<llvm::Value*> argv;
+        auto* ValueTy = ir_utils::get_value_struct(ctx);
+        auto* I32 = llvm::Type::getInt32Ty(ctx.get_context());
+        auto* I64 = llvm::Type::getInt64Ty(ctx.get_context());
+        auto* F64 = llvm::Type::getDoubleTy(ctx.get_context());
+        
+        for (size_t i = 0; i < args.size() && i < param_types.size(); ++i) {
+            args[i]->codegen(ctx);
+            llvm::Value* arg_val = ctx.pop_value();
+            
+            // Se o argumento é Value struct mas a função espera tipo primitivo, extrair o valor
+            if (arg_val && arg_val->getType() == ValueTy && param_types[i] != ValueTy) {
+                // Extrair valor primitivo do Value struct
+                auto* tmp_alloca = B.CreateAlloca(ValueTy, nullptr, "arg_tmp");
+                B.CreateStore(arg_val, tmp_alloca);
+                
+                // Garantir tipo correto
+                auto* ValuePtr = ir_utils::get_value_ptr(ctx);
+                auto* ensure_func = ctx.ensure_runtime_func("ensure_value_type", {ValuePtr});
+                B.CreateCall(ensure_func, {tmp_alloca});
+                
+                // Extrair campo value (índice 1) que contém o valor como i64
+                auto* valuePtr = B.CreateStructGEP(ValueTy, tmp_alloca, 1);
+                auto* value64 = B.CreateLoad(I64, valuePtr, "arg_value64");
+                
+                // Converter para o tipo esperado pela função
+                if (param_types[i] == I32) {
+                    arg_val = B.CreateTrunc(value64, I32, "arg_i32");
+                } else if (param_types[i] == I64) {
+                    arg_val = value64;
+                } else if (param_types[i] == F64) {
+                    // Converter bits i64 para double
+                    arg_val = B.CreateBitCast(value64, F64, "arg_f64");
+                } else {
+                    // Tipo não suportado, usar valor original
+                }
+            }
+            
+            argv.push_back(arg_val);
+        }
+        
         auto* call = B.CreateCall(F, argv);
-        // Preserve non-void results regardless of current use count, so they can be used by callers
-        ctx.push_value(call->getType()->isVoidTy() ? nullptr : call);
+        // Se a função retorna um tipo primitivo, converter para Value struct para manter consistência
+        if (!call->getType()->isVoidTy()) {
+            if (call->getType() != ValueTy) {
+                // Converter retorno primitivo para Value struct
+                auto* ret_alloca = B.CreateAlloca(ValueTy, nullptr, "ret_val");
+                auto* ValuePtr = ir_utils::get_value_ptr(ctx);
+                
+                if (call->getType() == I32) {
+                    auto* create_int_func = ctx.ensure_runtime_func("create_int", {ValuePtr, I32});
+                    B.CreateCall(create_int_func, {ret_alloca, call});
+                } else if (call->getType() == I64) {
+                    // Para i64, precisamos converter para i32 primeiro (create_int espera i32)
+                    auto* i32_val = B.CreateTrunc(call, I32, "ret_i32");
+                    auto* create_int_func = ctx.ensure_runtime_func("create_int", {ValuePtr, I32});
+                    B.CreateCall(create_int_func, {ret_alloca, i32_val});
+                } else if (call->getType() == F64) {
+                    auto* create_float_func = ctx.ensure_runtime_func("create_float", {ValuePtr, F64});
+                    B.CreateCall(create_float_func, {ret_alloca, call});
+                } else {
+                    // Tipo não suportado, usar UndefValue
+                    B.CreateStore(llvm::UndefValue::get(ValueTy), ret_alloca);
+                }
+                
+                auto* ret_value = B.CreateLoad(ValueTy, ret_alloca, "ret_value");
+                ctx.push_value(ret_value);
+            } else {
+                // Já é Value struct, apenas empurrar
+                ctx.push_value(call);
+            }
+        } else {
+            // Void return, push nullptr
+            ctx.push_value(nullptr);
+        }
     } else {
         ctx.push_value(nullptr);
     }
