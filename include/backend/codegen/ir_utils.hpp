@@ -96,6 +96,15 @@ llvm::Type* get_i8(IRGenerationContext& ctx);
 llvm::Type* get_i8_ptr(IRGenerationContext& ctx);
 llvm::StructType* get_value_struct(IRGenerationContext& ctx);
 llvm::PointerType* get_value_ptr(IRGenerationContext& ctx);
+// Cria uma constante Value com a tag de tipo correta para inicialização de GlobalVariables
+llvm::Constant* create_value_constant_with_tag(IRGenerationContext& ctx, int32_t tag, int64_t value);
+// Cria uma constante Value genérica baseada no tipo inferido e valor LLVM
+// Retorna nullptr se não for possível criar uma constante (deve usar runtime init)
+llvm::Constant* create_value_constant_from_llvm_value(
+    IRGenerationContext& ctx,
+    llvm::Value* value,
+    std::shared_ptr<Type> nv_type = nullptr
+);
 
 // === String → LLVM Type (completo) ===
 llvm::Type* llvm_type_from_string(IRGenerationContext& ctx, const std::string& type_str);

@@ -248,6 +248,15 @@ private:
     // Pilha de avaliação para resultados de expressões
     std::vector<llvm::Value*> eval_stack;
 
+    // Sistema de inicialização de globais em runtime usando @llvm.global_ctors
+    // Coleta inicializações que precisam ser executadas antes de main.start
+    struct GlobalInit {
+        llvm::GlobalVariable* global;
+        llvm::Value* init_value;
+        std::string symbol_name;
+    };
+    std::vector<GlobalInit> pending_global_inits;
+
 public:
     IRGenerationContext(
         llvm::LLVMContext& ctx,
@@ -397,6 +406,21 @@ public:
     llvm::Function* ensure_runtime_func(const std::string& name,
                                    llvm::ArrayRef<llvm::Type*> paramTypes,
                                    llvm::Type* retTy = nullptr);
+
+    /**
+     * Registra uma inicialização de global que será executada via @llvm.global_ctors
+     * Isso garante que a tag de tipo seja sempre definida corretamente e que
+     * a ordem de inicialização seja respeitada (módulos importados antes do principal)
+     */
+    void register_global_init(llvm::GlobalVariable* global, llvm::Value* init_value, const std::string& symbol_name);
+    
+    /**
+     * Cria função de inicialização e registra em @llvm.global_ctors
+     * Deve ser chamado após toda a geração de código estar completa
+     * @param priority Prioridade da inicialização (menor = executado primeiro)
+     *                 Módulos importados devem ter prioridades menores que o módulo principal
+     */
+    void finalize_global_inits(int priority = 65535);
 
     /**
      * Inicializa o cache de tipos LLVM

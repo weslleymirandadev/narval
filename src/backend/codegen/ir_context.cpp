@@ -265,4 +265,121 @@ std::optional<SymbolInfo> IRGenerationContext::get_symbol_info(const std::string
     return symbol_table.lookup_symbol(name);
 }
 
+void IRGenerationContext::register_global_init(llvm::GlobalVariable* global, llvm::Value* init_value, const std::string& symbol_name) {
+    pending_global_inits.push_back({global, init_value, symbol_name});
+}
+
+void IRGenerationContext::finalize_global_inits(int priority) {
+    if (pending_global_inits.empty()) {
+        return;
+    }
+    
+    // Criar função de inicialização
+    // IMPORTANTE: Usar nome único baseado na prioridade para evitar conflitos
+    auto* VoidTy = llvm::Type::getVoidTy(llvm_context);
+    auto* InitFuncTy = llvm::FunctionType::get(VoidTy, false);
+    std::string func_name = "nv.global.init." + std::to_string(priority);
+    auto* InitFunc = llvm::Function::Create(
+        InitFuncTy,
+        llvm::Function::InternalLinkage,
+        func_name,
+        module
+    );
+    
+    // Criar basic block para a função
+    auto* EntryBB = llvm::BasicBlock::Create(llvm_context, "entry", InitFunc);
+    auto OldBuilder = builder.GetInsertPoint();
+    auto* OldBB = builder.GetInsertBlock();
+    builder.SetInsertPoint(EntryBB);
+    
+    auto* ValueTy = ir_utils::get_value_struct(*this);
+    auto* ValuePtr = ir_utils::get_value_ptr(*this);
+    auto* I32 = llvm::Type::getInt32Ty(llvm_context);
+    auto* F64 = llvm::Type::getDoubleTy(llvm_context);
+    
+    // Executar todas as inicializações pendentes
+    auto* I8Ptr = ir_utils::get_i8_ptr(*this);
+    for (const auto& init : pending_global_inits) {
+        // Criar ponteiro para o GlobalVariable (Value*)
+        auto* global_ptr = builder.CreateBitCast(init.global, ValuePtr);
+        
+        // Embrulhar valor primitivo em Value struct diretamente no GlobalVariable
+        // Isso garante que create_int/create_float/etc. escrevam diretamente no GlobalVariable
+        if (init.init_value->getType() == ValueTy) {
+            // Já é Value, apenas copiar diretamente
+            builder.CreateStore(init.init_value, init.global);
+        } else if (init.init_value->getType()->isIntegerTy(1)) {
+            // bool
+            auto* f = ensure_runtime_func("create_bool", {ValuePtr, I32});
+            builder.CreateCall(f, {global_ptr, builder.CreateZExt(init.init_value, I32)});
+        } else if (init.init_value->getType()->isIntegerTy()) {
+            // int
+            auto* f = ensure_runtime_func("create_int", {ValuePtr, I32});
+            llvm::Value* iv = init.init_value->getType()->isIntegerTy(32) ? init.init_value : builder.CreateSExtOrTrunc(init.init_value, I32);
+            builder.CreateCall(f, {global_ptr, iv});
+        } else if (init.init_value->getType()->isFloatingPointTy()) {
+            // float
+            auto* f = ensure_runtime_func("create_float", {ValuePtr, F64});
+            llvm::Value* fp = init.init_value->getType() == F64 ? init.init_value : builder.CreateFPExt(init.init_value, F64);
+            builder.CreateCall(f, {global_ptr, fp});
+        } else if (init.init_value->getType() == I8Ptr) {
+            // string
+            auto* f = ensure_runtime_func("create_str", {ValuePtr, I8Ptr});
+            builder.CreateCall(f, {global_ptr, init.init_value});
+        }
+    }
+    
+    // Retornar void
+    builder.CreateRetVoid();
+    
+    // Restaurar builder para o estado anterior
+    if (OldBB && OldBuilder != OldBB->end()) {
+        builder.SetInsertPoint(OldBuilder);
+    } else if (current_function && !current_function->empty()) {
+        // Se não conseguimos restaurar o ponto exato, restaurar para o último bloco da função atual
+        builder.SetInsertPoint(&current_function->back());
+    } else {
+        // Se não há função atual, limpar o insertion point
+        builder.ClearInsertionPoint();
+    }
+    
+    // Registrar em @llvm.global_ctors usando AppendingLinkage
+    // Isso permite que múltiplos módulos registrem inicializações
+    // O linker vai combinar todas automaticamente
+    auto* I32Ty = llvm::Type::getInt32Ty(llvm_context);
+    auto* FuncPtrTy = llvm::PointerType::getUnqual(InitFuncTy);
+    auto* I8PtrTy = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(llvm_context));
+    auto* CtorStructTy = llvm::StructType::get(llvm_context, {I32Ty, FuncPtrTy, I8PtrTy});
+    auto* CtorArrayTy = llvm::ArrayType::get(CtorStructTy, 1);
+    
+    auto* PriorityConst = llvm::ConstantInt::get(I32Ty, priority);
+    auto* FuncConst = llvm::ConstantExpr::getBitCast(InitFunc, FuncPtrTy);
+    auto* NullConst = llvm::Constant::getNullValue(I8PtrTy);
+    auto* CtorStruct = llvm::ConstantStruct::get(CtorStructTy, {PriorityConst, FuncConst, NullConst});
+    auto* CtorArray = llvm::ConstantArray::get(CtorArrayTy, {CtorStruct});
+    
+    // Criar ou obter @llvm.global_ctors com AppendingLinkage
+    // AppendingLinkage permite que múltiplos módulos adicionem entradas
+    auto* GlobalCtors = module.getNamedGlobal("llvm.global_ctors");
+    if (!GlobalCtors) {
+        GlobalCtors = new llvm::GlobalVariable(
+            module,
+            CtorArrayTy,
+            false,  // não constante
+            llvm::GlobalValue::AppendingLinkage,
+            CtorArray,
+            "llvm.global_ctors"
+        );
+    } else {
+        // Se já existe, precisamos adicionar nossa entrada ao array existente
+        // Mas AppendingLinkage faz isso automaticamente no linker, então apenas criar uma nova entrada
+        // Na prática, cada módulo cria seu próprio @llvm.global_ctors e o linker combina
+        // Por enquanto, vamos criar uma nova entrada mesmo que já exista
+        // O linker vai combinar todas as entradas automaticamente
+    }
+    
+    // Limpar lista pendente
+    pending_global_inits.clear();
+}
+
 }

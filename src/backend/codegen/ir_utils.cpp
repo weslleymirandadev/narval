@@ -3,6 +3,7 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/IR/Constants.h>
 #include <unordered_map>
 #include <cctype>
 #include <iostream>
@@ -377,10 +378,114 @@ llvm::Type* get_i8_ptr(IRGenerationContext& ctx) { return llvm::PointerType::get
 
 llvm::StructType* get_value_struct(IRGenerationContext& ctx) {
     auto* t = llvm::StructType::getTypeByName(ctx.get_context(), "nv.rt.Value");
-    if (!t) t = llvm::StructType::create(ctx.get_context(), { get_i32(ctx), get_i64(ctx), get_i8_ptr(ctx) }, "nv.rt.Value");
+    if (!t) {
+        // Value struct: { int32_t type; int64_t value; void* prototype; void* type_info; uint32_t flags; }
+        t = llvm::StructType::create(
+            ctx.get_context(), 
+            { get_i32(ctx), get_i64(ctx), get_i8_ptr(ctx), get_i8_ptr(ctx), get_i32(ctx) }, 
+            "nv.rt.Value"
+        );
+    }
     return t;
 }
 llvm::PointerType* get_value_ptr(IRGenerationContext& ctx) { return llvm::PointerType::getUnqual(get_value_struct(ctx)); }
+
+// Cria uma constante Value com a tag de tipo correta para inicialização de GlobalVariables
+// Isso permite que a tag "viaje" entre arquivos através de constantes LLVM
+llvm::Constant* create_value_constant_with_tag(IRGenerationContext& ctx, int32_t tag, int64_t value) {
+    auto* ValueTy = get_value_struct(ctx);
+    auto* I32 = get_i32(ctx);
+    auto* I64 = get_i64(ctx);
+    auto* I8Ptr = get_i8_ptr(ctx);
+    
+    // Criar constantes para cada campo da struct Value
+    // Value struct: { int32_t type; int64_t value; void* prototype; void* type_info; uint32_t flags; }
+    auto* tag_const = llvm::ConstantInt::get(I32, tag);
+    auto* value_const = llvm::ConstantInt::get(I64, value);
+    auto* prototype_const = llvm::Constant::getNullValue(I8Ptr);  // NULL para tipos primitivos
+    auto* type_info_const = llvm::Constant::getNullValue(I8Ptr);  // NULL para tipos builtin
+    auto* flags_const = llvm::ConstantInt::get(I32, 0);  // Sem flags
+    
+    // Criar a constante struct com todos os campos
+    return llvm::ConstantStruct::get(
+        llvm::cast<llvm::StructType>(ValueTy),
+        {tag_const, value_const, prototype_const, type_info_const, flags_const}
+    );
+}
+
+// Cria uma constante Value genérica baseada no tipo inferido e valor LLVM
+// Retorna nullptr se não for possível criar uma constante (deve usar runtime init)
+llvm::Constant* create_value_constant_from_llvm_value(
+    IRGenerationContext& ctx,
+    llvm::Value* value,
+    std::shared_ptr<Type> nv_type
+) {
+    if (!value) return nullptr;
+    
+    auto* ValueTy = get_value_struct(ctx);
+    
+    // Se já é uma constante Value, retornar diretamente
+    if (value->getType() == ValueTy && llvm::isa<llvm::Constant>(value)) {
+        return llvm::cast<llvm::Constant>(value);
+    }
+    
+    // Tentar inferir o tipo se não foi fornecido
+    int32_t tag = 0;
+    int64_t val = 0;
+    bool can_create_constant = false;
+    
+    // Verificar se é uma constante LLVM
+    if (auto* const_int = llvm::dyn_cast<llvm::ConstantInt>(value)) {
+        if (const_int->getType()->isIntegerTy(32) || const_int->getType()->isIntegerTy(64)) {
+            // Constante inteira
+            tag = 1; // TAG_INT
+            val = const_int->getSExtValue();
+            can_create_constant = true;
+        } else if (const_int->getType()->isIntegerTy(1)) {
+            // Constante booleana
+            tag = 3; // TAG_BOOL
+            val = const_int->getZExtValue();
+            can_create_constant = true;
+        }
+    } else if (auto* const_fp = llvm::dyn_cast<llvm::ConstantFP>(value)) {
+        // Constante float: converter para int64_t (bits)
+        tag = 2; // TAG_FLOAT
+        double dval = const_fp->getValueAPF().convertToDouble();
+        memcpy(&val, &dval, sizeof(double));
+        can_create_constant = true;
+    } else if (nv_type) {
+        // Tentar inferir tag do tipo Narval
+        // Isso permite suportar tipos criados em tempo de compilação
+        if (auto* int_type = dynamic_cast<Int*>(nv_type.get())) {
+            if (auto* const_int = llvm::dyn_cast<llvm::ConstantInt>(value)) {
+                tag = 1; // TAG_INT
+                val = const_int->getSExtValue();
+                can_create_constant = true;
+            }
+        } else if (auto* float_type = dynamic_cast<Float*>(nv_type.get())) {
+            if (auto* const_fp = llvm::dyn_cast<llvm::ConstantFP>(value)) {
+                tag = 2; // TAG_FLOAT
+                double dval = const_fp->getValueAPF().convertToDouble();
+                memcpy(&val, &dval, sizeof(double));
+                can_create_constant = true;
+            }
+        } else if (auto* bool_type = dynamic_cast<Boolean*>(nv_type.get())) {
+            if (auto* const_int = llvm::dyn_cast<llvm::ConstantInt>(value)) {
+                tag = 3; // TAG_BOOL
+                val = const_int->getZExtValue();
+                can_create_constant = true;
+            }
+        }
+        // Para outros tipos (string, array, etc), não podemos criar constantes facilmente
+        // Eles precisam ser inicializados em runtime
+    }
+    
+    if (can_create_constant) {
+        return create_value_constant_with_tag(ctx, tag, val);
+    }
+    
+    return nullptr;
+}
 
 // === String → LLVM Type ===
 // === String → LLVM Type (CORRIGIDO) ===
