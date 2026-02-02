@@ -102,5 +102,14 @@ std::unique_ptr<Node> parse_unary_expr(Parser* parser) {
         }
     }
 
+    // Verificar se há operadores postfix após operadores unários
+    // Exemplo: -lista[0]++ ou ++lista[0]--
+    if (
+        parser->current_token().type == TokenType::INCREMENT ||
+        parser->current_token().type == TokenType::DECREMENT
+    ) {
+        return parse_postfix_expr(parser, std::move(expr));
+    }
+
     return expr;
 }

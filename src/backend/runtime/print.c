@@ -214,6 +214,10 @@ static void print_custom_struct(const Value* v, int depth) {
 
 /* --- Função principal recursiva com melhor rastreio de tipos --- */
 static void nv_print_value_recursive(Value v, int depth) {
+    // IMPORTANTE: Preservar o tipo original antes de normalizar
+    // Se o tipo já está definido como TAG_FLOAT, não permitir que seja alterado
+    int32_t original_type = v.type;
+    
     // Normalizar e garantir tipo correto
     v = normalize_value(v);
     
@@ -222,6 +226,13 @@ static void nv_print_value_recursive(Value v, int depth) {
     
     // Obter tipo validado
     int32_t type = get_value_type(&v);
+    
+    // IMPORTANTE: Se o tipo original era TAG_FLOAT, preservá-lo
+    // Isso evita que ensure_value_type altere incorretamente o tipo
+    if (original_type == TAG_FLOAT) {
+        type = TAG_FLOAT;
+        v.type = TAG_FLOAT;
+    }
     
     switch (type) {
         case TAG_INT: {
