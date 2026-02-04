@@ -1,167 +1,213 @@
 #include "frontend/interactive/epoch_system.hpp"
 
-namespace nv {
-namespace interactive {
+#include <queue>
 
-EpochSystem::EpochSystem(SessionManager& session_manager)
-    : session_manager(session_manager), next_epoch_id(1) {
+#include "frontend/interactive/session_manager.hpp"
+
+namespace narval::frontend::interactive {
+
+namespace {
+
+static void erase_from_set_map(
+    std::unordered_map<int, std::unordered_set<int>>& m,
+    int key,
+    int value
+) {
+    auto it = m.find(key);
+    if (it == m.end()) return;
+    it->second.erase(value);
+    if (it->second.empty()) m.erase(it);
 }
 
-EpochSystem::EpochId EpochSystem::execute_cell(const CellId& cell_id, ExecutionUnitId unit_id) {
-    // Verificar se a célula já tem um epoch
-    auto it = cell_epochs.find(cell_id);
-    
-    if (it != cell_epochs.end()) {
-        // Célula já executada - reexecutar
-        return reexecute_cell(cell_id, unit_id).new_epoch_id;
+} // namespace
+
+EpochManager::EpochManager() = default;
+
+void EpochManager::reset() {
+    epoch_counter_ = 0;
+    epochs_.clear();
+    cell_epoch_.clear();
+    deps_.clear();
+    rdeps_.clear();
+    symbol_producer_epoch_.clear();
+}
+
+int EpochManager::create_epoch_for_cell(const std::string& cell_id, int* old_epoch) {
+    int old = 0;
+    if (auto it = cell_epoch_.find(cell_id); it != cell_epoch_.end()) {
+        old = it->second;
     }
-    
-    // Criar novo epoch
-    EpochId epoch_id = next_epoch_id++;
-    
-    cell_epochs[cell_id] = epoch_id;
-    epoch_cells[epoch_id] = cell_id;
-    epoch_units[epoch_id] = unit_id;
-    valid_epochs.insert(epoch_id);
-    
-    // Atualizar dependências entre células
-    update_cell_dependencies(cell_id, unit_id);
-    
-    return epoch_id;
+    if (old_epoch) *old_epoch = old;
+
+    const int id = ++epoch_counter_;
+    Epoch e;
+    e.id = id;
+    e.valid = true;
+    e.cells.insert(cell_id);
+    epochs_[id] = std::move(e);
+    cell_epoch_[cell_id] = id;
+
+    // New epoch starts with no deps; commit_epoch will fill.
+    deps_[id].clear();
+    return id;
 }
 
-EpochSystem::ReexecutionResult EpochSystem::reexecute_cell(const CellId& cell_id, ExecutionUnitId unit_id) {
-    ReexecutionResult result;
-    
-    // Obter epoch anterior
-    auto old_epoch_it = cell_epochs.find(cell_id);
-    EpochId old_epoch_id = 0;
-    ExecutionUnitId old_unit_id = 0;
-    
-    if (old_epoch_it != cell_epochs.end()) {
-        old_epoch_id = old_epoch_it->second;
-        auto unit_it = epoch_units.find(old_epoch_id);
-        if (unit_it != epoch_units.end()) {
-            old_unit_id = unit_it->second;
+void EpochManager::set_epoch_dependencies(int epoch_id, const std::unordered_set<int>& deps) {
+    // Remove old reverse edges.
+    if (auto it = deps_.find(epoch_id); it != deps_.end()) {
+        for (const auto& old : it->second) {
+            erase_from_set_map(rdeps_, old, epoch_id);
         }
     }
-    
-    // Invalidar dependências da célula antiga
-    std::unordered_set<EpochId> invalidated_epochs;
-    propagate_cell_invalidation(cell_id, invalidated_epochs);
-    
-    // Invalidar unidades associadas aos epochs invalidados
-    for (EpochId epoch_id : invalidated_epochs) {
-        auto unit_it = epoch_units.find(epoch_id);
-        if (unit_it != epoch_units.end()) {
-            result.invalidated_units.insert(unit_it->second);
+
+    deps_[epoch_id] = deps;
+    for (const auto& dep : deps) {
+        rdeps_[dep].insert(epoch_id);
+    }
+}
+
+void EpochManager::commit_epoch(
+    int epoch_id,
+    const std::string& cell_id,
+    const std::unordered_set<std::string>& defined_symbols,
+    const std::unordered_set<std::string>& used_symbols
+) {
+    auto eit = epochs_.find(epoch_id);
+    if (eit == epochs_.end()) return;
+
+    auto& e = eit->second;
+    e.valid = true;
+    e.cells.insert(cell_id);
+    e.defined_symbols = defined_symbols;
+    e.used_symbols = used_symbols;
+
+    // Epoch dependencies are derived from symbol producers.
+    std::unordered_set<int> deps;
+    for (const auto& used : used_symbols) {
+        auto it = symbol_producer_epoch_.find(used);
+        if (it != symbol_producer_epoch_.end()) {
+            deps.insert(it->second);
         }
     }
-    
-    // Invalidar a própria célula antiga se existir
-    if (old_epoch_id != 0) {
-        invalidated_epochs.insert(old_epoch_id);
-        valid_epochs.erase(old_epoch_id);
-        if (old_unit_id != 0) {
-            result.invalidated_units.insert(old_unit_id);
-        }
+    deps.erase(epoch_id);
+    set_epoch_dependencies(epoch_id, deps);
+
+    // Update producer epochs for defined symbols.
+    for (const auto& def : defined_symbols) {
+        symbol_producer_epoch_[def] = epoch_id;
     }
-    
-    // Criar novo epoch
-    EpochId new_epoch_id = next_epoch_id++;
-    cell_epochs[cell_id] = new_epoch_id;
-    epoch_cells[new_epoch_id] = cell_id;
-    epoch_units[new_epoch_id] = unit_id;
-    valid_epochs.insert(new_epoch_id);
-    
-    // Invalidar símbolos da unidade antiga
-    if (old_unit_id != 0) {
-        auto invalidated = session_manager.invalidate_unit(old_unit_id);
-        result.invalidated_units.insert(invalidated.begin(), invalidated.end());
-    }
-    
-    // Atualizar dependências
-    update_cell_dependencies(cell_id, unit_id);
-    
-    result.new_epoch_id = new_epoch_id;
-    result.invalidated_epochs = invalidated_epochs;
-    
-    return result;
 }
 
-bool EpochSystem::is_epoch_valid(EpochId epoch_id) const {
-    return valid_epochs.find(epoch_id) != valid_epochs.end();
-}
+std::vector<int> EpochManager::bfs_collect_dependents(int epoch_id) {
+    std::vector<int> out;
+    std::queue<int> q;
+    std::unordered_set<int> visited;
 
-EpochSystem::EpochId EpochSystem::get_cell_epoch(const CellId& cell_id) const {
-    auto it = cell_epochs.find(cell_id);
-    if (it != cell_epochs.end()) {
-        return it->second;
+    for (const auto& dep : get_epoch_dependents(epoch_id)) {
+        q.push(dep);
+        visited.insert(dep);
     }
-    return 0;  // Célula nunca foi executada
-}
 
-std::unordered_set<EpochSystem::CellId> EpochSystem::get_dependent_cells(const CellId& cell_id) const {
-    std::unordered_set<CellId> result;
-    auto it = cell_dependencies.find(cell_id);
-    if (it != cell_dependencies.end()) {
-        result = it->second;
-    }
-    return result;
-}
+    while (!q.empty()) {
+        const int cur = q.front();
+        q.pop();
+        out.push_back(cur);
 
-void EpochSystem::clear() {
-    cell_epochs.clear();
-    epoch_cells.clear();
-    epoch_units.clear();
-    cell_dependencies.clear();
-    valid_epochs.clear();
-    next_epoch_id = 1;
-}
-
-void EpochSystem::propagate_cell_invalidation(const CellId& cell_id,
-                                               std::unordered_set<EpochId>& invalidated) {
-    // Encontrar todas as células que dependem desta
-    auto deps_it = cell_dependencies.find(cell_id);
-    if (deps_it == cell_dependencies.end()) {
-        return;
-    }
-    
-    // Invalidar cada célula dependente recursivamente
-    for (const CellId& dependent_cell : deps_it->second) {
-        auto epoch_it = cell_epochs.find(dependent_cell);
-        if (epoch_it != cell_epochs.end()) {
-            EpochId epoch_id = epoch_it->second;
-            if (invalidated.find(epoch_id) == invalidated.end()) {
-                invalidated.insert(epoch_id);
-                valid_epochs.erase(epoch_id);
-                
-                // Propagação recursiva
-                propagate_cell_invalidation(dependent_cell, invalidated);
+        for (const auto& next : get_epoch_dependents(cur)) {
+            if (visited.insert(next).second) {
+                q.push(next);
             }
         }
     }
+
+    return out;
 }
 
-void EpochSystem::update_cell_dependencies(const CellId& cell_id, ExecutionUnitId unit_id) {
-    // Obter símbolos usados por esta unidade
-    auto used_symbols = session_manager.get_unit_dependencies(unit_id);
-    
-    // Para cada símbolo usado, encontrar qual célula o definiu
-    for (const auto& symbol_name : used_symbols) {
-        auto* symbol = session_manager.lookup_symbol(symbol_name);
-        if (symbol) {
-            // Encontrar a célula que definiu este símbolo
-            // Assumimos que o source_name da origem é o cell_id
-            const CellId& defining_cell = symbol->origin.source_name;
-            
-            if (defining_cell != cell_id) {
-                // Registrar dependência
-                cell_dependencies[defining_cell].insert(cell_id);
-            }
+void EpochManager::invalidate_epoch_local(int epoch_id, SessionManager* session) {
+    auto it = epochs_.find(epoch_id);
+    if (it == epochs_.end()) return;
+
+    auto& e = it->second;
+    if (!e.valid) return;
+    e.valid = false;
+
+    // Remove producers pointing to this invalidated epoch.
+    for (auto pit = symbol_producer_epoch_.begin(); pit != symbol_producer_epoch_.end();) {
+        if (pit->second == epoch_id) {
+            pit = symbol_producer_epoch_.erase(pit);
+        } else {
+            ++pit;
+        }
+    }
+
+    if (session) {
+        for (const auto& def : e.defined_symbols) {
+            session->invalidate_symbol(def);
         }
     }
 }
 
-} // namespace interactive
-} // namespace nv
+std::vector<int> EpochManager::invalidate_epoch(int epoch_id, SessionManager* session) {
+    std::vector<int> affected;
+
+    // Invalidate the epoch itself first.
+    invalidate_epoch_local(epoch_id, session);
+    affected.push_back(epoch_id);
+
+    // Invalidate dependents transitively.
+    auto deps = bfs_collect_dependents(epoch_id);
+    for (int e : deps) {
+        invalidate_epoch_local(e, session);
+        affected.push_back(e);
+    }
+
+    return affected;
+}
+
+bool EpochManager::is_epoch_valid(int epoch_id) const {
+    auto it = epochs_.find(epoch_id);
+    if (it == epochs_.end()) return false;
+    return it->second.valid;
+}
+
+int EpochManager::get_epoch_of_cell(const std::string& cell_id) const {
+    auto it = cell_epoch_.find(cell_id);
+    if (it == cell_epoch_.end()) return 0;
+    return it->second;
+}
+
+const Epoch* EpochManager::get_epoch(int epoch_id) const {
+    auto it = epochs_.find(epoch_id);
+    if (it == epochs_.end()) return nullptr;
+    return &it->second;
+}
+
+std::vector<int> EpochManager::get_epoch_dependents(int epoch_id) const {
+    auto it = rdeps_.find(epoch_id);
+    if (it == rdeps_.end()) return {};
+    return std::vector<int>(it->second.begin(), it->second.end());
+}
+
+std::vector<int> EpochManager::get_epoch_dependencies(int epoch_id) const {
+    auto it = deps_.find(epoch_id);
+    if (it == deps_.end()) return {};
+    return std::vector<int>(it->second.begin(), it->second.end());
+}
+
+std::unordered_set<std::string> EpochManager::list_symbols_defined_by_epoch(int epoch_id) const {
+    auto it = epochs_.find(epoch_id);
+    if (it == epochs_.end()) return {};
+    return it->second.defined_symbols;
+}
+
+std::unordered_set<std::string> EpochManager::list_symbols_defined_by_epochs(const std::vector<int>& epoch_ids) const {
+    std::unordered_set<std::string> out;
+    for (int id : epoch_ids) {
+        auto it = epochs_.find(id);
+        if (it == epochs_.end()) continue;
+        out.insert(it->second.defined_symbols.begin(), it->second.defined_symbols.end());
+    }
+    return out;
+}
+
+} // namespace narval::frontend::interactive
