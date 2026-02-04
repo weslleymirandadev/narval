@@ -1,112 +1,97 @@
 #pragma once
 
-#include "frontend/interactive/session_manager.hpp"
-#include "frontend/interactive/execution_unit.hpp"
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
-#include <cstdint>
+#include <vector>
 
-namespace nv {
-namespace interactive {
+#include "frontend/interactive/interactive_session.hpp"
+
+namespace narval::frontend::interactive {
+
+class SessionManager;
 
 /**
- * Epoch System - Sistema de versões lógicas para Notebooks
- * 
- * Usado apenas no contexto de Notebooks.
- * 
- * Definições:
- * - Cada célula pertence a um "epoch"
- * - Um epoch representa uma versão lógica da sessão
- * 
- * Regras:
- * - Executar uma célula cria ou atualiza um epoch
- * - Reexecutar uma célula invalida todos os epochs que dependem dela
- * - Símbolos definidos em epochs invalidados tornam-se indisponíveis
- * - O sistema deve impedir uso de símbolos inválidos
+ * Epoch System (Notebook only)
+ *
+ * This component tracks logical versions (epochs) of a notebook session.
+ * Each executed cell is associated with exactly one epoch.
+ *
+ * Re-executing a cell creates a new epoch for that cell and invalidates all
+ * epochs that (transitively) depend on the old epoch.
+ *
+ * It does NOT execute code. It only manages epochs, dependencies and
+ * invalidations, and integrates with SessionManager to invalidate symbols.
  */
-class EpochSystem {
-public:
-    using EpochId = uint64_t;
-    using CellId = std::string;  // ID da célula (ex: "cell_1", "cell_2")
-    
-    EpochSystem(SessionManager& session_manager);
-    ~EpochSystem() = default;
-    
-    /**
-     * Executa uma célula, criando ou atualizando seu epoch
-     * 
-     * @param cell_id ID da célula
-     * @param unit_id ID da unidade de execução associada
-     * @return ID do epoch criado/atualizado
-     */
-    EpochId execute_cell(const CellId& cell_id, ExecutionUnitId unit_id);
-    
-    /**
-     * Reexecuta uma célula, invalidando dependências
-     * 
-     * @param cell_id ID da célula a reexecutar
-     * @param unit_id ID da nova unidade de execução
-     * @return ID do novo epoch e set de epochs invalidados
-     */
-    struct ReexecutionResult {
-        EpochId new_epoch_id;
-        std::unordered_set<EpochId> invalidated_epochs;
-        std::unordered_set<ExecutionUnitId> invalidated_units;
-    };
-    ReexecutionResult reexecute_cell(const CellId& cell_id, ExecutionUnitId unit_id);
-    
-    /**
-     * Verifica se um epoch está válido
-     */
-    bool is_epoch_valid(EpochId epoch_id) const;
-    
-    /**
-     * Obtém o epoch atual de uma célula
-     */
-    EpochId get_cell_epoch(const CellId& cell_id) const;
-    
-    /**
-     * Obtém todas as células que dependem de uma célula específica
-     */
-    std::unordered_set<CellId> get_dependent_cells(const CellId& cell_id) const;
-    
-    /**
-     * Limpa todo o sistema de epochs
-     */
-    void clear();
+struct Epoch {
+    int id = 0;
+    bool valid = true;
 
-private:
-    SessionManager& session_manager;
-    
-    // Mapeamento: cell_id -> epoch_id atual
-    std::unordered_map<CellId, EpochId> cell_epochs;
-    
-    // Mapeamento: epoch_id -> cell_id
-    std::unordered_map<EpochId, CellId> epoch_cells;
-    
-    // Mapeamento: epoch_id -> unit_id
-    std::unordered_map<EpochId, ExecutionUnitId> epoch_units;
-    
-    // Grafo de dependências: cell_id -> células que dependem dela
-    std::unordered_map<CellId, std::unordered_set<CellId>> cell_dependencies;
-    
-    // Set de epochs válidos
-    std::unordered_set<EpochId> valid_epochs;
-    
-    // Contador para gerar IDs de epoch únicos
-    EpochId next_epoch_id;
-    
-    /**
-     * Propaga invalidação através das dependências de células
-     */
-    void propagate_cell_invalidation(const CellId& cell_id,
-                                     std::unordered_set<EpochId>& invalidated);
-    
-    /**
-     * Atualiza dependências entre células baseado nas dependências de símbolos
-     */
-    void update_cell_dependencies(const CellId& cell_id, ExecutionUnitId unit_id);
+    // Cells that belong to this epoch.
+    std::unordered_set<std::string> cells;
+
+    // Semantic interface (aggregated from the executed cell fragment).
+    std::unordered_set<std::string> defined_symbols;
+    std::unordered_set<std::string> used_symbols;
 };
 
-} // namespace interactive
-} // namespace nv
+class EpochManager {
+public:
+    EpochManager();
+
+    void reset();
+
+    // Creates a new epoch and assigns it to the given cell.
+    // If the cell already had an epoch, the old epoch is returned via old_epoch.
+    int create_epoch_for_cell(const std::string& cell_id, int* old_epoch = nullptr);
+
+    // Commits semantic interface of the cell execution into the epoch.
+    // This also updates epoch dependencies based on symbol producers.
+    void commit_epoch(
+        int epoch_id,
+        const std::string& cell_id,
+        const std::unordered_set<std::string>& defined_symbols,
+        const std::unordered_set<std::string>& used_symbols
+    );
+
+    // Invalidates an epoch and all epochs that depend on it (transitively).
+    // This invalidates the epoch itself as well.
+    // If session is provided, invalidates symbols defined by affected epochs.
+    // Returns the list of affected epoch ids (including epoch_id).
+    std::vector<int> invalidate_epoch(int epoch_id, SessionManager* session);
+
+    // Queries
+    bool is_epoch_valid(int epoch_id) const;
+    int get_epoch_of_cell(const std::string& cell_id) const;
+    const Epoch* get_epoch(int epoch_id) const;
+
+    std::vector<int> get_epoch_dependents(int epoch_id) const;
+    std::vector<int> get_epoch_dependencies(int epoch_id) const;
+
+    std::unordered_set<std::string> list_symbols_defined_by_epoch(int epoch_id) const;
+
+    std::unordered_set<std::string> list_symbols_defined_by_epochs(const std::vector<int>& epoch_ids) const;
+
+private:
+    int epoch_counter_ = 0;
+
+    // epoch_id -> epoch state
+    std::unordered_map<int, Epoch> epochs_;
+
+    // cell_id -> epoch_id
+    std::unordered_map<std::string, int> cell_epoch_;
+
+    // Epoch dependency graph: deps[A] = epochs that A depends on.
+    std::unordered_map<int, std::unordered_set<int>> deps_;
+    // Reverse: rdeps[B] = epochs that depend on B.
+    std::unordered_map<int, std::unordered_set<int>> rdeps_;
+
+    // Symbol -> producer epoch (last valid producer).
+    std::unordered_map<std::string, int> symbol_producer_epoch_;
+
+    void set_epoch_dependencies(int epoch_id, const std::unordered_set<int>& deps);
+    std::vector<int> bfs_collect_dependents(int epoch_id);
+    void invalidate_epoch_local(int epoch_id, SessionManager* session);
+};
+
+} // namespace narval::frontend::interactive

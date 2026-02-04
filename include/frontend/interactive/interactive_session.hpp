@@ -1,138 +1,147 @@
 #pragma once
 
-#include "frontend/interactive/session_manager.hpp"
-#include "frontend/interactive/execution_unit.hpp"
-#include "frontend/interactive/incremental_checker.hpp"
-#include "frontend/interactive/epoch_system.hpp"
-#include "frontend/interactive/incremental_ir_builder.hpp"
-#include "frontend/interactive/jit_engine.hpp"
-#include "frontend/ast/ast.hpp"
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
-namespace nv {
-namespace interactive {
+namespace narval::frontend::interactive {
 
-/**
- * Interactive Session - Interface de alto nível para modo interativo
- * 
- * Esta classe integra todos os componentes do modo interativo:
- * - Session Manager
- * - Incremental Checker
- * - Epoch System (para notebooks)
- * - IR Incremental Builder
- * - JIT Execution Engine
- * 
- * Fornece APIs simples para:
- * - REPL (executar linha a linha)
- * - Notebook (executar células)
- */
-class InteractiveSession {
-public:
-    /**
-     * Modo de operação da sessão
-     */
-    enum class Mode {
-        REPL,      // Modo REPL (linha a linha)
-        NOTEBOOK   // Modo Notebook (células)
-    };
-    
-    InteractiveSession(Mode mode = Mode::REPL);
-    ~InteractiveSession() = default;
-    
-    /**
-     * Executa código no modo REPL
-     * 
-     * @param source Código fonte a executar
-     * @param source_name Nome da origem (ex: "repl", "line_1")
-     * @return true se execução foi bem-sucedida
-     */
-    bool execute_repl(const std::string& source, const std::string& source_name = "repl");
-    
-    /**
-     * Executa uma célula de notebook
-     * 
-     * @param cell_id ID da célula (ex: "cell_1")
-     * @param source Código fonte da célula
-     * @return true se execução foi bem-sucedida
-     */
-    bool execute_notebook_cell(const std::string& cell_id, const std::string& source);
-    
-    /**
-     * Reexecuta uma célula de notebook (invalida dependências)
-     * 
-     * @param cell_id ID da célula a reexecutar
-     * @param source Novo código fonte (ou mesmo código)
-     * @return true se execução foi bem-sucedida
-     */
-    bool reexecute_notebook_cell(const std::string& cell_id, const std::string& source);
-    
-    /**
-     * Obtém o resultado da última execução (se houver)
-     */
-    void* get_last_result() const { return last_result; }
-    
-    /**
-     * Verifica se houve erros na última execução
-     */
-    bool has_errors() const { return last_has_errors; }
-    
-    /**
-     * Obtém estatísticas da sessão
-     */
-    SessionManager::SessionStats get_stats() const {
-        return session_manager.get_stats();
-    }
-    
-    /**
-     * Limpa toda a sessão (reset completo)
-     */
-    void clear();
-    
-    /**
-     * Obtém o Session Manager (para acesso avançado)
-     */
-    SessionManager& get_session_manager() { return session_manager; }
-    
-    /**
-     * Obtém o modo atual da sessão
-     */
-    Mode get_mode() const { return mode; }
-
-private:
-    Mode mode;
-    
-    // Componentes principais
-    SessionManager session_manager;
-    IncrementalChecker incremental_checker;
-    std::unique_ptr<EpochSystem> epoch_system;  // Apenas para modo NOTEBOOK
-    IncrementalIRBuilder ir_builder;
-    JITEngine jit_engine;
-    
-    // Estado da última execução
-    void* last_result;
-    bool last_has_errors;
-    
-    // Rastreamento de unidades executadas (para limpeza)
-    std::unordered_set<ExecutionUnitId> executed_units;
-    
-    /**
-     * Processa código fonte: lexer -> parser -> AST
-     */
-    std::unique_ptr<Node> parse_source(const std::string& source, const std::string& source_name);
-    
-    /**
-     * Executa uma unidade de execução completa
-     */
-    bool execute_unit(std::unique_ptr<ExecutionUnit> unit);
-    
-    /**
-     * Processa uma unidade: análise -> IR -> execução
-     */
-    bool process_and_execute(ExecutionUnit& unit);
+enum class CellType {
+    Code,
+    Markdown,
 };
 
-} // namespace interactive
-} // namespace nv
+struct Cell {
+    std::string id;
+    CellType type;
+    std::string content;
+    int epoch = 0;
+    bool valid = true;
+};
+
+struct Origin {
+    enum class Kind {
+        ReplStep,
+        NotebookCell,
+    };
+
+    Kind kind;
+    std::string id;
+};
+
+struct IncrementalUnit {
+    std::string id;
+    std::string virtual_filename;
+    std::string source;
+
+    std::unordered_set<std::string> defined_symbols;
+    std::unordered_set<std::string> used_symbols;
+
+    std::optional<Origin> origin;
+};
+
+struct ExecutionResult {
+    bool ok = false;
+    std::string output;
+    std::string error;
+
+    std::unordered_set<std::string> defined_symbols;
+    std::unordered_set<std::string> used_symbols;
+};
+
+class InteractiveOrchestrator;
+class SessionManager;
+class EpochManager;
+
+class Repl;
+class Notebook;
+
+class InteractiveSession {
+public:
+    using OutputCallback = std::function<void(const std::string&)>;
+    using ErrorCallback = std::function<void(const std::string&)>;
+
+    virtual ~InteractiveSession() = default;
+
+    void set_output_callback(OutputCallback cb) { out_cb_ = std::move(cb); }
+    void set_error_callback(ErrorCallback cb) { err_cb_ = std::move(cb); }
+
+    virtual void start() = 0;
+
+    template <class T>
+    T* get_session() {
+        return dynamic_cast<T*>(this);
+    }
+
+protected:
+    void emit_output(const std::string& s) {
+        if (out_cb_) out_cb_(s);
+    }
+
+    void emit_error(const std::string& s) {
+        if (err_cb_) err_cb_(s);
+    }
+
+private:
+    OutputCallback out_cb_;
+    ErrorCallback err_cb_;
+};
+
+class Repl : public InteractiveSession {
+public:
+    Repl();
+
+    void start() override;
+
+    ExecutionResult execute_line(const std::string& line);
+
+    SessionManager& session_manager();
+
+    void set_debug(bool enabled) { debug_ = enabled; }
+    bool debug() const { return debug_; }
+
+private:
+    std::unique_ptr<InteractiveOrchestrator> orchestrator_;
+    bool debug_ = false;
+    size_t step_ = 0;
+};
+
+class Notebook : public InteractiveSession {
+public:
+    explicit Notebook(std::string title);
+
+    void start() override;
+
+    std::string create_cell(CellType type, const std::string& content);
+    bool execute_cell(const std::string& cell_id);
+
+    std::vector<std::string> get_cell_ids() const;
+    const Cell* get_cell(const std::string& cell_id) const;
+
+    void reset_session();
+
+    bool save_to_file(const std::string& filename) const;
+
+    SessionManager& session_manager();
+
+    EpochManager& epoch_system();
+
+private:
+    std::string title_;
+    std::unique_ptr<InteractiveOrchestrator> orchestrator_;
+    std::unique_ptr<EpochManager> epochs_;
+
+    int next_cell_id_ = 1;
+    int current_epoch_ = 0;
+
+    std::unordered_map<std::string, Cell> cells_;
+};
+
+std::unique_ptr<InteractiveSession> create_repl();
+std::unique_ptr<InteractiveSession> create_notebook(const std::string& title);
+
+} // namespace narval::frontend::interactive
