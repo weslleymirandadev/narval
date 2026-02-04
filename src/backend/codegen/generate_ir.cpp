@@ -62,6 +62,16 @@ static void declare_runtime(IRGenerationContext& context) {
     // nv_write_no_nl(Value*) - função builtin para escrita sem nova linha
     M.getOrInsertFunction("nv_write_no_nl", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy)}, false));
     
+    // nv_register_value(Value*, const char*, const char*) - função para registrar valores no REPL
+    // DISABLED: Function doesn't exist in runtime
+    // M.getOrInsertFunction("nv_register_value", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy), I8Ptr, I8Ptr}, false));
+    
+    // nv_register_write_value(Value*) - função para registrar argumentos de write() no REPL
+    M.getOrInsertFunction("nv_register_write_value", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy)}, false));
+    
+    // nv_register_function_return(Value*, const char*) - função para registrar retornos de função no REPL
+    M.getOrInsertFunction("nv_register_function_return", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy), I8Ptr}, false));
+    
     // ensure_value_type(Value*) - helper para garantir que um Value tenha a tag correta
     M.getOrInsertFunction("ensure_value_type", llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
 

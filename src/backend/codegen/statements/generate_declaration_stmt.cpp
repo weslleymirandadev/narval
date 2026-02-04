@@ -83,7 +83,7 @@ void DeclarationStmtNode::codegen(nv::IRGenerationContext& context) {
             // Criar variável global com inicializador constante (se disponível)
             global = new llvm::GlobalVariable(
                 M, ValueTy, false,  // não constante
-                llvm::GlobalValue::InternalLinkage,  // linkage interno (módulos combinados)
+                llvm::GlobalValue::InternalLinkage,  // InternalLinkage para variáveis definidas no mesmo módulo
                 initializer,  // usar constante com tag ou zero
                 symbol
             );
@@ -142,19 +142,16 @@ void DeclarationStmtNode::codegen(nv::IRGenerationContext& context) {
         }
         
         // Garantir que o GlobalVariable está registrado na tabela de símbolos
-        // (pode ter sido registrado por import com nullptr, ou não estar registrado ainda)
+        // (pode ter sido criado por import mas não registrado ainda, ou vice-versa)
         auto existing_info = context.get_symbol_table().lookup_symbol(symbol);
-        if (!existing_info.has_value() || existing_info.value().value == nullptr || existing_info.value().value != global) {
-            // Registrar/atualizar na tabela de símbolos se:
-            // - não estiver registrado, OU
-            // - estiver registrado com nullptr (criado por import), OU
-            // - estiver registrado com uma variável diferente
+        if (!existing_info.has_value() || existing_info.value().value != global) {
+            // Registrar na tabela de símbolos se não estiver ou se for diferente
             nv::SymbolInfo info(
                 global,
-                stored_ty,
-                nv_type,
+                decl_ty,
+                nullptr,
                 false,  // não é alocação local
-                constant
+                false   // não é constante
             );
             context.get_symbol_table().define_symbol(symbol, info);
         }

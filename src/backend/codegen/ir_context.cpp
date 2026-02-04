@@ -3,6 +3,7 @@
 #include "frontend/checker/checker.hpp"
 #include "frontend/checker/unification.hpp"
 #include <optional>
+#include <cstdio>
 
 namespace nv {
 
@@ -266,10 +267,12 @@ std::optional<SymbolInfo> IRGenerationContext::get_symbol_info(const std::string
 }
 
 void IRGenerationContext::register_global_init(llvm::GlobalVariable* global, llvm::Value* init_value, const std::string& symbol_name) {
+    std::fprintf(stderr, "[register_global_init] registering symbol=%s global=%p init_value=%p\n", symbol_name.c_str(), (void*)global, (void*)init_value);
     pending_global_inits.push_back({global, init_value, symbol_name});
 }
 
 void IRGenerationContext::finalize_global_inits(int priority) {
+    std::fprintf(stderr, "[finalize_global_inits] entering priority=%d pending=%zu\n", priority, pending_global_inits.size());
     if (pending_global_inits.empty()) {
         return;
     }
@@ -327,6 +330,19 @@ void IRGenerationContext::finalize_global_inits(int priority) {
             auto* f = ensure_runtime_func("create_str", {ValuePtr, I8Ptr});
             builder.CreateCall(f, {global_ptr, init.init_value});
         }
+
+        // Se esta entrada foi marcada como valor de retorno REPL, registrar com o runtime
+        // O nome segue o prefixo "__nv_repl_last_value_" para identificação
+        // TEMPORARILY DESABILITADO PARA ISOLAR O PROBLEMA DE SEGFAULT
+        /*
+        if (init.symbol_name.rfind("__nv_repl_last_value_", 0) == 0) {
+            // Debug: log that we will register a REPL return for this global
+            std::fprintf(stderr, "[finalize_global_inits] registering repl return for %s\n", init.symbol_name.c_str());
+            auto* reg_fn = ensure_runtime_func("nv_register_function_return", {ValuePtr, I8Ptr});
+            auto* null_str = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(I8Ptr));
+            builder.CreateCall(reg_fn, {global_ptr, null_str});
+        }
+        */
     }
     
     // Retornar void

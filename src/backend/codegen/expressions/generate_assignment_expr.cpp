@@ -84,7 +84,8 @@ void AssignmentExprNode::codegen(nv::IRGenerationContext& ctx) {
         // Array path
         B.SetInsertPoint(bbArr);
         {
-            auto decl = M.getOrInsertFunction(
+            auto& M_ref = ctx.get_module();
+            auto decl = M_ref.getOrInsertFunction(
                 "array_set_index_v",
                 llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, I32, ValuePtr}, false)
             );
@@ -95,7 +96,8 @@ void AssignmentExprNode::codegen(nv::IRGenerationContext& ctx) {
         // Vector path
         B.SetInsertPoint(bbVec);
         {
-            auto decl = M.getOrInsertFunction(
+            auto& M_ref = ctx.get_module();
+            auto decl = M_ref.getOrInsertFunction(
                 "vector_set_method",
                 llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, I32, ValuePtr}, false)
             );
