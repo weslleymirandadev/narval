@@ -8,6 +8,7 @@
 #include "backend/codegen/generate_ir.hpp"
 #include "backend/codegen/ir_utils.hpp"
 #include "frontend/interactive/interactive_session.hpp"
+#include "frontend/interactive/session_manager.hpp"
 #include <filesystem>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/FileSystem.h>
@@ -302,229 +303,261 @@ int run_batch_mode(const std::string& filename) {
 
 // Função para executar modo REPL
 int run_repl_mode() {
+    using namespace narval::frontend::interactive;
+    
     std::cout << "Narval REPL - Modo Interativo\n";
-    std::cout << "Digite código Narval ou 'quit'/'exit' para sair\n";
-    std::cout << "Comandos especiais: 'clear' (limpar sessão), 'stats' (estatísticas)\n\n";
+    std::cout << "Digite ':help' para comandos ou ':quit' para sair\n\n";
     
     // Inicializar base dir como diretório atual
     nv_base_dir_storage = std::filesystem::current_path().string();
     nv_base_dir = nv_base_dir_storage.c_str();
     
-    // Criar sessão interativa em modo REPL
-    nv::interactive::InteractiveSession session(nv::interactive::InteractiveSession::Mode::REPL);
-    
-    std::string line;
-    int line_number = 1;
-    
-    while (true) {
-        std::cout << "narval> ";
-        std::cout.flush();
+    try {
+        // Criar sessão REPL usando o novo sistema
+        auto repl_session = create_repl();
         
-        if (!std::getline(std::cin, line)) {
-            // EOF (Ctrl+D)
-            std::cout << "\n";
-            break;
+        // Configurar callbacks
+        repl_session->set_output_callback([](const std::string& output) {
+            std::cout << output << std::endl;
+        });
+        
+        repl_session->set_error_callback([](const std::string& error) {
+            std::cerr << "Error: " << error << std::endl;
+        });
+        
+        // Iniciar o REPL
+        repl_session->start();
+
+        auto* repl = repl_session->get_session<Repl>();
+        if (!repl) {
+            std::cerr << "Erro ao obter interface do REPL" << std::endl;
+            return 1;
         }
-        
-        // Trim whitespace
-        line.erase(0, line.find_first_not_of(" \t\n\r"));
-        line.erase(line.find_last_not_of(" \t\n\r") + 1);
-        
-        // Comandos especiais
-        if (line.empty()) {
-            continue;
-        }
-        
-        if (line == "quit" || line == "exit" || line == "q") {
-            break;
-        }
-        
-        if (line == "clear") {
-            session.clear();
-            std::cout << "Sessão limpa.\n";
-            continue;
-        }
-        
-        if (line == "stats") {
-            auto stats = session.get_stats();
-            std::cout << "Estatísticas da sessão:\n";
-            std::cout << "  Símbolos totais: " << stats.total_symbols << "\n";
-            std::cout << "  Símbolos válidos: " << stats.valid_symbols << "\n";
-            std::cout << "  Unidades executadas: " << stats.total_units << "\n";
-            continue;
-        }
-        
-        // Executar código
-        std::string source_name = "repl_line_" + std::to_string(line_number);
-        bool success = session.execute_repl(line, source_name);
-        
-        if (!success) {
-            if (session.has_errors()) {
-                // Erros já foram reportados pelo checker
-            } else {
-                std::cerr << "Erro ao executar código\n";
+
+        std::string line;
+        while (true) {
+            std::cout << "narval> ";
+            std::cout.flush();
+
+            if (!std::getline(std::cin, line)) {
+                std::cout << "\n";
+                break;
             }
-        } else {
-            // Código executado com sucesso
-            // Por enquanto, não imprimimos o resultado (pode ser expandido)
+
+            // Trim whitespace
+            line.erase(0, line.find_first_not_of(" \t\n\r"));
+            line.erase(line.find_last_not_of(" \t\n\r") + 1);
+            if (line.empty()) continue;
+
+            // Commands
+            if (line == ":quit" || line == ":exit") {
+                break;
+            }
+            if (line == ":help") {
+                std::cout << "Comandos disponíveis:\n";
+                std::cout << "  :help     - Show available commands\n";
+                std::cout << "  :quit     - Exit REPL\n";
+                std::cout << "  :symbols  - Show defined symbols\n";
+                std::cout << "  :debug    - Toggle debug mode\n";
+                std::cout << "  :clear    - Clear session\n";
+                continue;
+            }
+            if (line == ":symbols") {
+                auto syms = repl->session_manager().list_symbols_valid();
+                std::cout << "Symbols (" << syms.size() << "):\n";
+                for (const auto& s : syms) {
+                    std::cout << "  " << s << "\n";
+                }
+                continue;
+            }
+            if (line == ":clear") {
+                repl->session_manager().reset();
+                std::cout << "Session cleared.\n";
+                continue;
+            }
+            if (line == ":debug") {
+                repl->set_debug(!repl->debug());
+                std::cout << "debug=" << (repl->debug() ? "true" : "false") << "\n";
+                continue;
+            }
+
+            auto result = repl->execute_line(line);
+            if (!result.ok) {
+                if (!result.error.empty()) {
+                    std::cerr << "Error: " << result.error << std::endl;
+                }
+            }
+
+            if (!result.output.empty()) {
+                std::cout << result.output << std::endl;
+            }
         }
-        
-        line_number++;
+
+    } catch (const std::exception& e) {
+        std::cerr << "Erro ao inicializar REPL: " << e.what() << std::endl;
+        return 1;
     }
     
-    std::cout << "Saindo do REPL...\n";
     return 0;
 }
 
 // Função para executar modo Notebook
 int run_notebook_mode() {
+    using namespace narval::frontend::interactive;
+    
     std::cout << "Narval Notebook - Modo Interativo\n";
-    std::cout << "Digite código Narval por célula\n";
-    std::cout << "Comandos especiais:\n";
-    std::cout << "  'quit'/'exit' - sair\n";
-    std::cout << "  'clear' - limpar sessão\n";
-    std::cout << "  'stats' - estatísticas\n";
-    std::cout << "  'run <cell_id>' - executar célula\n";
-    std::cout << "  'rerun <cell_id>' - reexecutar célula (invalida dependências)\n";
-    std::cout << "  'list' - listar células\n\n";
+    std::cout << "Digite 'help' para comandos ou 'quit' para sair\n\n";
     
     // Inicializar base dir como diretório atual
     nv_base_dir_storage = std::filesystem::current_path().string();
     nv_base_dir = nv_base_dir_storage.c_str();
     
-    // Criar sessão interativa em modo Notebook
-    nv::interactive::InteractiveSession session(nv::interactive::InteractiveSession::Mode::NOTEBOOK);
-    
-    std::map<std::string, std::string> cells;  // cell_id -> código fonte
-    int next_cell_id = 1;
-    
-    std::string line;
-    
-    while (true) {
-        std::cout << "narval-notebook> ";
-        std::cout.flush();
+    try {
+        // Criar sessão Notebook usando o novo sistema
+        auto notebook_session = create_notebook("Interactive Notebook");
         
-        if (!std::getline(std::cin, line)) {
-            // EOF (Ctrl+D)
-            std::cout << "\n";
-            break;
+        // Configurar callbacks
+        notebook_session->set_output_callback([](const std::string& output) {
+            std::cout << output << std::endl;
+        });
+        
+        notebook_session->set_error_callback([](const std::string& error) {
+            std::cerr << "Error: " << error << std::endl;
+        });
+        
+        // Obter interface do notebook
+        auto* notebook = notebook_session->get_session<Notebook>();
+        if (!notebook) {
+            std::cerr << "Erro ao obter interface do notebook" << std::endl;
+            return 1;
         }
         
-        // Trim whitespace
-        line.erase(0, line.find_first_not_of(" \t\n\r"));
-        line.erase(line.find_last_not_of(" \t\n\r") + 1);
+        std::cout << "Notebook criado. Comandos disponíveis:\n";
+        std::cout << "  new <code>     - Criar nova célula\n";
+        std::cout << "  run <cell_id>  - Executar célula\n";
+        std::cout << "  list           - Listar células\n";
+        std::cout << "  clear          - Limpar sessão\n";
+        std::cout << "  save <file>    - Salvar notebook\n";
+        std::cout << "  quit           - Sair\n\n";
         
-        if (line.empty()) {
-            continue;
-        }
-        
-        // Comandos especiais
-        if (line == "quit" || line == "exit" || line == "q") {
-            break;
-        }
-        
-        if (line == "clear") {
-            session.clear();
-            cells.clear();
-            next_cell_id = 1;
-            std::cout << "Sessão limpa.\n";
-            continue;
-        }
-        
-        if (line == "stats") {
-            auto stats = session.get_stats();
-            std::cout << "Estatísticas da sessão:\n";
-            std::cout << "  Símbolos totais: " << stats.total_symbols << "\n";
-            std::cout << "  Símbolos válidos: " << stats.valid_symbols << "\n";
-            std::cout << "  Unidades executadas: " << stats.total_units << "\n";
-            std::cout << "  Células definidas: " << cells.size() << "\n";
-            continue;
-        }
-        
-        if (line == "list") {
-            std::cout << "Células definidas:\n";
-            for (const auto& [cell_id, code] : cells) {
-                std::cout << "  " << cell_id << ": " 
-                          << (code.length() > 50 ? code.substr(0, 50) + "..." : code) << "\n";
-            }
-            continue;
-        }
-        
-        // Comando: run <cell_id>
-        if (line.substr(0, 4) == "run ") {
-            std::string cell_id = line.substr(4);
-            cell_id.erase(0, cell_id.find_first_not_of(" \t"));
-            cell_id.erase(cell_id.find_last_not_of(" \t") + 1);
+        std::string line;
+        while (true) {
+            std::cout << "notebook> ";
+            std::cout.flush();
             
-            auto it = cells.find(cell_id);
-            if (it == cells.end()) {
-                std::cerr << "Célula '" << cell_id << "' não encontrada.\n";
+            if (!std::getline(std::cin, line)) {
+                std::cout << "\n";
+                break;
+            }
+            
+            // Trim whitespace
+            line.erase(0, line.find_first_not_of(" \t\n\r"));
+            line.erase(line.find_last_not_of(" \t\n\r") + 1);
+            
+            if (line.empty()) continue;
+            
+            if (line == "quit" || line == "exit") {
+                break;
+            }
+            
+            if (line == "help") {
+                std::cout << "Comandos disponíveis:\n";
+                std::cout << "  new <code>     - Criar nova célula\n";
+                std::cout << "  run <cell_id>  - Executar célula\n";
+                std::cout << "  list           - Listar células\n";
+                std::cout << "  clear          - Limpar sessão\n";
+                std::cout << "  save <file>    - Salvar notebook\n";
+                std::cout << "  quit           - Sair\n";
                 continue;
             }
             
-            bool success = session.execute_notebook_cell(cell_id, it->second);
-            if (!success && session.has_errors()) {
-                // Erros já foram reportados
-            }
-            continue;
-        }
-        
-        // Comando: rerun <cell_id>
-        if (line.substr(0, 6) == "rerun ") {
-            std::string cell_id = line.substr(6);
-            cell_id.erase(0, cell_id.find_first_not_of(" \t"));
-            cell_id.erase(cell_id.find_last_not_of(" \t") + 1);
-            
-            auto it = cells.find(cell_id);
-            if (it == cells.end()) {
-                std::cerr << "Célula '" << cell_id << "' não encontrada.\n";
-                continue;
-            }
-            
-            bool success = session.reexecute_notebook_cell(cell_id, it->second);
-            if (!success && session.has_errors()) {
-                // Erros já foram reportados
-            }
-            continue;
-        }
-        
-        // Modo de entrada de célula: <cell_id>: <código>
-        size_t colon_pos = line.find(':');
-        if (colon_pos != std::string::npos && colon_pos > 0) {
-            std::string cell_id = line.substr(0, colon_pos);
-            cell_id.erase(0, cell_id.find_first_not_of(" \t"));
-            cell_id.erase(cell_id.find_last_not_of(" \t") + 1);
-            
-            std::string code = line.substr(colon_pos + 1);
-            code.erase(0, code.find_first_not_of(" \t"));
-            
-            if (!code.empty()) {
-                cells[cell_id] = code;
-                
-                // Executar célula automaticamente
-                bool success = session.execute_notebook_cell(cell_id, code);
-                if (!success && session.has_errors()) {
-                    // Erros já foram reportados
-                } else {
-                    std::cout << "Célula '" << cell_id << "' executada.\n";
+            if (line == "list") {
+                auto cell_ids = notebook->get_cell_ids();
+                std::cout << "Células (" << cell_ids.size() << "):\n";
+                for (const auto& id : cell_ids) {
+                    const auto* cell = notebook->get_cell(id);
+                    if (cell) {
+                        std::cout << "  " << id << " [" 
+                                  << (cell->type == CellType::Code ? "Code" : "Markdown") 
+                                  << "] " 
+                                  << (cell->content.length() > 30 ? cell->content.substr(0, 30) + "..." : cell->content)
+                                  << "\n";
+                    }
                 }
+                continue;
             }
-            continue;
+            
+            if (line == "clear") {
+                notebook->reset_session();
+                std::cout << "Sessão limpa.\n";
+                continue;
+            }
+            
+            // Comando: new <code>
+            if (line.substr(0, 4) == "new ") {
+                std::string code = line.substr(4);
+                code.erase(0, code.find_first_not_of(" \t"));
+                
+                if (!code.empty()) {
+                    std::string cell_id = notebook->create_cell(CellType::Code, code);
+                    std::cout << "Célula '" << cell_id << "' criada.\n";
+                    
+                    // Executar automaticamente
+                    if (notebook->execute_cell(cell_id)) {
+                        std::cout << "Célula executada com sucesso.\n";
+                    } else {
+                        std::cout << "Erro ao executar célula.\n";
+                    }
+                } else {
+                    std::cout << "Uso: new <código>\n";
+                }
+                continue;
+            }
+            
+            // Comando: run <cell_id>
+            if (line.substr(0, 4) == "run ") {
+                std::string cell_id = line.substr(4);
+                cell_id.erase(0, cell_id.find_first_not_of(" \t"));
+                
+                if (notebook->execute_cell(cell_id)) {
+                    std::cout << "Célula '" << cell_id << "' executada.\n";
+                } else {
+                    std::cout << "Erro ao executar célula '" << cell_id << "'.\n";
+                }
+                continue;
+            }
+            
+            // Comando: save <file>
+            if (line.substr(0, 5) == "save ") {
+                std::string filename = line.substr(5);
+                filename.erase(0, filename.find_first_not_of(" \t"));
+                
+                if (notebook->save_to_file(filename)) {
+                    std::cout << "Notebook salvo em '" << filename << "'.\n";
+                } else {
+                    std::cout << "Erro ao salvar notebook.\n";
+                }
+                continue;
+            }
+            
+            // Se não é comando, tratar como nova célula
+            std::string cell_id = notebook->create_cell(CellType::Code, line);
+            std::cout << "Célula '" << cell_id << "' criada.\n";
+            
+            if (notebook->execute_cell(cell_id)) {
+                std::cout << "Célula executada com sucesso.\n";
+            } else {
+                std::cout << "Erro ao executar célula.\n";
+            }
         }
         
-        // Se não é comando especial, criar nova célula automaticamente
-        std::string cell_id = "cell_" + std::to_string(next_cell_id++);
-        cells[cell_id] = line;
+        std::cout << "Saindo do Notebook...\n";
         
-        bool success = session.execute_notebook_cell(cell_id, line);
-        if (!success && session.has_errors()) {
-            // Erros já foram reportados
-        } else {
-            std::cout << "Célula '" << cell_id << "' criada e executada.\n";
-        }
+    } catch (const std::exception& e) {
+        std::cerr << "Erro ao inicializar Notebook: " << e.what() << std::endl;
+        return 1;
     }
     
-    std::cout << "Saindo do Notebook...\n";
     return 0;
 }
 
@@ -550,8 +583,25 @@ int main(int argc, char* argv[]) {
             std::cout << "\nModos:\n";
             std::cout << "  Se nenhuma opção for fornecida e um arquivo for especificado,\n";
             std::cout << "  o compilador executa em modo batch (compilação normal).\n";
-            std::cout << "  Se --repl ou --notebook for especificado, o modo interativo\n";
-            std::cout << "  correspondente é iniciado.\n";
+            std::cout << "  Se --repl for especificado, inicia o REPL com comandos como :help, :quit, :symbols, etc.\n";
+            std::cout << "  Se --notebook for especificado, inicia o modo Notebook com células e epochs.\n";
+            std::cout << "\nREPL Commands:\n";
+            std::cout << "  :help     - Show available commands\n";
+            std::cout << "  :quit     - Exit REPL\n";
+            std::cout << "  :symbols  - Show defined symbols\n";
+            std::cout << "  :session  - Show session information\n";
+            std::cout << "  :debug    - Toggle debug mode\n";
+            std::cout << "  :clear    - Clear session\n";
+            std::cout << "  :load     - Load file\n";
+            std::cout << "  :save     - Save session\n";
+            std::cout << "\nNotebook Commands:\n";
+            std::cout << "  help      - Show available commands\n";
+            std::cout << "  quit      - Exit notebook\n";
+            std::cout << "  new <code> - Create new cell\n";
+            std::cout << "  run <id>  - Execute cell\n";
+            std::cout << "  list      - List cells\n";
+            std::cout << "  clear     - Clear session\n";
+            std::cout << "  save      - Save notebook\n";
             return 0;
         } else if (arg[0] != '-') {
             // Argumento posicional (nome de arquivo)
