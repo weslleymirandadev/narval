@@ -9,7 +9,7 @@ public:
     IdentifierNode(std::string sym)
         : Expr(NodeType::Identifier), symbol(std::move(sym)) {}
 
-    ~IdentifierNode() override = default;
+    ~IdentifierNode() override;
 
     Node* clone() const override {
         auto* node = new IdentifierNode(symbol);
