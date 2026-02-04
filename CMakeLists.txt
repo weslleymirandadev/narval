@@ -27,6 +27,10 @@ string(STRIP "${LLVM_LIBS}" LLVM_LIBS)
 string(STRIP "${LLVM_SYS_LIBS}" LLVM_SYS_LIBS)
 string(STRIP "${LLVM_LDFLAGS}" LLVM_LDFLAGS)
 
+# Fix for zstd dependency issue
+set(LLVM_ENABLE_ZSTD OFF)
+set(LLVM_ENABLE_TERMINFO OFF)
+
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLVM_CXX_FLAGS} -fexceptions")
 
 include_directories(${LLVM_INCLUDE_DIRS})
