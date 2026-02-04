@@ -1,6 +1,7 @@
 #include "backend/runtime/nv_runtime.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 extern void* array_prototype;
 
