@@ -158,10 +158,14 @@ std::unique_ptr<Node> Parser::produce_ast(const std::vector<Token>& tokens, cons
     size_t import_index = 0;
 
     if (!tokens.empty()) {
-        try {
-            read_lines(tokens[0].filename);
-        } catch (const std::exception& e) {
-            std::cerr << "Warning: Could not read source file: " << e.what() << "\n";
+        // Avoid attempting to read REPL or notebook virtual filenames
+        const std::string& fname = tokens[0].filename;
+        if (fname.rfind("repl_line_", 0) != 0 && fname.rfind("cell_", 0) != 0) {
+            try {
+                read_lines(fname);
+            } catch (const std::exception& e) {
+                std::cerr << "Warning: Could not read source file: " << e.what() << "\n";
+            }
         }
     }
 
