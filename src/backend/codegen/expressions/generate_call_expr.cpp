@@ -119,6 +119,33 @@ llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name
             // Get the value but keep it on the stack conceptually
             llvm::Value* val = ctx.pop_value();
             
+            // If value generation failed, treat as null/undef and emit write with empty string
+            if (!val) {
+                auto* empty = B.CreateGlobalStringPtr("");
+                emit_write(ctx, empty);
+                return llvm::UndefValue::get(ir_utils::get_value_struct(ctx));
+            }
+            
+            // Register the value for REPL output before writing
+            // TEMPORARILE DESABILITADO
+            /*
+            if (val) {
+                auto* ValueTy = ir_utils::get_value_struct(ctx);
+                if (val->getType() == ValueTy) {
+                    // Value is already boxed, register it directly
+                    auto* register_fn = ctx.ensure_runtime_func("nv_register_write_value", {ir_utils::get_value_ptr(ctx)});
+                    auto* alloca = ctx.create_alloca(ValueTy, "write_arg");
+                    B.CreateStore(val, alloca);
+                    B.CreateCall(register_fn, {alloca});
+                } else {
+                    // Box the value first, then register it
+                    llvm::Value* boxed = box_value(ctx, val);
+                    auto* register_fn = ctx.ensure_runtime_func("nv_register_write_value", {ir_utils::get_value_ptr(ctx)});
+                    B.CreateCall(register_fn, {boxed});
+                }
+            }
+            */
+            
             // Emit write with the value (this will box it internally)
             emit_write(ctx, val);
             
