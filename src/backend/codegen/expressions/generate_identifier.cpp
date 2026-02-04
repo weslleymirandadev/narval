@@ -80,6 +80,7 @@ namespace {
 
 void IdentifierNode::codegen(nv::IRGenerationContext& context) {
     context.set_debug_location(position.get());
+    
     auto symbol_opt = context.get_symbol_info(symbol);
     if (!symbol_opt) {
         // Intrínseco: 'json' é um objeto especial da linguagem
@@ -89,10 +90,32 @@ void IdentifierNode::codegen(nv::IRGenerationContext& context) {
             context.push_value(nullJson);
             return;
         }
-        // Error: variable not declared - este erro já deve ter sido reportado pelo checker
-        // Apenas retornar nullptr para evitar crash
-        context.push_value(nullptr);
-        return;
+
+        // No REPL, se não encontrar na tabela de símbolos, tentar buscar diretamente no módulo
+        // Isso permite que variáveis declaradas em fragmentos anteriores sejam encontradas
+        auto& M = context.get_module();
+        auto* global_var = M.getGlobalVariable(symbol);
+        
+        if (global_var) {
+            // Encontrou a variável global diretamente no módulo
+            // Criar SymbolInfo e registrar na tabela
+            auto* ValueTy = nv::ir_utils::get_value_struct(context);
+            nv::SymbolInfo info(
+                global_var,
+                ValueTy,
+                nullptr,
+                false,  // não é alocação local
+                false   // não é constante
+            );
+            context.get_symbol_table().define_symbol(symbol, info);
+            symbol_opt = info;
+        } else {
+            // Modo incremental: o símbolo pode ter sido definido em um fragmento anterior.
+            // Por enquanto, vamos apenas retornar nullptr para variáveis externas para evitar segfaults
+            // TODO: Implementar resolução adequada de variáveis externas entre fragmentos
+            context.push_value(nullptr);
+            return;
+        }
     }
 
     const nv::SymbolInfo& info = symbol_opt.value();
@@ -103,15 +126,10 @@ void IdentifierNode::codegen(nv::IRGenerationContext& context) {
     // Mas não temos acesso ao nome original aqui, então tentamos ambos
     llvm::Value* actual_value = info.value;
     if (!actual_value) {
+        // Para símbolos de fragmentos anteriores, tentar resolver via símbolo do JIT
         auto& M = context.get_module();
-        // Tentar buscar pelo símbolo atual (pode ser alias)
         auto* global_var = M.getGlobalVariable(symbol);
         auto* function = M.getFunction(symbol);
-        
-        // Se não encontrou, pode ser que seja um alias - neste caso, o módulo manager
-        // deveria ter resolvido isso, mas vamos tentar buscar de outras formas
-        // (por exemplo, procurando em todas as funções/variáveis globais)
-        // Na prática, isso não deveria acontecer se o import foi feito corretamente
         
         if (global_var) {
             // Encontrou a variável global, atualizar a entrada na tabela de símbolos
@@ -121,6 +139,9 @@ void IdentifierNode::codegen(nv::IRGenerationContext& context) {
             updated_info.is_constant = false;
             context.get_symbol_table().define_symbol(symbol, updated_info);
             actual_value = global_var;
+            
+            // No REPL, variáveis globais podem não ter initializer inicialmente
+            // Não verificar isso aqui - deixar o código tentar carregar
         } else if (function) {
             // Encontrou a função, atualizar a entrada na tabela de símbolos
             nv::SymbolInfo updated_info = info;
@@ -143,12 +164,12 @@ void IdentifierNode::codegen(nv::IRGenerationContext& context) {
         return;
     }
     
+    llvm::Value* loaded_value = nullptr;
+    
     // Se for uma alocação (variável local) ou global, precisamos carregar o valor
     if (info.is_allocated) {
         // Variável local (AllocaInst)
-        auto* v = context.get_builder().CreateLoad(info.llvm_type, actual_value, symbol.c_str());
-        context.push_value(v);
-        return;
+        loaded_value = context.get_builder().CreateLoad(info.llvm_type, actual_value, symbol.c_str());
     } else if (llvm::isa<llvm::GlobalVariable>(actual_value)) {
         // Variável global: carregar o valor do GlobalVariable
         // O GlobalVariable deve estar inicializado corretamente via @llvm.global_ctors
@@ -158,22 +179,63 @@ void IdentifierNode::codegen(nv::IRGenerationContext& context) {
         auto* ValuePtr = nv::ir_utils::get_value_ptr(context);
         
         // Carregar o valor
-        auto* loaded_value = B.CreateLoad(info.llvm_type, actual_value, symbol.c_str());
+        loaded_value = B.CreateLoad(info.llvm_type, actual_value, symbol.c_str());
         
-        // Garantir que o tipo está correto usando ensure_value_type
-        // Criar alloca temporário para passar para ensure_value_type
-        auto* temp_alloca = context.create_alloca(ValueTy, symbol + "_ensure");
-        B.CreateStore(loaded_value, temp_alloca);
-        
-        // Chamar ensure_value_type para garantir que a tag está correta
-        auto* ensure_func = context.ensure_runtime_func("ensure_value_type", {ValuePtr});
-        B.CreateCall(ensure_func, {temp_alloca});
-        
-        // Carregar o valor garantido
-        auto* ensured_value = B.CreateLoad(ValueTy, temp_alloca, symbol + "_ensured");
-        context.push_value(ensured_value);
-        return;
+        // Para variáveis globais do tipo Value, precisamos garantir que o tipo está correto
+        // O ensure_value_type é necessário para garantir que a tag esteja correta
+        if (info.llvm_type == ValueTy) {
+            // É Value struct - garantir que tipo está correto usando ensure_value_type
+            auto* temp_alloca = context.create_alloca(ValueTy, symbol + "_ensure");
+            B.CreateStore(loaded_value, temp_alloca);
+            
+            // Chamar ensure_value_type para garantir que a tag está correta
+            auto* ensure_func = context.ensure_runtime_func("ensure_value_type", {ValuePtr});
+            B.CreateCall(ensure_func, {temp_alloca});
+            
+            // Carregar o valor garantido
+            loaded_value = B.CreateLoad(ValueTy, temp_alloca, symbol + "_ensured");
+        } else {
+            // Para tipos não-Value, manter comportamento original
+            // Criar alloca temporário para passar para ensure_value_type
+            auto* temp_alloca = context.create_alloca(ValueTy, symbol + "_ensure");
+            B.CreateStore(loaded_value, temp_alloca);
+            
+            // Chamar ensure_value_type para garantir que a tag está correta
+            auto* ensure_func = context.ensure_runtime_func("ensure_value_type", {ValuePtr});
+            B.CreateCall(ensure_func, {temp_alloca});
+            
+            // Carregar o valor garantido
+            loaded_value = B.CreateLoad(ValueTy, temp_alloca, symbol + "_ensured");
+        }
+    } else {
+        // Caso contrário, é uma constante ou valor direto (ex: parâmetro de função)
+        loaded_value = actual_value;
     }
-    // Caso contrário, é uma constante ou valor direto (ex: parâmetro de função)
-    context.push_value(actual_value);
+    
+    // Register the variable value for REPL output (if in interactive mode)
+    // DISABLED: nv_register_value function doesn't exist in runtime
+    /*
+    if (loaded_value) {
+        auto& B = context.get_builder();
+        auto* ValueTy = nv::ir_utils::get_value_struct(context);
+        
+        if (loaded_value->getType() == ValueTy) {
+            // Value is already a Value struct, register it directly
+            auto* register_fn = context.ensure_runtime_func("nv_register_value", {nv::ir_utils::get_value_ptr(context), nv::ir_utils::get_i8_ptr(context), nv::ir_utils::get_i8_ptr(context)});
+            auto* alloca = context.create_alloca(ValueTy, symbol + "_register");
+            B.CreateStore(loaded_value, alloca);
+            
+            // Create string literals for the variable name and source
+            auto* symbol_str = B.CreateGlobalStringPtr(symbol);
+            auto* source_str = B.CreateGlobalStringPtr("repl");
+            
+            B.CreateCall(register_fn, {alloca, symbol_str, source_str});
+        }
+    }
+    */
+    
+    context.push_value(loaded_value);
 }
+
+// Ensure a single translation unit emits the vtable/typeinfo for IdentifierNode
+IdentifierNode::~IdentifierNode() {}
