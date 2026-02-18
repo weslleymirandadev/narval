@@ -93,7 +93,9 @@ bool Notebook::execute_cell(const std::string& cell_id) {
     u.source = cell.content;
     u.origin = Origin{Origin::Kind::NotebookCell, cell_id};
 
-    auto result = orchestrator_->execute(u);
+    InteractiveOrchestrator::ExecuteOptions options;
+    options.auto_print_last_expr = true;  // Ativar auto-print no Notebook
+    auto result = orchestrator_->execute(u, options);
     if (!result.ok) {
         cell.valid = false;
         return false;
