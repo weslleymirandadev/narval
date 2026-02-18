@@ -216,7 +216,7 @@ void AssignmentExprNode::codegen(nv::IRGenerationContext& ctx) {
             // Criar variável global inicializada como zero
             global = new llvm::GlobalVariable(
                 M, ValueTy, false,
-                llvm::GlobalValue::InternalLinkage,  // linkage interno (módulos combinados)
+                llvm::GlobalValue::ExternalLinkage,  // Usar ExternalLinkage para permitir acesso entre fragmentos
                 llvm::Constant::getNullValue(ValueTy),  // inicializar como zero
                 id->symbol
             );
