@@ -344,6 +344,7 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
     }
 
     if (auto* F = llvm::dyn_cast<llvm::Function>(callee)) {
+        fprintf(stderr, "DEBUG: Function found: %s, return type: %s\n", F->getName().str().c_str(), F->getReturnType()->isVoidTy() ? "void" : "non-void");
         // Obter tipos dos parâmetros da função
         auto* func_ty = F->getFunctionType();
         std::vector<llvm::Type*> param_types(func_ty->param_begin(), func_ty->param_end());
