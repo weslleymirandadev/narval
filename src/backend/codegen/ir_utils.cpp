@@ -348,6 +348,10 @@ llvm::Value* create_function_call(IRGenerationContext& context, llvm::Function* 
 llvm::ReturnInst* create_return(IRGenerationContext& context, llvm::Value* value) {
     auto& B = context.get_builder();
     if (!value) {
+        auto* current_func = context.get_current_function();
+        if (current_func && !current_func->getReturnType()->isVoidTy()) {
+            return B.CreateRet(llvm::UndefValue::get(current_func->getReturnType()));
+        }
         return B.CreateRetVoid();
     }
     return B.CreateRet(value);
