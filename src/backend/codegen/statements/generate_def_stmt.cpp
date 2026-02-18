@@ -87,7 +87,8 @@ void DefStmtNode::codegen(nv::IRGenerationContext& ctx) {
     }
     ctx.exit_scope();
 
-    if (!entry->getTerminator()) {
+    auto* current_bb = ctx.get_builder().GetInsertBlock();
+    if (current_bb && !current_bb->getTerminator()) {
         if (ret_ty->isVoidTy()) ctx.get_builder().CreateRetVoid();
         else ctx.get_builder().CreateRet(llvm::UndefValue::get(ret_ty));
     }

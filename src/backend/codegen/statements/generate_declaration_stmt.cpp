@@ -83,7 +83,7 @@ void DeclarationStmtNode::codegen(nv::IRGenerationContext& context) {
             // Criar variável global com inicializador constante (se disponível)
             global = new llvm::GlobalVariable(
                 M, ValueTy, false,  // não constante
-                llvm::GlobalValue::InternalLinkage,  // InternalLinkage para variáveis definidas no mesmo módulo
+                llvm::GlobalValue::ExternalLinkage,  // Usar ExternalLinkage para permitir acesso entre fragmentos no REPL
                 initializer,  // usar constante com tag ou zero
                 symbol
             );
@@ -94,9 +94,10 @@ void DeclarationStmtNode::codegen(nv::IRGenerationContext& context) {
             // setInitializer funciona mesmo se o GlobalVariable já foi referenciado, desde que não tenha sido modificado
             if (initializer != llvm::Constant::getNullValue(ValueTy)) {
                 // Tentar atualizar o inicializador
-                auto* current_init = global->getInitializer();
                 // Verificar se o inicializador atual é zero/null usando comparação mais robusta
                 bool is_null_init = false;
+                llvm::Constant* current_init = global->hasInitializer() ? global->getInitializer() : nullptr;
+
                 if (!current_init) {
                     is_null_init = true;
                 } else if (llvm::isa<llvm::ConstantAggregateZero>(current_init)) {
