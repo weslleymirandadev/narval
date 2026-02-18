@@ -240,7 +240,7 @@ IrBuildResult IrIncrementalBuilder::build_fragment(
                 B.CreateCall(create_fn, {value_alloca, iv});
             }
 
-            // Chamar nv_write com o Value*
+            // Chamar nv_write com o Value* para exibir no console
             auto* write_fn = ir_ctx.ensure_runtime_func("nv_write", {ValuePtr});
             builder.CreateCall(write_fn, {value_alloca});
         }
