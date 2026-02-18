@@ -10,6 +10,7 @@
 
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
+#include "frontend/checker/type.hpp"
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -74,6 +75,7 @@ bool IrIncrementalBuilder::last_stmt_can_autoprint(const Program& program) {
     if (program.body.empty()) return false;
     const auto* last = program.body.back().get();
     if (!last) return false;
+    
     if (last->kind == NodeType::CallExpression) {
         return !last_stmt_is_write_call(program);
     }
@@ -119,6 +121,28 @@ IrBuildResult IrIncrementalBuilder::build_fragment(
 
     nv::IRGenerationContext ir_ctx(llvm_ctx, *module, builder, &checker);
 
+    // 0) Declare external symbols from previous fragments to allow cross-fragment resolution
+    for (const auto& [name, nv_type] : options.external_symbols) {
+        // Skip if it's already in the module (might be defined in this program)
+        if (module->getGlobalVariable(name) || module->getFunction(name)) continue;
+
+        if (nv_type && nv_type->kind == nv::Kind::DEF) {
+            // It's a function. Declare as extern.
+            auto def_type = std::static_pointer_cast<nv::Def>(nv_type);
+            std::vector<llvm::Type*> param_types;
+            for (const auto& param : def_type->paramstype) {
+                param_types.push_back(ir_ctx.nv_type_to_llvm(param));
+            }
+            auto* ret_type = ir_ctx.nv_type_to_llvm(def_type->returntype);
+            auto* fn_ty = llvm::FunctionType::get(ret_type, param_types, false);
+            llvm::Function::Create(fn_ty, llvm::Function::ExternalLinkage, name, *module);
+        } else {
+            // It's a variable. Declare as extern GlobalVariable of type Value.
+            auto* ValueTy = nv::ir_utils::get_value_struct(ir_ctx);
+            new llvm::GlobalVariable(*module, ValueTy, false, llvm::GlobalValue::ExternalLinkage, nullptr, name);
+        }
+    }
+
     // 0) For now, skip registering external symbols to avoid cross-module issues
     // TODO: Implement proper cross-module symbol resolution in a future iteration
     // This approach avoids segfaults but limits cross-fragment variable usage
@@ -155,13 +179,19 @@ IrBuildResult IrIncrementalBuilder::build_fragment(
         }
     }
 
-    for (auto& stmt : program.body) {
+    for (size_t i = 0; i < program.body.size(); ++i) {
+        auto& stmt = program.body[i];
         if (!stmt) continue;
         if (stmt->kind == NodeType::DefStatement || 
             stmt->kind == NodeType::ImportStatement) {
             continue;
         }
         stmt->codegen(ir_ctx);
+
+        // Se não for o último statement, limpamos o valor da pilha para evitar acumulação
+        if (i < program.body.size() - 1 && ir_ctx.has_value()) {
+            ir_ctx.pop_value();
+        }
     }
 
     if (do_autoprint && ir_ctx.has_value()) {

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
+#include "frontend/checker/type.hpp"
 
 class Program;
 
@@ -43,6 +44,8 @@ namespace narval::frontend::interactive {
 
 struct IrBuildOptions {
     bool auto_print_last_expr = true;
+    // Map of symbol name to its type for external resolution
+    std::unordered_map<std::string, std::shared_ptr<nv::Type>> external_symbols;
 };
 
 struct IrBuildResult {
