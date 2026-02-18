@@ -83,6 +83,11 @@ ExecutionResult InteractiveOrchestrator::execute(const IncrementalUnit& unit, co
     IrBuildOptions ir_opts;
     ir_opts.auto_print_last_expr = options.auto_print_last_expr;
 
+    // Populate external symbols from session for cross-fragment resolution
+    for (const auto& sym_name : engine_->session.list_symbols_valid()) {
+        ir_opts.external_symbols[sym_name] = engine_->session.get_type(sym_name);
+    }
+
     if (options.invalidate_previous_fragment) {
         if (engine_->ir_builder.get_fragment(unit.id) && engine_->ir_builder.is_fragment_active(unit.id)) {
             auto inv = engine_->ir_builder.invalidate_fragment(unit.id);
