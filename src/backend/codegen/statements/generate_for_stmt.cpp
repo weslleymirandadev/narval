@@ -49,6 +49,8 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
         IterKind kind;
 
         llvm::Value* data_ptr_val = nullptr;
+        llvm::Value* val_kind_count_alloca = nullptr;  // set when iterable is runtime Value (int or array)
+        llvm::Value* val_array_val_alloca = nullptr;
 
         auto* ty = iter_val->getType();
         // If we got a pointer to runtime Value, load it
@@ -113,35 +115,64 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
         } else if (ty->isStructTy()) {
             // Accept a generic array view struct passed by value: { i32 len, ptr data }
             auto* s = llvm::cast<llvm::StructType>(ty);
-            // First, handle runtime Value arrays: nv.rt.Value with TAG_ARRAY
+            // First, handle runtime Value: can be integer (for i : x) or array
             auto* valueStruct = nv::ir_utils::get_value_struct(ctx);
             auto* i64 = llvm::Type::getInt64Ty(llctx);
-            // Default structs (that are not named nv.array.view handled above) are treated as runtime Value containers
+            auto* vptr = nv::ir_utils::get_value_ptr(ctx);
             if ((s == valueStruct) || (s->hasName() && s->getName() == "nv.rt.Value")) {
-                // Treat as runtime Value and iterate its array payload
-                kind = IterKind::RTArray;
-                // Alloca with the actual struct type 's'
+                // Value can be TAG_INT (count 0..n-1) or TAG_ARRAY. Branch at runtime.
+                auto* valAlloca = ctx.create_alloca(s, "iter.val");
+                b.CreateStore(iter_val, valAlloca);
+                auto* len_alloca = ctx.create_alloca(i32, "iter.len");
+                auto* kind_count_alloca = ctx.create_alloca(llvm::Type::getInt1Ty(llctx), "iter.is_count");
+                auto* array_val_alloca = ctx.create_alloca(vptr, "iter.array_val");
+                auto* tagPtr = b.CreateStructGEP(s, valAlloca, 0);
+                auto* tag = b.CreateLoad(i32, tagPtr);
+                const int TAG_INT = 1;
+                auto* is_int = b.CreateICmpEQ(tag, llvm::ConstantInt::get(i32, TAG_INT), "is_int_iter");
+                auto* count_setup_bb = llvm::BasicBlock::Create(llctx, "for.val_count_setup", func);
+                auto* array_setup_bb = llvm::BasicBlock::Create(llctx, "for.val_array_setup", func);
+                auto* merge_val_bb = llvm::BasicBlock::Create(llctx, "for.val_merge", func);
+                b.CreateCondBr(is_int, count_setup_bb, array_setup_bb);
+
+                // Count path: len = (i32)value field
+                b.SetInsertPoint(count_setup_bb);
+                auto* valueFieldPtr = b.CreateStructGEP(s, valAlloca, 1);
+                auto* value64 = b.CreateLoad(i64, valueFieldPtr);
+                auto* len_count = b.CreateTrunc(value64, i32, "len.count");
+                b.CreateStore(len_count, len_alloca);
+                b.CreateStore(llvm::ConstantInt::getTrue(llctx), kind_count_alloca);
+                b.CreateStore(llvm::Constant::getNullValue(vptr), array_val_alloca);
+                b.CreateBr(merge_val_bb);
+
+                // Array path: same RTArray setup as below, store len and valAlloca
+                b.SetInsertPoint(array_setup_bb);
                 auto* valAllocaUntyped = ctx.create_alloca(s, "iter.rtarray");
                 b.CreateStore(iter_val, valAllocaUntyped);
-                // Bitcast to Value* for runtime helpers
-                auto* vprphy = nv::ir_utils::get_value_ptr(ctx);
-                auto* valAlloca = b.CreateBitCast(valAllocaUntyped, vprphy);
-                // Load field 1 (integral) as pointer-sized integer then inttoptr to Array*
+                auto* valAllocaCast = b.CreateBitCast(valAllocaUntyped, vptr);
                 auto* f1Ptr = b.CreateStructGEP(s, valAllocaUntyped, 1);
-                auto* f1Ty  = s->getElementType(1);
+                auto* f1Ty = s->getElementType(1);
                 auto* rawInt = b.CreateLoad(f1Ty, f1Ptr);
                 llvm::Value* raw64 = rawInt;
                 if (f1Ty != i64) raw64 = b.CreateZExt(rawInt, i64);
-                auto* valPrphy = nv::ir_utils::get_value_ptr(ctx);
-                auto* arrStruct = llvm::StructType::get(llctx, { valPrphy, i32, i32 });
+                auto* arrStruct = llvm::StructType::get(llctx, { vptr, i32, i32 });
                 auto* arrPrphy = llvm::PointerType::getUnqual(arrStruct);
                 auto* arrPtr = b.CreateIntToPtr(raw64, arrPrphy);
-                // Read size from field 1 of Array
                 auto* sizePtr = b.CreateStructGEP(arrStruct, arrPtr, 1);
-                len = b.CreateLoad(i32, sizePtr);
-                // Keep Value* pointer for element access via array_get_index_v
-                data_ptr_val = valAlloca;
+                auto* len_array = b.CreateLoad(i32, sizePtr);
+                b.CreateStore(len_array, len_alloca);
+                b.CreateStore(llvm::ConstantInt::getFalse(llctx), kind_count_alloca);
+                b.CreateStore(valAllocaCast, array_val_alloca);
+                b.CreateBr(merge_val_bb);
+
+                // Merge: len from alloca, use shared loop; in body we branch on kind
+                b.SetInsertPoint(merge_val_bb);
+                len = b.CreateLoad(i32, len_alloca);
+                kind = IterKind::RTArray;  // placeholder; body will branch on kind_count_alloca
                 elemTy = valueStruct;
+                data_ptr_val = nullptr;  // we use array_val_alloca when kind is array
+                val_kind_count_alloca = kind_count_alloca;
+                val_array_val_alloca = array_val_alloca;
             } else if ((s->hasName() && s->getName() == "nv.array.view") || ((s->getNumElements() >= 2) && s->getElementType(1)->isPointerTy())) {
                 kind = IterKind::View;
                 auto* viewAlloca = ctx.create_alloca(s, "iter.view");
@@ -192,6 +223,10 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
         auto* body_bb   = llvm::BasicBlock::Create(ctx.get_context(), "for.iter.body",   func);
         auto* step_bb   = llvm::BasicBlock::Create(ctx.get_context(), "for.iter.step",   func);
         auto* exit_bb   = llvm::BasicBlock::Create(ctx.get_context(), "for.iter.exit",   func);
+        auto* normal_elem_bb = llvm::BasicBlock::Create(ctx.get_context(), "for.iter.normal_elem", func);
+        auto* count_bind_bb  = llvm::BasicBlock::Create(ctx.get_context(), "for.iter.count_bind", func);
+        auto* array_bind_bb  = llvm::BasicBlock::Create(ctx.get_context(), "for.iter.array_bind", func);
+        auto* body_common_bb = llvm::BasicBlock::Create(ctx.get_context(), "for.iter.body_common", func);
 
         
         // Criar índice implícito (sempre __idx, não exposto ao usuário)
@@ -208,7 +243,14 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
         ctx.get_control_flow().enter_loop("for.iterable", header_bb, body_bb, step_bb, exit_bb);
         
         b.SetInsertPoint(body_bb);
-        
+        if (val_kind_count_alloca != nullptr) {
+            auto* is_count = b.CreateLoad(llvm::Type::getInt1Ty(llctx), val_kind_count_alloca, "val.is_count");
+            b.CreateCondBr(is_count, count_bind_bb, array_bind_bb);
+        } else {
+            b.CreateBr(normal_elem_bb);
+        }
+
+        b.SetInsertPoint(normal_elem_bb);
         llvm::Value* elemVal = nullptr;
         if (kind == IterKind::Count) {
             elemVal = i_val;
@@ -307,8 +349,39 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
                 b.CreateStore(elemVal, elemAlloca);
             }
         }
-        b.CreateStore(llvm::ConstantInt::getTrue(ctx.get_context()), executed);
+        b.CreateBr(body_common_bb);
 
+        // Value-as-int path: binding = create_int(i_val)
+        b.SetInsertPoint(count_bind_bb);
+        if (!elemBindings.empty()) {
+            auto* valueStruct = nv::ir_utils::get_value_struct(ctx);
+            auto* vptr = nv::ir_utils::get_value_ptr(ctx);
+            auto sym = ctx.get_symbol_table().lookup_symbol(elemBindings[0]->symbol);
+            llvm::Value* dst = sym.has_value() ? sym->value : (llvm::Value*)ctx.create_and_register_variable(elemBindings[0]->symbol, valueStruct, nullptr, false);
+            auto* create_int_fn = ctx.ensure_runtime_func("create_int", { vptr, i32 });
+            b.CreateCall(create_int_fn, { dst, i_val });
+        }
+        b.CreateBr(body_common_bb);
+
+        // Value-as-array path: array_get_index_v into binding
+        b.SetInsertPoint(array_bind_bb);
+        if (!elemBindings.empty()) {
+            auto* valueStruct = nv::ir_utils::get_value_struct(ctx);
+            auto* vptr = nv::ir_utils::get_value_ptr(ctx);
+            auto* array_val_ptr = b.CreateLoad(vptr, val_array_val_alloca, "array.val.ptr");
+            auto* tmp = ctx.create_alloca(valueStruct, "el.val");
+            auto* voidTy = llvm::Type::getVoidTy(llctx);
+            auto* fty = llvm::FunctionType::get(voidTy, { vptr, vptr, i32 }, false);
+            auto array_get_callee = ctx.get_module().getOrInsertFunction("array_get_index_v", fty);
+            b.CreateCall(array_get_callee, { tmp, array_val_ptr, i_val });
+            auto sym = ctx.get_symbol_table().lookup_symbol(elemBindings[0]->symbol);
+            llvm::Value* dst = sym.has_value() ? sym->value : (llvm::Value*)ctx.create_and_register_variable(elemBindings[0]->symbol, valueStruct, nullptr, false);
+            b.CreateStore(b.CreateLoad(valueStruct, tmp), dst);
+        }
+        b.CreateBr(body_common_bb);
+
+        b.SetInsertPoint(body_common_bb);
+        b.CreateStore(llvm::ConstantInt::getTrue(ctx.get_context()), executed);
         ctx.enter_scope();
         for (auto& stmt : body) {
             if (stmt) stmt->codegen(ctx);
