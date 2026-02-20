@@ -21,6 +21,7 @@
 #include "frontend/ast/statements/def_stmt_node.hpp"
 #include "frontend/ast/statements/for_stmt_node.hpp"
 #include "frontend/ast/statements/while_stmt_node.hpp"
+#include "frontend/ast/expressions/numeric_literal_node.hpp"
 #include "frontend/ast/statements/loop_stmt_node.hpp"
 #include "frontend/ast/statements/match_stmt_node.hpp"
 #include "frontend/checker/type.hpp"
@@ -659,12 +660,25 @@ bool REPL::compile_and_execute(const std::string& input) {
         bool single_write_call = false;
         // Se o último statement é for/while/loop/match, não fazer auto-print do valor deixado na pilha pelo body
         bool last_stmt_no_result = false;
+        // Não imprimir declarações (variável ou função)
+        bool single_declaration_no_print = false;
         if (auto* prog = dynamic_cast<Program*>(ast.get())) {
             const auto& stmts = prog->get_statements();
             if (stmts.size() == 1) {
-                if (auto* call = dynamic_cast<CallExprNode*>(stmts[0].get())) {
-                    if (auto* id = dynamic_cast<IdentifierNode*>(call->caller.get())) {
-                        if (id->symbol == "write") single_write_call = true;
+                Node* first = stmts[0].get();
+                if (dynamic_cast<DefStmtNode*>(first)) {
+                    single_declaration_no_print = true;
+                } else if (dynamic_cast<DeclarationStmtNode*>(first)) {
+                    single_declaration_no_print = true;
+                } else if (auto* assign = dynamic_cast<AssignmentExprNode*>(first)) {
+                    if (assign->target && dynamic_cast<IdentifierNode*>(assign->target.get()))
+                        single_declaration_no_print = true;
+                }
+                if (!single_declaration_no_print) {
+                    if (auto* call = dynamic_cast<CallExprNode*>(first)) {
+                        if (auto* id = dynamic_cast<IdentifierNode*>(call->caller.get())) {
+                            if (id->symbol == "write") single_write_call = true;
+                        }
                     }
                 }
             }
@@ -778,6 +792,101 @@ bool REPL::compile_and_execute(const std::string& input) {
             state->repl_globals_added.insert(name);
         }
         
+        // Host-loop: for i : N { write(...); } no REPL — executar corpo por iteração no host para saída correta
+        Program* prog_ptr = dynamic_cast<Program*>(ast.get());
+        if (prog_ptr && prog_ptr->get_statements().size() == 1) {
+            ForStmtNode* for_node = dynamic_cast<ForStmtNode*>(prog_ptr->get_statements()[0].get());
+            if (for_node && for_node->iterable && !for_node->range_start && !for_node->range_end
+                && for_node->body.size() == 1 && for_node->else_block.empty()
+                && for_node->bindings.size() == 1) {
+                NumericLiteralNode* lit = dynamic_cast<NumericLiteralNode*>(for_node->iterable.get());
+                IdentifierNode* bid = dynamic_cast<IdentifierNode*>(for_node->bindings[0].get());
+                if (lit && bid) {
+                    int N = 0;
+                    try { N = std::stoi(lit->value); } catch (...) {}
+                    if (N > 0 && N <= 100000) {
+                        std::string loop_var = bid->symbol;
+                        std::unique_ptr<Program> body_prog = std::make_unique<Program>();
+                        body_prog->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(for_node->body[0]->clone())));
+                        static int loop_counter = 0;
+                        std::string loop_func_name = "__repl_loop_" + std::to_string(loop_counter++);
+                        llvm::Type* slots_ty = llvm::PointerType::getUnqual(ValuePtr);
+                        std::vector<llvm::Type*> loop_param_tys = { ValuePtr };
+                        if (!slot_names.empty()) loop_param_tys.push_back(slots_ty);
+                        loop_param_tys.push_back(llvm::Type::getInt32Ty(C));
+                        auto* loop_func_type = llvm::FunctionType::get(VoidTy, loop_param_tys, false);
+                        llvm::Function* loop_func = llvm::Function::Create(loop_func_type, llvm::Function::ExternalLinkage, loop_func_name, temp_module.get());
+                        loop_func->getArg(0)->setName("out_result");
+                        llvm::Value* loop_out = loop_func->getArg(0);
+                        llvm::Value* loop_slots = slot_names.empty() ? nullptr : loop_func->getArg(1);
+                        llvm::Value* loop_i_param = loop_func->getArg(slot_names.empty() ? 1 : 2);
+                        auto* loop_entry = llvm::BasicBlock::Create(C, "entry", loop_func);
+                        temp_builder->SetInsertPoint(loop_entry);
+                        context.set_current_function(loop_func);
+                        if (loop_slots) {
+                            for (size_t i = 0; i < slot_names.size(); ++i) {
+                                const std::string& name = slot_names[i];
+                                llvm::Value* slot_addr = temp_builder->CreateGEP(ValuePtr, loop_slots, llvm::ConstantInt::get(I32, i));
+                                llvm::Value* slot = temp_builder->CreateLoad(ValuePtr, slot_addr);
+                                llvm::GlobalVariable* gv = llvm::cast<llvm::GlobalVariable>(temp_module->getOrInsertGlobal("repl_global_" + name, ValueTy));
+                                if (gv->isDeclaration()) gv->setLinkage(llvm::GlobalValue::ExternalLinkage);
+                                temp_builder->CreateStore(temp_builder->CreateLoad(ValueTy, slot), gv);
+                                std::shared_ptr<nv::Type> nv_type;
+                                try { nv_type = state->checker->scope->get_key(name); } catch (...) { continue; }
+                                if (nv_type) nv_type = context.resolve_type(nv_type);
+                                context.get_symbol_table().define_symbol(name, nv::SymbolInfo(temp_builder->CreatePointerCast(gv, ValuePtr), ValueTy, nv_type, false, false));
+                            }
+                        }
+                        llvm::Value* i_alloca = context.create_and_register_variable(loop_var, llvm::Type::getInt32Ty(C), nullptr, false);
+                        temp_builder->CreateStore(loop_i_param, i_alloca);
+                        context.enter_scope();
+                        nv::generate_ir(std::move(body_prog), context);
+                        if (context.has_value()) (void)context.pop_value();
+                        context.exit_scope();
+                        if (loop_slots) {
+                            for (size_t i = 0; i < slot_names.size(); ++i) {
+                                const std::string& name = slot_names[i];
+                                llvm::GlobalVariable* gv = temp_module->getGlobalVariable("repl_global_" + name);
+                                if (!gv) continue;
+                                llvm::Value* slot_addr = temp_builder->CreateGEP(ValuePtr, loop_slots, llvm::ConstantInt::get(I32, i));
+                                temp_builder->CreateStore(temp_builder->CreateLoad(ValueTy, gv), temp_builder->CreateLoad(ValuePtr, slot_addr));
+                            }
+                        }
+                        temp_builder->CreateRetVoid();
+                        auto tsm_loop = llvm::orc::ThreadSafeModule(std::move(temp_module), std::make_unique<llvm::LLVMContext>());
+                        if (auto err = state->jit->addIRModule(std::move(tsm_loop))) {
+                            llvm::consumeError(std::move(err));
+                            handle_error("JIT compilation failed (host-loop)");
+                            return false;
+                        }
+                        if (auto sym = state->jit->lookup(loop_func_name)) {
+                            void* addr = (void*)sym->getValue();
+                            Value result_buffer = {};
+                            (void)N;  // used in loop below
+                            for (int32_t i = 0; i < N; ++i) {
+                                if (slot_names.empty())
+                                    ((void(*)(Value*, int32_t))addr)(&result_buffer, i);
+                                else {
+                                    std::vector<Value*> slot_ptrs;
+                                    for (const auto& n : slot_names) slot_ptrs.push_back(&state->repl_var_values[n]);
+                                    ((void(*)(Value*, Value**, int32_t))addr)(&result_buffer, slot_ptrs.data(), i);
+                                }
+                                std::cout.flush();
+                                std::fflush(stdout);
+                            }
+                            std::cout.flush();
+                            std::cerr.flush();
+                            std::fflush(nullptr);
+                            for (const std::string& n : defined_this_line) state->repl_global_names.insert(n);
+                            return true;
+                        }
+                        handle_error("Failed to find compiled loop function");
+                        return false;
+                    }
+                }
+            }
+        }
+        
         static int expr_counter = 0;
         std::string func_name = "__repl_expr_" + std::to_string(expr_counter++);
         
@@ -817,7 +926,7 @@ bool REPL::compile_and_execute(const std::string& input) {
         context.set_current_function(func);
         context.enter_scope();
         
-        nv::generate_ir(std::move(ast), context);
+        nv::generate_ir(std::move(ast), context, /*keep_result=*/ true);
         
         // Saída: global (JIT) -> slot (host) para o host ter o valor atualizado
         if (slots_param) {
@@ -911,15 +1020,39 @@ bool REPL::compile_and_execute(const std::string& input) {
         std::cerr.flush();
         
         // 8. Auto-print em C++: usar nv_write do runtime com o valor capturado (sem depender de write() no JIT)
-        if (have_result && !single_write_call) {
+        // Não imprimir declarações (variável ou função) nem write() duplicado.
+        // Contexto (variáveis) já foi passado ao JIT no entry (slot -> global); chamadas (ex.: sum(2)) retornam em result_buffer.
+        if (have_result && !single_write_call && !single_declaration_no_print) {
             auto sym = state->get_symbol("nv_write");
             if (sym) {
+                // Usar o slot para exibir só quando o valor vem de uma variável (não de chamada de função)
+                if (defined_this_line.size() == 1) {
+                    const std::string& n = *defined_this_line.begin();
+                    if (std::find(slot_names.begin(), slot_names.end(), n) != slot_names.end()) {
+                        auto it = state->repl_var_values.find(n);
+                        if (it != state->repl_var_values.end())
+                            result_buffer = it->second;
+                    }
+                } else if (defined_this_line.empty() && used_this_line.size() == 1) {
+                    const std::string& n = *used_this_line.begin();
+                    if (std::find(slot_names.begin(), slot_names.end(), n) != slot_names.end()) {
+                        auto it = state->repl_var_values.find(n);
+                        if (it != state->repl_var_values.end())
+                            result_buffer = it->second;
+                    }
+                }
                 print_value(llvm::JITTargetAddress(&result_buffer));
+                // Reforçar o slot com o valor exibido para a próxima linha (ex.: após "x = 1", "x" ver 1)
+                if (defined_this_line.size() == 1) {
+                    const std::string& n = *defined_this_line.begin();
+                    if (std::find(slot_names.begin(), slot_names.end(), n) != slot_names.end())
+                        state->repl_var_values[n] = result_buffer;
+                }
             } else {
                 std::cout << "(value captured, nv_write not available)" << std::endl;
             }
         }
-        
+
         for (const std::string& n : defined_this_line)
             state->repl_global_names.insert(n);
         
