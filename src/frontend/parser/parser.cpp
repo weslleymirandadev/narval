@@ -108,14 +108,18 @@ bool Parser::not_eof() const {
 
 Token Parser::current_token() const {
     if (index >= token_count) {
-        throw std::out_of_range("Parser index out of bounds");
+        std::cerr << "ERROR: Parser index " << index << " >= token_count " << token_count << std::endl;
+        std::cerr << "ERROR: Available tokens: " << token_count << std::endl;
+        return Token{TokenType::UNKNOWN, "", 0, 0, 0, 0, 0, ""};  // Return error token
     }
     return tokens[index];
 }
 
 Token Parser::consume_token() {
     if (index >= token_count) {
-        throw std::out_of_range("Parser index out of bounds");
+        std::cerr << "ERROR: Parser consume_token index " << index << " >= token_count " << token_count << std::endl;
+        std::cerr << "ERROR: Available tokens: " << token_count << std::endl;
+        return Token{TokenType::UNKNOWN, "", 0, 0, 0, 0, 0, ""};  // Return error token
     }
     return tokens[index++];
 }
@@ -161,6 +165,7 @@ std::unique_ptr<Node> Parser::produce_ast(const std::vector<Token>& tokens, cons
         // Avoid attempting to read REPL or notebook virtual filenames
         const std::string& fname = tokens[0].filename;
         if (fname.rfind("repl_line_", 0) != 0 && fname.rfind("cell_", 0) != 0) {
+            // Estes são nomes virtuais que não devem ser lidos como arquivos
             try {
                 read_lines(fname);
             } catch (const std::exception& e) {
