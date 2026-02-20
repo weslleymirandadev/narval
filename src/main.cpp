@@ -23,6 +23,7 @@
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/IR/LegacyPassManager.h>
+#include <llvm/IR/Verifier.h>
 #include <llvm/Support/CodeGen.h>
 #include <llvm/IR/DIBuilder.h>
 #include <sstream>
@@ -109,6 +110,7 @@ int run_batch_mode(const std::string& filename) {
         llvm::BasicBlock* entry_bb = llvm::BasicBlock::Create(Context, "entry", main_start);
         context.get_builder().SetInsertPoint(entry_bb);
         context.set_current_function(main_start);
+        context.set_program_function(main_start);
 
         nv::generate_ir(std::move(ast), context);
         
@@ -131,11 +133,13 @@ int run_batch_mode(const std::string& filename) {
             context.get_builder().SetInsertPoint(entry_block, entry_block->begin());
             context.get_builder().CreateCall(init_func);
             
-            // Restaurar o ponto de inserção original
-            if (saved_insert_point && saved_insert_iter != saved_insert_point->end()) {
-                context.get_builder().SetInsertPoint(saved_insert_iter);
-            } else if (saved_insert_point) {
-                context.get_builder().SetInsertPoint(&saved_insert_point->back());
+            // Restaurar o ponto de inserção original (nunca usar back() em bloco vazio, ex.: after_bb do for)
+            if (saved_insert_point) {
+                if (saved_insert_iter != saved_insert_point->end()) {
+                    context.get_builder().SetInsertPoint(saved_insert_iter);
+                } else {
+                    context.get_builder().SetInsertPoint(saved_insert_point);
+                }
             }
         }
 
@@ -269,6 +273,10 @@ int run_batch_mode(const std::string& filename) {
             return 1;
         }
 
+        if (llvm::verifyModule(Mod, &llvm::errs())) {
+            llvm::errs() << "IR verification failed\n";
+            return 1;
+        }
         llvm::legacy::PassManager pass;
         if (target_machine->addPassesToEmitFile(pass, dest, nullptr, llvm::CodeGenFileType::ObjectFile)) {
             llvm::errs() << "TargetMachine não suporta emissão de objeto\n";
