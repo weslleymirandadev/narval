@@ -5,8 +5,7 @@
 #include <llvm/IR/DIBuilder.h>
 
 void DefStmtNode::codegen(nv::IRGenerationContext& ctx) {
-    ctx.set_debug_location(position.get());
-    // Preserve current codegen state
+    // Preserve current codegen state (incl. debug scope – set before any use)
     llvm::Function* prev_func = ctx.get_current_function();
     llvm::BasicBlock* prev_insert_block = ctx.get_builder().GetInsertBlock();
     llvm::DIScope* prev_scope = ctx.get_debug_scope();
@@ -23,20 +22,20 @@ void DefStmtNode::codegen(nv::IRGenerationContext& ctx) {
     auto* fn_ty = llvm::FunctionType::get(ret_ty, param_types, false);
     auto* fn = llvm::Function::Create(fn_ty, llvm::Function::ExternalLinkage, name, ctx.get_module());
 
+    llvm::DISubprogram* subp = nullptr;
+    unsigned def_line = 0u;
     if (auto* dib = ctx.get_debug_builder()) {
         llvm::DIFile* file = ctx.get_debug_file();
-
-        unsigned line = position ? static_cast<unsigned>(position->line) : 0u;
-
+        def_line = position ? static_cast<unsigned>(position->line) : 0u;
         auto* sub_ty = dib->createSubroutineType(dib->getOrCreateTypeArray({}));
-        auto* subp = dib->createFunction(
-            file,                  // <-- sempre o arquivo, não o escopo atual
+        subp = dib->createFunction(
+            file,
             name,
             llvm::StringRef(),
             file,
-            line,
+            def_line,
             sub_ty,
-            line,
+            def_line,
             llvm::DINode::FlagZero,
             llvm::DISubprogram::SPFlagDefinition
         );
@@ -60,6 +59,11 @@ void DefStmtNode::codegen(nv::IRGenerationContext& ctx) {
     }
 
     ctx.enter_scope();
+    // Garantir que parâmetros e corpo usem o DISubprogram desta função (evitar wrong subprogram)
+    if (subp) {
+        ctx.get_builder().SetCurrentDebugLocation(
+            llvm::DILocation::get(ctx.get_context(), def_line, 1, subp));
+    }
     if (idx) {
         idx = 0;
         for (auto& arg : fn->args()) {
