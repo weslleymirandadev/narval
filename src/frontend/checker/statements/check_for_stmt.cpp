@@ -56,23 +56,27 @@ std::shared_ptr<nv::Type>& check_for_stmt(nv::Checker* ch, Node* node) {
             auto iterable_type = ch->infer_expr(for_stmt->iterable.get());
             iterable_type = ch->unify_ctx.resolve(iterable_type);
             
-            // Verificar que é um tipo iterável (Array, Vector, String, Map, Tuple)
+            // Verificar que é um tipo iterável (Array, Vector, String, Map, Tuple) ou inteiro (0..N-1)
             bool is_iterable = iterable_type->kind == nv::Kind::ARRAY ||
                               iterable_type->kind == nv::Kind::VECTOR ||
                               iterable_type->kind == nv::Kind::STRING ||
                               iterable_type->kind == nv::Kind::MAP ||
-                              iterable_type->kind == nv::Kind::TUPLE;
+                              iterable_type->kind == nv::Kind::TUPLE ||
+                              iterable_type->kind == nv::Kind::INT;
             
             if (!is_iterable) {
                 ch->error(for_stmt->iterable.get(), 
-                          "For loop iterable must be an array, vector, string, map, or tuple");
+                          "For loop iterable must be an array, vector, string, map, tuple, or integer");
                 ch->pop_scope();
                 return ch->gettyptr("void");
             }
             
             // Inferir tipo dos elementos do iterable
             std::shared_ptr<nv::Type> element_type;
-            if (iterable_type->kind == nv::Kind::ARRAY) {
+            if (iterable_type->kind == nv::Kind::INT) {
+                // for i : N => i percorre 0, 1, ..., N-1
+                element_type = ch->gettyptr("int");
+            } else if (iterable_type->kind == nv::Kind::ARRAY) {
                 auto* arr = static_cast<nv::Array*>(iterable_type.get());
                 element_type = arr->element_type;
             } else if (iterable_type->kind == nv::Kind::VECTOR) {
@@ -112,16 +116,17 @@ std::shared_ptr<nv::Type>& check_for_stmt(nv::Checker* ch, Node* node) {
         auto iterable_type = ch->infer_expr(for_stmt->iterable.get());
         iterable_type = ch->unify_ctx.resolve(iterable_type);
         
-        // Verificar que é um tipo iterável
+        // Verificar que é um tipo iterável ou inteiro (0..N-1)
         bool is_iterable = iterable_type->kind == nv::Kind::ARRAY ||
                           iterable_type->kind == nv::Kind::VECTOR ||
                           iterable_type->kind == nv::Kind::STRING ||
                           iterable_type->kind == nv::Kind::MAP ||
-                          iterable_type->kind == nv::Kind::TUPLE;
+                          iterable_type->kind == nv::Kind::TUPLE ||
+                          iterable_type->kind == nv::Kind::INT;
         
         if (!is_iterable) {
             ch->error(for_stmt->iterable.get(), 
-                      "For loop iterable must be an array, vector, string, map, or tuple");
+                      "For loop iterable must be an array, vector, string, map, tuple, or integer");
             ch->pop_scope();
             return ch->gettyptr("void");
         }
