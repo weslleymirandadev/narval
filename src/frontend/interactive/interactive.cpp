@@ -19,6 +19,10 @@
 #include "frontend/ast/expressions/post_decrement_expr_node.hpp"
 #include "frontend/ast/statements/declaration_stmt_node.hpp"
 #include "frontend/ast/statements/def_stmt_node.hpp"
+#include "frontend/ast/statements/for_stmt_node.hpp"
+#include "frontend/ast/statements/while_stmt_node.hpp"
+#include "frontend/ast/statements/loop_stmt_node.hpp"
+#include "frontend/ast/statements/match_stmt_node.hpp"
 #include "frontend/checker/type.hpp"
 #include "backend/codegen/ir_utils.hpp"
 #include <iostream>
@@ -653,6 +657,8 @@ bool REPL::compile_and_execute(const std::string& input) {
         
         // Verificar se a única instrução é write(...) para evitar imprimir duas vezes
         bool single_write_call = false;
+        // Se o último statement é for/while/loop/match, não fazer auto-print do valor deixado na pilha pelo body
+        bool last_stmt_no_result = false;
         if (auto* prog = dynamic_cast<Program*>(ast.get())) {
             const auto& stmts = prog->get_statements();
             if (stmts.size() == 1) {
@@ -660,6 +666,13 @@ bool REPL::compile_and_execute(const std::string& input) {
                     if (auto* id = dynamic_cast<IdentifierNode*>(call->caller.get())) {
                         if (id->symbol == "write") single_write_call = true;
                     }
+                }
+            }
+            if (!stmts.empty()) {
+                Node* last = stmts.back().get();
+                if (dynamic_cast<ForStmtNode*>(last) || dynamic_cast<WhileStmtNode*>(last) ||
+                    dynamic_cast<LoopStmtNode*>(last) || dynamic_cast<MatchStmtNode*>(last)) {
+                    last_stmt_no_result = true;
                 }
             }
         }
@@ -822,6 +835,9 @@ bool REPL::compile_and_execute(const std::string& input) {
         // Se a última instrução deixou um valor na pilha, gravar em *out_result (host imprime em C++)
         bool have_result = false;
         if (context.has_value()) {
+            if (last_stmt_no_result) {
+                (void)context.pop_value();  // descartar valor deixado por for/while/loop/match body
+            } else {
             llvm::Value* result = context.pop_value();
             if (!result) { /* nada a gravar */ }
             else if (result->getType() == ValueTy) {
@@ -859,6 +875,7 @@ bool REPL::compile_and_execute(const std::string& input) {
                     temp_builder->CreateStore(boxed, out_param);
                     have_result = true;
                 }
+            }
             }
         }
         temp_builder->CreateRetVoid();
