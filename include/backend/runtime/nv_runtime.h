@@ -144,4 +144,8 @@ void gc_mark_value(const Value* v);
 // Liberar valor (chama destructor se necessário)
 void free_value(Value* v);
 
+// Gerenciamento de símbolos globais para modo interativo
+void nv_register_global_symbol(const char* name, void* func_ptr);
+void* nv_lookup_global_symbol(const char* name);
+
 #endif /* RUNTIME_H */
