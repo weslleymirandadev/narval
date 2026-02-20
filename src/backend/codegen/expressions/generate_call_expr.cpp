@@ -102,10 +102,46 @@ void emit_write(IRGenerationContext& ctx, llvm::Value* v, bool newline = true) {
     ctx.get_builder().CreateCall(fn, {boxed});
 }
 
-// === BUILTIN: write, read, json.load ===
+// === HELPER: Convert value to i32 for exit code ===
+static llvm::Value* value_to_i32(IRGenerationContext& ctx, llvm::Value* v) {
+    auto& B = ctx.get_builder();
+    auto* I32 = llvm::Type::getInt32Ty(ctx.get_context());
+    auto* I64 = llvm::Type::getInt64Ty(ctx.get_context());
+    auto* ValueTy = ir_utils::get_value_struct(ctx);
+    auto* ValuePtr = ir_utils::get_value_ptr(ctx);
+    if (!v) return llvm::ConstantInt::get(I32, 0);
+    if (v->getType() == I32) return v;
+    if (v->getType()->isIntegerTy()) return B.CreateSExtOrTrunc(v, I32);
+    if (v->getType() == ValueTy) {
+        auto* tmp = ctx.create_alloca(ValueTy, "exit_code_tmp");
+        B.CreateStore(v, tmp);
+        auto* ensure_fn = ctx.ensure_runtime_func("ensure_value_type", {ValuePtr});
+        B.CreateCall(ensure_fn, {tmp});
+        // Value struct field 1 is the value (i64); load and trunc to i32
+        auto* value_gep = B.CreateStructGEP(ValueTy, tmp, 1);
+        auto* val64 = B.CreateLoad(I64, value_gep, "exit_val64");
+        return B.CreateTrunc(val64, I32, "exit_code");
+    }
+    return llvm::ConstantInt::get(I32, 0);
+}
+
+// === BUILTIN: write, read, exit, json.load ===
 llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name, const std::vector<std::unique_ptr<Expr>>& args) {
     auto& B = ctx.get_builder();
     auto* I8P = ir_utils::get_i8_ptr(ctx);
+    auto* I32 = llvm::Type::getInt32Ty(ctx.get_context());
+    auto* VoidTy = llvm::Type::getVoidTy(ctx.get_context());
+
+    if (name == "exit") {
+        if (args.size() != 1) return nullptr;
+        args[0]->codegen(ctx);
+        llvm::Value* code_val = ctx.pop_value();
+        llvm::Value* i32_code = value_to_i32(ctx, code_val);
+        auto* exit_fn = ctx.ensure_runtime_func("_exit", {I32}, VoidTy);
+        B.CreateCall(exit_fn, {i32_code});
+        B.CreateUnreachable();
+        return llvm::UndefValue::get(ir_utils::get_value_struct(ctx));
+    }
 
     if (name == "write") {
         if (args.empty()) {
