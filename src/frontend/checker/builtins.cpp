@@ -13,6 +13,9 @@ namespace nv {
         
         // read: aceita 0 ou 1 argumento (prompt opcional), retorna string
         BuiltinFunction("read", {}, std::make_shared<String>(), false, true, 0, 1),
+
+        // exit: encerra o processo com o código dado (int) -> void
+        BuiltinFunction("exit", {std::make_shared<Int>()}, std::make_shared<Void>(), false, false, 1, 1),
     };
     
     // Variáveis globais builtin (não são funções, mas objetos especiais)
