@@ -170,6 +170,17 @@ void IdentifierNode::codegen(nv::IRGenerationContext& context) {
     if (info.is_allocated) {
         // Variável local (AllocaInst)
         loaded_value = context.get_builder().CreateLoad(info.llvm_type, actual_value, symbol.c_str());
+    } else if (actual_value->getType() == nv::ir_utils::get_value_ptr(context) && info.llvm_type == nv::ir_utils::get_value_struct(context)) {
+        // REPL slot (Value*): carregar o Value apontado
+        auto& B = context.get_builder();
+        auto* ValueTy = nv::ir_utils::get_value_struct(context);
+        auto* ValuePtr = nv::ir_utils::get_value_ptr(context);
+        loaded_value = B.CreateLoad(ValueTy, actual_value, symbol.c_str());
+        auto* temp_alloca = context.create_alloca(ValueTy, symbol + "_ensure");
+        B.CreateStore(loaded_value, temp_alloca);
+        auto* ensure_func = context.ensure_runtime_func("ensure_value_type", {ValuePtr});
+        B.CreateCall(ensure_func, {temp_alloca});
+        loaded_value = B.CreateLoad(ValueTy, temp_alloca, symbol + "_ensured");
     } else if (llvm::isa<llvm::GlobalVariable>(actual_value)) {
         // Variável global: carregar o valor do GlobalVariable
         // O GlobalVariable deve estar inicializado corretamente via @llvm.global_ctors

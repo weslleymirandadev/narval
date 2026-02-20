@@ -54,8 +54,50 @@ void DeclarationStmtNode::codegen(nv::IRGenerationContext& context) {
     }
 
     auto* ValueTy = nv::ir_utils::get_value_struct(context);
+    auto* ValuePtr = nv::ir_utils::get_value_ptr(context);
     llvm::Type* stored_ty = decl_ty;
     llvm::Value* storage = nullptr;
+
+    // REPL: se o símbolo já existe como slot (Value*), gravar no slot (independente de is_global; no REPL estamos dentro do wrapper)
+    auto existing_slot = context.get_symbol_table().lookup_symbol(symbol);
+    if (existing_slot.has_value() && init_val) {
+        const auto& info = existing_slot.value();
+        if (info.value && info.value->getType() == ValuePtr && info.llvm_type == ValueTy) {
+            auto& B = context.get_builder();
+            auto& C = context.get_context();
+            auto& M = context.get_module();
+            auto* I32 = llvm::Type::getInt32Ty(C);
+            auto* F64 = llvm::Type::getDoubleTy(C);
+            llvm::Value* boxed = nullptr;
+            auto* tmp_alloca = context.create_alloca(ValueTy, symbol + "_init");
+            if (init_val->getType() == ValueTy) {
+                B.CreateStore(init_val, tmp_alloca);
+                boxed = B.CreateLoad(ValueTy, tmp_alloca);
+            } else if (init_val->getType()->isIntegerTy(1)) {
+                auto decl = M.getOrInsertFunction("create_bool", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, I32}, false));
+                B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp_alloca, B.CreateZExt(init_val, I32)});
+                boxed = B.CreateLoad(ValueTy, tmp_alloca);
+            } else if (init_val->getType()->isIntegerTy()) {
+                auto decl = M.getOrInsertFunction("create_int", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, I32}, false));
+                llvm::Value* iv = init_val->getType()->isIntegerTy(32) ? init_val : B.CreateSExtOrTrunc(init_val, I32);
+                B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp_alloca, iv});
+                boxed = B.CreateLoad(ValueTy, tmp_alloca);
+            } else if (init_val->getType()->isFloatingPointTy()) {
+                auto decl = M.getOrInsertFunction("create_float", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, F64}, false));
+                llvm::Value* fp = init_val->getType() == F64 ? init_val : B.CreateFPExt(init_val, F64);
+                B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp_alloca, fp});
+                boxed = B.CreateLoad(ValueTy, tmp_alloca);
+            } else if (init_val->getType() == nv::ir_utils::get_i8_ptr(context)) {
+                auto decl = M.getOrInsertFunction("create_str", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, nv::ir_utils::get_i8_ptr(context)}, false));
+                B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp_alloca, init_val});
+                boxed = B.CreateLoad(ValueTy, tmp_alloca);
+            }
+            if (boxed) {
+                B.CreateStore(boxed, info.value);
+                return;
+            }
+        }
+    }
 
     // Se for variável global, criar como GlobalVariable e embrulhar valores primitivos em Value
     if (is_global) {
