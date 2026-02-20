@@ -13,6 +13,16 @@ set(LIB_DIR ${LIB_DIR} CACHE INTERNAL "Pasta de arquivos gerados")
 
 include_directories(${PROJECT_SOURCE_DIR}/include)
 
+# Flag para modo desenvolvimento vs produção
+option(NARVAL_DEV_MODE "Development mode (use local runtime)" ON)
+if(NARVAL_DEV_MODE)
+    set(NARVAL_RUNTIME_PATH "${PROJECT_SOURCE_DIR}/build/lib")
+    message(STATUS "Narval: Development mode enabled, using runtime from ${NARVAL_RUNTIME_PATH}")
+else()
+    set(NARVAL_RUNTIME_PATH "/usr/lib/narval")
+    message(STATUS "Narval: Production mode enabled, using runtime from ${NARVAL_RUNTIME_PATH}")
+endif()
+
 add_library(narval_project_includes INTERFACE)
 target_include_directories(narval_project_includes INTERFACE ${PROJECT_SOURCE_DIR}/include)
 
@@ -65,12 +75,13 @@ add_subdirectory(lib)
 add_executable(narval src/main.cpp src/frontend/module_manager.cpp)
 target_link_options(narval PRIVATE -Wl,-no-pie)
 target_include_directories(narval PRIVATE ${PROJECT_SOURCE_DIR}/include)
-target_link_libraries(narval PRIVATE narval_all_common lexer parser checker generator interactive runtime_objs ${STD_LL_OBJECT})
-add_dependencies(narval std_o)
+target_link_libraries(narval PRIVATE narval_all_common lexer parser checker generator interactive runtime_objs runtime_shared ${STD_LL_OBJECT})
+add_dependencies(narval std_o runtime_o)
 
 if(TARGET narval)
     target_compile_definitions(narval PRIVATE
         NARVAL_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
         NARVAL_INCLUDE_DIR="${PROJECT_SOURCE_DIR}/include"
+        NARVAL_DEV_MODE=$<BOOL:${NARVAL_DEV_MODE}>
     )
 endif()
