@@ -33,6 +33,7 @@ void WhileStmtNode::codegen(nv::IRGenerationContext& ctx) {
     for (auto& stmt : body) {
         if (stmt) stmt->codegen(ctx);
     }
+    if (ctx.has_value()) (void)ctx.pop_value();  // descartar valor deixado pelo body (ex.: write(...))
     ctx.exit_scope();
     // loop back to cond (continue também vai para cond_bb)
     if (!b.GetInsertBlock()->getTerminator()) {
