@@ -336,7 +336,7 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
     // === 3. REGULAR FUNCTION CALL ===
     caller->codegen(ctx);
     llvm::Value* callee = ctx.pop_value();
-
+    
     // Verificar se callee é válido antes de fazer cast
     if (!callee) {
         ctx.push_value(nullptr);
@@ -344,13 +344,13 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
     }
 
     if (auto* F = llvm::dyn_cast<llvm::Function>(callee)) {
-        fprintf(stderr, "DEBUG: Function found: %s, return type: %s\n", F->getName().str().c_str(), F->getReturnType()->isVoidTy() ? "void" : "non-void");
         // Obter tipos dos parâmetros da função
         auto* func_ty = F->getFunctionType();
         std::vector<llvm::Type*> param_types(func_ty->param_begin(), func_ty->param_end());
         
         std::vector<llvm::Value*> argv;
         auto* ValueTy = ir_utils::get_value_struct(ctx);
+        auto* ValuePtr = ir_utils::get_value_ptr(ctx);
         auto* I32 = llvm::Type::getInt32Ty(ctx.get_context());
         auto* I64 = llvm::Type::getInt64Ty(ctx.get_context());
         auto* F64 = llvm::Type::getDoubleTy(ctx.get_context());
@@ -365,106 +365,12 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
                 auto* tmp_alloca = ctx.create_alloca(ValueTy, "arg_tmp");
                 B.CreateStore(arg_val, tmp_alloca);
                 
-                // Garantir tipo correto
-                auto* ValuePtr = ir_utils::get_value_ptr(ctx);
-                auto* ensure_func = ctx.ensure_runtime_func("ensure_value_type", {ValuePtr});
-                B.CreateCall(ensure_func, {tmp_alloca});
-                
-                // Extrair campo value (índice 1) que contém o valor como i64
-                auto* valuePtr = B.CreateStructGEP(ValueTy, tmp_alloca, 1);
-                auto* value64 = B.CreateLoad(I64, valuePtr, "arg_value64");
-                
-                // Extrair campo type (índice 0) para verificar o tipo real do valor
-                auto* typePtr = B.CreateStructGEP(ValueTy, tmp_alloca, 0);
-                auto* type32 = B.CreateLoad(I32, typePtr, "arg_type");
-                
-                // Constantes para tags de tipo
-                auto* TAG_INT = llvm::ConstantInt::get(I32, 1);   // TAG_INT = 1
-                auto* TAG_FLOAT = llvm::ConstantInt::get(I32, 2); // TAG_FLOAT = 2
-                
-                // Obter função atual para criar basic blocks
-                auto* current_func = ctx.get_current_function();
-                if (!current_func) {
-                    // Se não há função atual, usar abordagem simples sem branches
-                    if (param_types[i] == I32) {
-                        arg_val = B.CreateTrunc(value64, I32, "arg_i32");
-                    } else if (param_types[i] == I64) {
-                        arg_val = value64;
-                    } else if (param_types[i] == F64) {
-                        // Converter bits i64 para double (assume que já é float ou converte int)
-                        arg_val = B.CreateBitCast(value64, F64, "arg_f64");
-                    }
-                } else {
-                    // Converter para o tipo esperado pela função, respeitando o tipo real do valor
-                    if (param_types[i] == I32) {
-                        // Se o valor é float, converter para int primeiro
-                        auto* is_float = B.CreateICmpEQ(type32, TAG_FLOAT, "is_float");
-                        auto* then_bb = llvm::BasicBlock::Create(ctx.get_context(), "convert_float_to_int", current_func);
-                        auto* else_bb = llvm::BasicBlock::Create(ctx.get_context(), "use_int", current_func);
-                        auto* merge_bb = llvm::BasicBlock::Create(ctx.get_context(), "merge_int", current_func);
-                        B.CreateCondBr(is_float, then_bb, else_bb);
-                        
-                        B.SetInsertPoint(then_bb);
-                        auto* float_val = B.CreateBitCast(value64, F64, "float_val");
-                        auto* int_from_float = B.CreateFPToSI(float_val, I32, "int_from_float");
-                        B.CreateBr(merge_bb);
-                        
-                        B.SetInsertPoint(else_bb);
-                        auto* int_val = B.CreateTrunc(value64, I32, "int_val");
-                        B.CreateBr(merge_bb);
-                        
-                        B.SetInsertPoint(merge_bb);
-                        auto* phi = B.CreatePHI(I32, 2, "arg_i32");
-                        phi->addIncoming(int_from_float, then_bb);
-                        phi->addIncoming(int_val, else_bb);
-                        arg_val = phi;
-                    } else if (param_types[i] == I64) {
-                        // Para i64, manter como está (mas pode precisar de conversão de float)
-                        auto* is_float = B.CreateICmpEQ(type32, TAG_FLOAT, "is_float");
-                        auto* then_bb = llvm::BasicBlock::Create(ctx.get_context(), "convert_float_to_i64", current_func);
-                        auto* else_bb = llvm::BasicBlock::Create(ctx.get_context(), "use_i64", current_func);
-                        auto* merge_bb = llvm::BasicBlock::Create(ctx.get_context(), "merge_i64", current_func);
-                        B.CreateCondBr(is_float, then_bb, else_bb);
-                        
-                        B.SetInsertPoint(then_bb);
-                        auto* float_val = B.CreateBitCast(value64, F64, "float_val");
-                        auto* i64_from_float = B.CreateFPToSI(float_val, I64, "i64_from_float");
-                        B.CreateBr(merge_bb);
-                        
-                        B.SetInsertPoint(else_bb);
-                        B.CreateBr(merge_bb);
-                        
-                        B.SetInsertPoint(merge_bb);
-                        auto* phi = B.CreatePHI(I64, 2, "arg_i64");
-                        phi->addIncoming(i64_from_float, then_bb);
-                        phi->addIncoming(value64, else_bb);
-                        arg_val = phi;
-                    } else if (param_types[i] == F64) {
-                        // Se o valor é int, converter para float primeiro
-                        auto* is_int = B.CreateICmpEQ(type32, TAG_INT, "is_int");
-                        auto* then_bb = llvm::BasicBlock::Create(ctx.get_context(), "convert_int_to_float", current_func);
-                        auto* else_bb = llvm::BasicBlock::Create(ctx.get_context(), "use_float", current_func);
-                        auto* merge_bb = llvm::BasicBlock::Create(ctx.get_context(), "merge_float", current_func);
-                        B.CreateCondBr(is_int, then_bb, else_bb);
-                        
-                        B.SetInsertPoint(then_bb);
-                        auto* int_val = B.CreateTrunc(value64, I32, "int_val");
-                        auto* float_from_int = B.CreateSIToFP(int_val, F64, "float_from_int");
-                        B.CreateBr(merge_bb);
-                        
-                        B.SetInsertPoint(else_bb);
-                        // Se já é float, apenas fazer bitcast dos bits
-                        auto* float_val = B.CreateBitCast(value64, F64, "float_val");
-                        B.CreateBr(merge_bb);
-                        
-                        B.SetInsertPoint(merge_bb);
-                        auto* phi = B.CreatePHI(F64, 2, "arg_f64");
-                        phi->addIncoming(float_from_int, then_bb);
-                        phi->addIncoming(float_val, else_bb);
-                        arg_val = phi;
-                    } else {
-                        // Tipo não suportado, usar valor original
-                    }
+                if (param_types[i]->isIntegerTy()) {
+                    auto* extract_fn = ctx.ensure_runtime_func("extract_int", {I32, ValuePtr});
+                    arg_val = B.CreateCall(extract_fn, {tmp_alloca});
+                } else if (param_types[i]->isFloatingPointTy()) {
+                    auto* extract_fn = ctx.ensure_runtime_func("extract_float", {F64, ValuePtr});
+                    arg_val = B.CreateCall(extract_fn, {tmp_alloca});
                 }
             }
             
