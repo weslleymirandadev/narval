@@ -43,8 +43,9 @@ void DeclarationStmtNode::codegen(nv::IRGenerationContext& context) {
         if (!decl_ty) return;
     }
 
-    // Detectar se estamos no nível superior (variável global)
-    bool is_global = (context.get_current_function() == nullptr);
+    // Detectar se estamos no nível superior (variável global): sem função atual ou na função do programa (main.start)
+    bool is_global = (context.get_current_function() == nullptr)
+        || (context.get_program_function() != nullptr && context.get_current_function() == context.get_program_function());
     
     llvm::Value* init_val = nullptr;
     if (value) {

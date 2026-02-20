@@ -192,8 +192,9 @@ void AssignmentExprNode::codegen(nv::IRGenerationContext& ctx) {
         return;
     }
 
-    // fallback: verificar se já existe uma variável global ou criar nova
-    bool is_global = (ctx.get_current_function() == nullptr);
+    // fallback: verificar se já existe uma variável global ou criar nova (top-level = programa)
+    bool is_global = (ctx.get_current_function() == nullptr)
+        || (ctx.get_program_function() != nullptr && ctx.get_current_function() == ctx.get_program_function());
     auto* ValueTy = nv::ir_utils::get_value_struct(ctx);
     llvm::Type* chosenTy = nullptr;
     llvm::Value* storage = nullptr;
