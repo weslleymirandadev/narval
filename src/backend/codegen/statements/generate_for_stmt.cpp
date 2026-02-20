@@ -242,7 +242,13 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
         // Enter loop context for break/continue support
         ctx.get_control_flow().enter_loop("for.iterable", header_bb, body_bb, step_bb, exit_bb);
         
+        // Criar alloca da variável do loop em body_bb para dominar body_common_bb (evitar "does not dominate all uses")
         b.SetInsertPoint(body_bb);
+        if (!elemBindings.empty()) {
+            auto* valueStruct = nv::ir_utils::get_value_struct(ctx);
+            llvm::Type* bind_ty = (val_kind_count_alloca != nullptr) ? (llvm::Type*)valueStruct : elemTy;
+            (void)ctx.create_and_register_variable(elemBindings[0]->symbol, bind_ty, nullptr, false);
+        }
         if (val_kind_count_alloca != nullptr) {
             auto* is_count = b.CreateLoad(llvm::Type::getInt1Ty(llctx), val_kind_count_alloca, "val.is_count");
             b.CreateCondBr(is_count, count_bind_bb, array_bind_bb);
@@ -363,9 +369,9 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
         }
         b.CreateBr(body_common_bb);
 
-        // Value-as-array path: array_get_index_v into binding
+        // Value-as-array path: array_get_index_v into binding (só gerar se val_array_val_alloca foi setado)
         b.SetInsertPoint(array_bind_bb);
-        if (!elemBindings.empty()) {
+        if (val_array_val_alloca != nullptr && !elemBindings.empty()) {
             auto* valueStruct = nv::ir_utils::get_value_struct(ctx);
             auto* vptr = nv::ir_utils::get_value_ptr(ctx);
             auto* array_val_ptr = b.CreateLoad(vptr, val_array_val_alloca, "array.val.ptr");
@@ -377,8 +383,10 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
             auto sym = ctx.get_symbol_table().lookup_symbol(elemBindings[0]->symbol);
             llvm::Value* dst = sym.has_value() ? sym->value : (llvm::Value*)ctx.create_and_register_variable(elemBindings[0]->symbol, valueStruct, nullptr, false);
             b.CreateStore(b.CreateLoad(valueStruct, tmp), dst);
+            b.CreateBr(body_common_bb);
+        } else {
+            b.CreateUnreachable();
         }
-        b.CreateBr(body_common_bb);
 
         b.SetInsertPoint(body_common_bb);
         b.CreateStore(llvm::ConstantInt::getTrue(ctx.get_context()), executed);
@@ -386,6 +394,7 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
         for (auto& stmt : body) {
             if (stmt) stmt->codegen(ctx);
         }
+        if (ctx.has_value()) (void)ctx.pop_value();  // descartar valor deixado pelo body (ex.: write(...))
         ctx.exit_scope();
         if (!b.GetInsertBlock()->getTerminator()) {
             b.CreateBr(step_bb);
@@ -407,6 +416,7 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
             for (auto& stmt : else_block) {
                 if (stmt) stmt->codegen(ctx);
             }
+            if (ctx.has_value()) (void)ctx.pop_value();
             ctx.exit_scope();
             b.CreateBr(after_bb);
         } else {
@@ -501,6 +511,7 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
     for (auto& stmt : body) {
         if (stmt) stmt->codegen(ctx);
     }
+    if (ctx.has_value()) (void)ctx.pop_value();  // descartar valor deixado pelo body (ex.: write(...))
     ctx.exit_scope();
     if (!b.GetInsertBlock()->getTerminator()) {
         b.CreateBr(step_bb);
@@ -522,6 +533,7 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
         for (auto& stmt : else_block) {
             if (stmt) stmt->codegen(ctx);
         }
+        if (ctx.has_value()) (void)ctx.pop_value();
         ctx.exit_scope();
         b.CreateBr(after_bb);
     } else {
