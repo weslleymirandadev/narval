@@ -241,6 +241,8 @@ private:
 
     // Função atual sendo gerada
     llvm::Function* current_function;
+    // Função "programa" (ex.: main.start em batch); declarações nela são tratadas como globais
+    llvm::Function* program_function;
 
     // Mapeamento de tipos Narval para tipos LLVM
     std::unordered_map<Kind, llvm::Type*> type_cache;
@@ -263,7 +265,7 @@ public:
         llvm::Module& mod,
         llvm::IRBuilder<llvm::NoFolder>& bld,
         void* checker_ptr = nullptr
-    ) : llvm_context(ctx), module(mod), builder(bld), type_checker_ptr(checker_ptr), current_function(nullptr) {
+    ) : llvm_context(ctx), module(mod), builder(bld), type_checker_ptr(checker_ptr), current_function(nullptr), program_function(nullptr) {
         initialize_type_cache();
     }
 
@@ -302,6 +304,8 @@ public:
     void set_current_function(llvm::Function* fn) { current_function = fn; }
     llvm::Function* get_current_function() { return current_function; }
     bool has_current_function() const { return current_function != nullptr; }
+    void set_program_function(llvm::Function* fn) { program_function = fn; }
+    llvm::Function* get_program_function() const { return program_function; }
 
     void emit_local_variable_dbg(
         llvm::AllocaInst* alloca,
