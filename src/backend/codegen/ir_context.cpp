@@ -272,7 +272,6 @@ void IRGenerationContext::register_global_init(llvm::GlobalVariable* global, llv
 }
 
 void IRGenerationContext::finalize_global_inits(int priority) {
-    std::fprintf(stderr, "[finalize_global_inits] entering priority=%d pending=%zu\n", priority, pending_global_inits.size());
     if (pending_global_inits.empty()) {
         return;
     }
