@@ -823,13 +823,42 @@ bool REPL::compile_and_execute(const std::string& input) {
         bool have_result = false;
         if (context.has_value()) {
             llvm::Value* result = context.pop_value();
-            if (result && result->getType() == ValueTy) {
+            if (!result) { /* nada a gravar */ }
+            else if (result->getType() == ValueTy) {
                 llvm::Value* to_store = result;
                 if (llvm::isa<llvm::AllocaInst>(result)) {
                     to_store = temp_builder->CreateLoad(ValueTy, result, "repl_result_load");
                 }
                 temp_builder->CreateStore(to_store, out_param);
                 have_result = true;
+            } else {
+                // Expressões simples (ex.: 3 + 5) retornam primitivo; embrulhar em Value para nv_write
+                auto* I32 = llvm::Type::getInt32Ty(C);
+                auto* F64 = llvm::Type::getDoubleTy(C);
+                auto* box = temp_builder->CreateAlloca(ValueTy, nullptr, "repl_box");
+                auto* create_int_fn = llvm::cast<llvm::Function>(temp_module->getOrInsertFunction("create_int", llvm::FunctionType::get(VoidTy, {ValuePtr, I32}, false)).getCallee());
+                auto* create_float_fn = llvm::cast<llvm::Function>(temp_module->getOrInsertFunction("create_float", llvm::FunctionType::get(VoidTy, {ValuePtr, F64}, false)).getCallee());
+                auto* create_bool_fn = llvm::cast<llvm::Function>(temp_module->getOrInsertFunction("create_bool", llvm::FunctionType::get(VoidTy, {ValuePtr, I32}, false)).getCallee());
+                bool boxed_ok = false;
+                if (result->getType()->isIntegerTy(1)) {
+                    temp_builder->CreateCall(create_bool_fn, {box, temp_builder->CreateZExt(result, I32)});
+                    boxed_ok = true;
+                } else if (result->getType()->isIntegerTy(32)) {
+                    temp_builder->CreateCall(create_int_fn, {box, result});
+                    boxed_ok = true;
+                } else if (result->getType()->isIntegerTy(64)) {
+                    temp_builder->CreateCall(create_int_fn, {box, temp_builder->CreateTrunc(result, I32)});
+                    boxed_ok = true;
+                } else if (result->getType()->isFloatingPointTy()) {
+                    llvm::Value* f = result->getType() == F64 ? result : temp_builder->CreateFPExt(result, F64);
+                    temp_builder->CreateCall(create_float_fn, {box, f});
+                    boxed_ok = true;
+                }
+                if (boxed_ok) {
+                    llvm::Value* boxed = temp_builder->CreateLoad(ValueTy, box, "repl_boxed");
+                    temp_builder->CreateStore(boxed, out_param);
+                    have_result = true;
+                }
             }
         }
         temp_builder->CreateRetVoid();
