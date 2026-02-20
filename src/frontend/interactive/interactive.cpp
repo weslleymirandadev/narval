@@ -906,6 +906,10 @@ bool REPL::compile_and_execute(const std::string& input) {
             return false;
         }
         
+        // Garantir que saída do JIT (ex.: write() dentro de for) apareça antes do próximo prompt
+        std::cout.flush();
+        std::cerr.flush();
+        
         // 8. Auto-print em C++: usar nv_write do runtime com o valor capturado (sem depender de write() no JIT)
         if (have_result && !single_write_call) {
             auto sym = state->get_symbol("nv_write");
