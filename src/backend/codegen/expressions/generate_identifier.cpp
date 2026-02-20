@@ -171,51 +171,28 @@ void IdentifierNode::codegen(nv::IRGenerationContext& context) {
         // Variável local (AllocaInst)
         loaded_value = context.get_builder().CreateLoad(info.llvm_type, actual_value, symbol.c_str());
     } else if (actual_value->getType() == nv::ir_utils::get_value_ptr(context) && info.llvm_type == nv::ir_utils::get_value_struct(context)) {
-        // REPL slot (Value*): carregar o Value apontado
-        auto& B = context.get_builder();
+        // REPL slot (Value*): carregar o Value apontado; não chamar ensure_value_type para preservar tipo/valor na exibição
         auto* ValueTy = nv::ir_utils::get_value_struct(context);
-        auto* ValuePtr = nv::ir_utils::get_value_ptr(context);
-        loaded_value = B.CreateLoad(ValueTy, actual_value, symbol.c_str());
-        auto* temp_alloca = context.create_alloca(ValueTy, symbol + "_ensure");
-        B.CreateStore(loaded_value, temp_alloca);
-        auto* ensure_func = context.ensure_runtime_func("ensure_value_type", {ValuePtr});
-        B.CreateCall(ensure_func, {temp_alloca});
-        loaded_value = B.CreateLoad(ValueTy, temp_alloca, symbol + "_ensured");
+        loaded_value = context.get_builder().CreateLoad(ValueTy, actual_value, symbol.c_str());
     } else if (llvm::isa<llvm::GlobalVariable>(actual_value)) {
-        // Variável global: carregar o valor do GlobalVariable
-        // O GlobalVariable deve estar inicializado corretamente via @llvm.global_ctors
-        // com a tag de tipo correta
+        // Variável global: sempre carregar como Value (globais de valor são Value); info.llvm_type pode estar desatualizado
         auto& B = context.get_builder();
         auto* ValueTy = nv::ir_utils::get_value_struct(context);
         auto* ValuePtr = nv::ir_utils::get_value_ptr(context);
-        
-        // Carregar o valor
-        loaded_value = B.CreateLoad(info.llvm_type, actual_value, symbol.c_str());
-        
-        // Para variáveis globais do tipo Value, precisamos garantir que o tipo está correto
-        // O ensure_value_type é necessário para garantir que a tag esteja correta
+
+        loaded_value = B.CreateLoad(ValueTy, actual_value, symbol.c_str());
+
         if (info.llvm_type == ValueTy) {
-            // É Value struct - garantir que tipo está correto usando ensure_value_type
             auto* temp_alloca = context.create_alloca(ValueTy, symbol + "_ensure");
             B.CreateStore(loaded_value, temp_alloca);
-            
-            // Chamar ensure_value_type para garantir que a tag está correta
             auto* ensure_func = context.ensure_runtime_func("ensure_value_type", {ValuePtr});
             B.CreateCall(ensure_func, {temp_alloca});
-            
-            // Carregar o valor garantido
             loaded_value = B.CreateLoad(ValueTy, temp_alloca, symbol + "_ensured");
         } else {
-            // Para tipos não-Value, manter comportamento original
-            // Criar alloca temporário para passar para ensure_value_type
             auto* temp_alloca = context.create_alloca(ValueTy, symbol + "_ensure");
             B.CreateStore(loaded_value, temp_alloca);
-            
-            // Chamar ensure_value_type para garantir que a tag está correta
             auto* ensure_func = context.ensure_runtime_func("ensure_value_type", {ValuePtr});
             B.CreateCall(ensure_func, {temp_alloca});
-            
-            // Carregar o valor garantido
             loaded_value = B.CreateLoad(ValueTy, temp_alloca, symbol + "_ensured");
         }
     } else {
