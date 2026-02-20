@@ -11,6 +11,6 @@
 
 namespace nv {
 
-void generate_ir(std::unique_ptr<Node> node, IRGenerationContext& context);
+void generate_ir(std::unique_ptr<Node> node, IRGenerationContext& context, bool keep_result = false);
 
 } // namespace nv

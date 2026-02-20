@@ -1,5 +1,6 @@
 #include "backend/codegen/generate_ir.hpp"
 #include "backend/codegen/ir_context.hpp"
+#include "backend/codegen/ir_utils.hpp"
 #include "frontend/ast/ast.hpp"
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Module.h>
@@ -81,6 +82,9 @@ static void declare_runtime(IRGenerationContext& context) {
     // atoi(const char*) -> i32 - função C padrão para conversão string->int (usada no match)
     M.getOrInsertFunction("atoi", llvm::FunctionType::get(I32, {I8Ptr}, false));
 
+    // _exit(int) - encerra o processo (libc); usada pelo builtin exit()
+    M.getOrInsertFunction("_exit", llvm::FunctionType::get(VoidTy, {I32}, false));
+
     // json_load(Value*, const char*) - função builtin para carregar JSON
     M.getOrInsertFunction("json_load", llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
 
@@ -147,7 +151,8 @@ static void declare_runtime(IRGenerationContext& context) {
 
 void generate_ir(
     std::unique_ptr<Node> node,
-    IRGenerationContext& context
+    IRGenerationContext& context,
+    bool keep_result
 ) {
     auto program = std::unique_ptr<Program>(dynamic_cast<Program*>(node.release()));
 
@@ -158,6 +163,21 @@ void generate_ir(
 
     for (size_t i = 0; i < program->body.size(); ++i) {
         program->body[i]->codegen(context);
+    }
+
+    // In REPL (keep_result=true) leave the last value on the stack for auto-print.
+    // In batch: discard any values left (e.g. from write()), then push 0 as exit value.
+    if (!keep_result) {
+        while (context.has_value()) {
+            (void) context.pop_value();
+        }
+        auto* ValueTy = ir_utils::get_value_struct(context);
+        auto* ValuePtr = ir_utils::get_value_ptr(context);
+        auto* I32 = llvm::Type::getInt32Ty(context.get_context());
+        auto* zero_alloca = context.create_alloca(ValueTy, "program_exit_val");
+        auto* create_int_fn = context.ensure_runtime_func("create_int", {ValuePtr, I32});
+        context.get_builder().CreateCall(create_int_fn, {zero_alloca, llvm::ConstantInt::get(I32, 0)});
+        context.push_value(context.get_builder().CreateLoad(ValueTy, zero_alloca, "program_exit_zero"));
     }
 
     context.exit_scope();
