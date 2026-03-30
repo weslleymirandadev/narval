@@ -794,9 +794,31 @@ bool REPL::compile_and_execute(const std::string& input) {
             if (state->repl_var_values.find(name) == state->repl_var_values.end())
                 state->repl_var_values[name] = Value{};
         }
+
+        // Fallback: garantir que funções (DEF) definidas em fragmentos anteriores
+        // sejam declaradas no módulo temporário para que chamadas (ex.: sum(i)) funcionem.
+        for (const std::string& name : state->repl_global_names) {
+            std::shared_ptr<nv::Type> nv_type;
+            try { nv_type = state->checker->scope->get_key(name); } catch (...) { continue; }
+            if (!nv_type) continue;
+            nv_type = context.resolve_type(nv_type);
+            if (nv_type->kind != nv::Kind::DEF) continue;
+            auto* def = std::static_pointer_cast<nv::Def>(nv_type).get();
+            if (!def) continue;
+            std::vector<llvm::Type*> param_tys;
+            for (const auto& p : def->paramstype)
+                param_tys.push_back(context.nv_type_to_llvm(p));
+            llvm::Type* ret_ty = context.nv_type_to_llvm(def->returntype);
+            auto* ft = llvm::FunctionType::get(ret_ty, param_tys, false);
+            auto ext_fn = temp_module->getOrInsertFunction(name, ft);
+            llvm::Function* fn = llvm::cast<llvm::Function>(ext_fn.getCallee());
+            nv::SymbolInfo info(fn, fn->getType(), nv_type, false, true);
+            context.get_symbol_table().define_symbol(name, info);
+        }
         
         // Globais no JIT para variáveis REPL (funções definidas em fragmentos anteriores leem o mesmo global)
         auto* I32 = llvm::Type::getInt32Ty(C);
+        auto* F64 = llvm::Type::getDoubleTy(C);
         for (const std::string& name : slot_names) {
             if (state->repl_globals_added.count(name)) continue;
             auto glob_mod = std::make_unique<llvm::Module>("repl_globals_" + name, C);
@@ -841,6 +863,8 @@ bool REPL::compile_and_execute(const std::string& input) {
                         auto* loop_entry = llvm::BasicBlock::Create(C, "entry", loop_func);
                         temp_builder->SetInsertPoint(loop_entry);
                         context.set_current_function(loop_func);
+                        // Enable REPL loop mode so writes inside the body are captured into out_result
+                        context.set_repl_loop_mode(true);
                         if (loop_slots) {
                             for (size_t i = 0; i < slot_names.size(); ++i) {
                                 const std::string& name = slot_names[i];
@@ -857,10 +881,61 @@ bool REPL::compile_and_execute(const std::string& input) {
                         }
                         llvm::Value* i_alloca = context.create_and_register_variable(loop_var, llvm::Type::getInt32Ty(C), nullptr, false);
                         temp_builder->CreateStore(loop_i_param, i_alloca);
+                        // make out_result pointer available to codegen
+                        context.set_repl_out_result_ptr(loop_out);
                         context.enter_scope();
+                        // Debug: print AST of loop body to ensure it contains expected call
+                        if (body_prog) body_prog->print();
                         nv::generate_ir(std::move(body_prog), context);
-                        if (context.has_value()) (void)context.pop_value();
+                        // Se o corpo deixou um valor na pilha, gravar em *out_result (host pode imprimir)
+                        bool loop_have_result = false;
+                        if (context.has_value()) {
+                            if (last_stmt_no_result) {
+                                (void)context.pop_value();
+                            } else {
+                                llvm::Value* result = context.pop_value();
+                                if (result) {
+                                    if (result->getType() == ValueTy) {
+                                        llvm::Value* to_store = result;
+                                        if (llvm::isa<llvm::AllocaInst>(result)) {
+                                            to_store = temp_builder->CreateLoad(ValueTy, result, "loop_result_load");
+                                        }
+                                        temp_builder->CreateStore(to_store, loop_out);
+                                        loop_have_result = true;
+                                    } else {
+                                        // Embrulhar primitivo em Value
+                                        auto* box = temp_builder->CreateAlloca(ValueTy, nullptr, "loop_box");
+                                        auto* create_int_fn = llvm::cast<llvm::Function>(temp_module->getOrInsertFunction("create_int", llvm::FunctionType::get(VoidTy, {ValuePtr, I32}, false)).getCallee());
+                                        auto* create_float_fn = llvm::cast<llvm::Function>(temp_module->getOrInsertFunction("create_float", llvm::FunctionType::get(VoidTy, {ValuePtr, F64}, false)).getCallee());
+                                        auto* create_bool_fn = llvm::cast<llvm::Function>(temp_module->getOrInsertFunction("create_bool", llvm::FunctionType::get(VoidTy, {ValuePtr, I32}, false)).getCallee());
+                                        bool boxed_ok = false;
+                                        if (result->getType()->isIntegerTy(1)) {
+                                            temp_builder->CreateCall(create_bool_fn, {box, temp_builder->CreateZExt(result, I32)});
+                                            boxed_ok = true;
+                                        } else if (result->getType()->isIntegerTy(32)) {
+                                            temp_builder->CreateCall(create_int_fn, {box, result});
+                                            boxed_ok = true;
+                                        } else if (result->getType()->isIntegerTy(64)) {
+                                            temp_builder->CreateCall(create_int_fn, {box, temp_builder->CreateTrunc(result, I32)});
+                                            boxed_ok = true;
+                                        } else if (result->getType()->isFloatingPointTy()) {
+                                            llvm::Value* f = result->getType() == F64 ? result : temp_builder->CreateFPExt(result, F64);
+                                            temp_builder->CreateCall(create_float_fn, {box, f});
+                                            boxed_ok = true;
+                                        }
+                                        if (boxed_ok) {
+                                            llvm::Value* boxed = temp_builder->CreateLoad(ValueTy, box, "loop_boxed");
+                                            temp_builder->CreateStore(boxed, loop_out);
+                                            loop_have_result = true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         context.exit_scope();
+                        // disable REPL loop mode
+                        context.set_repl_loop_mode(false);
+                        context.set_repl_out_result_ptr(nullptr);
                         if (loop_slots) {
                             for (size_t i = 0; i < slot_names.size(); ++i) {
                                 const std::string& name = slot_names[i];
@@ -871,6 +946,8 @@ bool REPL::compile_and_execute(const std::string& input) {
                             }
                         }
                         temp_builder->CreateRetVoid();
+                        // Debug: dump the generated module IR for the loop to stderr
+                        temp_module->print(llvm::errs(), nullptr);
                         auto tsm_loop = llvm::orc::ThreadSafeModule(std::move(temp_module), std::make_unique<llvm::LLVMContext>());
                         if (auto err = state->jit->addIRModule(std::move(tsm_loop))) {
                             llvm::consumeError(std::move(err));
@@ -882,12 +959,18 @@ bool REPL::compile_and_execute(const std::string& input) {
                             Value result_buffer = {};
                             (void)N;  // used in loop below
                             for (int32_t i = 0; i < N; ++i) {
+                                // Reset result buffer before each iteration
+                                result_buffer = {};
                                 if (slot_names.empty())
                                     ((void(*)(Value*, int32_t))addr)(&result_buffer, i);
                                 else {
                                     std::vector<Value*> slot_ptrs;
                                     for (const auto& n : slot_names) slot_ptrs.push_back(&state->repl_var_values[n]);
                                     ((void(*)(Value*, Value**, int32_t))addr)(&result_buffer, slot_ptrs.data(), i);
+                                }
+                                // If the body produced a value in out_result, print it from the host
+                                if (result_buffer.type != 0) {
+                                    print_value(llvm::JITTargetAddress(&result_buffer));
                                 }
                                 std::cout.flush();
                                 std::fflush(stdout);
