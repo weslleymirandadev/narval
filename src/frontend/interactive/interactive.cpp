@@ -471,8 +471,20 @@ std::string REPL::preprocess_input(const std::string& input) {
     bool has_braces = result.find('{') != std::string::npos;
     bool will_auto_print = should_auto_print(result);
     
-    // Se não terminar com ; e não for definição de função com chaves, e não vai fazer auto-print, adicionar ;
-    if (!result.empty() && result.back() != ';' && !is_function_def && !has_braces && !will_auto_print) {
+    // Detectar atribuição simples (contém '=' mas não operadores compostos) para forçar ';'
+    bool looks_like_assignment = false;
+    size_t eq_pos = result.find('=');
+    if (eq_pos != std::string::npos) {
+        // evitar operadores '==', '!=', '<=', '>=', '=>', '->'
+        if (result.find("==") == std::string::npos && result.find("!=") == std::string::npos
+            && result.find("<=") == std::string::npos && result.find(">=") == std::string::npos
+            && result.find("=>") == std::string::npos && result.find("->") == std::string::npos) {
+            looks_like_assignment = true;
+        }
+    }
+
+    // Se não terminar com ; e não for definição de função com chaves, e não vai fazer auto-print (a menos que seja atribuição), adicionar ;
+    if (!result.empty() && result.back() != ';' && !is_function_def && !has_braces && (!will_auto_print || looks_like_assignment)) {
         result += ";";
     }
     
@@ -662,6 +674,8 @@ bool REPL::compile_and_execute(const std::string& input) {
         bool last_stmt_no_result = false;
         // Não imprimir declarações (variável ou função)
         bool single_declaration_no_print = false;
+        // Se a única instrução é um identificador isolado (ex.: "x"), tratar como caso especial
+        bool single_identifier_expr = false;
         if (auto* prog = dynamic_cast<Program*>(ast.get())) {
             const auto& stmts = prog->get_statements();
             if (stmts.size() == 1) {
@@ -679,6 +693,10 @@ bool REPL::compile_and_execute(const std::string& input) {
                         if (auto* id = dynamic_cast<IdentifierNode*>(call->caller.get())) {
                             if (id->symbol == "write") single_write_call = true;
                         }
+                    }
+                    // detectar se a única instrução é um identificador puro (ex.: "x")
+                    if (dynamic_cast<IdentifierNode*>(first)) {
+                        single_identifier_expr = true;
                     }
                 }
             }
@@ -1033,7 +1051,8 @@ bool REPL::compile_and_execute(const std::string& input) {
                         if (it != state->repl_var_values.end())
                             result_buffer = it->second;
                     }
-                } else if (defined_this_line.empty() && used_this_line.size() == 1) {
+                } else if (single_identifier_expr && defined_this_line.empty() && used_this_line.size() == 1) {
+                    // Se a entrada for apenas um identificador (ex.: "x"), mostrar o slot.
                     const std::string& n = *used_this_line.begin();
                     if (std::find(slot_names.begin(), slot_names.end(), n) != slot_names.end()) {
                         auto it = state->repl_var_values.find(n);
