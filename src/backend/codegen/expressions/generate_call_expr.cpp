@@ -401,12 +401,20 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
                 auto* tmp_alloca = ctx.create_alloca(ValueTy, "arg_tmp");
                 B.CreateStore(arg_val, tmp_alloca);
                 
+                // Garantir que o Value tenha o tipo correto em runtime
+                auto* ensure_fn = ctx.ensure_runtime_func("ensure_value_type", {ValuePtr});
+                B.CreateCall(ensure_fn, {tmp_alloca});
+
+                // Extrair primitivo do Value struct inline (sem depender de função runtime extract_*)
+                auto* valuePtr = B.CreateStructGEP(ValueTy, tmp_alloca, 1);
+                auto* value64 = B.CreateLoad(I64, valuePtr);
+
                 if (param_types[i]->isIntegerTy()) {
-                    auto* extract_fn = ctx.ensure_runtime_func("extract_int", {I32, ValuePtr});
-                    arg_val = B.CreateCall(extract_fn, {tmp_alloca});
+                    // Truncar i64 para i32
+                    arg_val = B.CreateTrunc(value64, I32, "arg_int_val");
                 } else if (param_types[i]->isFloatingPointTy()) {
-                    auto* extract_fn = ctx.ensure_runtime_func("extract_float", {F64, ValuePtr});
-                    arg_val = B.CreateCall(extract_fn, {tmp_alloca});
+                    // Reinterpretar bits de i64 como double
+                    arg_val = B.CreateBitCast(value64, F64, "arg_float_bits");
                 }
             }
             
