@@ -97,6 +97,14 @@ void emit_write(IRGenerationContext& ctx, llvm::Value* v, bool newline = true) {
         boxed = box_value(ctx, v);
     }
     
+    // If generating code for REPL loop body, store boxed value to out_result for the host to print
+    if (ctx.is_repl_loop_mode() && ctx.get_repl_out_result_ptr()) {
+        // boxed is an alloca pointer to Value; load and store into out_result
+        auto* loaded = ctx.get_builder().CreateLoad(ir_utils::get_value_struct(ctx), boxed);
+        ctx.get_builder().CreateStore(loaded, ctx.get_repl_out_result_ptr());
+        return;
+    }
+
     const char* name = newline ? "nv_write" : "nv_write_no_nl";
     auto* fn = ctx.ensure_runtime_func(name, {ValuePtr});
     ctx.get_builder().CreateCall(fn, {boxed});
@@ -162,33 +170,32 @@ llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name
                 return llvm::UndefValue::get(ir_utils::get_value_struct(ctx));
             }
             
-            // Register the value for REPL output before writing
-            // TEMPORARILE DESABILITADO
-            /*
-            if (val) {
-                auto* ValueTy = ir_utils::get_value_struct(ctx);
+            // If we're generating code for a REPL loop body, box the argument,
+            // store it into the out_result pointer for the host, and return the boxed value.
+            auto* ValueTy = ir_utils::get_value_struct(ctx);
+            if (ctx.is_repl_loop_mode() && ctx.get_repl_out_result_ptr()) {
+                // Box the value (or reuse if already boxed)
+                llvm::Value* boxed_alloca = nullptr;
                 if (val->getType() == ValueTy) {
-                    // Value is already boxed, register it directly
-                    auto* register_fn = ctx.ensure_runtime_func("nv_register_write_value", {ir_utils::get_value_ptr(ctx)});
-                    auto* alloca = ctx.create_alloca(ValueTy, "write_arg");
-                    B.CreateStore(val, alloca);
-                    B.CreateCall(register_fn, {alloca});
+                    // Already boxed: store into a preserve alloca
+                    boxed_alloca = ctx.create_alloca(ValueTy, "write_preserve");
+                    B.CreateStore(val, boxed_alloca);
                 } else {
-                    // Box the value first, then register it
-                    llvm::Value* boxed = box_value(ctx, val);
-                    auto* register_fn = ctx.ensure_runtime_func("nv_register_write_value", {ir_utils::get_value_ptr(ctx)});
-                    B.CreateCall(register_fn, {boxed});
+                    boxed_alloca = box_value(ctx, val);
                 }
+                // Load the boxed Value and store it into out_result
+                auto* boxed_loaded = B.CreateLoad(ValueTy, boxed_alloca);
+                B.CreateStore(boxed_loaded, ctx.get_repl_out_result_ptr());
+                // Return the boxed value (loaded)
+                return boxed_loaded;
             }
-            */
-            
+
             // Emit write with the value (this will box it internally)
             emit_write(ctx, val);
-            
+
             // Return the original value so it can be used as program return value
             // IMPORTANT: We need to preserve the value by creating a copy in an alloca
             // This ensures the value survives optimization and is available for program return
-            auto* ValueTy = ir_utils::get_value_struct(ctx);
             if (val->getType() == ValueTy) {
                 // Create a copy in an alloca to preserve the value
                 auto* preserve_alloca = ctx.create_alloca(ValueTy, "write_result");

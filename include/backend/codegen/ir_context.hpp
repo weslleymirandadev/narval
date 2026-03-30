@@ -241,6 +241,10 @@ private:
 
     // Função atual sendo gerada
     llvm::Function* current_function;
+    // REPL loop mode: when true, emits may store results to the host-provided out_result
+    bool repl_loop_mode = false;
+    // Pointer to the out_result slot (Value*) for REPL loop wrapper
+    llvm::Value* repl_out_result_ptr = nullptr;
     // Função "programa" (ex.: main.start em batch); declarações nela são tratadas como globais
     llvm::Function* program_function;
 
@@ -306,6 +310,11 @@ public:
     bool has_current_function() const { return current_function != nullptr; }
     void set_program_function(llvm::Function* fn) { program_function = fn; }
     llvm::Function* get_program_function() const { return program_function; }
+
+    void set_repl_loop_mode(bool v) { repl_loop_mode = v; }
+    bool is_repl_loop_mode() const { return repl_loop_mode; }
+    void set_repl_out_result_ptr(llvm::Value* v) { repl_out_result_ptr = v; }
+    llvm::Value* get_repl_out_result_ptr() const { return repl_out_result_ptr; }
 
     void emit_local_variable_dbg(
         llvm::AllocaInst* alloca,
