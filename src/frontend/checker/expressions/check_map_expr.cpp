@@ -15,6 +15,7 @@ std::shared_ptr<nv::Type>& check_map_expr(nv::Checker* ch, Node* node) {
         auto key_type = std::make_shared<nv::TypeVar>(next_key_id);
         auto value_type = std::make_shared<nv::TypeVar>(next_value_id);
         temp_result = std::make_shared<nv::Map>(key_type, value_type);
+        temp_result->init_prototype();
         return temp_result;
     }
     
@@ -73,5 +74,6 @@ std::shared_ptr<nv::Type>& check_map_expr(nv::Checker* ch, Node* node) {
     
     // Criar e retornar tipo Map
     temp_result = std::make_shared<nv::Map>(key_type, value_type);
+    temp_result->init_prototype();
     return temp_result;
 }

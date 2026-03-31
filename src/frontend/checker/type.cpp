@@ -70,6 +70,17 @@ namespace nv {
 
     void String::init_prototype() {
         prototype = std::make_shared<nv::Namespace>();
+
+        // Registrar métodos de string para o checker
+        // toUpperCase(): string
+        auto self_type = std::const_pointer_cast<Type>(shared_from_this());
+        prototype->put_key("toUpperCase", make_native_def({}, self_type), true);
+
+        // replace(old: string, new: string): string
+        prototype->put_key("replace", make_native_def({ self_type, self_type }, self_type), true);
+
+        // includes(sub: string): bool
+        prototype->put_key("includes", make_native_def({ self_type }, std::make_shared<nv::Boolean>()), true);
     }
     
     void Int::init_prototype() {

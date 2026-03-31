@@ -93,6 +93,7 @@ std::shared_ptr<nv::Type>& check_for_stmt(nv::Checker* ch, Node* node) {
                     map->value_type
                 };
                 element_type = std::make_shared<nv::Tuple>(tuple_types);
+                element_type->init_prototype();
             } else if (iterable_type->kind == nv::Kind::TUPLE) {
                 // Para Tuple, usar tipo genérico já que pode ter múltiplos elementos
                 int next_id = ch->unify_ctx.get_next_var_id();

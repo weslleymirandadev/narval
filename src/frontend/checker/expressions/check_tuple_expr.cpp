@@ -8,5 +8,7 @@ std::shared_ptr<nv::Type> check_tuple_expr(nv::Checker* ch, Node* node) {
     for (const auto& elem : tup->elements) {
         elem_types.push_back(ch->infer_expr(elem.get()));
     }
-    return std::make_shared<nv::Tuple>(elem_types);
+    auto t = std::make_shared<nv::Tuple>(elem_types);
+    t->init_prototype();
+    return t;
 }

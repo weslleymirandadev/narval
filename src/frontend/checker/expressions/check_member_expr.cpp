@@ -33,7 +33,20 @@ std::shared_ptr<nv::Type>& check_member_expr(nv::Checker* ch, Node* node) {
     const std::string& prop_name = prop_id->symbol;
     
     // Verificar se o tipo tem o método/membro
-    auto method_type = object_type->get_method(prop_name);
+    // Se o prototype ainda não foi inicializado (caso algum Type tenha sido construído sem init), tentar inicializar sob demanda.
+    try {
+        if (!object_type->prototype) {
+            try { object_type->init_prototype(); } catch (...) {}
+        }
+    } catch (...) {}
+
+    std::shared_ptr<nv::Type> method_type = nullptr;
+    try {
+        method_type = object_type->get_method(prop_name);
+    } catch (const std::exception&) {
+        method_type = nullptr;
+    }
+
     if (method_type) {
         temp_result = method_type;
         return temp_result;
