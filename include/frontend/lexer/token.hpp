@@ -19,7 +19,7 @@ enum class TokenType {
     MATCH,
     FOR,
     WHILE,
-    LOOP,
+    FOREVER,
     BREAK,
     CONTINUE,
     UNDERSCORE,
@@ -96,7 +96,7 @@ inline const char* get_token_name(TokenType type) {
         case TokenType::MOD: return "MODULUS";
         case TokenType::FOR: return "FOR";
         case TokenType::WHILE: return "WHILE";
-        case TokenType::LOOP: return "LOOP";
+        case TokenType::FOREVER: return "FOREVER";
         case TokenType::BREAK: return "BREAK";
         case TokenType::CONTINUE: return "CONTINUE";
         case TokenType::UNDERSCORE: return "UNDERSCORE";

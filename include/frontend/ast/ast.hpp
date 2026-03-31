@@ -35,7 +35,7 @@
 #include "statements/def_stmt_node.hpp"
 #include "statements/if_statement_node.hpp"
 #include "statements/for_stmt_node.hpp"
-#include "statements/loop_stmt_node.hpp"
+#include "statements/forever_stmt_node.hpp"
 #include "statements/while_stmt_node.hpp"
 #include "statements/match_stmt_node.hpp"
 #include "statements/import_stmt_node.hpp"
