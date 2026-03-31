@@ -3,13 +3,13 @@
 #include <vector>
 #include <memory>
 
-class LoopStmtNode : public Stmt {
+class ForeverStmtNode : public Stmt {
 public:
     CodeBlock body;
 
-    LoopStmtNode(std::vector<std::unique_ptr<Stmt>> body) : Stmt(NodeType::LoopStatement), body(std::move(body)) {}
+    ForeverStmtNode(std::vector<std::unique_ptr<Stmt>> body) : Stmt(NodeType::ForeverStatement), body(std::move(body)) {}
 
-    ~LoopStmtNode() override = default;
+    ~ForeverStmtNode() override = default;
     
     Node* clone() const override {
         std::vector<std::unique_ptr<Stmt>> cloned_body;
@@ -18,7 +18,7 @@ public:
             cloned_body.push_back(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
         }
 
-        auto* node = new LoopStmtNode(
+        auto* node = new ForeverStmtNode(
             std::move(cloned_body)
         );
         if (position) {

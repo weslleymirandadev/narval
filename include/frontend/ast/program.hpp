@@ -31,7 +31,7 @@
 #include "statements/def_stmt_node.hpp"
 #include "statements/if_statement_node.hpp"
 #include "statements/for_stmt_node.hpp"
-#include "statements/loop_stmt_node.hpp"
+#include "statements/forever_stmt_node.hpp"
 #include "statements/while_stmt_node.hpp"
 #include "statements/match_stmt_node.hpp"
 
@@ -294,12 +294,12 @@ private:
                 }
                 break;
             }
-            case NodeType::LoopStatement: {
-                const auto* loopStmt = static_cast<const LoopStmtNode*>(stmt);
-                std::cout << indent << "LoopStatement:\n";
+            case NodeType::ForeverStatement: {
+                const auto* foreverStmt = static_cast<const ForeverStmtNode*>(stmt);
+                std::cout << indent << "ForeverStatement:\n";
                 std::cout << indent << "  Body:\n";
                 
-                for (const auto& bodyStmt : loopStmt->body) {
+                for (const auto& bodyStmt : foreverStmt->body) {
                     print_statement(bodyStmt.get(), indentNum + 2);
                 }
                 

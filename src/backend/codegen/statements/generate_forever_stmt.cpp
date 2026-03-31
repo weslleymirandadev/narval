@@ -1,19 +1,19 @@
-#include "frontend/ast/statements/loop_stmt_node.hpp"
+#include "frontend/ast/statements/forever_stmt_node.hpp"
 #include "backend/codegen/ir_context.hpp"
 
-void LoopStmtNode::codegen(nv::IRGenerationContext& ctx) {
+void ForeverStmtNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
     auto& b = ctx.get_builder();
     auto* func = ctx.get_current_function();
-    if (!func) throw std::runtime_error("loop statement outside of function");
+    if (!func) throw std::runtime_error("forever statement outside of function");
 
-    auto* header_bb   = llvm::BasicBlock::Create(ctx.get_context(), "loop.header", func);
-    auto* body_bb     = llvm::BasicBlock::Create(ctx.get_context(), "loop.body", func);
-    auto* continue_bb = llvm::BasicBlock::Create(ctx.get_context(), "loop.continue", func);
-    auto* exit_bb     = llvm::BasicBlock::Create(ctx.get_context(), "loop.exit", func);
+    auto* header_bb   = llvm::BasicBlock::Create(ctx.get_context(), "forever.header", func);
+    auto* body_bb     = llvm::BasicBlock::Create(ctx.get_context(), "forever.body", func);
+    auto* continue_bb = llvm::BasicBlock::Create(ctx.get_context(), "forever.continue", func);
+    auto* exit_bb     = llvm::BasicBlock::Create(ctx.get_context(), "forever.exit", func);
 
     // Enter loop context for potential break/continue support
-    ctx.get_control_flow().enter_loop("loop", header_bb, body_bb, continue_bb, exit_bb);
+    ctx.get_control_flow().enter_loop("forever", header_bb, body_bb, continue_bb, exit_bb);
 
     // jump to header
     b.CreateBr(header_bb);

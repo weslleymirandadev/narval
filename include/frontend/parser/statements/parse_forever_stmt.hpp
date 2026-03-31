@@ -3,6 +3,6 @@
 #include "frontend/ast/ast.hpp"
 #include "frontend/parser/parser.hpp"
 
-std::unique_ptr<Node> parse_loop_stmt(Parser* parser);
+std::unique_ptr<Node> parse_forever_stmt(Parser* parser);
 
 

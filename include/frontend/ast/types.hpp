@@ -38,7 +38,7 @@ enum class NodeType {
     BreakStatement,
     ContinueStatement,
     ForStatement,
-    LoopStatement,
+    ForeverStatement,
     WhileStatement,
     ConditionalExpression,
     MatchStatement,
