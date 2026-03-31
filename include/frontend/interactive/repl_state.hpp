@@ -46,6 +46,7 @@ struct REPLState {
 	bool initialize();
 	void reset();
 	void register_runtime_functions();
+	void load_lib_modules();
 	bool add_symbol(const std::string& name, llvm::JITTargetAddress addr);
 	std::optional<llvm::JITTargetAddress> get_symbol(const std::string& name);
 };

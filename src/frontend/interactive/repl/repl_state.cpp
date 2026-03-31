@@ -2,6 +2,12 @@
 #include <dlfcn.h>
 #include <fstream>
 #include <iostream>
+#include <filesystem>
+
+#include <llvm/AsmParser/Parser.h>
+#include <llvm/Support/SourceMgr.h>
+#include <llvm/Support/MemoryBuffer.h>
+#include <llvm/Bitcode/BitcodeReader.h>
 
 namespace nv {
 
@@ -28,6 +34,9 @@ bool REPLState::initialize() {
             return false;
         }
         jit = std::move(*jit_expected);
+
+        // Load project lib IR modules (e.g., read.ll) into the JIT so symbols like nv_read are available
+        load_lib_modules();
 
         register_runtime_functions();
 
@@ -108,6 +117,51 @@ void REPLState::register_runtime_functions() {
     }
 }
 
+void REPLState::load_lib_modules() {
+    std::string lib_dir = std::string(NARVAL_SOURCE_DIR) + "/lib";
+    try {
+        for (const auto& entry : std::filesystem::directory_iterator(lib_dir)) {
+            if (!entry.is_regular_file()) continue;
+            auto path = entry.path();
+            auto ext = path.extension().string();
+            if (ext == ".ll" || ext == ".bc") {
+                std::string file_path = path.string();
+                if (ext == ".ll") {
+                    // parse assembly
+                    llvm::SMDiagnostic err;
+                    auto ctx = std::make_unique<llvm::LLVMContext>();
+                    std::string file_contents;
+                    std::ifstream in(file_path);
+                    if (!in) continue;
+                    file_contents.assign((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+                    std::unique_ptr<llvm::Module> mod = llvm::parseAssemblyString(file_contents, err, *ctx);
+                    if (!mod) continue;
+                    auto tsm = llvm::orc::ThreadSafeModule(std::move(mod), std::move(ctx));
+                    if (auto err2 = jit->addIRModule(std::move(tsm))) {
+                        llvm::consumeError(std::move(err2));
+                    }
+                } else {
+                    // .bc bitcode
+                    // Read bitcode file into a MemoryBuffer using ErrorOr API
+                    auto mb_or_err = llvm::MemoryBuffer::getFile(file_path);
+                    if (!mb_or_err) continue;
+                    auto ctx = std::make_unique<llvm::LLVMContext>();
+                    std::unique_ptr<llvm::MemoryBuffer> mem_buf = std::move(*mb_or_err);
+                    llvm::Expected<std::unique_ptr<llvm::Module>> m_or_err = llvm::parseBitcodeFile(mem_buf->getMemBufferRef(), *ctx);
+                    if (!m_or_err) continue;
+                    auto mod = std::move(*m_or_err);
+                    auto tsm = llvm::orc::ThreadSafeModule(std::move(mod), std::move(ctx));
+                    if (auto err2 = jit->addIRModule(std::move(tsm))) {
+                        llvm::consumeError(std::move(err2));
+                    }
+                }
+            }
+        }
+    } catch (...) {
+        // ignore errors when loading optional lib modules
+    }
+}
+
 void REPLState::reset() {
     symbols.clear();
     repl_global_names.clear();
@@ -126,6 +180,7 @@ void REPLState::reset() {
     if (jit_expected) {
         jit = std::move(*jit_expected);
         register_runtime_functions();
+        load_lib_modules();
     }
 }
 
