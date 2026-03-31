@@ -20,7 +20,12 @@ void DefStmtNode::codegen(nv::IRGenerationContext& ctx) {
     }
     llvm::Type* ret_ty = nv::ir_utils::llvm_type_from_string(ctx, return_type);
     auto* fn_ty = llvm::FunctionType::get(ret_ty, param_types, false);
-    auto* fn = llvm::Function::Create(fn_ty, llvm::Function::ExternalLinkage, name, ctx.get_module());
+    
+    // Tenta encontrar a função se ela já foi declarada (por exemplo, no pre-pass de assinaturas)
+    auto* fn = ctx.get_module().getFunction(name);
+    if (!fn) {
+        fn = llvm::Function::Create(fn_ty, llvm::Function::ExternalLinkage, name, ctx.get_module());
+    }
 
     llvm::DISubprogram* subp = nullptr;
     unsigned def_line = 0u;
@@ -97,5 +102,15 @@ void DefStmtNode::codegen(nv::IRGenerationContext& ctx) {
     }
     if (prev_scope) {
         ctx.set_debug_scope(prev_scope);
+        // Também restaurar a localização de debug no builder
+        ctx.get_builder().SetCurrentDebugLocation(
+            llvm::DILocation::get(ctx.get_context(), 
+                                 prev_insert_block 
+                                    ? (prev_insert_block->getTerminator() ? prev_insert_block->getTerminator()->getDebugLoc().getLine() : 1) 
+                                    : 1, 
+                                 1, 
+                                 prev_scope));
+    } else {
+        ctx.get_builder().SetCurrentDebugLocation(nullptr);
     }
 }
