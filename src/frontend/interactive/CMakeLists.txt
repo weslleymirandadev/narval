@@ -7,11 +7,15 @@ option(BUILD_REPL_MODE "Build REPL (Read-Eval-Print Loop) support" ON)
 option(BUILD_NOTEBOOK_MODE "Build Jupyter-like notebook support" ON)
 option(ENABLE_INTERACTIVE_DEBUG "Enable debug features for interactive mode" OFF)
 
-# Source collection
-file(GLOB_RECURSE INTERACTIVE_SOURCES CONFIGURE_DEPENDS "*.cpp")
+# Source collection (explicitly search this directory and subdirectories)
+file(GLOB_RECURSE INTERACTIVE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 
 # Core interactive library
+# Core interactive library
 add_library(interactive ${INTERACTIVE_SOURCES})
+
+# Ensure project headers are available to the interactive target
+target_include_directories(interactive PRIVATE ${PROJECT_SOURCE_DIR}/include)
 
 # Basic includes
 include_directories(${PROJECT_SOURCE_DIR}/include)

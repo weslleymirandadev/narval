@@ -11,6 +11,8 @@
 // Novo sistema REPL implementado
 #include "frontend/interactive/repl.hpp"
 
+// Notebook mode (Jupyter-like)
+#include "frontend/interactive/notebook.hpp"
 // TODO: Implementar modo Notebook no futuro
 // #include "frontend/interactive/notebook.hpp"
 
@@ -372,9 +374,27 @@ int run_notebook_mode() {
 }
 */
 
+int run_notebook_mode() {
+    try {
+        nv::REPLConfig cfg;
+        cfg.enable_readline = true;
+        nv::Notebook nb(cfg);
+        if (!nb.initialize()) {
+            std::cerr << "Failed to initialize Notebook" << std::endl;
+            return 1;
+        }
+        nb.run();
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "Erro ao iniciar Notebook: " << e.what() << std::endl;
+        return 1;
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Parse argumentos de linha de comando
     bool repl_mode = false;
+    bool notebook_mode = false;
     std::string filename;
     
     for (int i = 1; i < argc; i++) {
@@ -382,16 +402,14 @@ int main(int argc, char* argv[]) {
         
         if (arg == "--repl" || arg == "-i" || arg == "-r") {
             repl_mode = true;
+        } else if (arg == "--notebook" || arg == "-n") {
+            notebook_mode = true;
         } else if (arg == "--help" || arg == "-h") {
             std::cout << "Uso: narval [opções] [arquivo.nv]\n";
             std::cout << "\nOpções:\n";
             std::cout << "  --repl, -i, -r     Iniciar REPL interativo com JIT\n";
+            std::cout << "  --notebook, -n     Iniciar Notebook interativo\n";
             std::cout << "  --help, -h          Mostrar esta ajuda\n";
-            std::cout << "\nModos:\n";
-            std::cout << "  Se nenhuma opção for fornecida e um arquivo for especificado,\n";
-            std::cout << "  o compilador executa em modo batch (compilação normal).\n";
-            std::cout << "  Se --repl for especificado, inicia o REPL com compilação JIT\n";
-            std::cout << "  e manutenção de contexto entre comandos.\n";
             std::cout << "\nREPL Commands:\n";
             std::cout << "  :help          - Show available commands\n";
             std::cout << "  :quit, :exit   - Exit REPL\n";
@@ -400,12 +418,15 @@ int main(int argc, char* argv[]) {
             std::cout << "  :history       - Show command history\n";
             std::cout << "  :load <file>   - Load and execute file\n";
             std::cout << "  :save <file>   - Save command history\n";
-            std::cout << "\nFeatures:\n";
-            std::cout << "  - JIT compilation using LLVM OrcJIT\n";
-            std::cout << "  - Context persistence between fragments\n";
-            std::cout << "  - Multiline support with automatic detection\n";
-            std::cout << "  - Readline support (if available)\n";
-            std::cout << "  - Type checking and error reporting\n";
+            std::cout << "\nNotebook Commands (when running with --notebook):\n";
+            std::cout << "  :new           - Create a new cell (end with a single . on a line)\n";
+            std::cout << "  :list          - List notebook cells\n";
+            std::cout << "  :run <id>      - Execute a specific cell by number\n";
+            std::cout << "  :runall        - Execute all cells in order\n";
+            std::cout << "  :del <id>      - Delete a specific cell by number\n";
+            std::cout << "  :save <file>   - Save notebook to file (JSON if available)\n";
+            std::cout << "  :load <file>   - Load notebook from file\n";
+            std::cout << "  :exit          - Exit the notebook\n";
             return 0;
         } else if (arg[0] != '-') {
             // Argumento posicional (nome de arquivo)
@@ -414,7 +435,9 @@ int main(int argc, char* argv[]) {
     }
     
     // Determinar modo de execução
-    if (repl_mode) {
+    if (notebook_mode) {
+        return run_notebook_mode();
+    } else if (repl_mode) {
         return run_repl_mode();
     } else if (!filename.empty()) {
         return run_batch_mode(filename);

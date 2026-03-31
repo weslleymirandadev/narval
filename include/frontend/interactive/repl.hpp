@@ -4,19 +4,6 @@
 #include <vector>
 #include <memory>
 
-#include "frontend/interactive/repl_state.hpp"
-#include "frontend/interactive/command_parser.hpp"
-#include "frontend/interactive/repl_utils.hpp"
-
-#ifndef NARVAL_SOURCE_DIR
-#define NARVAL_SOURCE_DIR "/home/bacal/projects/cpp/narval"
-#endif
-#pragma once
-
-#include <string>
-#include <vector>
-#include <memory>
-
 #include <llvm/ExecutionEngine/JITSymbol.h>
 
 #include "frontend/interactive/repl_state.hpp"
@@ -50,6 +37,9 @@ public:
     bool initialize();
     void run();
     void stop();
+
+    // Execute a source snippet using the REPL machinery (public API for Notebook)
+    bool execute_source(const std::string& src);
 
     REPLState* get_state();
 
