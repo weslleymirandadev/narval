@@ -1,4 +1,13 @@
-#include "frontend/interactive/interactive.hpp"
+#include "frontend/interactive/repl.hpp"
+#ifdef HAVE_READLINE
+#include <readline/readline.h>
+#include <readline/history.h>
+#ifdef RETURN
+#undef RETURN
+#endif
+#endif
+#include "frontend/lexer/lexer.hpp"
+#include "frontend/parser/parser.hpp"
 #include "frontend/ast/program.hpp"
 #include "frontend/ast/expressions/call_expr_node.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
@@ -26,6 +35,7 @@
 #include "frontend/ast/statements/match_stmt_node.hpp"
 #include "frontend/checker/type.hpp"
 #include "backend/codegen/ir_utils.hpp"
+#include "backend/codegen/generate_ir.hpp"
 #include <iostream>
 #include <sstream>
 #include <fstream>
@@ -38,13 +48,7 @@
 #include "backend/runtime/nv_runtime.h"
 #include "backend/runtime/prototypes.h"
 
-// Definição para NARVAL_SOURCE_DIR se não existir
-#ifndef NARVAL_SOURCE_DIR
-#define NARVAL_SOURCE_DIR "/home/bacal/projects/cpp/narval"
-#endif
-
 extern "C" {
-    // Funções do runtime que precisam ser acessíveis pelo JIT
     void nv_write(void* v);
     void create_str(void* out, const char* s);
     void create_int(void* out, int32_t v);
@@ -61,339 +65,6 @@ extern "C" {
 
 namespace nv {
 
-// =============================================================================
-// Implementação de REPLState
-// =============================================================================
-
-REPLState::REPLState() 
-    : llvm_context(std::make_unique<llvm::LLVMContext>()),
-      module(std::make_unique<llvm::Module>("narval_repl", *llvm_context)),
-      builder(std::make_unique<llvm::IRBuilder<llvm::NoFolder>>(*llvm_context)),
-      checker(std::make_unique<Checker>()) {
-}
-
-REPLState::~REPLState() = default;
-
-bool REPLState::initialize() {
-    try {
-        // Inicializar LLVM targets
-        llvm::InitializeNativeTarget();
-        llvm::InitializeNativeTargetAsmPrinter();
-        llvm::InitializeNativeTargetAsmParser();
-        
-        // Criar JIT
-        auto jit_expected = llvm::orc::LLJITBuilder().create();
-        if (!jit_expected) {
-            llvm::Error err = jit_expected.takeError();
-            std::cerr << "Failed to create JIT" << std::endl;
-            llvm::consumeError(std::move(err));
-            return false;
-        }
-        jit = std::move(*jit_expected);
-        
-        // Registrar funções do runtime no JIT
-        register_runtime_functions();
-        
-        // Inicializar o checker com escopo global
-        checker->push_scope();
-        
-        return true;
-    } catch (const std::exception& e) {
-        std::cerr << "Exception during REPL initialization: " << e.what() << std::endl;
-        return false;
-    }
-}
-
-// Lista de símbolos do runtime que o codegen pode referenciar (nv_runtime.h + generate_ir.cpp)
-static const char* const RUNTIME_SYMBOLS[] = {
-    "nv_write", "nv_write_no_nl",
-    "create_int", "create_float", "create_bool", "create_str",
-    "create_array", "create_vector", "create_map",
-    "ensure_value_type", "nv_read",
-    "string_to_upper_case", "string_replace", "string_includes",
-    "vector_push_method", "vector_pop_method", "vector_get_method", "vector_set_method",
-    "array_get_index_v", "array_set_index_v",
-    "tuple_get_impl", "tuple_set_impl",
-    "json_load",
-    nullptr
-};
-
-void REPLState::register_runtime_functions() {
-    // Determinar caminho do runtime
-    std::string runtime_path;
-    const char* narval_home = std::getenv("NARVAL_HOME");
-    if (narval_home) {
-        runtime_path = std::string(narval_home) + "/runtime.so";
-    } else {
-        std::string dev_runtime = std::string(NARVAL_SOURCE_DIR) + "/build/lib/runtime.so";
-        std::ifstream check_file(dev_runtime);
-        if (check_file.good()) {
-            runtime_path = dev_runtime;
-            std::cout << "Using development runtime from: " << runtime_path << std::endl;
-        } else {
-            runtime_path = "/usr/lib/narval/runtime.so";
-            std::cout << "Using production runtime from: " << runtime_path << std::endl;
-        }
-        check_file.close();
-    }
-    
-    void* runtime_handle = dlopen(runtime_path.c_str(), RTLD_LAZY);
-    if (!runtime_handle) {
-        std::cerr << "Failed to load runtime from " << runtime_path << ": " << dlerror() << std::endl;
-        return;
-    }
-    std::cout << "Loaded runtime from: " << runtime_path << std::endl;
-    
-    for (const char* const* p = RUNTIME_SYMBOLS; *p; ++p) {
-        const char* name = *p;
-        void* ptr = dlsym(runtime_handle, name);
-        if (ptr) {
-            symbols[name] = static_cast<llvm::JITTargetAddress>(reinterpret_cast<uintptr_t>(ptr));
-        }
-    }
-    
-    // Fazer o JIT resolver esses símbolos: definir no MainJITDylib como absolute symbols
-    llvm::orc::SymbolMap sym_map;
-    auto& es = jit->getExecutionSession();
-    for (const auto& [name, addr] : symbols) {
-        sym_map[es.intern(name)] = llvm::orc::ExecutorSymbolDef(
-            llvm::orc::ExecutorAddr(addr),
-            llvm::JITSymbolFlags::Exported);
-    }
-    if (auto err = jit->getMainJITDylib().define(llvm::orc::absoluteSymbols(std::move(sym_map)))) {
-        std::cerr << "Failed to define runtime symbols in JIT" << std::endl;
-        llvm::consumeError(std::move(err));
-    }
-    
-    // Símbolos do processo (atoi, strlen, etc.) para o JIT resolver
-    auto& dl = jit->getDataLayout();
-    auto generator = llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
-        dl.getGlobalPrefix()
-    );
-    if (generator) {
-        jit->getMainJITDylib().addGenerator(std::move(*generator));
-    } else {
-        llvm::consumeError(generator.takeError());
-    }
-}
-
-void REPLState::reset() {
-    symbols.clear();
-    repl_global_names.clear();
-    repl_var_values.clear();
-    repl_globals_added.clear();
-    result_counter = 0;
-    
-    llvm_context = std::make_unique<llvm::LLVMContext>();
-    module = std::make_unique<llvm::Module>("narval_repl", *llvm_context);
-    builder = std::make_unique<llvm::IRBuilder<llvm::NoFolder>>(*llvm_context);
-    
-    checker = std::make_unique<Checker>();
-    checker->push_scope();
-    
-    auto jit_expected = llvm::orc::LLJITBuilder().create();
-    if (jit_expected) {
-        jit = std::move(*jit_expected);
-        register_runtime_functions();
-    }
-}
-
-bool REPLState::add_symbol(const std::string& name, llvm::JITTargetAddress addr) {
-    symbols[name] = addr;
-    return true;
-}
-
-std::optional<llvm::JITTargetAddress> REPLState::get_symbol(const std::string& name) {
-    auto it = symbols.find(name);
-    if (it != symbols.end()) {
-        return it->second;
-    }
-    
-    // Tentar obter do JIT
-    if (jit) {
-        if (auto symbol = jit->lookup(name)) {
-            return symbol->getValue();
-        }
-    }
-    
-    return std::nullopt;
-}
-
-// =============================================================================
-// Implementação de CommandParser
-// =============================================================================
-
-std::pair<REPLCommand, std::vector<std::string>> CommandParser::parse(const std::string& input) {
-    std::istringstream iss(input);
-    std::string cmd;
-    iss >> cmd;
-    
-    std::vector<std::string> args;
-    std::string arg;
-    while (iss >> arg) {
-        args.push_back(arg);
-    }
-    
-    if (cmd == ":help" || cmd == ":h") {
-        return {REPLCommand::HELP, args};
-    } else if (cmd == ":quit" || cmd == ":exit" || cmd == ":q") {
-        return {REPLCommand::QUIT, args};
-    } else if (cmd == ":reset" || cmd == ":clear") {
-        return {REPLCommand::RESET, args};
-    } else if (cmd == ":vars" || cmd == ":v") {
-        return {REPLCommand::VARS, args};
-    } else if (cmd == ":history" || cmd == ":hist") {
-        return {REPLCommand::HISTORY, args};
-    } else if (cmd == ":load") {
-        return {REPLCommand::LOAD, args};
-    } else if (cmd == ":save") {
-        return {REPLCommand::SAVE, args};
-    }
-    
-    return {REPLCommand::NONE, args};
-}
-
-// =============================================================================
-// Implementação de utilitários
-// =============================================================================
-
-namespace repl_utils {
-
-bool is_brace_balanced(const std::string& input) {
-    int parentheses = 0;
-    int brackets = 0;
-    int braces = 0;
-    
-    for (char c : input) {
-        switch (c) {
-            case '(': parentheses++; break;
-            case ')': parentheses--; break;
-            case '[': brackets++; break;
-            case ']': brackets--; break;
-            case '{': braces++; break;
-            case '}': braces--; break;
-        }
-        
-        if (parentheses < 0 || brackets < 0 || braces < 0) {
-            return false;
-        }
-    }
-    
-    return parentheses == 0 && brackets == 0 && braces == 0;
-}
-
-bool ends_with_operator(const std::string& input) {
-    // Remover whitespace do final
-    size_t end = input.find_last_not_of(" \t\n\r");
-    if (end == std::string::npos) return false;
-    
-    std::string trimmed = input.substr(0, end + 1);
-    
-    // Verificar se termina com operador que indica continuação
-    std::vector<std::string> operators = {"+", "-", "*", "/", "=", "+=", "-=", "*=", "/=", "&&", "||", "<", ">", "<=", ">=", "!=", "==", "->", ".", ","};
-    
-    for (const auto& op : operators) {
-        if (trimmed.length() >= op.length() && 
-            trimmed.substr(trimmed.length() - op.length()) == op) {
-            return true;
-        }
-    }
-    
-    return false;
-}
-
-bool needs_continuation(const std::string& input) {
-    bool in_string = false;
-    bool escape_next = false;
-    
-    for (char c : input) {
-        if (escape_next) {
-            escape_next = false;
-            continue;
-        }
-        
-        if (c == '\\') {
-            escape_next = true;
-            continue;
-        }
-        
-        if (c == '"' && !escape_next) {
-            in_string = !in_string;
-        }
-    }
-    
-    return in_string || escape_next;
-}
-
-std::string format_value(llvm::JITTargetAddress addr) {
-    // Implementação simplificada - tentar interpretar como diferentes tipos
-    // Na prática, precisaríamos de informações de tipo do runtime
-    std::ostringstream oss;
-    oss << "0x" << std::hex << addr;
-    return oss.str();
-}
-
-std::string format_type(std::shared_ptr<Type> type) {
-    if (!type) return "unknown";
-    return type->toString();
-}
-
-bool is_valid_identifier(const std::string& name) {
-    if (name.empty()) return false;
-    
-    if (!std::isalpha(name[0]) && name[0] != '_') return false;
-    
-    for (char c : name) {
-        if (!std::isalnum(c) && c != '_') return false;
-    }
-    
-    return true;
-}
-
-std::string sanitize_input(const std::string& input) {
-    std::string result;
-    bool in_string = false;
-    bool escape_next = false;
-    
-    for (char c : input) {
-        if (escape_next) {
-            escape_next = false;
-            result += c;
-            continue;
-        }
-        
-        if (c == '\\') {
-            escape_next = true;
-            result += c;
-            continue;
-        }
-        
-        if (c == '"' && !escape_next) {
-            in_string = !in_string;
-            result += c;
-            continue;
-        }
-        
-        // Remover comentários apenas fora de strings
-        if (!in_string && c == '#') {
-            break;
-        }
-        
-        result += c;
-    }
-    
-    // Remover whitespace extra do final
-    result.erase(result.find_last_not_of(" \t\n\r") + 1);
-    
-    return result;
-}
-
-} // namespace repl_utils
-
-// =============================================================================
-// Implementação principal do REPL
-// =============================================================================
-
 REPL::REPL(const REPLConfig& config) : config(config), state(std::make_unique<REPLState>()) {
 #ifdef HAVE_READLINE
     if (config.enable_readline) {
@@ -409,41 +80,30 @@ bool REPL::initialize() {
         std::cerr << "Failed to initialize REPL" << std::endl;
         return false;
     }
-    
     std::cout << "Narval REPL - Interactive Compiler" << std::endl;
     std::cout << "Type :help for available commands or :quit to exit" << std::endl;
-    
     return true;
 }
 
 std::string REPL::read_input() {
     std::string line;
-    
 #ifdef HAVE_READLINE
     if (config.enable_readline) {
         char* raw_line = readline(in_multiline ? config.multiline_prompt.c_str() : config.prompt.c_str());
-        if (!raw_line) {
-            return "";  // EOF
-        }
-        
+        if (!raw_line) return "";
         line = raw_line;
         free(raw_line);
-        
-        if (!line.empty()) {
-            add_history(line.c_str());
-        }
+        if (!line.empty()) add_history(line.c_str());
     } else {
 #endif
         if (config.show_prompt) {
             std::cout << (in_multiline ? config.multiline_prompt : config.prompt);
             std::cout.flush();
         }
-        
         std::getline(std::cin, line);
 #ifdef HAVE_READLINE
     }
 #endif
-    
     return line;
 }
 
@@ -454,10 +114,7 @@ bool REPL::is_complete_expression(const std::string& input) {
 }
 
 std::string REPL::preprocess_input(const std::string& input) {
-    // Remover comentários e whitespace extra
     std::string result = repl_utils::sanitize_input(input);
-    
-    // Remover whitespace do final
     if (!result.empty()) {
         size_t last = result.find_last_not_of(" \t\n\r");
         if (last != std::string::npos)
@@ -465,17 +122,14 @@ std::string REPL::preprocess_input(const std::string& input) {
         else
             result.clear();
     }
-    
-    // Verificar se é uma definição de função ou estrutura complexa
+
     bool is_function_def = result.find("def ") == 0 || result.find("\ndef ") != std::string::npos;
     bool has_braces = result.find('{') != std::string::npos;
     bool will_auto_print = should_auto_print(result);
-    
-    // Detectar atribuição simples (contém '=' mas não operadores compostos) para forçar ';'
+
     bool looks_like_assignment = false;
     size_t eq_pos = result.find('=');
     if (eq_pos != std::string::npos) {
-        // evitar operadores '==', '!=', '<=', '>=', '=>', '->'
         if (result.find("==") == std::string::npos && result.find("!=") == std::string::npos
             && result.find("<=") == std::string::npos && result.find(">=") == std::string::npos
             && result.find("=>") == std::string::npos && result.find("->") == std::string::npos) {
@@ -483,33 +137,22 @@ std::string REPL::preprocess_input(const std::string& input) {
         }
     }
 
-    // Se não terminar com ; e não for definição de função com chaves, e não vai fazer auto-print (a menos que seja atribuição), adicionar ;
     if (!result.empty() && result.back() != ';' && !is_function_def && !has_braces && (!will_auto_print || looks_like_assignment)) {
         result += ";";
     }
-    
-    // Auto-print: não injetar write() no JIT; o valor será capturado via parâmetro de saída e impresso em C++
-    if (will_auto_print) {
-        // Deixar a expressão como está (ex.: "x", "3+5", "write(42)")
-    }
-    
+
     return result;
 }
 
 bool REPL::should_auto_print(const std::string& input) {
     if (!config.auto_print) return false;
-    
-    // Remover whitespace para análise
     std::string trimmed = input;
     size_t start = trimmed.find_first_not_of(" \t\n\r");
     if (start == std::string::npos) return false;
     trimmed = trimmed.substr(start);
     size_t last = trimmed.find_last_not_of(" \t\n\r");
     if (last != std::string::npos) trimmed.erase(last + 1);
-    
     if (trimmed.empty()) return false;
-    
-    // Não auto-print para comandos ou declarações/estruturas
     static const char* stmt_prefixes[] = {
         "def ", "let ", "if ", "for ", "while ", "loop ", "match ", "return ", "break ", "continue ", "import "
     };
@@ -517,15 +160,11 @@ bool REPL::should_auto_print(const std::string& input) {
         if (trimmed.size() >= strlen(p) && trimmed.compare(0, strlen(p), p) == 0)
             return false;
     }
-    
-    // Auto-print para qualquer linha que pareça uma única expressão:
-    // identificador, expressão aritmética, chamada de função (incl. write), etc.
-    // Se há ';' no meio, é mais de um statement → não forçar auto-print (deixar como está)
     size_t semi = trimmed.find(';');
     if (semi != std::string::npos && semi < trimmed.size() - 1) {
         std::string after = trimmed.substr(semi + 1);
         after.erase(0, after.find_first_not_of(" \t\n\r"));
-        if (!after.empty()) return false;  // múltiplos statements
+        if (!after.empty()) return false;
     }
     return true;
 }
@@ -534,8 +173,8 @@ std::string REPL::generate_result_var() {
     return state->last_result_var + std::to_string(state->result_counter++);
 }
 
+// collect_repl_names helper
 namespace {
-// Coleta nomes definidos (LHS de atribuição, alvo de decl, nome de def) e usados (identificadores) na AST.
 void collect_repl_names(Node* node,
     std::unordered_set<std::string>& defined,
     std::unordered_set<std::string>& used) {
@@ -566,7 +205,7 @@ void collect_repl_names(Node* node,
         defined.insert(def->name);
         for (auto& p : def->parameters)
             for (auto& kv : p.parameter)
-                collect_repl_names(nullptr, defined, used);  // param names not needed as "used" for globals
+                collect_repl_names(nullptr, defined, used);
         for (auto& s : def->body)
             if (s) collect_repl_names(s.get(), defined, used);
         return;
@@ -649,42 +288,29 @@ void collect_repl_names(Node* node,
     }
 }
 
-} // namespace
+} // anonymous namespace
 
 bool REPL::compile_and_execute(const std::string& input) {
     try {
-        // 1. Tokenização
         Lexer lexer(input, "repl_line_001");
         auto tokens = lexer.tokenize();
-        if (tokens.empty()) {
-            return true;  // Input vazio é válido
-        }
-        
-        // 2. Parsing
+        if (tokens.empty()) return true;
+
         Parser parser;
         auto ast = parser.produce_ast(tokens);
-        if (parser.has_error()) {
-            handle_error("Syntax error in input");
-            return false;
-        }
-        
-        // Verificar se a única instrução é write(...) para evitar imprimir duas vezes
+        if (parser.has_error()) { handle_error("Syntax error in input"); return false; }
+
         bool single_write_call = false;
-        // Se o último statement é for/while/loop/match, não fazer auto-print do valor deixado na pilha pelo body
         bool last_stmt_no_result = false;
-        // Não imprimir declarações (variável ou função)
         bool single_declaration_no_print = false;
-        // Se a única instrução é um identificador isolado (ex.: "x"), tratar como caso especial
         bool single_identifier_expr = false;
         if (auto* prog = dynamic_cast<Program*>(ast.get())) {
             const auto& stmts = prog->get_statements();
             if (stmts.size() == 1) {
                 Node* first = stmts[0].get();
-                if (dynamic_cast<DefStmtNode*>(first)) {
-                    single_declaration_no_print = true;
-                } else if (dynamic_cast<DeclarationStmtNode*>(first)) {
-                    single_declaration_no_print = true;
-                } else if (auto* assign = dynamic_cast<AssignmentExprNode*>(first)) {
+                if (dynamic_cast<DefStmtNode*>(first)) single_declaration_no_print = true;
+                else if (dynamic_cast<DeclarationStmtNode*>(first)) single_declaration_no_print = true;
+                else if (auto* assign = dynamic_cast<AssignmentExprNode*>(first)) {
                     if (assign->target && dynamic_cast<IdentifierNode*>(assign->target.get()))
                         single_declaration_no_print = true;
                 }
@@ -694,10 +320,7 @@ bool REPL::compile_and_execute(const std::string& input) {
                             if (id->symbol == "write") single_write_call = true;
                         }
                     }
-                    // detectar se a única instrução é um identificador puro (ex.: "x")
-                    if (dynamic_cast<IdentifierNode*>(first)) {
-                        single_identifier_expr = true;
-                    }
+                    if (dynamic_cast<IdentifierNode*>(first)) single_identifier_expr = true;
                 }
             }
             if (!stmts.empty()) {
@@ -708,24 +331,19 @@ bool REPL::compile_and_execute(const std::string& input) {
                 }
             }
         }
-        
-        // 3. Type checking
+
         state->checker->set_source_file("repl_line_001");
         auto& type = state->checker->check_node(ast.get());
-        if (state->checker->err) {
-            handle_error("Type error in input");
-            return false;
-        }
-        
+        if (state->checker->err) { handle_error("Type error in input"); return false; }
+
         std::unordered_set<std::string> defined_this_line, used_this_line;
         collect_repl_names(ast.get(), defined_this_line, used_this_line);
-        
-        // 4. Criar módulo temporário para esta expressão
+
         auto temp_module = std::make_unique<llvm::Module>("repl_expr", *state->llvm_context);
         auto temp_builder = std::make_unique<llvm::IRBuilder<llvm::NoFolder>>(*state->llvm_context);
-        
+
         IRGenerationContext context(*state->llvm_context, *temp_module, *temp_builder, state->checker.get());
-        
+
         auto& C = *state->llvm_context;
         auto* ValueTy = llvm::StructType::getTypeByName(C, "nv.rt.Value");
         if (!ValueTy) {
@@ -737,14 +355,13 @@ bool REPL::compile_and_execute(const std::string& input) {
         }
         auto* VoidTy  = llvm::Type::getVoidTy(C);
         auto* ValuePtr= llvm::PointerType::getUnqual(ValueTy);
-        
+
         temp_module->getOrInsertFunction("nv_write", llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
         temp_module->getOrInsertFunction("create_str", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(C))}, false));
         temp_module->getOrInsertFunction("create_int", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::Type::getInt32Ty(C)}, false));
         temp_module->getOrInsertFunction("create_float", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::Type::getDoubleTy(C)}, false));
         temp_module->getOrInsertFunction("create_bool", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::Type::getInt32Ty(C)}, false));
-        
-        // 5. Slots no host: variáveis REPL vivem em state->repl_var_values; o wrapper recebe Value** slots
+
         std::vector<std::string> slot_names;
         for (const std::string& name : defined_this_line) {
             std::shared_ptr<nv::Type> nv_type;
@@ -777,26 +394,22 @@ bool REPL::compile_and_execute(const std::string& input) {
             } else {
                 if (std::find(slot_names.begin(), slot_names.end(), name) == slot_names.end())
                     slot_names.push_back(name);
-                // Só garantir que a chave existe; não sobrescrever valor de linha anterior
                 if (state->repl_var_values.find(name) == state->repl_var_values.end())
                     state->repl_var_values[name] = Value{};
             }
         }
-        // Garantir que todas as variáveis REPL tenham slot (para sync slot->global antes de chamar funções que as usam)
         for (const std::string& name : state->repl_global_names) {
             if (std::find(slot_names.begin(), slot_names.end(), name) != slot_names.end()) continue;
             std::shared_ptr<nv::Type> nv_type;
             try { nv_type = state->checker->scope->get_key(name); } catch (...) { continue; }
             if (!nv_type) continue;
             nv_type = context.resolve_type(nv_type);
-            if (nv_type->kind == nv::Kind::DEF) continue;  // só variáveis
+            if (nv_type->kind == nv::Kind::DEF) continue;
             slot_names.push_back(name);
             if (state->repl_var_values.find(name) == state->repl_var_values.end())
                 state->repl_var_values[name] = Value{};
         }
 
-        // Fallback: garantir que funções (DEF) definidas em fragmentos anteriores
-        // sejam declaradas no módulo temporário para que chamadas (ex.: sum(i)) funcionem.
         for (const std::string& name : state->repl_global_names) {
             std::shared_ptr<nv::Type> nv_type;
             try { nv_type = state->checker->scope->get_key(name); } catch (...) { continue; }
@@ -815,8 +428,7 @@ bool REPL::compile_and_execute(const std::string& input) {
             nv::SymbolInfo info(fn, fn->getType(), nv_type, false, true);
             context.get_symbol_table().define_symbol(name, info);
         }
-        
-        // Globais no JIT para variáveis REPL (funções definidas em fragmentos anteriores leem o mesmo global)
+
         auto* I32 = llvm::Type::getInt32Ty(C);
         auto* F64 = llvm::Type::getDoubleTy(C);
         for (const std::string& name : slot_names) {
@@ -831,8 +443,7 @@ bool REPL::compile_and_execute(const std::string& input) {
             }
             state->repl_globals_added.insert(name);
         }
-        
-        // Host-loop: for i : N { write(...); } no REPL — executar corpo por iteração no host para saída correta
+
         Program* prog_ptr = dynamic_cast<Program*>(ast.get());
         if (prog_ptr && prog_ptr->get_statements().size() == 1) {
             ForStmtNode* for_node = dynamic_cast<ForStmtNode*>(prog_ptr->get_statements()[0].get());
@@ -863,7 +474,6 @@ bool REPL::compile_and_execute(const std::string& input) {
                         auto* loop_entry = llvm::BasicBlock::Create(C, "entry", loop_func);
                         temp_builder->SetInsertPoint(loop_entry);
                         context.set_current_function(loop_func);
-                        // Enable REPL loop mode so writes inside the body are captured into out_result
                         context.set_repl_loop_mode(true);
                         if (loop_slots) {
                             for (size_t i = 0; i < slot_names.size(); ++i) {
@@ -881,13 +491,10 @@ bool REPL::compile_and_execute(const std::string& input) {
                         }
                         llvm::Value* i_alloca = context.create_and_register_variable(loop_var, llvm::Type::getInt32Ty(C), nullptr, false);
                         temp_builder->CreateStore(loop_i_param, i_alloca);
-                        // make out_result pointer available to codegen
                         context.set_repl_out_result_ptr(loop_out);
                         context.enter_scope();
-                        // Debug: print AST of loop body to ensure it contains expected call
                         if (body_prog) body_prog->print();
                         nv::generate_ir(std::move(body_prog), context);
-                        // Se o corpo deixou um valor na pilha, gravar em *out_result (host pode imprimir)
                         bool loop_have_result = false;
                         if (context.has_value()) {
                             if (last_stmt_no_result) {
@@ -903,7 +510,6 @@ bool REPL::compile_and_execute(const std::string& input) {
                                         temp_builder->CreateStore(to_store, loop_out);
                                         loop_have_result = true;
                                     } else {
-                                        // Embrulhar primitivo em Value
                                         auto* box = temp_builder->CreateAlloca(ValueTy, nullptr, "loop_box");
                                         auto* create_int_fn = llvm::cast<llvm::Function>(temp_module->getOrInsertFunction("create_int", llvm::FunctionType::get(VoidTy, {ValuePtr, I32}, false)).getCallee());
                                         auto* create_float_fn = llvm::cast<llvm::Function>(temp_module->getOrInsertFunction("create_float", llvm::FunctionType::get(VoidTy, {ValuePtr, F64}, false)).getCallee());
@@ -933,7 +539,6 @@ bool REPL::compile_and_execute(const std::string& input) {
                             }
                         }
                         context.exit_scope();
-                        // disable REPL loop mode
                         context.set_repl_loop_mode(false);
                         context.set_repl_out_result_ptr(nullptr);
                         if (loop_slots) {
@@ -946,7 +551,6 @@ bool REPL::compile_and_execute(const std::string& input) {
                             }
                         }
                         temp_builder->CreateRetVoid();
-                        // Debug: dump the generated module IR for the loop to stderr
                         temp_module->print(llvm::errs(), nullptr);
                         auto tsm_loop = llvm::orc::ThreadSafeModule(std::move(temp_module), std::make_unique<llvm::LLVMContext>());
                         if (auto err = state->jit->addIRModule(std::move(tsm_loop))) {
@@ -957,9 +561,8 @@ bool REPL::compile_and_execute(const std::string& input) {
                         if (auto sym = state->jit->lookup(loop_func_name)) {
                             void* addr = (void*)sym->getValue();
                             Value result_buffer = {};
-                            (void)N;  // used in loop below
+                            (void)N;
                             for (int32_t i = 0; i < N; ++i) {
-                                // Reset result buffer before each iteration
                                 result_buffer = {};
                                 if (slot_names.empty())
                                     ((void(*)(Value*, int32_t))addr)(&result_buffer, i);
@@ -968,7 +571,6 @@ bool REPL::compile_and_execute(const std::string& input) {
                                     for (const auto& n : slot_names) slot_ptrs.push_back(&state->repl_var_values[n]);
                                     ((void(*)(Value*, Value**, int32_t))addr)(&result_buffer, slot_ptrs.data(), i);
                                 }
-                                // If the body produced a value in out_result, print it from the host
                                 if (result_buffer.type != 0) {
                                     print_value(llvm::JITTargetAddress(&result_buffer));
                                 }
@@ -987,20 +589,19 @@ bool REPL::compile_and_execute(const std::string& input) {
                 }
             }
         }
-        
+
         static int expr_counter = 0;
         std::string func_name = "__repl_expr_" + std::to_string(expr_counter++);
-        
+
         llvm::Type* slots_ty = llvm::PointerType::getUnqual(ValuePtr);
         std::vector<llvm::Type*> param_tys = { ValuePtr };
-        if (!slot_names.empty())
-            param_tys.push_back(slots_ty);
+        if (!slot_names.empty()) param_tys.push_back(slots_ty);
         auto* func_type_w = llvm::FunctionType::get(VoidTy, param_tys, false);
         auto* func = llvm::Function::Create(func_type_w, llvm::Function::ExternalLinkage, func_name, temp_module.get());
         func->getArg(0)->setName("out_result");
         llvm::Value* out_param = func->getArg(0);
         llvm::Value* slots_param = slot_names.empty() ? nullptr : func->getArg(1);
-        
+
         auto* entry_bb = llvm::BasicBlock::Create(C, "entry", func);
         temp_builder->SetInsertPoint(entry_bb);
         if (slots_param) {
@@ -1008,13 +609,10 @@ bool REPL::compile_and_execute(const std::string& input) {
                 const std::string& name = slot_names[i];
                 llvm::Value* slot_addr = temp_builder->CreateGEP(ValuePtr, slots_param, llvm::ConstantInt::get(I32, i));
                 llvm::Value* slot = temp_builder->CreateLoad(ValuePtr, slot_addr);
-                // Global no JIT para esta variável (funções em outros fragmentos leem daqui)
                 llvm::GlobalVariable* global_var = llvm::cast<llvm::GlobalVariable>(
                     temp_module->getOrInsertGlobal("repl_global_" + name, ValueTy));
-                if (global_var->isDeclaration())
-                    global_var->setLinkage(llvm::GlobalValue::ExternalLinkage);
+                if (global_var->isDeclaration()) global_var->setLinkage(llvm::GlobalValue::ExternalLinkage);
                 llvm::Value* global_ptr = temp_builder->CreatePointerCast(global_var, ValuePtr);
-                // Entrada: slot (host) -> global (JIT)
                 llvm::Value* val_from_host = temp_builder->CreateLoad(ValueTy, slot, name + "_load");
                 temp_builder->CreateStore(val_from_host, global_var);
                 std::shared_ptr<nv::Type> nv_type;
@@ -1026,10 +624,9 @@ bool REPL::compile_and_execute(const std::string& input) {
         }
         context.set_current_function(func);
         context.enter_scope();
-        
+
         nv::generate_ir(std::move(ast), context, /*keep_result=*/ true);
-        
-        // Saída: global (JIT) -> slot (host) para o host ter o valor atualizado
+
         if (slots_param) {
             for (size_t i = 0; i < slot_names.size(); ++i) {
                 const std::string& name = slot_names[i];
@@ -1042,55 +639,52 @@ bool REPL::compile_and_execute(const std::string& input) {
             }
         }
 
-        // Se a última instrução deixou um valor na pilha, gravar em *out_result (host imprime em C++)
         bool have_result = false;
         if (context.has_value()) {
             if (last_stmt_no_result) {
-                (void)context.pop_value();  // descartar valor deixado por for/while/loop/match body
+                (void)context.pop_value();
             } else {
-            llvm::Value* result = context.pop_value();
-            if (!result) { /* nada a gravar */ }
-            else if (result->getType() == ValueTy) {
-                llvm::Value* to_store = result;
-                if (llvm::isa<llvm::AllocaInst>(result)) {
-                    to_store = temp_builder->CreateLoad(ValueTy, result, "repl_result_load");
-                }
-                temp_builder->CreateStore(to_store, out_param);
-                have_result = true;
-            } else {
-                // Expressões simples (ex.: 3 + 5) retornam primitivo; embrulhar em Value para nv_write
-                auto* I32 = llvm::Type::getInt32Ty(C);
-                auto* F64 = llvm::Type::getDoubleTy(C);
-                auto* box = temp_builder->CreateAlloca(ValueTy, nullptr, "repl_box");
-                auto* create_int_fn = llvm::cast<llvm::Function>(temp_module->getOrInsertFunction("create_int", llvm::FunctionType::get(VoidTy, {ValuePtr, I32}, false)).getCallee());
-                auto* create_float_fn = llvm::cast<llvm::Function>(temp_module->getOrInsertFunction("create_float", llvm::FunctionType::get(VoidTy, {ValuePtr, F64}, false)).getCallee());
-                auto* create_bool_fn = llvm::cast<llvm::Function>(temp_module->getOrInsertFunction("create_bool", llvm::FunctionType::get(VoidTy, {ValuePtr, I32}, false)).getCallee());
-                bool boxed_ok = false;
-                if (result->getType()->isIntegerTy(1)) {
-                    temp_builder->CreateCall(create_bool_fn, {box, temp_builder->CreateZExt(result, I32)});
-                    boxed_ok = true;
-                } else if (result->getType()->isIntegerTy(32)) {
-                    temp_builder->CreateCall(create_int_fn, {box, result});
-                    boxed_ok = true;
-                } else if (result->getType()->isIntegerTy(64)) {
-                    temp_builder->CreateCall(create_int_fn, {box, temp_builder->CreateTrunc(result, I32)});
-                    boxed_ok = true;
-                } else if (result->getType()->isFloatingPointTy()) {
-                    llvm::Value* f = result->getType() == F64 ? result : temp_builder->CreateFPExt(result, F64);
-                    temp_builder->CreateCall(create_float_fn, {box, f});
-                    boxed_ok = true;
-                }
-                if (boxed_ok) {
-                    llvm::Value* boxed = temp_builder->CreateLoad(ValueTy, box, "repl_boxed");
-                    temp_builder->CreateStore(boxed, out_param);
+                llvm::Value* result = context.pop_value();
+                if (!result) { }
+                else if (result->getType() == ValueTy) {
+                    llvm::Value* to_store = result;
+                    if (llvm::isa<llvm::AllocaInst>(result)) {
+                        to_store = temp_builder->CreateLoad(ValueTy, result, "repl_result_load");
+                    }
+                    temp_builder->CreateStore(to_store, out_param);
                     have_result = true;
+                } else {
+                    auto* I32 = llvm::Type::getInt32Ty(C);
+                    auto* F64 = llvm::Type::getDoubleTy(C);
+                    auto* box = temp_builder->CreateAlloca(ValueTy, nullptr, "repl_box");
+                    auto* create_int_fn = llvm::cast<llvm::Function>(temp_module->getOrInsertFunction("create_int", llvm::FunctionType::get(VoidTy, {ValuePtr, I32}, false)).getCallee());
+                    auto* create_float_fn = llvm::cast<llvm::Function>(temp_module->getOrInsertFunction("create_float", llvm::FunctionType::get(VoidTy, {ValuePtr, F64}, false)).getCallee());
+                    auto* create_bool_fn = llvm::cast<llvm::Function>(temp_module->getOrInsertFunction("create_bool", llvm::FunctionType::get(VoidTy, {ValuePtr, I32}, false)).getCallee());
+                    bool boxed_ok = false;
+                    if (result->getType()->isIntegerTy(1)) {
+                        temp_builder->CreateCall(create_bool_fn, {box, temp_builder->CreateZExt(result, I32)});
+                        boxed_ok = true;
+                    } else if (result->getType()->isIntegerTy(32)) {
+                        temp_builder->CreateCall(create_int_fn, {box, result});
+                        boxed_ok = true;
+                    } else if (result->getType()->isIntegerTy(64)) {
+                        temp_builder->CreateCall(create_int_fn, {box, temp_builder->CreateTrunc(result, I32)});
+                        boxed_ok = true;
+                    } else if (result->getType()->isFloatingPointTy()) {
+                        llvm::Value* f = result->getType() == F64 ? result : temp_builder->CreateFPExt(result, F64);
+                        temp_builder->CreateCall(create_float_fn, {box, f});
+                        boxed_ok = true;
+                    }
+                    if (boxed_ok) {
+                        llvm::Value* boxed = temp_builder->CreateLoad(ValueTy, box, "repl_boxed");
+                        temp_builder->CreateStore(boxed, out_param);
+                        have_result = true;
+                    }
                 }
-            }
             }
         }
         temp_builder->CreateRetVoid();
-        
-        // 6. Compilação JIT
+
         auto tsm = llvm::orc::ThreadSafeModule(std::move(temp_module), std::make_unique<llvm::LLVMContext>());
         if (auto err = state->jit->addIRModule(std::move(tsm))) {
             llvm::errs() << "JIT compilation failed: " << err << "\n";
@@ -1098,8 +692,7 @@ bool REPL::compile_and_execute(const std::string& input) {
             handle_error("JIT compilation failed");
             return false;
         }
-        
-        // 7. Execução: passar out e array de slots (Value*) para o wrapper
+
         Value result_buffer = {};
         if (auto func_symbol = state->jit->lookup(func_name)) {
             void* addr = (void*)func_symbol->getValue();
@@ -1107,44 +700,34 @@ bool REPL::compile_and_execute(const std::string& input) {
                 ((void(*)(Value*))addr)(&result_buffer);
             } else {
                 std::vector<Value*> slot_ptrs;
-                for (const auto& n : slot_names)
-                    slot_ptrs.push_back(&state->repl_var_values[n]);
+                for (const auto& n : slot_names) slot_ptrs.push_back(&state->repl_var_values[n]);
                 ((void(*)(Value*, Value**))addr)(&result_buffer, slot_ptrs.data());
             }
         } else {
             handle_error("Failed to find compiled function");
             return false;
         }
-        
-        // Garantir que saída do JIT (ex.: write() dentro de for) apareça antes do próximo prompt
+
         std::cout.flush();
         std::cerr.flush();
-        
-        // 8. Auto-print em C++: usar nv_write do runtime com o valor capturado (sem depender de write() no JIT)
-        // Não imprimir declarações (variável ou função) nem write() duplicado.
-        // Contexto (variáveis) já foi passado ao JIT no entry (slot -> global); chamadas (ex.: sum(2)) retornam em result_buffer.
+
         if (have_result && !single_write_call && !single_declaration_no_print) {
             auto sym = state->get_symbol("nv_write");
             if (sym) {
-                // Usar o slot para exibir só quando o valor vem de uma variável (não de chamada de função)
                 if (defined_this_line.size() == 1) {
                     const std::string& n = *defined_this_line.begin();
                     if (std::find(slot_names.begin(), slot_names.end(), n) != slot_names.end()) {
                         auto it = state->repl_var_values.find(n);
-                        if (it != state->repl_var_values.end())
-                            result_buffer = it->second;
+                        if (it != state->repl_var_values.end()) result_buffer = it->second;
                     }
                 } else if (single_identifier_expr && defined_this_line.empty() && used_this_line.size() == 1) {
-                    // Se a entrada for apenas um identificador (ex.: "x"), mostrar o slot.
                     const std::string& n = *used_this_line.begin();
                     if (std::find(slot_names.begin(), slot_names.end(), n) != slot_names.end()) {
                         auto it = state->repl_var_values.find(n);
-                        if (it != state->repl_var_values.end())
-                            result_buffer = it->second;
+                        if (it != state->repl_var_values.end()) result_buffer = it->second;
                     }
                 }
                 print_value(llvm::JITTargetAddress(&result_buffer));
-                // Reforçar o slot com o valor exibido para a próxima linha (ex.: após "x = 1", "x" ver 1)
                 if (defined_this_line.size() == 1) {
                     const std::string& n = *defined_this_line.begin();
                     if (std::find(slot_names.begin(), slot_names.end(), n) != slot_names.end())
@@ -1155,11 +738,8 @@ bool REPL::compile_and_execute(const std::string& input) {
             }
         }
 
-        for (const std::string& n : defined_this_line)
-            state->repl_global_names.insert(n);
-        
+        for (const std::string& n : defined_this_line) state->repl_global_names.insert(n);
         return true;
-        
     } catch (const std::exception& e) {
         handle_error("Compilation error: " + std::string(e.what()));
         return false;
@@ -1167,7 +747,6 @@ bool REPL::compile_and_execute(const std::string& input) {
 }
 
 void REPL::print_value(llvm::JITTargetAddress addr) {
-    // Imprimir em C++ com o valor capturado do JIT; usar nv_write do runtime já carregado
     auto sym = state->get_symbol("nv_write");
     if (sym) {
         using NvWriteFn = void(*)(Value*);
@@ -1180,37 +759,24 @@ bool REPL::execute_command(REPLCommand cmd, const std::vector<std::string>& args
         case REPLCommand::HELP:
             show_help();
             return true;
-            
         case REPLCommand::QUIT:
         case REPLCommand::EXIT:
-            return false;  // Sair do loop
-            
+            return false;
         case REPLCommand::RESET:
             reset_state();
             return true;
-            
         case REPLCommand::VARS:
             show_variables();
             return true;
-            
         case REPLCommand::HISTORY:
             show_history();
             return true;
-            
         case REPLCommand::LOAD:
-            if (args.empty()) {
-                handle_error("Usage: :load <filename>");
-                return true;
-            }
+            if (args.empty()) { handle_error("Usage: :load <filename>"); return true; }
             return load_file(args[0]);
-            
         case REPLCommand::SAVE:
-            if (args.empty()) {
-                handle_error("Usage: :save <filename>");
-                return true;
-            }
+            if (args.empty()) { handle_error("Usage: :save <filename>"); return true; }
             return save_history(args[0]);
-            
         default:
             return true;
     }
@@ -1252,11 +818,7 @@ void REPL::show_history() {
 
 bool REPL::load_file(const std::string& filename) {
     std::ifstream file(filename);
-    if (!file) {
-        handle_error("Cannot open file: " + filename);
-        return true;
-    }
-    
+    if (!file) { handle_error("Cannot open file: " + filename); return true; }
     std::string line;
     int line_num = 0;
     while (std::getline(file, line)) {
@@ -1268,21 +830,13 @@ bool REPL::load_file(const std::string& filename) {
             }
         }
     }
-    
     return true;
 }
 
 bool REPL::save_history(const std::string& filename) {
     std::ofstream file(filename);
-    if (!file) {
-        handle_error("Cannot create file: " + filename);
-        return true;
-    }
-    
-    for (const auto& cmd : state->history) {
-        file << cmd << std::endl;
-    }
-    
+    if (!file) { handle_error("Cannot create file: " + filename); return true; }
+    for (const auto& cmd : state->history) file << cmd << std::endl;
     std::cout << "History saved to " << filename << std::endl;
     return true;
 }
@@ -1293,88 +847,46 @@ void REPL::reset_state() {
 }
 
 void REPL::handle_error(const std::string& error) {
-    if (config.show_errors) {
-        std::cerr << "Error: " << error << std::endl;
-    }
+    if (config.show_errors) std::cerr << "Error: " << error << std::endl;
 }
 
 void REPL::handle_warning(const std::string& warning) {
-    if (config.show_warnings) {
-        std::cout << "Warning: " << warning << std::endl;
-    }
+    if (config.show_warnings) std::cout << "Warning: " << warning << std::endl;
 }
 
 void REPL::add_to_history(const std::string& command) {
     state->history.push_back(command);
-    
-    // Limitar tamanho do histórico
-    if (state->history.size() > static_cast<size_t>(config.max_history)) {
-        state->history.erase(state->history.begin());
-    }
+    if (state->history.size() > static_cast<size_t>(config.max_history)) state->history.erase(state->history.begin());
 }
 
 void REPL::run() {
     while (true) {
         try {
             std::string line = read_input();
-            
-            // EOF detection
-            if (line.empty() && std::cin.eof()) {
-                std::cout << std::endl;
-                break;
-            }
-            
-            // Skip empty lines
-            if (line.empty()) {
-                continue;
-            }
-            
-            // Check for commands
+            if (line.empty() && std::cin.eof()) { std::cout << std::endl; break; }
+            if (line.empty()) continue;
             if (line[0] == ':') {
                 auto [cmd, args] = CommandParser::parse(line);
                 if (cmd != REPLCommand::NONE) {
-                    if (!execute_command(cmd, args)) {
-                        break;  // Command requested exit
-                    }
+                    if (!execute_command(cmd, args)) break;
                     continue;
                 }
             }
-            
-            // Handle multiline input
-            if (in_multiline) {
-                current_input += "\n" + line;
-            } else {
-                current_input = line;
-            }
-            
-            // Check if input is complete
-            if (!is_complete_expression(current_input)) {
-                in_multiline = true;
-                continue;
-            }
-            
-            // Reset multiline flag and process
+            if (in_multiline) current_input += "\n" + line; else current_input = line;
+            if (!is_complete_expression(current_input)) { in_multiline = true; continue; }
             in_multiline = false;
-            
-            // Add to history
             add_to_history(current_input);
-            
-            // Preprocess and execute
             std::string processed = preprocess_input(current_input);
             compile_and_execute(processed);
-            
             current_input.clear();
-            
         } catch (const std::exception& e) {
-            handle_error("REPL error: " + std::string(e.what()));
+            handle_error(std::string("REPL error: ") + e.what());
             in_multiline = false;
             current_input.clear();
         }
     }
 }
 
-void REPL::stop() {
-    // Cleanup if needed
-}
+void REPL::stop() { }
 
 } // namespace nv

@@ -154,7 +154,25 @@ void generate_ir(
     IRGenerationContext& context,
     bool keep_result
 ) {
-    auto program = std::unique_ptr<Program>(dynamic_cast<Program*>(node.release()));
+    // Safely handle Node that may be a Program or a single statement.
+    Node* raw = node.release();
+    Program* p = dynamic_cast<Program*>(raw);
+    std::unique_ptr<Program> program;
+    if (p) {
+        // take ownership of the Program
+        program.reset(p);
+    } else {
+        // wrap a single statement into a Program to avoid null deref
+        program = std::make_unique<Program>();
+        if (raw) {
+            if (auto* stmt = dynamic_cast<Stmt*>(raw)) {
+                program->add_statement(std::unique_ptr<Stmt>(stmt));
+            } else {
+                // unknown node type: delete to avoid leak
+                delete raw;
+            }
+        }
+    }
 
     // Ensure runtime declarations are present in the module
     declare_runtime(context);
