@@ -144,6 +144,14 @@ std::string REPL::preprocess_input(const std::string& input) {
     return result;
 }
 
+bool REPL::execute_source(const std::string& src) {
+    return compile_and_execute(src);
+}
+
+REPLState* REPL::get_state() {
+    return state.get();
+}
+
 bool REPL::should_auto_print(const std::string& input) {
     if (!config.auto_print) return false;
     std::string trimmed = input;
