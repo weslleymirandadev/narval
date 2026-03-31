@@ -6,7 +6,7 @@
 #include "frontend/ast/statements/if_statement_node.hpp"
 #include "frontend/ast/statements/for_stmt_node.hpp"
 #include "frontend/ast/statements/while_stmt_node.hpp"
-#include "frontend/ast/statements/loop_stmt_node.hpp"
+#include "frontend/ast/statements/forever_stmt_node.hpp"
 #include "frontend/ast/statements/def_stmt_node.hpp"
 #include "frontend/ast/statements/match_stmt_node.hpp"
 #include <stdexcept>
@@ -103,9 +103,9 @@ namespace {
                     process_codeblock(while_stmt->body, checker);
                     break;
                 }
-                case NodeType::LoopStatement: {
-                    auto* loop_stmt = static_cast<LoopStmtNode*>(stmt.get());
-                    process_codeblock(loop_stmt->body, checker);
+                case NodeType::ForeverStatement: {
+                    auto* forever_stmt = static_cast<ForeverStmtNode*>(stmt.get());
+                    process_codeblock(forever_stmt->body, checker);
                     break;
                 }
                 case NodeType::DefStatement: {

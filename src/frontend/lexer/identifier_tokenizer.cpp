@@ -20,7 +20,7 @@ Token tokenize_identifier_or_keyword(const std::string& input, size_t& pos, size
     else if (value == "match") type = TokenType::MATCH;
     else if (value == "for") type = TokenType::FOR;
     else if (value == "while") type = TokenType::WHILE;
-    else if (value == "loop") type = TokenType::LOOP;
+    else if (value == "forever") type = TokenType::FOREVER;
     else if (value == "break") type = TokenType::BREAK;
     else if (value == "continue") type = TokenType::CONTINUE;
     else if (value == "lock") type = TokenType::LOCK;
