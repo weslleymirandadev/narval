@@ -186,29 +186,20 @@ std::unique_ptr<Node> ModuleManager::get_combined_ast(const std::string& main_mo
                 
                 // Para módulos importados, filtrar apenas declarações exportadas
                 if (stmt->kind == NodeType::DeclarationStatement) {
-                    // Incluir declarações de variáveis que foram importadas
+                    // Incluir todas as declarações de variáveis do módulo (prover contexto para funções)
                     auto* decl = static_cast<DeclarationStmtNode*>(stmt.get());
                     if (decl->target && decl->target->kind == NodeType::Identifier) {
-                        auto* id = static_cast<IdentifierNode*>(decl->target.get());
-                        if (imported_from_this.find(id->symbol) != imported_from_this.end()) {
-                            combined_program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
-                        }
-                    }
-                } else if (stmt->kind == NodeType::AssignmentExpression) {
-                    // Incluir assignments que criam variáveis exportadas (quando o checker converte em declaração)
-                    auto* assign = static_cast<AssignmentExprNode*>(stmt.get());
-                    if (assign->target && assign->target->kind == NodeType::Identifier) {
-                        auto* id = static_cast<IdentifierNode*>(assign->target.get());
-                        if (imported_from_this.find(id->symbol) != imported_from_this.end()) {
-                            combined_program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
-                        }
-                    }
-                } else if (stmt->kind == NodeType::DefStatement) {
-                    // Incluir funções (defs) que foram importadas
-                    auto* def = static_cast<DefStmtNode*>(stmt.get());
-                    if (imported_from_this.find(def->name) != imported_from_this.end()) {
                         combined_program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
                     }
+                } else if (stmt->kind == NodeType::AssignmentExpression) {
+                    // Incluir assignments que criam variáveis (quando o checker converte em declaração)
+                    auto* assign = static_cast<AssignmentExprNode*>(stmt.get());
+                    if (assign->target && assign->target->kind == NodeType::Identifier) {
+                        combined_program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
+                    }
+                } else if (stmt->kind == NodeType::DefStatement) {
+                    // Incluir todas as funções (defs) do módulo (prover contexto)
+                    combined_program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
                 }
                 // Não incluir outros tipos de statements (CallExpression, IfStatement, etc.)
             }

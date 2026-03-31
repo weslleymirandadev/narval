@@ -61,9 +61,10 @@ std::shared_ptr<nv::Type> check_binary_expr(nv::Checker* ch, Node* node) {
     // Determinar tipo de retorno baseado no operador
     if (bin->op == "+" || bin->op == "-" || bin->op == "*" || bin->op == "/" || bin->op == "%") {
         // Operadores aritméticos retornam o tipo dos operandos (promovido se necessário)
-        // Se havia int e float, o resultado já é float
-        // Se era string * int, já retornamos string acima
         return left_type;
+    } else if (bin->op == "**") {
+        // O operador de potência (**) sempre retorna float no codegen (usa llvm.pow.f64)
+        return ch->gettyptr("float");
     } else if (bin->op == "==" || bin->op == "!=" || bin->op == "<" || 
                bin->op == ">" || bin->op == "<=" || bin->op == ">=") {
         // Operadores de comparação retornam bool

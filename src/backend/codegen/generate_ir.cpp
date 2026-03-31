@@ -179,6 +179,32 @@ void generate_ir(
 
     context.enter_scope();
 
+    // Passagem 1: Declarar todas as funções (para suportar referências futuras e recursão mútua)
+    for (size_t i = 0; i < program->body.size(); ++i) {
+        if (program->body[i]->kind == NodeType::DefStatement) {
+            auto* def_stmt = static_cast<DefStmtNode*>(program->body[i].get());
+            
+            std::vector<llvm::Type*> param_types;
+            for (auto& p : def_stmt->parameters) {
+                for (auto& kv : p.parameter) {
+                    param_types.push_back(nv::ir_utils::llvm_type_from_string(context, kv.second));
+                }
+            }
+            llvm::Type* ret_ty = nv::ir_utils::llvm_type_from_string(context, def_stmt->return_type);
+            auto* fn_ty = llvm::FunctionType::get(ret_ty, param_types, false);
+            
+            // Criar a declaração da função no módulo LLVM se ainda não existir
+            auto* fn = context.get_module().getFunction(def_stmt->name);
+            if (!fn) {
+                fn = llvm::Function::Create(fn_ty, llvm::Function::ExternalLinkage, def_stmt->name, context.get_module());
+            }
+            
+            // Registrar o símbolo da função na tabela de símbolos do contexto
+            nv::SymbolInfo fn_info(fn, fn->getType(), nullptr, false, true);
+            context.get_symbol_table().define_symbol(def_stmt->name, fn_info);
+        }
+    }
+
     for (size_t i = 0; i < program->body.size(); ++i) {
         program->body[i]->codegen(context);
     }

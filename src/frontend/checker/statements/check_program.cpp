@@ -141,7 +141,46 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
     // Processa recursivamente todos os blocos de código (incluindo aninhados)
     process_codeblock(program->body, ch);
 
-    // Terceira passagem: processar todos os statements restantes (incluindo os convertidos)
+    // TERCEIRA PASSAGEM [NOVA]: Registrar assinaturas de todas as funções (defs) antes de checar corpos
+    for (auto& el : program->body) {
+        if (el->kind == NodeType::DefStatement) {
+            auto* def_stmt = static_cast<DefStmtNode*>(el.get());
+            
+            // Processar parâmetros para obter o tipo da função
+            std::vector<std::shared_ptr<nv::Type>> param_types;
+            for (const auto& param : def_stmt->parameters) {
+                std::string param_name;
+                std::string param_type_str;
+                for (const auto& [key, value] : param.parameter) {
+                    param_name = key;
+                    param_type_str = value;
+                }
+                
+                std::shared_ptr<nv::Type> param_type;
+                if (param_type_str.empty() || param_type_str == "automatic") {
+                    param_type = std::make_shared<nv::TypeVar>(ch->unify_ctx.get_next_var_id());
+                } else {
+                    param_type = ch->gettyptr(param_type_str);
+                }
+                param_types.push_back(param_type);
+            }
+            
+            std::shared_ptr<nv::Type> return_type;
+            if (def_stmt->return_type.empty() || def_stmt->return_type == "automatic") {
+                return_type = std::make_shared<nv::TypeVar>(ch->unify_ctx.get_next_var_id());
+            } else {
+                return_type = ch->gettyptr(def_stmt->return_type);
+            }
+            
+            auto func_type = std::make_shared<nv::Def>(param_types, return_type);
+            
+            // Registrar função no escopo SEM checar o corpo ainda
+            // Passamos false para não travar o símbolo
+            ch->scope->put_key(def_stmt->name, func_type, false);
+        }
+    }
+
+    // Passagem final: processar todos os statements restantes (incluindo os convertidos)
     for (auto& el : program->body) {
         if (el->kind != NodeType::ImportStatement) {
             ch->check_node(el.get());
