@@ -63,6 +63,7 @@ std::shared_ptr<nv::Type>& check_list_comp_expr(nv::Checker* ch, Node* node) {
                 map->value_type
             };
             element_type = std::make_shared<nv::Tuple>(tuple_types);
+            element_type->init_prototype();
         } else {
             // Tuple - usar tipo genérico
             int next_id = ch->unify_ctx.get_next_var_id();
@@ -116,5 +117,6 @@ std::shared_ptr<nv::Type>& check_list_comp_expr(nv::Checker* ch, Node* node) {
     // Retornar Vector (list comprehension sempre retorna vector)
     static thread_local std::shared_ptr<nv::Type> temp_result;
     temp_result = std::make_shared<nv::Vector>();
+    temp_result->init_prototype();
     return temp_result;
 }

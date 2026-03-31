@@ -46,21 +46,30 @@ namespace {
 
 std::shared_ptr<nv::Type>& check_primary_expr(nv::Checker* ch, Node* node) {
     static thread_local std::shared_ptr<nv::Type> temp_result;
+    auto ensure_proto = [](std::shared_ptr<nv::Type>& t){
+        if (t && !t->prototype) {
+            try { t->init_prototype(); } catch(...) {}
+        }
+    };
     switch (node->kind) {
         case NodeType::NumericLiteral: {
             const auto* vl = static_cast<NumericLiteralNode*>(node);
             if (vl->value.find('.') != std::string::npos) {
                 temp_result = ch->gettyptr("float");
+                ensure_proto(temp_result);
                 return temp_result;
             }
             temp_result = ch->gettyptr("int");
+            ensure_proto(temp_result);
             return temp_result;
         }
         case NodeType::StringLiteral:
             temp_result = ch->gettyptr("string");
+            ensure_proto(temp_result);
             return temp_result;
         case NodeType::BooleanLiteral:
             temp_result = ch->gettyptr("bool");
+            ensure_proto(temp_result);
             return temp_result;
         case NodeType::Identifier: {
             const auto* id = static_cast<IdentifierNode*>(node);
@@ -73,8 +82,11 @@ std::shared_ptr<nv::Type>& check_primary_expr(nv::Checker* ch, Node* node) {
                     auto poly = std::static_pointer_cast<nv::PolyType>(var_type);
                     int next_id = ch->unify_ctx.get_next_var_id();
                     temp_result = poly->instantiate(next_id);
+                    ensure_proto(temp_result);
                     return temp_result;
                 }
+                // Ensure prototype initialized on returned shared type
+                try { if (var_type && !var_type->prototype) var_type->init_prototype(); } catch(...) {}
                 return var_type;
             } catch (std::runtime_error&) {
                 // Identificador não encontrado - reportar erro formatado (mesmo formato do parser)

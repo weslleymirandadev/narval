@@ -73,6 +73,13 @@ nv::Checker::Checker() {
     types["float"] = std::make_shared<nv::Float>();
     types["bool"] = std::make_shared<nv::Boolean>();
     types["void"] = std::make_shared<nv::Void>();
+
+    // Agora que os objetos Type estão dentro de shared_ptr, inicializar seus prototypes
+    types["int"]->init_prototype();
+    types["string"]->init_prototype();
+    types["float"]->init_prototype();
+    types["bool"]->init_prototype();
+    types["void"]->init_prototype();
     
     // Registrar funções builtin do runtime
     register_builtins(*this);
@@ -94,6 +101,7 @@ std::shared_ptr<nv::Type>& nv::Checker::gettyptr(std::string ty){
     // Tipo vector
     if (ty == "vector") {
         auto vec_type = std::make_shared<nv::Vector>();
+        vec_type->init_prototype();
         types[ty] = vec_type;
         return types[ty];
     }
@@ -112,6 +120,7 @@ std::shared_ptr<nv::Type>& nv::Checker::gettyptr(std::string ty){
                     // Obter tipo base
                     auto& base_type = gettyptr(base_type_str);
                     auto arr_type = std::make_shared<nv::Array>(base_type, size);
+                    arr_type->init_prototype();
                     types[ty] = arr_type;
                     return types[ty];
                 }
