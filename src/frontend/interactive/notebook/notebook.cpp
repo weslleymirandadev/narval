@@ -170,9 +170,16 @@ void Notebook::run() {
                 std::cerr << "Unknown command: " << cmd << std::endl;
             }
         } else {
-            // Treat normal input as a one-off cell and execute immediately
-            add_cell(line);
-            run_cell(cells.back().id);
+            // Treat normal input as start of a multiline cell (terminated by a single '.')
+            std::string src = line + "\n";
+            while (true) {
+                std::cout << ">>> "; std::cout.flush();
+                if (!std::getline(std::cin, line)) break;
+                if (line == ".") break;
+                src += line + "\n";
+            }
+            add_cell(src);
+            std::cout << "Added cell [" << cells.back().id << "] (use :run <id> to execute)\n";
         }
     }
 }

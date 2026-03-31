@@ -442,7 +442,7 @@ int main(int argc, char* argv[]) {
     } else if (!filename.empty()) {
         return run_batch_mode(filename);
     } else {
-        std::cerr << "Uso: narval [--repl] [arquivo.nv]\n";
+        std::cerr << "Uso: narval [--repl] [--notebook] [arquivo.nv]\n";
         std::cerr << "Use --help para mais informações.\n";
         return 1;
     }
