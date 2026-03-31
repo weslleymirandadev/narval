@@ -31,7 +31,7 @@
 #include "frontend/ast/statements/for_stmt_node.hpp"
 #include "frontend/ast/statements/while_stmt_node.hpp"
 #include "frontend/ast/expressions/numeric_literal_node.hpp"
-#include "frontend/ast/statements/loop_stmt_node.hpp"
+#include "frontend/ast/statements/forever_stmt_node.hpp"
 #include "frontend/ast/statements/match_stmt_node.hpp"
 #include "frontend/checker/type.hpp"
 #include "backend/codegen/ir_utils.hpp"
@@ -162,7 +162,7 @@ bool REPL::should_auto_print(const std::string& input) {
     if (last != std::string::npos) trimmed.erase(last + 1);
     if (trimmed.empty()) return false;
     static const char* stmt_prefixes[] = {
-        "def ", "let ", "if ", "for ", "while ", "loop ", "match ", "return ", "break ", "continue ", "import "
+        "def ", "let ", "if ", "for ", "while ", "forever ", "match ", "return ", "break ", "continue ", "import "
     };
     for (const char* p : stmt_prefixes) {
         if (trimmed.size() >= strlen(p) && trimmed.compare(0, strlen(p), p) == 0)
@@ -334,7 +334,7 @@ bool REPL::compile_and_execute(const std::string& input) {
             if (!stmts.empty()) {
                 Node* last = stmts.back().get();
                 if (dynamic_cast<ForStmtNode*>(last) || dynamic_cast<WhileStmtNode*>(last) ||
-                    dynamic_cast<LoopStmtNode*>(last) || dynamic_cast<MatchStmtNode*>(last)) {
+                    dynamic_cast<ForeverStmtNode*>(last) || dynamic_cast<MatchStmtNode*>(last)) {
                     last_stmt_no_result = true;
                 }
             }

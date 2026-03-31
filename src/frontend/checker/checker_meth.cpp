@@ -4,7 +4,7 @@
 #include "frontend/checker/statements/check_if_stmt.hpp"
 #include "frontend/checker/statements/check_for_stmt.hpp"
 #include "frontend/checker/statements/check_while_stmt.hpp"
-#include "frontend/checker/statements/check_loop_stmt.hpp"
+#include "frontend/checker/statements/check_forever_stmt.hpp"
 #include "frontend/checker/statements/check_return_stmt.hpp"
 #include "frontend/checker/expressions/check_call_expr.hpp"
 #include "frontend/checker/expressions/check_primary_expr.hpp"
@@ -37,8 +37,8 @@ std::shared_ptr<nv::Type>& nv::Checker::check_node(Node* node) {
           return check_for_stmt(this, node);
         case NodeType::WhileStatement:
           return check_while_stmt(this, node);
-        case NodeType::LoopStatement:
-          return check_loop_stmt(this, node);
+        case NodeType::ForeverStatement:
+          return check_forever_stmt(this, node);
         case NodeType::ReturnStatement:
           return check_return_stmt(this, node);
         case NodeType::MatchStatement:
