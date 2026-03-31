@@ -37,7 +37,8 @@ static std::string nv_base_dir_storage;
 
 // Função para executar modo batch (compilação normal)
 int run_batch_mode(const std::string& filename) {
-    std::string module_name = "main";
+    // Use the file stem as the initial module name (consistent with Lexer)
+    std::string module_name = std::filesystem::path(filename).stem().string();
 
     // Initialize base dir from source file path (directory containing main.nv)
     nv_base_dir_storage = std::filesystem::path(filename).parent_path().string();
@@ -54,6 +55,11 @@ int run_batch_mode(const std::string& filename) {
         // Verificar tipos antes da geração de código
         if (ast) {
             checker.check_node(ast.get());
+        }
+
+        // Abort if semantic errors were found
+        if (checker.err) {
+            return 1;
         }
 
         llvm::LLVMContext Context;

@@ -176,9 +176,11 @@ std::unique_ptr<Node> ModuleManager::get_combined_ast(const std::string& main_mo
             const auto& imported_from_this = imported_symbols[mod_name];
             
             for (auto& stmt : module_program->get_statements()) {
-                // Se for o módulo principal, incluir todos os statements
+                // Se for o módulo principal, incluir todos os statements, exceto imports (já resolvidos)
                 if (is_main) {
-                    combined_program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
+                    if (stmt->kind != NodeType::ImportStatement) {
+                        combined_program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
+                    }
                     continue;
                 }
                 
