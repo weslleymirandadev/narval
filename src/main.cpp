@@ -9,7 +9,7 @@
 #include "backend/codegen/ir_utils.hpp"
 
 // Novo sistema REPL implementado
-#include "frontend/interactive/interactive.hpp"
+#include "frontend/interactive/repl.hpp"
 
 // TODO: Implementar modo Notebook no futuro
 // #include "frontend/interactive/notebook.hpp"

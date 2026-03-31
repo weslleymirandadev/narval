@@ -7,6 +7,7 @@
 #include "frontend/parser/parser.hpp"
 #include "frontend/module_manager.hpp"
 #include "backend/codegen/generate_ir.hpp"
+#include "frontend/interactive/repl.hpp"
 #include <filesystem>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/FileSystem.h>
