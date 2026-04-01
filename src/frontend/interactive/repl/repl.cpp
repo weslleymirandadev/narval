@@ -314,26 +314,34 @@ bool REPL::compile_and_execute(const std::string& input) {
         if (parser.has_error()) { handle_error("Syntax error in input"); return false; }
         
         // Verificar se há imports na input (abordagem simples)
-        bool has_imports = input.find("from") != std::string::npos && input.find("import") != std::string::npos;
+        bool has_imports = input.find("from") != std::string::npos && input.find("import") != std::string::npos && input.find(";") != std::string::npos;
         
         // Se houver imports, processá-los
         if (has_imports) {
             // Fazer parsing manual da linha de importação
             std::map<std::string, std::vector<std::string>> imports_to_process;
             
-            // Simple parsing: from "path" import name1, name2
+            // Parsing melhorado: from "path" import name1, name2;
             size_t from_pos = input.find("from");
             size_t import_pos = input.find("import");
             
             if (from_pos != std::string::npos && import_pos != std::string::npos) {
-                // Extrair module path
+                // Extrair module path (entre aspas)
                 size_t path_start = input.find("\"", from_pos);
                 size_t path_end = input.find("\"", path_start + 1);
                 if (path_start != std::string::npos && path_end != std::string::npos) {
                     std::string module_path = input.substr(path_start + 1, path_end - path_start - 1);
                     
-                    // Extrair nomes importados
-                    std::string names_str = input.substr(import_pos + 6); // após "import"
+                    // Extrair nomes importados (após "import" até o ; obrigatório)
+                    size_t names_start = import_pos + 6; // após "import"
+                    size_t names_end = input.find(";", names_start);
+                    if (names_end == std::string::npos) {
+                        // Se não encontrar ;, não é um import válido - retorna erro
+                        handle_error("Import statement must end with ';'");
+                        return false;
+                    }
+                    
+                    std::string names_str = input.substr(names_start, names_end - names_start);
                     std::vector<std::string> imported_names;
                     std::stringstream ss(names_str);
                     std::string name;
