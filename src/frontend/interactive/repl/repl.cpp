@@ -1,4 +1,5 @@
 #include "frontend/interactive/repl.hpp"
+#include "frontend/module_manager.hpp"
 #ifdef HAVE_READLINE
 #include <readline/readline.h>
 #include <readline/history.h>
@@ -28,6 +29,7 @@
 #include "frontend/ast/expressions/post_decrement_expr_node.hpp"
 #include "frontend/ast/statements/declaration_stmt_node.hpp"
 #include "frontend/ast/statements/def_stmt_node.hpp"
+#include "frontend/ast/statements/import_stmt_node.hpp"
 #include "frontend/ast/statements/for_stmt_node.hpp"
 #include "frontend/ast/statements/while_stmt_node.hpp"
 #include "frontend/ast/expressions/numeric_literal_node.hpp"
@@ -304,9 +306,235 @@ bool REPL::compile_and_execute(const std::string& input) {
         auto tokens = lexer.tokenize();
         if (tokens.empty()) return true;
 
+        // Coletar informações de importação para o parser
+        std::vector<ImportInfo> import_infos;
+        
         Parser parser;
-        auto ast = parser.produce_ast(tokens);
+        auto ast = parser.produce_ast(tokens, import_infos);
         if (parser.has_error()) { handle_error("Syntax error in input"); return false; }
+        
+        // Verificar se há imports na input (abordagem simples)
+        bool has_imports = input.find("from") != std::string::npos && input.find("import") != std::string::npos;
+        
+        // Se houver imports, processá-los
+        if (has_imports) {
+            // Fazer parsing manual da linha de importação
+            std::map<std::string, std::vector<std::string>> imports_to_process;
+            
+            // Simple parsing: from "path" import name1, name2
+            size_t from_pos = input.find("from");
+            size_t import_pos = input.find("import");
+            
+            if (from_pos != std::string::npos && import_pos != std::string::npos) {
+                // Extrair module path
+                size_t path_start = input.find("\"", from_pos);
+                size_t path_end = input.find("\"", path_start + 1);
+                if (path_start != std::string::npos && path_end != std::string::npos) {
+                    std::string module_path = input.substr(path_start + 1, path_end - path_start - 1);
+                    
+                    // Extrair nomes importados
+                    std::string names_str = input.substr(import_pos + 6); // após "import"
+                    std::vector<std::string> imported_names;
+                    std::stringstream ss(names_str);
+                    std::string name;
+                    while (std::getline(ss, name, ',')) {
+                        // Remover espaços em branco
+                        name.erase(0, name.find_first_not_of(" \t"));
+                        name.erase(name.find_last_not_of(" \t") + 1);
+                        if (!name.empty()) {
+                            imported_names.push_back(name);
+                        }
+                    }
+                    
+                    imports_to_process[module_path] = imported_names;
+                }
+            }
+            
+            // Criar novo programa sem os imports (usando AST original se não tiver imports)
+            auto new_program = std::make_unique<Program>();
+            if (auto* prog = dynamic_cast<Program*>(ast.get())) {
+                for (const auto& stmt : prog->get_statements()) {
+                    // Pular imports (já processados)
+                    if (stmt->kind != NodeType::ImportStatement) {
+                        new_program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
+                    }
+                }
+            }
+            
+            // Substitui o AST original pelo novo (sem importações)
+            ast = std::move(new_program);
+            
+            // Processa cada importação usando ModuleManager
+            for (const auto& [module_path, imported_names] : imports_to_process) {
+                try {
+                    // Compila o módulo importado
+                    std::string clean_path = module_path;
+                    if (clean_path.size() >= 2 && clean_path.front() == '"' && clean_path.back() == '"') {
+                        clean_path = clean_path.substr(1, clean_path.size() - 2);
+                    }
+                    
+                    std::string module_name = std::filesystem::path(clean_path).stem().string();
+                    module_manager.compile_module(module_name, clean_path, true);
+                    
+                    // Obtém o módulo compilado
+                    const auto& modules = module_manager.get_modules();
+                    auto it = modules.find(module_name);
+                    if (it != modules.end()) {
+                        const auto& module = it->second;
+                        if (auto* module_program = dynamic_cast<Program*>(module.ast.get())) {
+                            // Adiciona todos os símbolos do módulo em ordem (variáveis primeiro, depois funções)
+                            std::vector<const Stmt*> variable_stmts;
+                            std::vector<const Stmt*> function_stmts;
+                            std::set<std::string> imported_set(imported_names.begin(), imported_names.end());
+                            std::set<std::string> required_variables;
+                            std::set<std::string> required_functions;
+                            
+                            // Função auxiliar para extrair identifiers de um statement
+                            std::function<std::set<std::string>(const Stmt*)> extract_identifiers = [&](const Stmt* stmt) -> std::set<std::string> {
+                                std::set<std::string> ids;
+                                
+                                switch (stmt->kind) {
+                                    case NodeType::CallExpression: {
+                                        auto* call_expr = static_cast<const CallExprNode*>(stmt);
+                                        if (call_expr->caller->kind == NodeType::Identifier) {
+                                            auto* id = static_cast<const IdentifierNode*>(call_expr->caller.get());
+                                            ids.insert(id->symbol);
+                                        }
+                                        // Analisa os argumentos
+                                        for (const auto& arg : call_expr->args) {
+                                            auto arg_ids = extract_identifiers(arg.get());
+                                            ids.insert(arg_ids.begin(), arg_ids.end());
+                                        }
+                                        break;
+                                    }
+                                    case NodeType::Identifier: {
+                                        auto* id = static_cast<const IdentifierNode*>(stmt);
+                                        ids.insert(id->symbol);
+                                        break;
+                                    }
+                                    case NodeType::BinaryExpression: {
+                                        auto* bin_expr = static_cast<const BinaryExprNode*>(stmt);
+                                        auto left_ids = extract_identifiers(bin_expr->left.get());
+                                        auto right_ids = extract_identifiers(bin_expr->right.get());
+                                        ids.insert(left_ids.begin(), left_ids.end());
+                                        ids.insert(right_ids.begin(), right_ids.end());
+                                        break;
+                                    }
+                                    case NodeType::ReturnStatement: {
+                                        auto* return_stmt = static_cast<const ReturnStmtNode*>(stmt);
+                                        if (return_stmt->value) {
+                                            auto value_ids = extract_identifiers(return_stmt->value.get());
+                                            ids.insert(value_ids.begin(), value_ids.end());
+                                        }
+                                        break;
+                                    }
+                                    default:
+                                        break;
+                                }
+                                
+                                return ids;
+                            };
+                            
+                            // Primeira passagem: identifica as funções importadas e suas dependências
+                            for (const auto& stmt : module_program->get_statements()) {
+                                if (stmt->kind == NodeType::DefStatement) {
+                                    auto* def_stmt = static_cast<const DefStmtNode*>(stmt.get());
+                                    if (imported_set.find(def_stmt->name) != imported_set.end()) {
+                                        function_stmts.push_back(stmt.get());
+                                        
+                                        // Analisa o corpo da função para encontrar identifiers usados
+                                        for (const auto& body_stmt : def_stmt->body) {
+                                            auto ids = extract_identifiers(body_stmt.get());
+                                            for (const auto& id : ids) {
+                                                // Ignora parâmetros da função
+                                                bool is_param = false;
+                                                for (const auto& param : def_stmt->parameters) {
+                                                    for (const auto& [param_name, param_type] : param.parameter) {
+                                                        if (param_name == id) {
+                                                            is_param = true;
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                                if (!is_param) {
+                                                    // Verifica se é uma variável ou função disponível no módulo
+                                                    for (const auto& check_stmt : module_program->get_statements()) {
+                                                        if (check_stmt->kind == NodeType::DeclarationStatement) {
+                                                            auto* check_decl = static_cast<const DeclarationStmtNode*>(check_stmt.get());
+                                                            if (check_decl->target && check_decl->target->kind == NodeType::Identifier) {
+                                                                auto* check_id = static_cast<const IdentifierNode*>(check_decl->target.get());
+                                                                if (check_id->symbol == id) {
+                                                                    required_variables.insert(id);
+                                                                    break;
+                                                                }
+                                                            }
+                                                        } else if (check_stmt->kind == NodeType::DefStatement) {
+                                                            auto* check_def = static_cast<const DefStmtNode*>(check_stmt.get());
+                                                            if (check_def->name == id) {
+                                                                required_functions.insert(id);
+                                                                break;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Segunda passagem: adiciona variáveis necessárias
+                            for (const auto& stmt : module_program->get_statements()) {
+                                if (stmt->kind == NodeType::DeclarationStatement) {
+                                    auto* decl_stmt = static_cast<const DeclarationStmtNode*>(stmt.get());
+                                    if (decl_stmt->target && decl_stmt->target->kind == NodeType::Identifier) {
+                                        auto* id = static_cast<const IdentifierNode*>(decl_stmt->target.get());
+                                        // Adiciona variável se for requerida por alguma função importada
+                                        if (required_variables.find(id->symbol) != required_variables.end()) {
+                                            variable_stmts.push_back(stmt.get());
+                                        }
+                                    }
+                                } else if (stmt->kind == NodeType::DefStatement) {
+                                    auto* def_stmt = static_cast<const DefStmtNode*>(stmt.get());
+                                    // Adiciona função se for requerida por alguma função importada
+                                    if (required_functions.find(def_stmt->name) != required_functions.end()) {
+                                        function_stmts.push_back(stmt.get());
+                                    }
+                                }
+                            }
+                            
+                            // Adiciona variáveis primeiro
+                            for (const auto* stmt : variable_stmts) {
+                                if (stmt->kind == NodeType::DeclarationStatement) {
+                                    auto* decl_stmt = static_cast<const DeclarationStmtNode*>(stmt);
+                                    if (decl_stmt->target && decl_stmt->target->kind == NodeType::Identifier) {
+                                        auto* id = static_cast<const IdentifierNode*>(decl_stmt->target.get());
+                                        state->repl_global_names.insert(id->symbol);
+                                        if (auto* prog = dynamic_cast<Program*>(ast.get())) {
+                                            prog->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Adiciona funções depois
+                            for (const auto* stmt : function_stmts) {
+                                if (stmt->kind == NodeType::DefStatement) {
+                                    auto* def_stmt = static_cast<const DefStmtNode*>(stmt);
+                                    state->repl_global_names.insert(def_stmt->name);
+                                    if (auto* prog = dynamic_cast<Program*>(ast.get())) {
+                                        prog->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (const std::exception& e) {
+                    handle_error("Error processing import " + module_path + ": " + std::string(e.what()));
+                    return false;
+                }
+            }
+        }
 
         bool single_write_call = false;
         bool last_stmt_no_result = false;
