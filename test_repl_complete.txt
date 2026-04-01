@@ -1,4 +1,0 @@
-from "./test_module.nv" import sum, multiply
-sum(10, 20)
-multiply(3, 4)
-:quit
