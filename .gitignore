@@ -1,3 +1,4 @@
 test/
 build/
-.vscode/narval_program
+.vscode/
+narval_program
