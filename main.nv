@@ -1,9 +1,0 @@
-x = 10;
-
-def sum(y: int): int {
-    return y + power(x);
-}
-
-def power(a: int): int {
-    return a ** 2;
-}
