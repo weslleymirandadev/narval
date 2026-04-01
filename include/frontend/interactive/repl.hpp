@@ -3,12 +3,14 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <filesystem>
 
 #include <llvm/ExecutionEngine/JITSymbol.h>
 
 #include "frontend/interactive/repl_state.hpp"
 #include "frontend/interactive/command_parser.hpp"
 #include "frontend/interactive/repl_utils.hpp"
+#include "frontend/module_manager.hpp"
 
 #ifndef NARVAL_SOURCE_DIR
 #define NARVAL_SOURCE_DIR "/home/bacal/projects/cpp/narval"
@@ -48,6 +50,9 @@ private:
     std::unique_ptr<REPLState> state;
     REPLConfig config;
     bool stop_flag = false;
+    
+    // Module manager for handling imports
+    ModuleManager module_manager;
 
     // Multiline input state
     bool in_multiline = false;
