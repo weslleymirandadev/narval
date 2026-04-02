@@ -318,8 +318,53 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
             return;
         }
 
-        // === ESPECIAL: json.load("file.json") ===
-        if (method == "load") {
+        // === ESPECIAL: json.parseString("json_string") ===
+        if (method == "parseString") {
+            // Verifica se o objeto é o identifier "json"
+            if (auto* objId = dynamic_cast<IdentifierNode*>(mem->object.get())) {
+                if (objId->symbol == "json") {
+                    if (args.empty()) {
+                        ctx.push_value(nullptr);
+                        return;
+                    }
+
+                    // Criar variável global para o resultado
+                    auto* ValueTy = ir_utils::get_value_struct(ctx);
+                    auto* global_result = new llvm::GlobalVariable(
+                        ctx.get_module(),
+                        ValueTy,
+                        false,
+                        llvm::GlobalValue::InternalLinkage,
+                        llvm::Constant::getNullValue(ValueTy),
+                        "json_parse_string_global"
+                    );
+
+                    // Avalia o argumento (json_string)
+                    args[0]->codegen(ctx);
+                    llvm::Value* json_string = ctx.pop_value();
+                    auto* I8P = ir_utils::get_i8_ptr(ctx);
+
+                    if (!json_string->getType()->isPointerTy()) {
+                        json_string = ctx.get_builder().CreateGlobalStringPtr(""); // fallback
+                    } else if (json_string->getType() != I8P) {
+                        json_string = ctx.get_builder().CreateBitCast(json_string, I8P);
+                    }
+
+                    // Chama void json_parse_string(Value*, const char*)
+                    auto* ValuePtr = ir_utils::get_value_ptr(ctx);
+                    auto* fn = ctx.ensure_runtime_func(
+                        "json_parse_string",
+                        {ValuePtr, I8P},
+                        llvm::Type::getVoidTy(ctx.get_context())
+                    );
+                    ctx.get_builder().CreateCall(fn, {global_result, json_string});
+                    // Retornar o ponteiro global
+                    ctx.push_value(global_result);
+                    return;
+                }
+            }
+        }
+        if (method == "parse") {
             // Verifica se o objeto é o identifier "json"
             if (auto* objId = dynamic_cast<IdentifierNode*>(mem->object.get())) {
                 if (objId->symbol == "json") {
@@ -339,11 +384,11 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
                         filename = ctx.get_builder().CreateBitCast(filename, I8P);
                     }
 
-                    // Chama void json_load(Value*, const char*) e carrega o Value
+                    // Chama void json_parse(Value*, const char*) e carrega o Value
                     auto* ValueTy = ir_utils::get_value_struct(ctx);
                     auto* ValuePtr = ir_utils::get_value_ptr(ctx);
                     auto* fn = ctx.ensure_runtime_func(
-                        "json_load",
+                        "json_parse",
                         {ValuePtr, I8P},
                         llvm::Type::getVoidTy(ctx.get_context())
                     );
@@ -351,6 +396,93 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
                     ctx.get_builder().CreateCall(fn, {outAlloca, filename});
                     llvm::Value* loaded = ctx.get_builder().CreateLoad(ValueTy, outAlloca);
                     ctx.push_value(loaded);
+                    return;
+                }
+            }
+        }
+
+        // === ESPECIAL: json.dump(value, "file.json") ===
+        if (method == "dump") {
+            // Verifica se o objeto é o identifier "json"
+            if (auto* objId = dynamic_cast<IdentifierNode*>(mem->object.get())) {
+                if (objId->symbol == "json") {
+                    if (args.size() < 2) {
+                        ctx.push_value(nullptr);
+                        return;
+                    }
+
+                    // Avalia os argumentos (value, filename)
+                    args[0]->codegen(ctx);
+                    llvm::Value* value = ctx.pop_value();
+                    
+                    args[1]->codegen(ctx);
+                    llvm::Value* filename = ctx.pop_value();
+                    auto* I8P = ir_utils::get_i8_ptr(ctx);
+
+                    if (!filename->getType()->isPointerTy()) {
+                        filename = ctx.get_builder().CreateGlobalStringPtr(""); // fallback
+                    } else if (filename->getType() != I8P) {
+                        filename = ctx.get_builder().CreateBitCast(filename, I8P);
+                    }
+
+                    // Chama void json_dump(const Value*, const char*)
+                    auto* ValueTy = ir_utils::get_value_struct(ctx);
+                    auto* ValuePtr = ir_utils::get_value_ptr(ctx);
+                    auto* fn = ctx.ensure_runtime_func(
+                        "json_dump",
+                        {ValuePtr, I8P},
+                        llvm::Type::getVoidTy(ctx.get_context())
+                    );
+                    
+                    // Se o valor não for um ponteiro para Value, fazer boxing
+                    if (!value->getType()->isPointerTy() || value->getType() != ValuePtr) {
+                        auto* valueAlloca = ctx.create_alloca(ValueTy, "json_dump_value");
+                        ctx.get_builder().CreateStore(value, valueAlloca);
+                        value = valueAlloca;
+                    }
+                    
+                    ctx.get_builder().CreateCall(fn, {value, filename});
+                    ctx.push_value(nullptr); // dump retorna void
+                    return;
+                }
+            }
+        }
+
+        // === ESPECIAL: json.stringify(value) ===
+        if (method == "stringify") {
+            // Verifica se o objeto é o identifier "json"
+            if (auto* objId = dynamic_cast<IdentifierNode*>(mem->object.get())) {
+                if (objId->symbol == "json") {
+                    if (args.empty()) {
+                        ctx.push_value(nullptr);
+                        return;
+                    }
+
+                    // Avalia o argumento (value)
+                    args[0]->codegen(ctx);
+                    llvm::Value* value = ctx.pop_value();
+
+                    // Chama void json_stringify(Value* out, const Value*)
+                    auto* ValueTy = ir_utils::get_value_struct(ctx);
+                    auto* ValuePtr = ir_utils::get_value_ptr(ctx);
+                    auto* fn = ctx.ensure_runtime_func(
+                        "json_stringify",
+                        {ValuePtr, ValuePtr},
+                        llvm::Type::getVoidTy(ctx.get_context())
+                    );
+                    
+                    auto* outAlloca = ctx.create_alloca(ValueTy, "json_stringify_out");
+                    
+                    // Se o valor não for um ponteiro para Value, fazer boxing
+                    if (!value->getType()->isPointerTy() || value->getType() != ValuePtr) {
+                        auto* valueAlloca = ctx.create_alloca(ValueTy, "json_stringify_value");
+                        ctx.get_builder().CreateStore(value, valueAlloca);
+                        value = valueAlloca;
+                    }
+                    
+                    ctx.get_builder().CreateCall(fn, {outAlloca, value});
+                    llvm::Value* result = ctx.get_builder().CreateLoad(ValueTy, outAlloca);
+                    ctx.push_value(result);
                     return;
                 }
             }

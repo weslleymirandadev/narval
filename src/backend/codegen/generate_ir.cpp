@@ -85,8 +85,17 @@ static void declare_runtime(IRGenerationContext& context) {
     // _exit(int) - encerra o processo (libc); usada pelo builtin exit()
     M.getOrInsertFunction("_exit", llvm::FunctionType::get(VoidTy, {I32}, false));
 
-    // json_load(Value*, const char*) - função builtin para carregar JSON
-    M.getOrInsertFunction("json_load", llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
+    // json_parse(Value*, const char*) - função builtin para carregar JSON
+    M.getOrInsertFunction("json_parse", llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
+    
+    // json_parse_string(Value*, const char*) - função builtin para parse JSON de string
+    M.getOrInsertFunction("json_parse_string", llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
+    
+    // map_get_method(Value*, Value*, const char*) - função builtin para acessar propriedades de Map
+    M.getOrInsertFunction("map_get_method", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr, I8Ptr}, false));
+    
+    // map_set_method(Value*, const char*, Value) - função builtin para definir propriedades de Map
+    M.getOrInsertFunction("map_set_method", llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr, ValuePtr}, false));
 
     // String methods (names aligned with runtime)
     {

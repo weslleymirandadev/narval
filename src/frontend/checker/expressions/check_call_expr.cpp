@@ -9,6 +9,81 @@
 std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
     const auto* call = static_cast<CallExprNode*>(node);
     
+    // Tratamento especial para chamadas de método: obj.method(args)
+    if (call->caller->kind == NodeType::MemberExpression) {
+        auto* member_expr = static_cast<MemberExprNode*>(call->caller.get());
+        
+        // Verificar tipo do objeto
+        auto object_type = ch->infer_expr(member_expr->object.get());
+        object_type = ch->unify_ctx.resolve(object_type);
+        
+        // Verificar que a propriedade é um identificador
+        if (member_expr->property->kind != NodeType::Identifier) {
+            ch->error(member_expr->property.get(), 
+                      "Method name must be an identifier");
+            return ch->gettyptr("void");
+        }
+        
+        auto* prop_id = static_cast<IdentifierNode*>(member_expr->property.get());
+        const std::string& method_name = prop_id->symbol;
+        
+        // Verificar se o objeto tem o método
+        if (!object_type->prototype) {
+            try { object_type->init_prototype(); } catch (...) {}
+        }
+        
+        auto method_type = object_type->get_method(method_name);
+        if (!method_type) {
+            ch->error(member_expr->property.get(), 
+                      "Type '" + object_type->toString() + "' does not have method '" + method_name + "'");
+            return ch->gettyptr("void");
+        }
+        
+        // Verificar se é uma função
+        if (method_type->kind != nv::Kind::DEF) {
+            ch->error(member_expr->property.get(), 
+                      "'" + method_name + "' is not a method");
+            return ch->gettyptr("void");
+        }
+        
+        auto def = std::static_pointer_cast<nv::Def>(method_type);
+        
+        // Verificar cada argumento
+        std::vector<std::shared_ptr<nv::Type>> arg_types;
+        for (const auto& arg : call->args) {
+            auto arg_type = ch->infer_expr(arg.get());
+            arg_types.push_back(arg_type);
+        }
+        
+        if (ch->err) {
+            return ch->gettyptr("void");
+        }
+        
+        // Verificar número de argumentos
+        if (call->args.size() != def->paramstype.size()) {
+            std::ostringstream oss;
+            oss << "Method call argument count mismatch: expected " 
+                << def->paramstype.size() 
+                << ", got " << call->args.size();
+            ch->error(const_cast<Node*>(node), oss.str());
+            return ch->gettyptr("void");
+        }
+        
+        // Unificar tipos dos argumentos
+        for (size_t i = 0; i < call->args.size(); i++) {
+            try {
+                ch->unify_ctx.unify(arg_types[i], def->paramstype[i]);
+            } catch (std::runtime_error& e) {
+                std::ostringstream oss;
+                oss << "Method call argument type error: " << e.what();
+                ch->error(const_cast<Node*>(node), oss.str());
+                return ch->gettyptr("void");
+            }
+        }
+        
+        return def->returntype;
+    }
+    
     // Verificar o caller (função sendo chamada) usando infer_expr
     // Isso já verifica identificadores corretamente
     auto func_type = ch->infer_expr(call->caller.get());

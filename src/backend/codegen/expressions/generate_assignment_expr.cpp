@@ -3,10 +3,12 @@
 #include "backend/codegen/ir_utils.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
 #include "frontend/ast/expressions/access_expr_node.hpp"
+#include "frontend/ast/expressions/member_expr_node.hpp"
 
 void AssignmentExprNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
     if (!target) { ctx.push_value(nullptr); return; }
+    
     // Suporte a atribuição para access expressions: base[index] = value
     if (auto* acc = dynamic_cast<AccessExprNode*>(target.get())) {
         // Gera RHS primeiro (preservaremos para retorno)
@@ -26,6 +28,7 @@ void AssignmentExprNode::codegen(nv::IRGenerationContext& ctx) {
         auto* ValueTy = nv::ir_utils::get_value_struct(ctx);
         auto* ValuePtr = nv::ir_utils::get_value_ptr(ctx);
         auto* I32 = llvm::Type::getInt32Ty(C);
+        auto* I8P = nv::ir_utils::get_i8_ptr(ctx);
 
         // Coagir índice para i32
         if (idx_v && idx_v->getType() != I32) idx_v = nv::ir_utils::promote_type(ctx, idx_v, I32);
@@ -65,27 +68,27 @@ void AssignmentExprNode::codegen(nv::IRGenerationContext& ctx) {
 
         auto* rhsBox = box_arg(rhs);
 
-        // Despacho por tag: TAG_ARRAY (5) ou TAG_VECTOR (6)
+        // Despacho por tag: TAG_ARRAY (5), TAG_VECTOR (6) ou TAG_MAP (3)
         auto selfVal = B.CreateLoad(ValueTy, selfAlloca);
         auto tag = B.CreateExtractValue(selfVal, {0});
         auto* I1 = llvm::Type::getInt1Ty(C);
         auto* isArray = B.CreateICmpEQ(tag, llvm::ConstantInt::get(tag->getType(), 5));
         auto* isVector = B.CreateICmpEQ(tag, llvm::ConstantInt::get(tag->getType(), 6));
+        auto* isMap = B.CreateICmpEQ(tag, llvm::ConstantInt::get(tag->getType(), 3));
 
         auto* curFn = ctx.get_current_function();
         auto* bbArr = llvm::BasicBlock::Create(C, "idx.set.array", curFn);
         auto* bbVec = llvm::BasicBlock::Create(C, "idx.set.vector", curFn);
+        auto* bbMap = llvm::BasicBlock::Create(C, "idx.set.map", curFn);
         auto* bbMerge = llvm::BasicBlock::Create(C, "idx.set.merge", curFn);
 
-        // Branch: prefer array if tag==5, else if tag==6 go vector, else merge
-        auto* condArr = isArray;
-        B.CreateCondBr(condArr, bbArr, bbVec);
+        // Branch por tipo: Array, Vector, Map
+        B.CreateCondBr(isArray, bbArr, bbVec);
 
         // Array path
         B.SetInsertPoint(bbArr);
         {
-            auto& M_ref = ctx.get_module();
-            auto decl = M_ref.getOrInsertFunction(
+            auto decl = M.getOrInsertFunction(
                 "array_set_index_v",
                 llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, I32, ValuePtr}, false)
             );
@@ -96,10 +99,21 @@ void AssignmentExprNode::codegen(nv::IRGenerationContext& ctx) {
         // Vector path
         B.SetInsertPoint(bbVec);
         {
-            auto& M_ref = ctx.get_module();
-            auto decl = M_ref.getOrInsertFunction(
+            auto decl = M.getOrInsertFunction(
                 "vector_set_method",
                 llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, I32, ValuePtr}, false)
+            );
+            B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {selfAlloca, idx_v, rhsBox});
+            B.CreateBr(bbMerge);
+        }
+
+        // Map path
+        B.SetInsertPoint(bbMap);
+        {
+            std::vector<llvm::Type*> paramTypes = {ValuePtr, I8P, ValuePtr};
+            auto decl = M.getOrInsertFunction(
+                "map_set",
+                llvm::FunctionType::get(llvm::Type::getVoidTy(C), paramTypes, false)
             );
             B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {selfAlloca, idx_v, rhsBox});
             B.CreateBr(bbMerge);
