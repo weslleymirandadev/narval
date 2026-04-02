@@ -22,6 +22,8 @@
 
 namespace nv {
 
+struct REPLConfig;
+
 #ifndef NARVAL_SOURCE_DIR
 #define NARVAL_SOURCE_DIR "/home/bacal/projects/cpp/narval"
 #endif
@@ -39,6 +41,9 @@ struct REPLState {
 	std::unordered_set<std::string> repl_global_names;
 	std::unordered_map<std::string, Value> repl_var_values;
 	std::unordered_set<std::string> repl_globals_added;
+	
+	// Reference to config for other modules
+	const REPLConfig* config = nullptr;
 
 	REPLState();
 	~REPLState();

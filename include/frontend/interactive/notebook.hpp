@@ -7,11 +7,10 @@
 
 namespace nv {
 
-struct NotebookCell {
-    int id;
-    std::string source;
-    std::string last_output;
-};
+// Forward declarations
+class CellManager;
+class NotebookIO;
+class NotebookUI;
 
 class Notebook {
 public:
@@ -31,9 +30,11 @@ public:
     bool load(const std::string& filename);
 
 private:
+    REPLConfig config;
     std::unique_ptr<REPL> repl;
-    std::vector<NotebookCell> cells;
-    int next_id = 1;
+    std::unique_ptr<CellManager> cell_manager;
+    std::unique_ptr<NotebookIO> notebook_io;
+    std::unique_ptr<NotebookUI> notebook_ui;
 
     std::string read_multiline();
 };
