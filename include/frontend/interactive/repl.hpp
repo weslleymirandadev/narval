@@ -7,6 +7,7 @@
 
 #include <llvm/ExecutionEngine/JITSymbol.h>
 
+#include "frontend/ast/ast.hpp"
 #include "frontend/interactive/repl_state.hpp"
 #include "frontend/interactive/command_parser.hpp"
 #include "frontend/interactive/repl_utils.hpp"
@@ -77,5 +78,8 @@ private:
     void handle_error(const std::string& error);
     void handle_warning(const std::string& warning);
 };
+
+// Função compartilhada para processar imports recursivamente
+bool process_imports_recursive(const std::string& input, std::unique_ptr<Node>& ast, REPLState* state, ModuleManager& module_manager);
 
 } // namespace nv
