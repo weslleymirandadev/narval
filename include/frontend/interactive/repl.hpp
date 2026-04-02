@@ -13,6 +13,13 @@
 #include "frontend/interactive/repl_utils.hpp"
 #include "frontend/module_manager.hpp"
 
+// Forward declarations for the new modules
+namespace nv {
+    class InputProcessor;
+    class CompilationEngine;
+    class CommandHandler;
+}
+
 #ifndef NARVAL_SOURCE_DIR
 #define NARVAL_SOURCE_DIR "/home/bacal/projects/cpp/narval"
 #endif
@@ -55,6 +62,11 @@ private:
     // Module manager for handling imports
     ModuleManager module_manager;
 
+    // New modular components
+    std::unique_ptr<InputProcessor> input_processor;
+    std::unique_ptr<CompilationEngine> compilation_engine;
+    std::unique_ptr<CommandHandler> command_handler;
+
     // Multiline input state
     bool in_multiline = false;
     std::string current_input;
@@ -64,11 +76,12 @@ private:
     bool is_complete_expression(const std::string& input);
     std::string preprocess_input(const std::string& input);
     bool should_auto_print(const std::string& s);
-    bool compile_and_execute(const std::string& src);
     std::string generate_result_var();
     void add_to_history(const std::string& command);
     void print_value(llvm::JITTargetAddress addr);
     bool execute_command(REPLCommand cmd, const std::vector<std::string>& args);
+    
+    // Delegated methods to command handler
     void show_help();
     void show_variables();
     void show_history();
