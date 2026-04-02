@@ -93,7 +93,10 @@ void nv_write_no_nl(Value* v);
 /*                    OPERAÇÕES JSON                             */
 /* ============================================================= */
 
-void json_load(Value* out, const char* filename);
+void json_parse(Value* out, const char* filename);
+void json_parse_string(Value* out, const char* json_string);
+void json_dump(const Value* v, const char* filename);
+void json_stringify(Value* out, const Value* v);
 
 /* ============================================================= */
 /*                    ACESSO DINÂMICO                           */
