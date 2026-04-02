@@ -103,17 +103,30 @@ static Value json_parse_value(const char** ptr) {
     return (Value){0};
 }
 
-Value json_parse(const char* input) {
+Value json_parse_string_internal(const char* input) {
     const char* ptr = input;
     Value result = json_parse_value(&ptr);
     return result;
+}
+
+// Função pública para parse de string JSON (estilo JavaScript)
+void json_parse_string(Value* out, const char* json_string) {
+    if (!out || !json_string) {
+        out->type = 0;
+        out->value = 0;
+        out->prototype = NULL;
+        return;
+    }
+
+    const char* ptr = json_string;
+    *out = json_parse_value(&ptr);
 }
 
 static int is_absolute_path(const char* p) {
     return p && p[0] == '/';
 }
 
-void json_load(Value* out, const char* filename) {
+void json_parse(Value* out, const char* filename) {
     /* nv_base_dir may be provided by the generated program; weak default here */
     const char* base = nv_base_dir; // no env vars
     char* fullpath = NULL;
@@ -152,7 +165,7 @@ void json_load(Value* out, const char* filename) {
     fclose(f);
     if (fullpath) { free(fullpath); }
 
-    Value v = json_parse(buf);
+    Value v = json_parse_string_internal(buf);
     free(buf);
     *out = v;
     return;
