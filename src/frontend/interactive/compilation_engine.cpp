@@ -168,7 +168,7 @@ bool CompilationEngine::compile_and_execute(const std::string& input) {
             return true;
         }
 
-        return compile_expression(ast, defined_this_line, used_this_line, slot_names);
+        return compile_expression(ast, defined_this_line, used_this_line, slot_names, single_write_call);
     } catch (const std::exception& e) {
         if (state->config && state->config->show_errors) {
             std::cerr << "Compilation error: " << e.what() << std::endl;
@@ -266,7 +266,8 @@ bool CompilationEngine::handle_special_loop_cases(std::unique_ptr<Node>& ast,
 bool CompilationEngine::compile_expression(std::unique_ptr<Node>& ast,
     const std::unordered_set<std::string>& defined_this_line,
     const std::unordered_set<std::string>& used_this_line,
-    const std::vector<std::string>& slot_names) {
+    const std::vector<std::string>& slot_names,
+    bool single_write_call) {
     
     auto temp_module = std::make_unique<llvm::Module>("repl_expr", *state->llvm_context);
     auto temp_builder = std::make_unique<llvm::IRBuilder<llvm::NoFolder>>(*state->llvm_context);
@@ -417,7 +418,7 @@ bool CompilationEngine::compile_expression(std::unique_ptr<Node>& ast,
             ((void(*)(Value*, Value**))addr)(&result_buffer, slot_ptrs.data());
         }
         
-        if (have_result) {
+        if (have_result && !single_write_call) {
             print_value(llvm::JITTargetAddress(&result_buffer));
         }
     } else {
