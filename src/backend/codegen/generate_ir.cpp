@@ -1,12 +1,36 @@
 #include "backend/codegen/generate_ir.hpp"
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
-#include "frontend/ast/ast.hpp"
-#include <llvm/IR/DerivedTypes.h>
-#include <llvm/IR/Module.h>
-#include <llvm/IR/IRBuilder.h>
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/Support/raw_ostream.h"
 
 namespace nv {
+
+// Tracker global - será atualizado pelos arquivos de generate
+static FeatureTracker g_feature_tracker;
+
+// Função para registrar uso de features
+void register_feature(const std::string& feature) {
+    if (feature == "vector") g_feature_tracker.has_vectors = true;
+    else if (feature == "string") g_feature_tracker.has_strings = true;
+    else if (feature == "map") g_feature_tracker.has_maps = true;
+    else if (feature == "json") g_feature_tracker.has_json = true;
+    else if (feature == "read") g_feature_tracker.has_read = true;
+    else if (feature == "write") g_feature_tracker.has_write = true;
+    else if (feature == "map_operations") g_feature_tracker.has_map_operations = true;
+    else if (feature == "string_operations") g_feature_tracker.has_string_operations = true;
+    else if (feature == "vector_operations") g_feature_tracker.has_vector_operations = true;
+}
+
+// Função para obter o tracker atual
+const FeatureTracker& get_feature_tracker() {
+    return g_feature_tracker;
+}
 
 static llvm::StructType* get_or_create_value_ty(llvm::LLVMContext& C) {
     if (auto* T = llvm::StructType::getTypeByName(C, "nv.rt.Value")) return T;
@@ -61,101 +85,60 @@ static void declare_runtime(IRGenerationContext& context) {
     M.getOrInsertFunction("nv_write", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy)}, false));
 
     // nv_write_no_nl(Value*) - função builtin para escrita sem nova linha
-    M.getOrInsertFunction("nv_write_no_nl", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy)}, false));
-    
-    // nv_register_value(Value*, const char*, const char*) - função para registrar valores no REPL
-    // DISABLED: Function doesn't exist in runtime
-    // M.getOrInsertFunction("nv_register_value", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy), I8Ptr, I8Ptr}, false));
-    
-    // nv_register_write_value(Value*) - função para registrar argumentos de write() no REPL
-    M.getOrInsertFunction("nv_register_write_value", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy)}, false));
-    
-    // nv_register_function_return(Value*, const char*) - função para registrar retornos de função no REPL
-    M.getOrInsertFunction("nv_register_function_return", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy), I8Ptr}, false));
-    
-    // ensure_value_type(Value*) - helper para garantir que um Value tenha a tag correta
-    M.getOrInsertFunction("ensure_value_type", llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
-
-    // nv_read() -> i8* - função builtin para leitura
     M.getOrInsertFunction("nv_read", llvm::FunctionType::get(I8Ptr, {}, false));
-    
-    // atoi(const char*) -> i32 - função C padrão para conversão string->int (usada no match)
     M.getOrInsertFunction("atoi", llvm::FunctionType::get(I32, {I8Ptr}, false));
-
-    // _exit(int) - encerra o processo (libc); usada pelo builtin exit()
     M.getOrInsertFunction("_exit", llvm::FunctionType::get(VoidTy, {I32}, false));
 
-    // json_parse(Value*, const char*) - função builtin para carregar JSON
-    M.getOrInsertFunction("json_parse", llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
+    // Funções condicionais baseadas no tracker
+    const auto& tracker = get_feature_tracker();
     
-    // json_parse_string(Value*, const char*) - função builtin para parse JSON de string
-    M.getOrInsertFunction("json_parse_string", llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
+    // JSON functions
+    if (tracker.has_json) {
+        M.getOrInsertFunction("json_parse", llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
+        M.getOrInsertFunction("json_parse_string", llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
+    }
     
-    // map_get_method(Value*, Value*, const char*) - função builtin para acessar propriedades de Map
-    M.getOrInsertFunction("map_get_method", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr, I8Ptr}, false));
+    // Map functions
+    if (tracker.has_maps || tracker.has_map_operations) {
+        M.getOrInsertFunction("map_get_method", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr, I8Ptr}, false));
+        M.getOrInsertFunction("map_set_method", llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr, ValuePtr}, false));
+    }
     
-    // map_set_method(Value*, const char*, Value) - função builtin para definir propriedades de Map
-    M.getOrInsertFunction("map_set_method", llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr, ValuePtr}, false));
-
-    // String methods (names aligned with runtime)
-    {
+    // String functions
+    if (tracker.has_strings || tracker.has_string_operations) {
         auto decl = M.getOrInsertFunction("string_to_upper_case", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::PointerType::getUnqual(ValueTy)}, false));
     }
-    {
+    
+    if (tracker.has_strings || tracker.has_string_operations) {
         auto decl = M.getOrInsertFunction("string_replace", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::PointerType::getUnqual(ValueTy), llvm::PointerType::getUnqual(ValueTy), llvm::PointerType::getUnqual(ValueTy)}, false));
     }
-    {
+    
+    if (tracker.has_strings || tracker.has_string_operations) {
         auto decl = M.getOrInsertFunction("string_includes", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::PointerType::getUnqual(ValueTy), ValueTy}, false));
     }
-
-    // Plain C helper used by codegen for string repetition
-    {
-        M.getOrInsertFunction(
-            "string_repeat",
-            llvm::FunctionType::get(I8Ptr, { I8Ptr, I32 }, false)
-        );
-    }
-
-    // Array wrappers used by codegen for indexing
-    {
-        // Do NOT mark the first parameter as sret; the C runtime expects a plain pointer.
-        M.getOrInsertFunction(
-            "array_get_index_v",
-            llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::PointerType::getUnqual(ValueTy), I32}, false)
-        );
-    }
-    {
-        M.getOrInsertFunction(
-            "array_set_index_v",
-            llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy), I32, llvm::PointerType::getUnqual(ValueTy)}, false)
-        );
-    }
-
-    // Vector methods
-    {
-        M.getOrInsertFunction(
-            "vector_push_method",
-            llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr, ValuePtr}, false)
-        );
-    }
-    {
-        M.getOrInsertFunction(
-            "vector_pop_method",
-            llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false)
-        );
-    }
-    {
+    
+    // Vector functions
+    if (tracker.has_vectors || tracker.has_vector_operations) {
         M.getOrInsertFunction(
             "vector_get_method",
             llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr, I32}, false)
         );
     }
-    {
+    
+    if (tracker.has_vectors || tracker.has_vector_operations) {
         M.getOrInsertFunction(
             "vector_set_method",
             llvm::FunctionType::get(VoidTy, {ValuePtr, I32, ValuePtr}, false)
         );
     }
+    
+    // REPL helper functions (sempre necessárias para modo interativo)
+    M.getOrInsertFunction("nv_register_write_value", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy)}, false));
+    M.getOrInsertFunction("nv_register_function_return", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy), I8Ptr}, false));
+    M.getOrInsertFunction("ensure_value_type", llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
+    
+    // Plain C helper usado por codegen para string repetition
+    M.getOrInsertFunction("memset", llvm::FunctionType::get(I8Ptr, {I8Ptr, I32, I64}, false));
 }
 
 void generate_ir(

@@ -1,9 +1,14 @@
 #include "frontend/ast/expressions/member_expr_node.hpp"
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
+#include "backend/codegen/generate_ir.hpp"
 
 void MemberExprNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
+    
+    // Registrar features usadas
+    nv::register_feature("map");
+    nv::register_feature("map_operations");
     
     // Gerar código para o objeto
     object->codegen(ctx);
@@ -13,6 +18,7 @@ void MemberExprNode::codegen(nv::IRGenerationContext& ctx) {
     llvm::Value* prop = nullptr;
     if (auto* id = dynamic_cast<IdentifierNode*>(property.get())) {
         // Criar string para a propriedade
+        nv::register_feature("string");
         prop = ctx.get_builder().CreateGlobalStringPtr(id->symbol.c_str());
     } else {
         property->codegen(ctx);
