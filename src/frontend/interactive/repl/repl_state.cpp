@@ -57,7 +57,7 @@ static const char* const RUNTIME_SYMBOLS[] = {
     "vector_push_method", "vector_pop_method", "vector_get_method", "vector_set_method",
     "array_get_index_v", "array_set_index_v",
     "tuple_get_impl", "tuple_set_impl",
-    "json_load",
+    "json_parse", "json_dump", "json_stringify",
     nullptr
 };
 
