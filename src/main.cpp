@@ -285,6 +285,7 @@ int run_batch_mode(const std::string& filename) {
             llvm::errs() << "IR verification failed\n";
             return 1;
         }
+        
         llvm::legacy::PassManager pass;
         if (target_machine->addPassesToEmitFile(pass, dest, nullptr, llvm::CodeGenFileType::ObjectFile)) {
             llvm::errs() << "TargetMachine não suporta emissão de objeto\n";

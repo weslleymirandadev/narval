@@ -2,6 +2,7 @@
 #include "frontend/ast/expressions/member_expr_node.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
 #include "frontend/checker/unification.hpp"
+#include "frontend/checker/type.hpp"
 #include <stdexcept>
 
 std::shared_ptr<nv::Type>& check_member_expr(nv::Checker* ch, Node* node) {
@@ -32,6 +33,15 @@ std::shared_ptr<nv::Type>& check_member_expr(nv::Checker* ch, Node* node) {
     auto* prop_id = static_cast<IdentifierNode*>(member_expr->property.get());
     const std::string& prop_name = prop_id->symbol;
     
+    // Se o objeto for um Map, permitir acesso direto às propriedades
+    if (object_type->kind == nv::Kind::MAP) {
+        // Para Map, o tipo do valor depende do tipo do valor armazenado
+        // Por enquanto, retornamos o tipo do valor (string, int, etc.)
+        // TODO: Implementar inferência de tipo mais precisa para Map
+        temp_result = ch->gettyptr("string");
+        return temp_result;
+    }
+    
     // Verificar se o tipo tem o método/membro
     // Se o prototype ainda não foi inicializado (caso algum Type tenha sido construído sem init), tentar inicializar sob demanda.
     try {
@@ -52,8 +62,7 @@ std::shared_ptr<nv::Type>& check_member_expr(nv::Checker* ch, Node* node) {
         return temp_result;
     }
     
-    // Se não encontrou método, verificar se é um tipo com prototype (Map, Tuple, etc.)
-    // Por enquanto, apenas reportar erro
+    // Se não encontrou método e não for Map, reportar erro
     ch->error(member_expr->property.get(), 
               "Type '" + object_type->toString() + "' does not have member '" + prop_name + "'");
     return ch->gettyptr("void");

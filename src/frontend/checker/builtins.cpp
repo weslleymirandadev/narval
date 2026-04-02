@@ -7,13 +7,12 @@ namespace nv {
     
     // Lista de funções builtin disponíveis
     const std::vector<BuiltinFunction> BUILTIN_FUNCTIONS = {
-        // write: aceita 0 ou 1 argumento de qualquer tipo e retorna void (polimórfico)
-        // Aceita varargs: 0 ou 1 argumento
-        BuiltinFunction("write", {}, std::make_shared<Void>(), true, true, 0, 1),
+        // write: aceita 1 argumento (string) -> void
+        BuiltinFunction("write", {std::make_shared<String>()}, std::make_shared<Void>(), false, false, 1, 1),
         
         // read: aceita 0 ou 1 argumento (prompt opcional), retorna string
         BuiltinFunction("read", {}, std::make_shared<String>(), false, true, 0, 1),
-
+        
         // exit: encerra o processo com o código dado (int) -> void
         BuiltinFunction("exit", {std::make_shared<Int>()}, std::make_shared<Void>(), false, false, 1, 1),
     };
@@ -21,12 +20,43 @@ namespace nv {
     // Variáveis globais builtin (não são funções, mas objetos especiais)
     void register_builtin_variables(Checker& checker) {
         // json: objeto especial para operações JSON
-        // No runtime, json é tratado como um objeto especial (Value*)
-        // No checker, registramos como um tipo genérico que pode ter métodos chamados nele
-        // Usamos um tipo especial que permite chamadas de método (como json.load)
-        // Por simplicidade, registramos como um tipo que pode ser usado em expressões
-        // O codegen trata json especialmente, então não precisamos de tipo muito específico aqui
-        auto json_type = checker.unify_ctx.new_type_var();
+        // Criamos um tipo específico para json com método parse
+        // Usamos Map como tipo genérico para JSON objetos, Vector para arrays
+        auto json_type = std::make_shared<Map>(checker.gettyptr("string"), checker.gettyptr("string"));
+        json_type->init_prototype();  // Inicializar o prototype
+        
+        // Adicionar métodos manualmente ao prototype do json
+        if (json_type->prototype) {
+            // Método parse: (string) -> Map (para arquivo)
+            auto parse_func_type = std::make_shared<Def>(
+                std::vector<std::shared_ptr<Type>>{checker.gettyptr("string")},
+                json_type
+            );
+            json_type->prototype->put_key("parse", parse_func_type, true);
+            
+            // Método parseString: (string) -> Map (para string JSON)
+            auto parse_string_func_type = std::make_shared<Def>(
+                std::vector<std::shared_ptr<Type>>{checker.gettyptr("string")},
+                json_type
+            );
+            json_type->prototype->put_key("parseString", parse_string_func_type, true);
+            
+            // Método dump: (Map, string) -> void
+            auto dump_func_type = std::make_shared<Def>(
+                std::vector<std::shared_ptr<Type>>{json_type, checker.gettyptr("string")},
+                checker.gettyptr("void")
+            );
+            json_type->prototype->put_key("dump", dump_func_type, true);
+            
+            // Método stringify: (Map) -> string
+            auto stringify_func_type = std::make_shared<Def>(
+                std::vector<std::shared_ptr<Type>>{json_type},
+                checker.gettyptr("string")
+            );
+            json_type->prototype->put_key("stringify", stringify_func_type, true);
+        }
+        
+        // Registrar o tipo json no scope
         checker.scope->put_key("json", json_type, true);
     }
     

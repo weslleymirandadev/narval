@@ -1,8 +1,45 @@
 #include "frontend/ast/expressions/member_expr_node.hpp"
 #include "backend/codegen/ir_context.hpp"
+#include "backend/codegen/ir_utils.hpp"
 
 void MemberExprNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
-    // TODO: implementar quando objetos/runtime estiverem prontos
-    ctx.push_value(nullptr);
+    
+    // Gerar código para o objeto
+    object->codegen(ctx);
+    llvm::Value* obj = ctx.pop_value();
+    
+    // Gerar código para a propriedade (identificador)
+    llvm::Value* prop = nullptr;
+    if (auto* id = dynamic_cast<IdentifierNode*>(property.get())) {
+        // Criar string para a propriedade
+        prop = ctx.get_builder().CreateGlobalStringPtr(id->symbol.c_str());
+    } else {
+        property->codegen(ctx);
+        prop = ctx.pop_value();
+    }
+    
+    // Verificar se o objeto é um Map (JSON object)
+    auto* ValueTy = nv::ir_utils::get_value_struct(ctx);
+    auto* I8P = nv::ir_utils::get_i8_ptr(ctx);
+    
+    // Simplificar: sempre chamar map_get_method, sem verificação de tipo por enquanto
+    auto* map_get_fn = ctx.ensure_runtime_func(
+        "map_get_method",
+        {nv::ir_utils::get_value_ptr(ctx), nv::ir_utils::get_value_ptr(ctx), I8P},
+        llvm::Type::getVoidTy(ctx.get_context())
+    );
+    
+    // Criar resultado
+    auto* result_alloca = ctx.create_alloca(ValueTy, "member_result");
+    
+    // Garantir que obj seja um ponteiro para Value
+    auto* obj_alloca = ctx.create_alloca(ValueTy, "obj_alloca");
+    ctx.get_builder().CreateStore(obj, obj_alloca);
+    
+    ctx.get_builder().CreateCall(map_get_fn, {result_alloca, obj_alloca, prop});
+    
+    // Retornar resultado
+    llvm::Value* result = ctx.get_builder().CreateLoad(ValueTy, result_alloca);
+    ctx.push_value(result);
 }
