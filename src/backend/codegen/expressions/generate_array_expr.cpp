@@ -1,24 +1,27 @@
 #include "frontend/ast/expressions/array_expr_node.hpp"
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
+#include "backend/codegen/generate_ir.hpp"
 #include "frontend/checker/checker.hpp"
-#include <llvm/IR/DerivedTypes.h>
 
 void ArrayExprNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
+    
+    // Registrar features usadas
+    nv::register_feature("vector");
+    nv::register_feature("array");
+    nv::register_feature("vector_operations");
+    nv::register_feature("array_operations");
+    
     auto& b = ctx.get_builder();
     auto& c = ctx.get_context();
-
+    
     unsigned N = static_cast<unsigned>(elements.size());
-
-    auto* ValueTy = nv::ir_utils::get_value_struct(ctx);
-    auto* ValuePtr = nv::ir_utils::get_value_ptr(ctx);
-    auto* outArr = ctx.create_alloca(ValueTy, "arr.val");
-
+    
     // Determinar se é Array ou Vector baseado no tipo inferido pelo checker
-    // ArrayExprNode pode gerar arrays (quando tipos homogêneos) ou vectors (quando heterogêneos)
     bool is_vector = false;
     size_t declared_array_size = 0;
+    
     if (ctx.get_type_checker()) {
         auto* checker = static_cast<nv::Checker*>(ctx.get_type_checker());
         try {
@@ -30,77 +33,73 @@ void ArrayExprNode::codegen(nv::IRGenerationContext& ctx) {
                 // Verificar tamanho do array declarado
                 auto* arr_type = static_cast<nv::Array*>(inferred_type.get());
                 declared_array_size = arr_type->size;
-                
-                // Verificar se o número de elementos não excede o tamanho declarado
-                if (N > declared_array_size) {
-                    throw std::runtime_error("Array size mismatch: declared size is " + 
-                                           std::to_string(declared_array_size) + 
-                                           ", but " + std::to_string(N) + 
-                                           " elements were provided.");
-                }
             }
-        } catch (const std::runtime_error& e) {
-            // Re-lançar erros de tamanho
-            throw;
         } catch (...) {
             // Se não conseguir inferir, assumir Array (comportamento padrão)
         }
     }
-
+    
+    auto* ValueTy = nv::ir_utils::get_value_struct(ctx);
+    auto* ValuePtr = nv::ir_utils::get_value_ptr(ctx);
+    auto* outArr = ctx.create_alloca(ValueTy, "arr.val");
+    
     if (is_vector) {
         // Vector: usar create_vector e vector_push_method
         auto decl_create_vector = ctx.get_module().getOrInsertFunction(
             "create_vector",
-            llvm::FunctionType::get(llvm::Type::getVoidTy(c), {ValuePtr, llvm::Type::getInt32Ty(c)}, false)
+            llvm::FunctionType::get(llvm::Type::getVoidTy(ctx.get_context()), {ValuePtr, llvm::Type::getInt32Ty(ctx.get_context())}, false)
         );
-        b.CreateCall(llvm::cast<llvm::Function>(decl_create_vector.getCallee()), {outArr, llvm::ConstantInt::get(llvm::Type::getInt32Ty(c), N)});
+        b.CreateCall(llvm::cast<llvm::Function>(decl_create_vector.getCallee()), {outArr, llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.get_context()), N)});
     } else {
         // Array: usar create_array e array_set_index_v
         auto decl_create_array = ctx.get_module().getOrInsertFunction(
             "create_array",
-            llvm::FunctionType::get(llvm::Type::getVoidTy(c), {ValuePtr, llvm::Type::getInt32Ty(c)}, false)
+            llvm::FunctionType::get(llvm::Type::getVoidTy(ctx.get_context()), {ValuePtr, llvm::Type::getInt32Ty(ctx.get_context())}, false)
         );
-        b.CreateCall(llvm::cast<llvm::Function>(decl_create_array.getCallee()), {outArr, llvm::ConstantInt::get(llvm::Type::getInt32Ty(c), N)});
+        b.CreateCall(llvm::cast<llvm::Function>(decl_create_array.getCallee()), {outArr, llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.get_context()), N)});
     }
-
+    
     auto box_arg = [&](llvm::Value* any) -> llvm::Value* {
         auto* tmp = ctx.create_alloca(ValueTy, "elt");
         if (any->getType() == ValueTy) {
             b.CreateStore(any, tmp);
         } else if (any->getType()->isIntegerTy(1)) {
-            auto decl = ctx.get_module().getOrInsertFunction("create_bool", llvm::FunctionType::get(llvm::Type::getVoidTy(c), {ValuePtr, llvm::Type::getInt32Ty(c)}, false));
-            b.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp, b.CreateZExt(any, llvm::Type::getInt32Ty(c))});
-        } else if (any->getType()->isIntegerTy()) {
-            auto decl = ctx.get_module().getOrInsertFunction("create_int", llvm::FunctionType::get(llvm::Type::getVoidTy(c), {ValuePtr, llvm::Type::getInt32Ty(c)}, false));
-            auto* I32 = llvm::Type::getInt32Ty(c);
-            llvm::Value* iv = any->getType()->isIntegerTy(32) ? any : b.CreateSExtOrTrunc(any, I32);
+            auto decl = ctx.get_module().getOrInsertFunction("create_bool", llvm::FunctionType::get(llvm::Type::getVoidTy(ctx.get_context()), {ValuePtr, llvm::Type::getInt32Ty(ctx.get_context())}, false));
+            b.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp, b.CreateZExt(any, llvm::Type::getInt32Ty(ctx.get_context()))});
+        } else if (any->getType()->isIntegerTy(32)) {
+            auto* I32 = llvm::Type::getInt32Ty(ctx.get_context());
+            llvm::Value* iv = any->getType()->isIntegerTy(64) ? b.CreateTrunc(any, I32) : any;
+            auto decl = ctx.get_module().getOrInsertFunction("create_int", llvm::FunctionType::get(llvm::Type::getVoidTy(ctx.get_context()), {ValuePtr, I32}, false));
             b.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp, iv});
         } else if (any->getType()->isFloatingPointTy()) {
-            auto* F64 = llvm::Type::getDoubleTy(c);
-            llvm::Value* fp = any;
-            if (any->getType() != F64) fp = b.CreateFPExt(any, F64);
-            auto decl = ctx.get_module().getOrInsertFunction("create_float", llvm::FunctionType::get(llvm::Type::getVoidTy(c), {ValuePtr, F64}, false));
+            auto* F64 = llvm::Type::getDoubleTy(ctx.get_context());
+            llvm::Value* fp = any->getType() != F64 ? b.CreateFPExt(any, F64) : any;
+            auto decl = ctx.get_module().getOrInsertFunction("create_float", llvm::FunctionType::get(llvm::Type::getVoidTy(ctx.get_context()), {ValuePtr, F64}, false));
             b.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp, fp});
         } else if (any->getType() == nv::ir_utils::get_i8_ptr(ctx)) {
-            auto decl = ctx.get_module().getOrInsertFunction("create_str", llvm::FunctionType::get(llvm::Type::getVoidTy(c), {ValuePtr, nv::ir_utils::get_i8_ptr(ctx)}, false));
+            auto decl = ctx.get_module().getOrInsertFunction("create_str", llvm::FunctionType::get(llvm::Type::getVoidTy(ctx.get_context()), {ValuePtr, nv::ir_utils::get_i8_ptr(ctx)}, false));
             b.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp, any});
         } else {
             b.CreateStore(llvm::UndefValue::get(ValueTy), tmp);
         }
         return tmp;
     };
-
+    
     for (unsigned i = 0; i < N; ++i) {
         llvm::Value* ev = nullptr;
-        if (elements[i]) { elements[i]->codegen(ctx); if (ctx.has_value()) ev = ctx.pop_value(); }
-        if (!ev) ev = llvm::ConstantInt::get(llvm::Type::getInt32Ty(c), 0);
+        if (elements[i]) { 
+            elements[i]->codegen(ctx); 
+            if (ctx.has_value()) ev = ctx.pop_value(); 
+        }
+        if (!ev) ev = llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.get_context()), 0);
+        
         auto* boxed = box_arg(ev);
         
         if (is_vector) {
             // Vector: usar vector_push_method(out, self, value)
             auto decl_push = ctx.get_module().getOrInsertFunction(
                 "vector_push_method",
-                llvm::FunctionType::get(llvm::Type::getVoidTy(c), {ValuePtr, ValuePtr, ValuePtr}, false)
+                llvm::FunctionType::get(llvm::Type::getVoidTy(ctx.get_context()), {ValuePtr, ValuePtr, ValuePtr}, false)
             );
             auto* tmp_out = ctx.create_alloca(ValueTy, "tmp.out");
             b.CreateCall(llvm::cast<llvm::Function>(decl_push.getCallee()), {tmp_out, outArr, boxed});
@@ -108,12 +107,20 @@ void ArrayExprNode::codegen(nv::IRGenerationContext& ctx) {
             // Array: usar array_set_index_v(self, index, value)
             auto decl_set = ctx.get_module().getOrInsertFunction(
                 "array_set_index_v",
-                llvm::FunctionType::get(llvm::Type::getVoidTy(c), {ValuePtr, llvm::Type::getInt32Ty(c), ValuePtr}, false)
+                llvm::FunctionType::get(llvm::Type::getVoidTy(ctx.get_context()), {ValuePtr, llvm::Type::getInt32Ty(ctx.get_context()), ValuePtr}, false)
             );
-            b.CreateCall(llvm::cast<llvm::Function>(decl_set.getCallee()), {outArr, llvm::ConstantInt::get(llvm::Type::getInt32Ty(c), i), boxed});
+            auto* tmp_out = ctx.create_alloca(ValueTy, "tmp.out");
+            b.CreateCall(llvm::cast<llvm::Function>(decl_set.getCallee()), {outArr, llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx.get_context()), i), boxed});
         }
     }
-
-    // Return the array/vector Value aggregate
+    
+    // Verificar se o número de elementos não excede o tamanho declarado
+    if (declared_array_size > 0 && N > declared_array_size) {
+        throw std::runtime_error("Array size mismatch: declared size is " + 
+                             std::to_string(declared_array_size) + ", but " + 
+                             std::to_string(N) + " elements were provided.");
+    }
+    
+    // Return: array/vector Value aggregate
     ctx.push_value(b.CreateLoad(ValueTy, outArr));
 }

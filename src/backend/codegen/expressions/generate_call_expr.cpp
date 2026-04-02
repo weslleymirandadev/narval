@@ -1,6 +1,7 @@
 #include "frontend/ast/expressions/call_expr_node.hpp"
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
+#include "backend/codegen/generate_ir.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
 #include "frontend/ast/expressions/member_expr_node.hpp"
 
@@ -320,6 +321,10 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
 
         // === ESPECIAL: json.parseString("json_string") ===
         if (method == "parseString") {
+            // Registrar features JSON
+            nv::register_feature("json");
+            nv::register_feature("string");
+            
             // Verifica se o objeto é o identifier "json"
             if (auto* objId = dynamic_cast<IdentifierNode*>(mem->object.get())) {
                 if (objId->symbol == "json") {

@@ -1,10 +1,15 @@
 #include "frontend/ast/expressions/vector_expr_node.hpp"
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
-#include <llvm/IR/DerivedTypes.h>
+#include "backend/codegen/generate_ir.hpp"
 
 void VectorExprNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
+    
+    // Registrar features usadas
+    nv::register_feature("vector");
+    nv::register_feature("vector_operations");
+    
     auto& b = ctx.get_builder();
     auto& c = ctx.get_context();
 

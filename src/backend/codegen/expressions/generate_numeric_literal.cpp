@@ -1,14 +1,19 @@
 #include "frontend/ast/expressions/numeric_literal_node.hpp"
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
-#include <iostream>
+#include "backend/codegen/generate_ir.hpp"
 
-void NumericLiteralNode::codegen(nv::IRGenerationContext& context) {
-    context.set_debug_location(position.get());
+void NumericLiteralNode::codegen(nv::IRGenerationContext& ctx) {
+    ctx.set_debug_location(position.get());
+    
+    // Registrar features usadas
+    nv::register_feature("string");
+    nv::register_feature("string_operations");
+    
     // Heurística simples: contém ponto → float; senão int
     if (value.find('.') != std::string::npos) {
         double dbl = std::stod(value);
-        context.push_value(nv::ir_utils::create_float_constant(context, dbl));
+        ctx.push_value(nv::ir_utils::create_float_constant(ctx, dbl));
         return;
     }
 
@@ -36,8 +41,5 @@ void NumericLiteralNode::codegen(nv::IRGenerationContext& context) {
     }
 
     int32_t integer = std::stoi(value, nullptr, base);
-    context.push_value(nv::ir_utils::create_int_constant(context, integer));
+    ctx.push_value(nv::ir_utils::create_int_constant(ctx, integer));
 }
-
-
-
