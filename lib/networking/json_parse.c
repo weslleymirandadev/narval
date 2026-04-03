@@ -40,8 +40,13 @@ static Value json_parse_object(const char** ptr) {
         skip_ws(ptr);
 
         Value val = json_parse_value(ptr);
-        map_set_method(&obj, key, val);
-        free(key);
+        NVMap* map_obj = (NVMap*)obj.obj;
+        // Adicionar chave e valor ao mapa
+        if (map_obj->size < map_obj->capacity) {
+            map_obj->keys[map_obj->size] = key;
+            map_obj->values[map_obj->size] = val;
+            map_obj->size++;
+        }
 
         skip_ws(ptr);
         if (**ptr == ',') (*ptr)++;
@@ -53,14 +58,18 @@ static Value json_parse_object(const char** ptr) {
 
 static Value json_parse_array(const char** ptr) {
     Value arr;
-    create_vector(&arr, 0);
+    create_vector(&arr);
     (*ptr)++; // skip '['
     skip_ws(ptr);
 
     while (**ptr && **ptr != ']') {
         Value val = json_parse_value(ptr);
-        Value tmp_out; /* vector_push_method requires an out parameter */
-        vector_push_method(&tmp_out, &arr, &val);
+        NVVector* vec_obj = (NVVector*)arr.obj;
+        // Adicionar elemento ao vetor
+        if (vec_obj->size < vec_obj->capacity) {
+            vec_obj->elements[vec_obj->size] = val;
+            vec_obj->size++;
+        }
         skip_ws(ptr);
         if (**ptr == ',') (*ptr)++;
     }
@@ -70,7 +79,10 @@ static Value json_parse_array(const char** ptr) {
 
 static Value json_parse_value(const char** ptr) {
     skip_ws(ptr);
-    if (!**ptr) return (Value){0};
+    if (!**ptr) {
+        Value null_val = {0};
+        return null_val;
+    }
 
     if (**ptr == '{') return json_parse_object(ptr);
     if (**ptr == '[') return json_parse_array(ptr);
@@ -87,7 +99,10 @@ static Value json_parse_value(const char** ptr) {
     }
     if (strncmp(*ptr, "true", 4) == 0) { *ptr += 4; Value b; create_bool(&b, 1); return b; }
     if (strncmp(*ptr, "false", 5) == 0) { *ptr += 5; Value b; create_bool(&b, 0); return b; }
-    if (strncmp(*ptr, "null", 4) == 0) { *ptr += 4; return (Value){0}; }
+    if (strncmp(*ptr, "null", 4) == 0) { *ptr += 4; 
+        Value null_val = {0};
+        return null_val;
+    }
 
     // number
     char* end;
@@ -112,9 +127,7 @@ Value json_parse_string_internal(const char* input) {
 // Função pública para parse de string JSON (estilo JavaScript)
 void json_parse_string(Value* out, const char* json_string) {
     if (!out || !json_string) {
-        out->type = 0;
-        out->value = 0;
-        out->prototype = NULL;
+        out->obj = NULL;
         return;
     }
 

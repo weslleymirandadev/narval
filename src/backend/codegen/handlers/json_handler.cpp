@@ -1,6 +1,7 @@
 #include "backend/codegen/method_handler.hpp"
 #include "backend/codegen/generate_ir.hpp"
 #include "backend/codegen/ir_utils.hpp"
+#include "frontend/ast/ast.hpp"
 #include "llvm/IR/IRBuilder.h"
 
 namespace nv {

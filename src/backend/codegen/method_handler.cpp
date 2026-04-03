@@ -1,19 +1,27 @@
 #include "backend/codegen/method_handler.hpp"
 #include <unordered_map>
 #include <memory>
+#include <vector>
 
 namespace nv {
 
-static std::unordered_map<std::string, std::unique_ptr<MethodHandler>> g_method_handlers;
+static std::vector<std::unique_ptr<MethodHandler>> g_method_handlers;
 
 void register_method_handler(std::unique_ptr<MethodHandler> handler) {
     // Registrar handler para todos os métodos que ele pode handle
-    // Isso precisa ser implementado quando tivermos os handlers específicos
+    if (handler) {
+        g_method_handlers.push_back(std::move(handler));
+    }
 }
 
 MethodHandler* get_method_handler(const std::string& method) {
-    auto it = g_method_handlers.find(method);
-    return (it != g_method_handlers.end()) ? it->second.get() : nullptr;
+    // Procurar um handler que pode handle o método especificado
+    for (auto& handler : g_method_handlers) {
+        if (handler && handler->can_handle(method)) {
+            return handler.get();
+        }
+    }
+    return nullptr;
 }
 
 }

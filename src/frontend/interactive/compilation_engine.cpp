@@ -23,11 +23,11 @@
 #include "backend/runtime/prototypes.h"
 
 extern "C" {
-    void nv_write(void* v);
-    void create_str(void* out, const char* s);
-    void create_int(void* out, int32_t v);
-    void create_float(void* out, double v);
-    void create_bool(void* out, int b);
+    void nv_write(Value* v);
+    void create_str(Value* out, const char* s);
+    void create_int(Value* out, int32_t v);
+    void create_float(Value* out, double v);
+    void create_bool(Value* out, int32_t b);
 }
 
 namespace nv {
