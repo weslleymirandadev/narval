@@ -50,8 +50,13 @@ llvm::Value* create_string_constant(IRGenerationContext& context, const std::str
         llvm::ConstantDataArray::getString(llvm_context, value, true), ".str"
     );
     auto* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(llvm_context), 0);
-    std::vector<llvm::Value*> indices = { zero, zero };
-    return context.get_builder().CreateGEP(str_type, global_str, indices);
+    llvm::Constant* indices[] = { zero, zero };
+    return llvm::ConstantExpr::getGetElementPtr(
+        str_type,
+        global_str,
+        indices,
+        /*InBounds=*/true
+    );
 }
 
 llvm::Value* create_int_constant(IRGenerationContext& context, int32_t value) {

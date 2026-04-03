@@ -1,295 +1,285 @@
-#include "backend/runtime/nv_runtime.h"
-#include <stdio.h>
+#include "backend/runtime/prototypes.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 /* ============================================================= */
-/*                    RASTREIO E VALIDAÇÃO DE TIPOS             */
+/*                    FUNÇÕES DE UTILIDADE - LEGADO ADAPTADO   */
 /* ============================================================= */
 
-// Garantir que um Value tenha a tag correta (com rastreio melhorado)
-void ensure_value_type(Value* v) {
-    if (!v) return;
+// Obter informações de tipo de um Value (adaptado para novo sistema)
+// Nota: Esta função já está implementada em value_creation.c
+// Mantendo apenas para compatibilidade
+TypeInfo* get_value_type_info_legacy(const Value* v) {
+    if (!v || !v->obj) return NULL;
     
-    // Se o tipo já está definido e válido, verificar consistência
-    if (v->type >= TAG_INT && v->type <= TAG_ANY) {
-        // Validar consistência com prototype
-        switch (v->type) {
-            case TAG_STR:
-                if (v->prototype != string_prototype) {
-                    v->prototype = string_prototype;
-                }
-                break;
-            case TAG_ARRAY:
-                if (v->prototype != array_prototype) {
-                    v->prototype = array_prototype;
-                }
-                break;
-            case TAG_VECTOR:
-                if (v->prototype != vector_prototype) {
-                    v->prototype = vector_prototype;
-                }
-                break;
-            case TAG_MAP:
-                if (v->prototype != map_prototype) {
-                    v->prototype = map_prototype;
-                }
-                break;
-        }
-        return;
-    }
+    // No novo sistema, obter tipo do objeto
+    NvTypeObject* type = v->obj->ob_type;
+    if (!type) return NULL;
     
-    // Se o tipo é customizado, verificar se está registrado
-    if (v->type >= TAG_CUSTOM) {
-        TypeInfo* info = get_type_info(v->type);
-        if (!info) {
-            // Tipo não encontrado, tentar inferir
-            v->type = TAG_ANY;
-            v->type_info = NULL;
-        } else {
-            v->type_info = info;
-        }
-        return;
-    }
+    // Criar TypeInfo dinâmico para compatibilidade
+    TypeInfo* info = (TypeInfo*)calloc(1, sizeof(TypeInfo));
+    if (!info) return NULL;
     
-    // Se o tipo é 0 ou inválido, tentar inferir
-    // IMPORTANTE: Não inferir tipo para valores que já têm tipo definido (incluindo TAG_FLOAT)
-    // A inferência só deve acontecer quando o tipo é realmente desconhecido (0 ou inválido)
-    if (v->type == 0 || (v->type > TAG_ANY && v->prototype == NULL)) {
-        // Inferir tipo baseado em prototype
-        if (v->prototype == string_prototype) {
-            v->type = TAG_STR;
-        } else if (v->prototype == array_prototype) {
-            v->type = TAG_ARRAY;
-        } else if (v->prototype == vector_prototype) {
-            v->type = TAG_VECTOR;
-        } else if (v->prototype == map_prototype) {
-            v->type = TAG_MAP;
-        } else if (v->prototype == NULL) {
-            // IMPORTANTE: Não podemos inferir se é int ou float apenas pelo valor numérico
-            // Um float pode ter um valor que, quando interpretado como int64, está dentro do range de int32
-            // Portanto, se não temos informação de tipo, não devemos assumir que é int
-            // Deixar como TAG_ANY para evitar conversão incorreta
-            // A inferência de tipo primitivo só deve acontecer quando temos certeza absoluta
-            v->type = TAG_ANY;
-        } else {
-            v->type = TAG_ANY;
-        }
-    }
+    // Preencher informações básicas
+    info->type_id = get_value_type(v);
+    info->type_name = type->tp_name ? strdup(type->tp_name) : "unknown";
+    info->field_count = 0;
+    info->field_names = NULL;
+    info->field_types = NULL;
+    
+    return info;
 }
 
-// Validar tipo de um Value
-int validate_value_type(const Value* v) {
-    if (!v) return 0;
-    
-    // Verificar se o tipo é válido
-    if (!is_valid_type(v->type)) {
-        return 0;
-    }
-    
-    // Validações específicas por tipo
-    switch (v->type) {
-        case TAG_INT:
-        case TAG_FLOAT:
-        case TAG_BOOL:
-            // Tipos primitivos sempre válidos se a tag está correta
-            return 1;
-            
-        case TAG_STR:
-            // String deve ter prototype correto ou ponteiro válido
-            return v->prototype == string_prototype || v->value != 0;
-            
-        case TAG_ARRAY:
-        case TAG_VECTOR:
-        case TAG_MAP:
-        case TAG_TUPLE:
-            // Estruturas devem ter ponteiro válido
-            return v->value != 0;
-            
-        case TAG_ANY:
-            return 1; // Any aceita qualquer coisa
-            
-        case TAG_CUSTOM:
-        default:
-            // Tipos customizados devem ter type_info válido
-            if (v->type >= TAG_CUSTOM) {
-                TypeInfo* info = get_type_info(v->type);
-                return info != NULL && v->value != 0;
-            }
-            return 0;
-    }
-}
-
-// Obter tipo de um Value (com validação)
-int32_t get_value_type(const Value* v) {
-    if (!v) return 0;
-    
-    if (validate_value_type(v)) {
-        return v->type;
-    }
-    
-    // Se inválido, tentar garantir tipo
-    Value* mutable_v = (Value*)v;
-    ensure_value_type(mutable_v);
-    return mutable_v->type;
-}
-
-// Verificar compatibilidade de tipos
-int types_compatible(int32_t type1, int32_t type2) {
-    if (type1 == type2) return 1;
-    if (type1 == TAG_ANY || type2 == TAG_ANY) return 1;
-    
-    // Compatibilidade numérica
-    if ((type1 == TAG_INT || type1 == TAG_FLOAT) &&
-        (type2 == TAG_INT || type2 == TAG_FLOAT)) {
-        return 1;
-    }
-    
-    // Verificar herança para tipos customizados
-    if (type1 >= TAG_CUSTOM && type2 >= TAG_CUSTOM) {
-        TypeInfo* info1 = get_type_info(type1);
-        TypeInfo* info2 = get_type_info(type2);
-        if (info1 && info2) {
-            // Verificar se type2 é base de type1
-            TypeInfo* base = info1->base_type;
-            while (base) {
-                if (base->type_id == type2) return 1;
-                base = base->base_type;
-            }
-        }
-    }
-    
-    return 0;
-}
-
-// Converter tipo (se possível)
-int convert_type(Value* out, const Value* in, int32_t target_type) {
-    if (!out || !in) return 0;
-    
-    if (in->type == target_type) {
-        *out = *in;
-        return 1;
-    }
-    
-    // Conversões numéricas
-    if (target_type == TAG_INT) {
-        if (in->type == TAG_FLOAT) {
-            create_int(out, (int32_t)in->value);
-            return 1;
-        }
-        if (in->type == TAG_BOOL) {
-            create_int(out, in->value ? 1 : 0);
-            return 1;
-        }
-    }
-    
-    if (target_type == TAG_FLOAT) {
-        if (in->type == TAG_INT) {
-            double d = (double)in->value;
-            create_float(out, d);
-            return 1;
-        }
-    }
-    
-    if (target_type == TAG_BOOL) {
-        if (in->type == TAG_INT) {
-            create_bool(out, in->value != 0);
-            return 1;
-        }
-    }
-    
-    return 0;
-}
-
-// Obter informações de tipo de um Value
-TypeInfo* get_value_type_info(const Value* v) {
-    if (!v) return NULL;
-    
-    if (v->type >= TAG_CUSTOM) {
-        return get_type_info(v->type);
-    }
-    
-    return NULL; // Tipos builtin não têm TypeInfo completo
-}
-
-// Imprimir informações de tipo (para debug)
+// Imprimir informações de tipo (para debug) - adaptado
 void print_type_info(const Value* v) {
-    if (!v) {
+    if (!v || !v->obj) {
         printf("Value: NULL\n");
         return;
     }
     
-    printf("Value type: %s (id: %d)\n", get_type_name(v->type), v->type);
-    printf("  Prototype: %p\n", v->prototype);
-    printf("  Type info: %p\n", v->type_info);
-    printf("  Flags: 0x%x\n", v->flags);
+    NvTypeObject* type = v->obj->ob_type;
+    if (!type) {
+        printf("Value: <unknown type>\n");
+        return;
+    }
     
-    if (v->type >= TAG_CUSTOM) {
-        TypeInfo* info = get_type_info(v->type);
-        if (info) {
-            printf("  Type name: %s\n", info->type_name);
-            printf("  Size: %zu bytes\n", info->size);
-        }
+    printf("Value type: %s\n", type->tp_name ? type->tp_name : "unknown");
+    printf("  ref_count: %d\n", v->obj->ref_count);
+    printf("  flags: 0x%x\n", v->obj->flags);
+    
+    // Mostrar valor específico
+    if (type == NVInt_Type) {
+        NVInt* int_obj = (NVInt*)v->obj;
+        printf("  value: %d\n", int_obj->value);
+    } else if (type == NVFloat_Type) {
+        NVFloat* float_obj = (NVFloat*)v->obj;
+        printf("  value: %f\n", float_obj->value);
+    } else if (type == NVBool_Type) {
+        NVBool* bool_obj = (NVBool*)v->obj;
+        printf("  value: %s\n", bool_obj->value ? "true" : "false");
+    } else if (type == NVStr_Type) {
+        NVStr* str_obj = (NVStr*)v->obj;
+        printf("  value: \"%s\" (len: %zu)\n", str_obj->value ? str_obj->value : "", str_obj->len);
+    } else if (type == NVArray_Type) {
+        NVArray* array_obj = (NVArray*)v->obj;
+        printf("  size: %zu, capacity: %zu\n", array_obj->size, array_obj->capacity);
+    } else if (type == NVVector_Type) {
+        NVVector* vector_obj = (NVVector*)v->obj;
+        printf("  size: %zu, capacity: %zu\n", vector_obj->size, vector_obj->capacity);
+    } else if (type == NVMap_Type) {
+        NVMap* map_obj = (NVMap*)v->obj;
+        printf("  size: %zu, capacity: %zu\n", map_obj->size, map_obj->capacity);
+    } else if (type == NVTuple_Type) {
+        NVTuple* tuple_obj = (NVTuple*)v->obj;
+        printf("  field_count: %zu\n", tuple_obj->field_count);
     }
 }
 
-/* ============================================================= */
-/*                    GARBAGE COLLECTION                        */
-/* ============================================================= */
-
-// Marcar valor para GC (se necessário)
-void gc_mark_value(const Value* v) {
-    if (!v) return;
+// Converter tipo (se possível) - adaptado para novo sistema
+int convert_type(Value* out, const Value* in, int32_t target_type) {
+    if (!out || !in || !in->obj) return 0;
     
-    // Implementação básica - pode ser expandida
-    // Por enquanto, apenas tipos com ponteiros precisam de marcação
-    switch (v->type) {
-        case TAG_STR:
-        case TAG_ARRAY:
-        case TAG_VECTOR:
-        case TAG_MAP:
-        case TAG_TUPLE:
-        case TAG_CUSTOM:
-            // Estes tipos têm ponteiros que precisam ser marcados
-            // Implementação específica depende do GC usado
-            break;
-        default:
-            break;
+    NvTypeObject* source_type = in->obj->ob_type;
+    if (!source_type) return 0;
+    
+    int32_t source_type_id = get_value_type(in);
+    
+    // Se já é o tipo certo, copiar
+    if (source_type_id == target_type) {
+        *out = *in;
+        return 1;
     }
-}
-
-// Liberar valor (chama destructor se necessário)
-void free_value(Value* v) {
-    if (!v) return;
     
-    // Chamar destructor se for tipo customizado
-    if (v->type >= TAG_CUSTOM) {
-        TypeInfo* info = get_type_info(v->type);
-        if (info) {
-            // Se é struct-like, liberar campos primeiro
-            if (info->field_names && info->field_count > 0 && v->value != 0) {
-                Value* fields = (Value*)(intptr_t)v->value;
-                for (int i = 0; i < info->field_count; i++) {
-                    // Liberar campos recursivamente se necessário
-                    if (fields[i].type >= TAG_STR) {
-                        free_value(&fields[i]);
+    // Conversões básicas
+    switch (target_type) {
+        case NV_INT_BASE:
+            if (source_type == NVFloat_Type) {
+                NVFloat* float_obj = (NVFloat*)in->obj;
+                create_int(out, (int32_t)float_obj->value);
+                return 1;
+            } else if (source_type == NVStr_Type) {
+                NVStr* str_obj = (NVStr*)in->obj;
+                if (str_obj->value) {
+                    create_int(out, atoi(str_obj->value));
+                    return 1;
+                }
+            } else if (source_type == NVBool_Type) {
+                NVBool* bool_obj = (NVBool*)in->obj;
+                create_int(out, bool_obj->value ? 1 : 0);
+                return 1;
+            }
+            break;
+            
+        case NV_FLOAT_BASE:
+            if (source_type == NVInt_Type) {
+                NVInt* int_obj = (NVInt*)in->obj;
+                create_float(out, (double)int_obj->value);
+                return 1;
+            } else if (source_type == NVStr_Type) {
+                NVStr* str_obj = (NVStr*)in->obj;
+                if (str_obj->value) {
+                    create_float(out, atof(str_obj->value));
+                    return 1;
+                }
+            } else if (source_type == NVBool_Type) {
+                NVBool* bool_obj = (NVBool*)in->obj;
+                create_float(out, bool_obj->value ? 1.0 : 0.0);
+                return 1;
+            }
+            break;
+            
+        case NV_STR_BASE:
+            if (source_type == NVInt_Type) {
+                NVInt* int_obj = (NVInt*)in->obj;
+                char buffer[32];
+                snprintf(buffer, sizeof(buffer), "%d", int_obj->value);
+                create_str(out, buffer);
+                return 1;
+            } else if (source_type == NVFloat_Type) {
+                NVFloat* float_obj = (NVFloat*)in->obj;
+                char buffer[64];
+                snprintf(buffer, sizeof(buffer), "%f", float_obj->value);
+                create_str(out, buffer);
+                return 1;
+            } else if (source_type == NVBool_Type) {
+                NVBool* bool_obj = (NVBool*)in->obj;
+                create_str(out, bool_obj->value ? "true" : "false");
+                return 1;
+            }
+            break;
+            
+        case NV_BOOL_BASE:
+            if (source_type == NVInt_Type) {
+                NVInt* int_obj = (NVInt*)in->obj;
+                create_bool(out, int_obj->value != 0);
+                return 1;
+            } else if (source_type == NVFloat_Type) {
+                NVFloat* float_obj = (NVFloat*)in->obj;
+                create_bool(out, float_obj->value != 0.0);
+                return 1;
+            } else if (source_type == NVStr_Type) {
+                NVStr* str_obj = (NVStr*)in->obj;
+                if (str_obj->value) {
+                    // Converter string para booleano
+                    if (strcmp(str_obj->value, "true") == 0 || strcmp(str_obj->value, "1") == 0) {
+                        create_bool(out, 1);
+                        return 1;
+                    } else if (strcmp(str_obj->value, "false") == 0 || strcmp(str_obj->value, "0") == 0) {
+                        create_bool(out, 0);
+                        return 1;
                     }
                 }
             }
-            // Chamar destructor customizado se disponível
-            if (info->destructor && v->value != 0) {
-                info->destructor((void*)(intptr_t)v->value);
-            } else if (v->value != 0) {
-                // Se não tem destructor, apenas liberar memória
-                free((void*)(intptr_t)v->value);
-            }
-        }
+            break;
     }
     
-    // Limpar valor
-    v->type = 0;
-    v->value = 0;
-    v->prototype = NULL;
-    v->type_info = NULL;
-    v->flags = 0;
+    // Conversão não suportada
+    return 0;
+}
+
+// Validar valor (função legado adaptada)
+int validate_value(const Value* v) {
+    if (!v || !v->obj) return 0;
+    
+    // Verificar se o tipo é válido
+    return is_valid_type(get_value_type(v));
+}
+
+// Copiar valor (função legado adaptada)
+void copy_value(Value* dest, const Value* src) {
+    if (!dest || !src) return;
+    
+    if (!src->obj) {
+        dest->obj = NULL;
+        return;
+    }
+    
+    // Incrementar referência do objeto
+    nv_incref(src->obj);
+    dest->obj = src->obj;
+}
+
+// Comparar valores (função legado adaptada)
+int compare_values(const Value* a, const Value* b) {
+    if (!a || !b) return 0;
+    if (!a->obj && !b->obj) return 0;
+    if (!a->obj) return -1;
+    if (!b->obj) return 1;
+    
+    NvTypeObject* type_a = a->obj->ob_type;
+    NvTypeObject* type_b = b->obj->ob_type;
+    
+    // Tipos diferentes
+    if (type_a != type_b) {
+        return (type_a < type_b) ? -1 : 1;
+    }
+    
+    // Comparação por tipo
+    if (type_a == NVInt_Type) {
+        NVInt* int_a = (NVInt*)a->obj;
+        NVInt* int_b = (NVInt*)b->obj;
+        if (int_a->value < int_b->value) return -1;
+        if (int_a->value > int_b->value) return 1;
+        return 0;
+    } else if (type_a == NVFloat_Type) {
+        NVFloat* float_a = (NVFloat*)a->obj;
+        NVFloat* float_b = (NVFloat*)b->obj;
+        if (float_a->value < float_b->value) return -1;
+        if (float_a->value > float_b->value) return 1;
+        return 0;
+    } else if (type_a == NVStr_Type) {
+        NVStr* str_a = (NVStr*)a->obj;
+        NVStr* str_b = (NVStr*)b->obj;
+        if (!str_a->value && !str_b->value) return 0;
+        if (!str_a->value) return -1;
+        if (!str_b->value) return 1;
+        return strcmp(str_a->value, str_b->value);
+    } else if (type_a == NVBool_Type) {
+        NVBool* bool_a = (NVBool*)a->obj;
+        NVBool* bool_b = (NVBool*)b->obj;
+        if (bool_a->value < bool_b->value) return -1;
+        if (bool_a->value > bool_b->value) return 1;
+        return 0;
+    }
+    
+    // Para outros tipos, comparar ponteiros
+    if (a->obj < b->obj) return -1;
+    if (a->obj > b->obj) return 1;
+    return 0;
+}
+
+// Verificar se valor é nulo (função legado adaptada)
+int is_null_value(const Value* v) {
+    return !v || !v->obj;
+}
+
+// Criar valor nulo (função legado adaptada)
+void create_null(Value* out) {
+    if (!out) return;
+    out->obj = NULL;
+}
+
+// Liberar TypeInfo (função legado adaptada)
+void free_type_info(TypeInfo* info) {
+    if (!info) return;
+    
+    if (info->type_name) {
+        free((void*)info->type_name);
+    }
+    
+    if (info->field_names) {
+        for (int i = 0; i < info->field_count; i++) {
+            if (info->field_names[i]) {
+                free(info->field_names[i]);
+            }
+        }
+        free(info->field_names);
+    }
+    
+    if (info->field_types) {
+        free(info->field_types);
+    }
+    
+    free(info);
 }

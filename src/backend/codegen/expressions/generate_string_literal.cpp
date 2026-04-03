@@ -10,5 +10,7 @@ void StringLiteralNode::codegen(nv::IRGenerationContext& ctx) {
     nv::register_feature("string");
     nv::register_feature("string_operations");
     
-    ctx.push_value(nv::ir_utils::create_string_constant(ctx, value));
+    // TEMP: Voltar para versão simples que funcionava
+    auto* str_ptr = nv::ir_utils::create_string_constant(ctx, value);
+    ctx.push_value(str_ptr);
 }

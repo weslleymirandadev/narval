@@ -2,8 +2,15 @@
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
 #include "backend/codegen/generate_ir.hpp"
+#include "backend/codegen/method_handler.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
 #include "frontend/ast/expressions/member_expr_node.hpp"
+
+// Forward declarations para handlers
+namespace nv {
+    class BuiltinHandler;
+    class JsonHandler;
+}
 
 namespace {
 
@@ -137,15 +144,57 @@ static llvm::Value* value_to_i32(IRGenerationContext& ctx, llvm::Value* v) {
 // === BUILTIN: write, read, exit, json.load ===
 llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name, const std::vector<std::unique_ptr<Expr>>& args) {
     auto& B = ctx.get_builder();
-    auto* I8P = ir_utils::get_i8_ptr(ctx);
-    auto* I32 = llvm::Type::getInt32Ty(ctx.get_context());
-    auto* VoidTy = llvm::Type::getVoidTy(ctx.get_context());
+    auto* ValueTy = ir_utils::get_value_struct(ctx);
+    auto* I8P = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(ctx.get_context()));
+
+    // Implementar write diretamente
+    if (name == "write") {
+        if (args.empty()) {
+            return nullptr;
+        }
+        
+        // Gerar código para o argumento
+        args[0]->codegen(ctx);
+        if (!ctx.has_value()) return nullptr;
+        
+        llvm::Value* arg = ctx.pop_value();
+        
+        // Usar printf para imprimir o argumento
+        auto& ctx_module = ctx.get_context();
+        auto* I8Ptr = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(ctx_module));
+        auto* printf_ty = llvm::FunctionType::get(llvm::Type::getInt32Ty(ctx_module), {I8Ptr}, true);
+        auto* printf_fn = ctx.get_module().getFunction("printf");
+        if (!printf_fn) {
+            printf_fn = llvm::Function::Create(printf_ty, llvm::Function::ExternalLinkage, "printf", ctx.get_module());
+        }
+        
+        // Usar printf com o argumento real (string literal) e adicionar \n
+        if (arg->getType()->isPointerTy()) {
+            // Criar string formatada com \n
+            auto* newline_str = llvm::ConstantDataArray::getString(ctx_module, "%s\n", true);
+            auto* newline_global = new llvm::GlobalVariable(ctx.get_module(), newline_str->getType(), true, llvm::GlobalValue::PrivateLinkage, newline_str, "newline.str");
+            llvm::Constant* indices[] = {
+                llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx_module), 0),
+                llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx_module), 0)
+            };
+            auto* newline_ptr = llvm::ConstantExpr::getGetElementPtr(newline_str->getType(), newline_global, indices);
+            
+            std::vector<llvm::Value*> args_printf = {newline_ptr, arg};
+            ctx.get_builder().CreateCall(printf_fn, args_printf);
+        }
+        
+        return nullptr;
+    }
+    
+    // Fallback para implementação antiga
 
     if (name == "exit") {
         if (args.size() != 1) return nullptr;
         args[0]->codegen(ctx);
         llvm::Value* code_val = ctx.pop_value();
         llvm::Value* i32_code = value_to_i32(ctx, code_val);
+        auto* I32 = llvm::Type::getInt32Ty(ctx.get_context());
+        auto* VoidTy = llvm::Type::getVoidTy(ctx.get_context());
         auto* exit_fn = ctx.ensure_runtime_func("_exit", {I32}, VoidTy);
         B.CreateCall(exit_fn, {i32_code});
         B.CreateUnreachable();

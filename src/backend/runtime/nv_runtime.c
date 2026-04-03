@@ -1,57 +1,60 @@
-#include "backend/runtime/nv_runtime.h"
 #include "backend/runtime/prototypes.h"
-#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
-extern StringVTable string_vtable_instance;
-extern ArrayVTable  array_vtable_instance;
-extern VectorVTable vector_vtable;
-extern MapVTable    map_vtable;
+/* ============================================================= */
+/*                    INICIALIZAÇÃO DO RUNTIME DO NARVAL        */
+/* ============================================================= */
 
-void* string_prototype = (void*)&string_vtable_instance;
-void* array_prototype  = (void*)&array_vtable_instance;
-void* vector_prototype = (void*)&vector_vtable;
-void* map_prototype    = (void*)&map_vtable;
+// Tipos builtin globais
+NvTypeObject* NVInt_Type = NULL;
+NvTypeObject* NVFloat_Type = NULL;
+NvTypeObject* NVBool_Type = NULL;
+NvTypeObject* NVStr_Type = NULL;
+NvTypeObject* NVArray_Type = NULL;
+NvTypeObject* NVVector_Type = NULL;
+NvTypeObject* NVMap_Type = NULL;
+NvTypeObject* NVTuple_Type = NULL;
+NvTypeObject* NVObject_Type = NULL;
+NvTypeObject* NVType_Type = NULL;
 
-// Tabela de símbolos globais para modo interativo
-#define MAX_GLOBAL_SYMBOLS 1024
-static struct {
-    char* name;
-    void* ptr;
-} global_symbols[MAX_GLOBAL_SYMBOLS];
-static int global_symbol_count = 0;
+// Prototypes globais para tipos builtin (legado compatibilidade)
+void* string_prototype = NULL;
+void* array_prototype = NULL;
+void* vector_prototype = NULL;
+void* map_prototype = NULL;
 
-void nv_register_global_symbol(const char* name, void* func_ptr) {
-    if (global_symbol_count >= MAX_GLOBAL_SYMBOLS) {
-        printf("Warning: Global symbol table full\n");
-        return;
+// Registrar símbolos globais (para compatibilidade com compilador)
+void register_global_init(void) {
+    // Inicializar tipos básicos
+    if (!NVInt_Type) {
+        NVInt_Type = nv_type_new("int", NULL, 0);
     }
-    
-    // Procura por símbolo existente e substitui
-    for (int i = 0; i < global_symbol_count; i++) {
-        if (strcmp(global_symbols[i].name, name) == 0) {
-            global_symbols[i].ptr = func_ptr;
-            return;
-        }
+    if (!NVFloat_Type) {
+        NVFloat_Type = nv_type_new("float", NULL, 0);
     }
-    
-    // Adiciona novo símbolo
-    global_symbols[global_symbol_count].name = strdup(name);
-    global_symbols[global_symbol_count].ptr = func_ptr;
-    global_symbol_count++;
-}
-
-void* nv_lookup_global_symbol(const char* name) {
-    for (int i = 0; i < global_symbol_count; i++) {
-        if (strcmp(global_symbols[i].name, name) == 0) {
-            return global_symbols[i].ptr;
-        }
+    if (!NVBool_Type) {
+        NVBool_Type = nv_type_new("bool", NULL, 0);
     }
-    return NULL;
-}
-
-// Inicialização do runtime (chamada automaticamente se necessário)
-__attribute__((constructor))
-static void init_runtime(void) {
-    init_type_registry();
+    if (!NVStr_Type) {
+        NVStr_Type = nv_type_new("str", NULL, 0);
+    }
+    if (!NVArray_Type) {
+        NVArray_Type = nv_type_new("array", NULL, 0);
+    }
+    if (!NVVector_Type) {
+        NVVector_Type = nv_type_new("vector", NULL, 0);
+    }
+    if (!NVMap_Type) {
+        NVMap_Type = nv_type_new("map", NULL, 0);
+    }
+    if (!NVTuple_Type) {
+        NVTuple_Type = nv_type_new("tuple", NULL, 0);
+    }
+    if (!NVObject_Type) {
+        NVObject_Type = nv_type_new("object", NULL, 0);
+    }
+    if (!NVType_Type) {
+        NVType_Type = nv_type_new("type", NULL, 0);
+    }
 }

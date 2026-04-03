@@ -80,6 +80,21 @@ static void declare_runtime(IRGenerationContext& context) {
     {
         auto decl = M.getOrInsertFunction("create_vector", llvm::FunctionType::get(VoidTy, {ValuePtr, I32}, false));
     }
+    
+    // Funções de conversão de tipo (estilo Python)
+    // Convenção: void fn(Value* out, Value* in)
+    {
+        auto decl = M.getOrInsertFunction("nv_str_convert", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
+    }
+    {
+        auto decl = M.getOrInsertFunction("nv_int_convert", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
+    }
+    {
+        auto decl = M.getOrInsertFunction("nv_float_convert", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
+    }
+    {
+        auto decl = M.getOrInsertFunction("nv_bool_convert", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
+    }
 
     // nv_write(Value*) - função builtin para escrita com nova linha
     M.getOrInsertFunction("nv_write", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy)}, false));
@@ -195,6 +210,12 @@ void generate_ir(
             nv::SymbolInfo fn_info(fn, fn->getType(), nullptr, false, true);
             context.get_symbol_table().define_symbol(def_stmt->name, fn_info);
         }
+    }
+
+    // Inicializar o runtime de forma segura
+    auto* register_init_fn = context.get_module().getFunction("register_global_init");
+    if (register_init_fn) {
+        context.get_builder().CreateCall(register_init_fn, {});
     }
 
     for (size_t i = 0; i < program->body.size(); ++i) {

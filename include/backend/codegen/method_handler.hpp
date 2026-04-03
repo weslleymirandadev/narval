@@ -1,13 +1,12 @@
 #pragma once
 
 #include "backend/codegen/ir_context.hpp"
+#include "frontend/ast/ast.hpp"
 #include "llvm/IR/Value.h"
 #include <vector>
 #include <memory>
 
 namespace nv {
-
-class Node;
 
 // Interface para handlers de métodos específicos
 class MethodHandler {

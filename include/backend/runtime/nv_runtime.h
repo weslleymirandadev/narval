@@ -1,154 +1,128 @@
-#ifndef RUNTIME_H
-#define RUNTIME_H
+#ifndef NV_RUNTIME_H
+#define NV_RUNTIME_H
 
-#include "prototypes.h"
-#include <stdint.h>
+#include "backend/runtime/prototypes.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /* ============================================================= */
 /*                    CRIAÇÃO DE VALORES                        */
 /* ============================================================= */
 
-// Criar valores primitivos (garantem tag correta)
-void create_int(Value* out, int32_t v);
-void create_float(Value* out, double v);
-void create_bool(Value* out, int b);
-void create_str(Value* out, const char* s);
-
-// Criar estruturas de dados
-void create_array(Value* out, int size);
-void create_vector(Value* out, int capacity);
+// Criar valores básicos
+void create_int(Value* out, int32_t value);
+void create_float(Value* out, double value);
+void create_bool(Value* out, int32_t value);
+void create_str(Value* out, const char* value);
+void create_array(Value* out);
+void create_vector(Value* out);
 void create_map(Value* out);
-void create_tuple(Value* out, int count);
-void create_any(Value* out, Value v);
+void create_tuple(Value* out);
+void create_any(Value* out);
 
-// Criar tipo customizado (placeholder para tipos criados em tempo de compilação)
-// Exemplo: type User = { name: string; password: string; }
-// O type_id deve ser >= TAG_CUSTOM e estar registrado no TypeRegistry
-void create_custom(Value* out, int32_t type_id, void* data);
+// Funções de conversão de tipo (estilo Python)
+void nv_str_convert(Value* out, Value* input);
+void nv_int_convert(Value* out, Value* input);
+void nv_float_convert(Value* out, Value* input);
+void nv_bool_convert(Value* out, Value* input);
 
-// Criar tipo customizado struct-like (helper para tipos como User acima)
-// Aloca memória e inicializa campos baseado no TypeInfo
-void create_custom_struct(Value* out, int32_t type_id, Value* field_values);
-
-/* ============================================================= */
-/*                    MÉTODOS DE STRING                         */
-/* ============================================================= */
-
-void string_to_upper_case(Value* out, Value* self);
-void string_replace(Value* out, Value* self, Value* old_val, Value* new_val);
-void string_includes(Value* out, Value* self, Value substr);
-
-/* ============================================================= */
-/*                    MÉTODOS DE VECTOR                         */
-/* ============================================================= */
-
-void vector_push_method(Value* out, Value* self, const Value* value);
-void vector_pop_method(Value* out, Value* self);
-void vector_get_method(Value* out, Value* self, int index);
-void vector_set_method(Value* self, int index, const Value* value);
-
-/* ============================================================= */
-/*                    MÉTODOS DE MAP                             */
-/* ============================================================= */
-
-void map_get_method(Value* out, Value* self, const char* key);
-void map_set_method(Value* self, const char* key, Value value);
-
-/* ============================================================= */
-/*                    OPERAÇÕES DE ARRAY                        */
-/* ============================================================= */
-
-Value array_get_index(Array* arr, int index);
-void array_set_index(Array* arr, int index, Value value);
-void array_get_index_v(Value* out, Value* self, int index);
-void array_set_index_v(Value* self, int index, const Value* value);
-
-/* ============================================================= */
-/*                    OPERAÇÕES DE TUPLE                        */
-/* ============================================================= */
-
-Value tuple_get_impl(Value* self, int index);
-void tuple_set_impl(Value* self, int index, const Value* v);
-
-/* ============================================================= */
-/*                    IMPLEMENTAÇÕES INTERNAS                    */
-/* ============================================================= */
-
-void vector_push_impl(Vector* v, Value val);
-Value vector_pop_impl(Vector* v);
-Value vector_get_impl(Vector* v, int i);
-void vector_set_impl(Vector* v, int i, Value val);
-
-Value map_get_impl(Map* m, const char* key);
-void map_set_impl(Map* m, const char* key, Value val);
-
-/* ============================================================= */
-/*                    I/O E PRINT                               */
-/* ============================================================= */
-
-void nv_write(Value* v);
-void nv_write_no_nl(Value* v);
-
-/* ============================================================= */
-/*                    OPERAÇÕES JSON                             */
-/* ============================================================= */
-
-void json_parse(Value* out, const char* filename);
-void json_parse_string(Value* out, const char* json_string);
-void json_dump(const Value* v, const char* filename);
-void json_stringify(Value* out, const Value* v);
-
-/* ============================================================= */
-/*                    ACESSO DINÂMICO                           */
-/* ============================================================= */
-
-// Acesso por chave (string)
-int any_has(Value* self, const char* key);
-void any_get(Value* out, Value* self, const char* key);
-void any_set(Value* self, const char* key, Value value);
-
-// Acesso por índice (array/vector)
-int any_index_valid(Value* self, int index);
-void any_get_index(Value* out, Value* self, int index);
-void any_set_index(Value* self, int index, Value value);
-
-/* ============================================================= */
-/*                    RASTREIO E VALIDAÇÃO DE TIPOS             */
-/* ============================================================= */
-
-// Garantir que um Value tenha a tag correta (com rastreio melhorado)
-void ensure_value_type(Value* v);
-
-// Validar tipo de um Value
-int validate_value_type(const Value* v);
-
-// Obter tipo de um Value (com validação)
+// Obter tipo de um valor
 int32_t get_value_type(const Value* v);
 
-// Verificar compatibilidade de tipos
-int types_compatible(int32_t type1, int32_t type2);
-
-// Converter tipo (se possível)
-int convert_type(Value* out, const Value* in, int32_t target_type);
-
-// Obter informações de tipo de um Value
+// Obter informações de tipo
 TypeInfo* get_value_type_info(const Value* v);
 
-// Imprimir informações de tipo (para debug)
-void print_type_info(const Value* v);
+// Garantir tipo do valor
+void ensure_value_type(Value* v);
 
-/* ============================================================= */
-/*                    GARBAGE COLLECTION                         */
-/* ============================================================= */
+// Validar tipo
+int validate_value_type(const Value* v, int32_t expected_type);
 
-// Marcar valor para GC (se necessário)
-void gc_mark_value(const Value* v);
-
-// Liberar valor (chama destructor se necessário)
+// Liberar valor
 void free_value(Value* v);
 
-// Gerenciamento de símbolos globais para modo interativo
-void nv_register_global_symbol(const char* name, void* func_ptr);
-void* nv_lookup_global_symbol(const char* name);
+/* ============================================================= */
+/*                    MÉTODOS DE COLEÇÕES                        */
+/* ============================================================= */
 
-#endif /* RUNTIME_H */
+// Métodos de Map
+Value map_get_method(Map* m, const char* key);
+void map_set_method(Map* m, const char* key, Value val);
+
+// Métodos de Vector
+void vector_push_method(Vector* v, Value val);
+Value vector_pop_method(Vector* v);
+Value vector_get_method(Vector* v, int index);
+void vector_set_method(Vector* v, int index, Value val);
+
+// Métodos de Array
+void array_push_method(Array* a, Value val);
+Value array_pop_method(Array* a);
+
+/* ============================================================= */
+/*                    FUNÇÕES DE I/O                             */
+/* ============================================================= */
+
+// Função de escrita principal
+void nv_write(Value* v);
+
+/* ============================================================= */
+/*                    TIPOS DINÂMICOS DO NARVAL                */
+/* ============================================================= */
+
+// Criar novo tipo
+NvTypeObject* nv_type_create(const char* name, NvTypeObject** bases, int bases_count, Value** attributes, int attr_count);
+
+// Criar classe simples
+NvTypeObject* nv_create_simple_class(const char* name);
+
+// Criar classe com herança
+NvTypeObject* nv_create_class_with_base(const char* name, NvTypeObject* base);
+
+// Criar classe com múltiplas heranças
+NvTypeObject* nv_create_class_with_bases(const char* name, ...);
+
+// Type Builder API
+typedef struct TypeBuilder TypeBuilder;
+TypeBuilder* type_builder_new(const char* name);
+void type_builder_add_base(TypeBuilder* builder, NvTypeObject* base);
+void type_builder_add_method(TypeBuilder* builder, const char* name, Value* method);
+void type_builder_set_number_protocol(TypeBuilder* builder, NvNumberMethods* methods);
+void type_builder_set_sequence_protocol(TypeBuilder* builder, NvSequenceMethods* methods);
+void type_builder_set_mapping_protocol(TypeBuilder* builder, NvMappingMethods* methods);
+NvTypeObject* type_builder_build(TypeBuilder* builder);
+
+// Funções de debug
+void nv_type_print_info(NvTypeObject* type);
+void nv_object_print_type(NvObject* obj);
+void nv_test_isinstance(NvObject* obj, NvTypeObject* type);
+
+/* ============================================================= */
+/*                    LEGADO - COMPATIBILIDADE                   */
+/* ============================================================= */
+
+// Criar novo tipo customizado em runtime (legado)
+int32_t create_dynamic_type(const char* type_name, int field_count, char** field_names, int32_t* field_types);
+
+// Criar tipo struct-like simples (com número variável de argumentos)
+int32_t create_struct_type(const char* type_name, ...);
+
+// Criar instância de tipo customizado
+void create_dynamic_instance(Value* out, int32_t type_id, Value* field_values);
+
+// Acessar campo de tipo customizado
+void get_custom_field(Value* out, Value* instance, const char* field_name);
+
+// Definir campo de tipo customizado
+void set_custom_field(Value* instance, const char* field_name, Value value);
+
+// Converter para tipo dinâmico
+int convert_to_dynamic(Value* out, const Value* in, int32_t target_type);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* NV_RUNTIME_H */

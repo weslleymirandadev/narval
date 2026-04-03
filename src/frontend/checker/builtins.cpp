@@ -15,6 +15,19 @@ namespace nv {
         
         // exit: encerra o processo com o código dado (int) -> void
         BuiltinFunction("exit", {std::make_shared<Int>()}, std::make_shared<Void>(), false, false, 1, 1),
+        
+        // Funções de conversão de tipo (estilo Python)
+        // str: aceita 1 argumento de qualquer tipo, retorna string
+        BuiltinFunction("str", {}, std::make_shared<String>(), false, true, 1, 1),
+        
+        // int: aceita 1 argumento de qualquer tipo, retorna int
+        BuiltinFunction("int", {}, std::make_shared<Int>(), false, true, 1, 1),
+        
+        // float: aceita 1 argumento de qualquer tipo, retorna float
+        BuiltinFunction("float", {}, std::make_shared<Float>(), false, true, 1, 1),
+        
+        // bool: aceita 1 argumento de qualquer tipo, retorna bool
+        BuiltinFunction("bool", {}, std::make_shared<Boolean>(), false, true, 1, 1),
     };
     
     // Variáveis globais builtin (não são funções, mas objetos especiais)

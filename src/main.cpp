@@ -245,14 +245,6 @@ int run_batch_mode(const std::string& filename) {
 
         DIB.finalize();
 
-        {
-            std::error_code EC;
-            llvm::raw_fd_ostream ir_out("narval_module.ll", EC, llvm::sys::fs::OF_Text);
-            if (!EC) {
-                Mod.print(ir_out, nullptr);
-            }
-        }
-
         llvm::InitializeNativeTarget();
         llvm::InitializeNativeTargetAsmPrinter();
         llvm::InitializeNativeTargetAsmParser();

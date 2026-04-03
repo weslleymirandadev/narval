@@ -267,7 +267,6 @@ std::optional<SymbolInfo> IRGenerationContext::get_symbol_info(const std::string
 }
 
 void IRGenerationContext::register_global_init(llvm::GlobalVariable* global, llvm::Value* init_value, const std::string& symbol_name) {
-    std::fprintf(stderr, "[register_global_init] registering symbol=%s global=%p init_value=%p\n", symbol_name.c_str(), (void*)global, (void*)init_value);
     pending_global_inits.push_back({global, init_value, symbol_name});
 }
 

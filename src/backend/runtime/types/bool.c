@@ -1,14 +1,20 @@
 #include "backend/runtime/nv_runtime.h"
-#include <stdio.h>
+#include <stdlib.h>
 
-void create_bool(Value* out, int b) {
-    if (!out) {
-        fputs("FATAL: create_bool called with NULL pointer\n", stderr);
+void create_bool(Value* out, int32_t value) {
+    if (!out) return;
+    
+    // Criar NVBool
+    NVBool* bool_obj = (NVBool*)calloc(1, sizeof(NVBool));
+    if (!bool_obj) {
+        out->obj = NULL;
         return;
     }
-    out->type = TAG_BOOL;
-    out->value = b ? 1 : 0;
-    out->prototype = NULL;
-    out->type_info = NULL;
-    out->flags = 0;
+    
+    bool_obj->ob_base.ob_type = NVBool_Type;
+    bool_obj->ob_base.ref_count = 1;
+    bool_obj->ob_base.flags = 0;
+    bool_obj->value = value ? 1 : 0;
+    
+    out->obj = (NvObject*)bool_obj;
 }

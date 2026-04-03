@@ -46,7 +46,7 @@ static void json_string_escape(const char* str, FILE* out) {
 
 static void json_stringify_value_recursive(const Value* v, FILE* out, int depth);
 
-static void json_stringify_array(const Array* a, FILE* out, int depth) {
+static void json_stringify_nv_array(const NVArray* a, FILE* out, int depth) {
     if (!a) {
         fputs("null", out);
         return;
@@ -67,7 +67,7 @@ static void json_stringify_array(const Array* a, FILE* out, int depth) {
     fputs("]", out);
 }
 
-static void json_stringify_vector(const Vector* vec, FILE* out, int depth) {
+static void json_stringify_nv_vector(const NVVector* vec, FILE* out, int depth) {
     if (!vec) {
         fputs("null", out);
         return;
@@ -88,7 +88,7 @@ static void json_stringify_vector(const Vector* vec, FILE* out, int depth) {
     fputs("]", out);
 }
 
-static void json_stringify_map(const Map* m, FILE* out, int depth) {
+static void json_stringify_nv_map(const NVMap* m, FILE* out, int depth) {
     if (!m) {
         fputs("null", out);
         return;
@@ -113,7 +113,7 @@ static void json_stringify_map(const Map* m, FILE* out, int depth) {
     fputs("}", out);
 }
 
-static void json_stringify_tuple(const Tuple* t, FILE* out, int depth) {
+static void json_stringify_nv_tuple(const NVTuple* t, FILE* out, int depth) {
     if (!t) {
         fputs("null", out);
         return;
@@ -135,7 +135,7 @@ static void json_stringify_tuple(const Tuple* t, FILE* out, int depth) {
 }
 
 static void json_stringify_value_recursive(const Value* v, FILE* out, int depth) {
-    if (!v) {
+    if (!v || !v->obj) {
         fputs("null", out);
         return;
     }
@@ -146,85 +146,48 @@ static void json_stringify_value_recursive(const Value* v, FILE* out, int depth)
         return;
     }
 
-    switch (v->type) {
-        case TAG_INT: {
-            fprintf(out, "%ld", v->value);
-            break;
-        }
-
-        case TAG_FLOAT: {
-            double d;
-            memcpy(&d, &v->value, sizeof(double));
-            fprintf(out, "%.17g", d);
-            break;
-        }
-
-        case TAG_BOOL:
-            fputs(v->value ? "true" : "false", out);
-            break;
-
-        case TAG_STR: {
-            char* s = (char*)(intptr_t)v->value;
-            if (s) {
-                json_string_escape(s, out);
-            } else {
-                fputs("null", out);
-            }
-            break;
-        }
-
-        case TAG_ARRAY: {
-            Array* a = (Array*)(intptr_t)v->value;
-            json_stringify_array(a, out, depth);
-            break;
-        }
-
-        case TAG_VECTOR: {
-            Vector* vec = (Vector*)(intptr_t)v->value;
-            json_stringify_vector(vec, out, depth);
-            break;
-        }
-
-        case TAG_MAP: {
-            Map* m = (Map*)(intptr_t)v->value;
-            json_stringify_map(m, out, depth);
-            break;
-        }
-
-        case TAG_TUPLE: {
-            Tuple* t = (Tuple*)(intptr_t)v->value;
-            json_stringify_tuple(t, out, depth);
-            break;
-        }
-
-        case TAG_CUSTOM: {
-            // Para tipos customizados, tentar usar TypeInfo se disponível
-            TypeInfo* info = get_value_type_info(v);
-            if (info && info->field_names && info->field_count > 0) {
-                // Tratar como objeto JSON
-                Value* fields = (Value*)(intptr_t)v->value;
-                fputs("{", out);
-                for (int i = 0; i < info->field_count; ++i) {
-                    if (i > 0) fputs(", ", out);
-                    json_string_escape(info->field_names[i], out);
-                    fputs(": ", out);
-                    json_stringify_value_recursive(&fields[i], out, depth + 1);
-                }
-                fputs("}", out);
-            } else {
-                // Fallback: mostrar como string
-                char buffer[256];
-                snprintf(buffer, sizeof(buffer), "\"<custom:%s>\"", 
-                         info ? info->type_name : "unknown");
-                fputs(buffer, out);
-            }
-            break;
-        }
-
-        default:
-            // Valor nulo ou desconhecido
+    // Obter o tipo do objeto
+    NvTypeObject* type = v->obj->ob_type;
+    
+    if (type == NVInt_Type) {
+        NVInt* int_obj = (NVInt*)v->obj;
+        fprintf(out, "%d", int_obj->value);
+    }
+    else if (type == NVFloat_Type) {
+        NVFloat* float_obj = (NVFloat*)v->obj;
+        fprintf(out, "%.17g", float_obj->value);
+    }
+    else if (type == NVBool_Type) {
+        NVBool* bool_obj = (NVBool*)v->obj;
+        fputs(bool_obj->value ? "true" : "false", out);
+    }
+    else if (type == NVStr_Type) {
+        NVStr* str_obj = (NVStr*)v->obj;
+        if (str_obj->value) {
+            json_string_escape(str_obj->value, out);
+        } else {
             fputs("null", out);
-            break;
+        }
+    }
+    else if (type == NVArray_Type) {
+        NVArray* a = (NVArray*)v->obj;
+        json_stringify_nv_array(a, out, depth);
+    }
+    else if (type == NVVector_Type) {
+        NVVector* vec = (NVVector*)v->obj;
+        json_stringify_nv_vector(vec, out, depth);
+    }
+    else if (type == NVMap_Type) {
+        NVMap* m = (NVMap*)v->obj;
+        json_stringify_nv_map(m, out, depth);
+    }
+    else if (type == NVTuple_Type) {
+        NVTuple* t = (NVTuple*)v->obj;
+        json_stringify_nv_tuple(t, out, depth);
+    }
+    else {
+        // Tipo desconhecido, tratar como null ou string
+        fputs("\"[unknown_type]\"", out);
     }
 }
 
