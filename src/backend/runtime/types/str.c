@@ -1,7 +1,7 @@
 #include "backend/runtime/nv_runtime.h"
 #include <stdlib.h>
-#include <string.h>
 #include <stdio.h>
+#include <string.h>
 
 // Declaração da função de inicialização
 extern void register_global_init(void);
@@ -15,23 +15,27 @@ void create_str(Value* out, const char* value) {
     memset(out, 0, sizeof(Value));
     
     // Verificar se o ponteiro value é válido
-    if (!value) {
-        value = "";
+    if (!value) { 
+        value = ""; 
     }
     
     // Verificar se o ponteiro está em uma região válida (não é stack corrompido)
-    if ((unsigned long)value < 0x1000) {
-        // Criar string vazia como fallback
-        value = "";
+    if ((unsigned long)value < 0x1000) { 
+        printf("[DEBUG] create_str: value looks like invalid pointer\n");
+        value = ""; 
     }
+    
+    printf("[DEBUG] create_str: NVStr_Type=%p\n", (void*)NVStr_Type);
     
     // Se os tipos não estiverem inicializados, criar objeto básico
     if (!NVStr_Type) {
+        printf("[DEBUG] create_str: NVStr_Type is null, creating basic object\n");
         // Criar NVStr básico sem tipo por enquanto
         NVStr* str_obj = (NVStr*)calloc(1, sizeof(NVStr));
-        if (!str_obj) {
-            out->obj = NULL;
-            return;
+        if (!str_obj) { 
+            printf("[DEBUG] create_str: calloc failed\n");
+            out->obj = NULL; 
+            return; 
         }
         
         // Inicializar campos básicos
@@ -43,15 +47,18 @@ void create_str(Value* out, const char* value) {
         str_obj->len = strlen(value);
         
         out->obj = (NvObject*)str_obj;
+        printf("[DEBUG] create_str: basic object created, value='%s'\n", str_obj->value);
         return;
     }
     
+    printf("[DEBUG] create_str: creating normal NVStr object\n");
     // Criar NVStr normalmente
     NVStr* str_obj = (NVStr*)calloc(1, sizeof(NVStr));
     
-    if (!str_obj) {
-        out->obj = NULL;
-        return;
+    if (!str_obj) { 
+        printf("[DEBUG] create_str: calloc failed\n");
+        out->obj = NULL; 
+        return; 
     }
     
     str_obj->ob_base.ob_type = NVStr_Type;
@@ -62,4 +69,5 @@ void create_str(Value* out, const char* value) {
     str_obj->len = strlen(value);
     
     out->obj = (NvObject*)str_obj;
+    printf("[DEBUG] create_str: normal object created, value='%s'\n", str_obj->value);
 }

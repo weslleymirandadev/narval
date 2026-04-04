@@ -25,6 +25,10 @@ void create_any(Value* out);
 // Inicialização do sistema de tipos
 void register_global_init(void);
 
+// Funções helper para operações de concatenação
+char* int_string_concat(int32_t value, const char* str);
+char* string_int_concat(const char* str, int32_t value);
+
 // Funções de conversão de tipo (estilo Python)
 void nv_str_convert(Value* out, Value* input);
 void nv_int_convert(Value* out, Value* input);

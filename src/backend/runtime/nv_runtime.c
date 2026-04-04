@@ -1,7 +1,7 @@
-#include "backend/runtime/prototypes.h"
+#include "backend/runtime/nv_runtime.h"
 #include <stdlib.h>
-#include <string.h>
 #include <stdio.h>
+#include <string.h>
 
 // Definição real de NVType_Type para resolver undefined references
 NvTypeObject* NVType_Type = NULL;
@@ -37,32 +37,38 @@ void register_global_init(void) {
 
     // Primeiro inicializar o sistema de tipos
     nv_type_system_init();
+    printf("[DEBUG] type system initialized\n");
+    
+    // Criar o tipo "type" (metaclass)
+    NVType_Type = nv_type_new("type", NULL, 0);
+    printf("[DEBUG] NVType_Type created at %p\n", (void*)NVType_Type);
     
     // Criar o tipo 'type' primeiro sem usar NVType_Type
-    NvTypeObject* type_type = nv_type_new("type", NULL, 0);
+    NvTypeObject* type_type = NVType_Type;
     if (type_type) {
         // Configurar o tipo 'type' para apontar para si mesmo
         type_type->ob_base.ob_type = type_type;
         type_type->tp_metaclass = type_type;
-        NVType_Type = type_type;
     }
     
     // Agora criar os outros tipos usando NVType_Type já inicializado
     NVInt_Type = nv_type_new("int", NULL, 0);
+    printf("[DEBUG] NVInt_Type created at %p\n", (void*)NVInt_Type);
     
     NVFloat_Type = nv_type_new("float", NULL, 0);
-    
-    NVBool_Type = nv_type_new("bool", NULL, 0);
+    printf("[DEBUG] NVFloat_Type created at %p\n", (void*)NVFloat_Type);
     
     NVStr_Type = nv_type_new("str", NULL, 0);
+    printf("[DEBUG] NVStr_Type created at %p\n", (void*)NVStr_Type);
+    
+    NVBool_Type = nv_type_new("bool", NULL, 0);
+    printf("[DEBUG] NVBool_Type created at %p\n", (void*)NVBool_Type);
     
     NVArray_Type = nv_type_new("array", NULL, 0);
-    
     NVVector_Type = nv_type_new("vector", NULL, 0);
-    
     NVMap_Type = nv_type_new("map", NULL, 0);
-    
     NVTuple_Type = nv_type_new("tuple", NULL, 0);
+    NVObject_Type = nv_type_new("object", NULL, 0);
     
-    NVObject_Type = nv_type_new("object", NULL, 0);    
+    printf("[DEBUG] register_global_init completed\n");
 }

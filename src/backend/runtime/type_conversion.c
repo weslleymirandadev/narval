@@ -200,16 +200,19 @@ void nv_bool_convert(Value* out, Value* input) {
 
 // Converte inteiro para string (versão simples para concatenação)
 void int_to_string(Value* out, int32_t value) {
-    if (!out) return;
-    
-    // Limpar struct para evitar problemas com lixo de memória
+    printf("[DEBUG] int_to_string called with value=%d\n", value);
+    if (!out) {
+        printf("[DEBUG] int_to_string: out is null\n");
+        return;
+    }
     memset(out, 0, sizeof(Value));
+    printf("[DEBUG] int_to_string: after memset\n");
     
-    // Buffer temporário para conversão
     char buffer[32];
-    int len = snprintf(buffer, sizeof(buffer), "%d", value);
+    snprintf(buffer, sizeof(buffer), "%d", value);
+    printf("[DEBUG] int_to_string: buffer='%s'\n", buffer);
     
-    // Criar string com o resultado
+    printf("[DEBUG] int_to_string: calling create_str\n");
     create_str(out, buffer);
 }
 

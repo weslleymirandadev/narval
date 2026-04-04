@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdio.h>
 
 // Sistema de sobrecarga de operadores como Python __add__
 
@@ -21,7 +22,9 @@ int has_add_method(NvTypeObject* type) {
 
 // Implementação do __add__ para diferentes tipos
 int binary_add(Value* result, Value* lhs, Value* rhs) {
+    printf("[DEBUG] binary_add called\n");
     if (!result || !lhs || !rhs || !lhs->obj || !rhs->obj) {
+        printf("[DEBUG] binary_add: null pointer check failed\n");
         return 0; // Erro
     }
     
@@ -31,43 +34,63 @@ int binary_add(Value* result, Value* lhs, Value* rhs) {
     NvTypeObject* lhs_type = lhs->obj->ob_type;
     NvTypeObject* rhs_type = rhs->obj->ob_type;
     
+    printf("[DEBUG] binary_add: lhs_type=%p, rhs_type=%p\n", (void*)lhs_type, (void*)rhs_type);
+    printf("[DEBUG] binary_add: NVStr_Type=%p, NVInt_Type=%p, NVFloat_Type=%p\n", 
+           (void*)NVStr_Type, (void*)NVInt_Type, (void*)NVFloat_Type);
+    
     // Verificação de segurança - só operar se ambos tiverem tipos
     if (!lhs_type || !rhs_type) {
+        printf("[DEBUG] binary_add: missing types, returning error\n");
         return 0;
     }
     
     // Caso 1: String + qualquer coisa -> concatenação
     if (lhs_type == NVStr_Type) {
+        printf("[DEBUG] binary_add: lhs is string\n");
         char* lhs_str = ((NVStr*)lhs->obj)->value;
         if (!lhs_str) lhs_str = "";
+        printf("[DEBUG] binary_add: lhs_str='%s'\n", lhs_str);
         
         if (rhs_type == NVStr_Type) {
+            printf("[DEBUG] binary_add: string + string\n");
             // String + String
             char* rhs_str = ((NVStr*)rhs->obj)->value;
             if (!rhs_str) rhs_str = "";
+            printf("[DEBUG] binary_add: rhs_str='%s'\n", rhs_str);
             char* result_str = string_concat(lhs_str, rhs_str);
+            printf("[DEBUG] binary_add: result_str='%s'\n", result_str);
             create_str(result, result_str);
             if (result_str) free(result_str);
             return 1;
         } else if (rhs_type == NVInt_Type) {
+            printf("[DEBUG] binary_add: string + int\n");
             // String + Int -> converter int para string e concatenar
             int32_t rhs_int = ((NVInt*)rhs->obj)->value;
+            printf("[DEBUG] binary_add: rhs_int=%d\n", rhs_int);
             Value temp_str;
             memset(&temp_str, 0, sizeof(Value));
             int_to_string(&temp_str, rhs_int);
+            printf("[DEBUG] binary_add: converted int to string\n");
             char* rhs_str = extract_string_from_value(&temp_str);
+            printf("[DEBUG] binary_add: extracted rhs_str='%s'\n", rhs_str);
             char* result_str = string_concat(lhs_str, rhs_str);
+            printf("[DEBUG] binary_add: result_str='%s'\n", result_str);
             create_str(result, result_str);
             if (result_str) free(result_str);
             return 1;
         } else if (rhs_type == NVFloat_Type) {
+            printf("[DEBUG] binary_add: string + float\n");
             // String + Float -> converter float para string e concatenar
             double rhs_float = ((NVFloat*)rhs->obj)->value;
+            printf("[DEBUG] binary_add: rhs_float=%f\n", rhs_float);
             Value temp_str;
             memset(&temp_str, 0, sizeof(Value));
             float_to_string(&temp_str, rhs_float);
+            printf("[DEBUG] binary_add: converted float to string\n");
             char* rhs_str = extract_string_from_value(&temp_str);
+            printf("[DEBUG] binary_add: extracted rhs_str='%s'\n", rhs_str);
             char* result_str = string_concat(lhs_str, rhs_str);
+            printf("[DEBUG] binary_add: result_str='%s'\n", result_str);
             create_str(result, result_str);
             if (result_str) free(result_str);
             return 1;
@@ -76,18 +99,27 @@ int binary_add(Value* result, Value* lhs, Value* rhs) {
     
     // Caso 2: Int + String -> concatenação (Python behavior)
     if (lhs_type == NVInt_Type && rhs_type == NVStr_Type) {
+        printf("[DEBUG] binary_add: int + string\n");
         int32_t lhs_int = ((NVInt*)lhs->obj)->value;
         char* rhs_str = ((NVStr*)rhs->obj)->value;
+        if (!rhs_str) rhs_str = "";
+        printf("[DEBUG] binary_add: lhs_int=%d, rhs_str='%s'\n", lhs_int, rhs_str);
         
         // Converter int para string
         Value temp_str;
         memset(&temp_str, 0, sizeof(Value));  // Inicializar para evitar lixo
+        printf("[DEBUG] binary_add: calling int_to_string\n");
         int_to_string(&temp_str, lhs_int);
+        printf("[DEBUG] binary_add: int_to_string returned\n");
         char* lhs_str = extract_string_from_value(&temp_str);
+        printf("[DEBUG] binary_add: extracted lhs_str='%s'\n", lhs_str);
         
+        printf("[DEBUG] binary_add: calling string_concat\n");
         char* result_str = string_concat(lhs_str, rhs_str);
+        printf("[DEBUG] binary_add: string_concat returned result_str='%s'\n", result_str);
         create_str(result, result_str);
         if (result_str) free(result_str);
+        printf("[DEBUG] binary_add: int + string completed\n");
         return 1;
     }
     

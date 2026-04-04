@@ -219,27 +219,36 @@ llvm::Value* create_binary_op(IRGenerationContext& context, llvm::Value* lhs, ll
         
         // Caso 4: Int literal + String literal -> converter int para string e concatenar
         if (lhs_is_int && rhs_is_str) {
+            printf("[DEBUG] create_binary_op: int literal + string literal case\n");
             
-            // Método alternativo: usar snprintf diretamente no LLVM IR
-            auto* i8 = llvm::Type::getInt8Ty(context.get_context());
-            auto* bufferAlloca = builder.CreateAlloca(i8, 0u, nullptr, "int_buffer");
+            // Usar função helper C mais segura
+            auto* i32 = llvm::Type::getInt32Ty(context.get_context());
+            auto* i8p = llvm::PointerType::getUnqual(get_i8(context));
             
-            // snprintf(buffer, 32, "%d", int_value)
-            auto* snprintfTy = llvm::FunctionType::get(i32, {i8p, i32, i8p}, true);
-            llvm::FunctionCallee snprintfCallee = context.get_module().getOrInsertFunction("snprintf", snprintfTy);
+            // Chamar função helper int_string_concat
+            auto* concatTy = llvm::FunctionType::get(i8p, {i32, i8p}, false);
+            llvm::FunctionCallee concatFn = context.get_module().getOrInsertFunction("int_string_concat", concatTy);
             
-            auto* formatStr = create_string_constant(context, "%d");
-            std::vector<llvm::Value*> snprintfArgs = {bufferAlloca, 
-                                                     llvm::ConstantInt::get(i32, 32), 
-                                                     formatStr, 
-                                                     lhs};
-            builder.CreateCall(snprintfCallee, snprintfArgs);
+            printf("[DEBUG] create_binary_op: calling int_string_concat\n");
+            std::vector<llvm::Value*> args = {lhs, rhs};
+            return builder.CreateCall(concatFn, args, "int_str_concat");
+        }
+        
+        // Caso 4.5: String literal + Int literal -> converter int para string e concatenar
+        if (lhs_is_str && rhs_is_int) {
+            printf("[DEBUG] create_binary_op: string literal + int literal case\n");
             
-            // Concatenar
-            auto* catTy = llvm::FunctionType::get(i8p, { i8p, i8p }, false);
-            auto* catFn = llvm::cast<llvm::Function>(context.get_module().getOrInsertFunction("string_concat", catTy).getCallee());
-            std::vector<llvm::Value*> args = {bufferAlloca, rhs};
-            return builder.CreateCall(catFn, args, "strcat");
+            // Usar função helper C mais segura
+            auto* i32 = llvm::Type::getInt32Ty(context.get_context());
+            auto* i8p = llvm::PointerType::getUnqual(get_i8(context));
+            
+            // Chamar função helper string_int_concat
+            auto* concatTy = llvm::FunctionType::get(i8p, {i8p, i32}, false);
+            llvm::FunctionCallee concatFn = context.get_module().getOrInsertFunction("string_int_concat", concatTy);
+            
+            printf("[DEBUG] create_binary_op: calling string_int_concat\n");
+            std::vector<llvm::Value*> args = {lhs, rhs};
+            return builder.CreateCall(concatFn, args, "str_int_concat");
         }
         
         // Caso 5: Value + String literal -> extrair string do Value e concatenar
