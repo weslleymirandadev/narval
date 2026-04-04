@@ -59,7 +59,36 @@ TypeInfo* get_value_type_info(const Value* v) {
 
 // Garantir tipo do valor (para compatibilidade)
 void ensure_value_type(Value* v) {
-    if (!v || !v->obj) return;
+    printf("DEBUG: ensure_value_type() called with v=%p\n", v);
+    
+    if (!v) {
+        printf("DEBUG: ensure_value_type() - v is null, returning\n");
+        return;
+    }
+    
+    printf("DEBUG: ensure_value_type() - v->obj = %p\n", v->obj);
+    
+    if (!v->obj) {
+        printf("DEBUG: ensure_value_type() - v->obj is null, returning\n");
+        return;
+    }
+    
+    printf("DEBUG: ensure_value_type() - v->obj->ob_type = %p\n", v->obj->ob_type);
+    
+    if (!v->obj->ob_type) {
+        printf("DEBUG: ensure_value_type() - ob_type is null, attempting to fix\n");
+        
+        // Tentar determinar o tipo pelo conteúdo do objeto
+        // Se o objeto parece ser uma string, configurar o tipo correto
+        // Isso é um fallback para objetos que foram criados sem o tipo correto
+        
+        // Por enquanto, apenas retornar para evitar crash
+        // TODO: Implementar detecção de tipo baseada no conteúdo
+        return;
+    }
+    
+    printf("DEBUG: ensure_value_type() - type is already set: %s\n", 
+           v->obj->ob_type->tp_name ? v->obj->ob_type->tp_name : "NULL");
     
     // No novo sistema, o tipo já está garantido pela estrutura
     // Esta função é mantida para compatibilidade

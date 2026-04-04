@@ -461,61 +461,9 @@ llvm::Constant* create_value_constant_from_llvm_value(
         return llvm::cast<llvm::Constant>(value);
     }
     
-    // Tentar inferir o tipo se não foi fornecido
-    int32_t tag = 0;
-    int64_t val = 0;
-    bool can_create_constant = false;
-    
-    // Verificar se é uma constante LLVM
-    if (auto* const_int = llvm::dyn_cast<llvm::ConstantInt>(value)) {
-        if (const_int->getType()->isIntegerTy(32) || const_int->getType()->isIntegerTy(64)) {
-            // Constante inteira
-            tag = 1; // TAG_INT
-            val = const_int->getSExtValue();
-            can_create_constant = true;
-        } else if (const_int->getType()->isIntegerTy(1)) {
-            // Constante booleana
-            tag = 3; // TAG_BOOL
-            val = const_int->getZExtValue();
-            can_create_constant = true;
-        }
-    } else if (auto* const_fp = llvm::dyn_cast<llvm::ConstantFP>(value)) {
-        // Constante float: converter para int64_t (bits)
-        tag = 2; // TAG_FLOAT
-        double dval = const_fp->getValueAPF().convertToDouble();
-        memcpy(&val, &dval, sizeof(double));
-        can_create_constant = true;
-    } else if (nv_type) {
-        // Tentar inferir tag do tipo Narval
-        // Isso permite suportar tipos criados em tempo de compilação
-        if (auto* int_type = dynamic_cast<Int*>(nv_type.get())) {
-            if (auto* const_int = llvm::dyn_cast<llvm::ConstantInt>(value)) {
-                tag = 1; // TAG_INT
-                val = const_int->getSExtValue();
-                can_create_constant = true;
-            }
-        } else if (auto* float_type = dynamic_cast<Float*>(nv_type.get())) {
-            if (auto* const_fp = llvm::dyn_cast<llvm::ConstantFP>(value)) {
-                tag = 2; // TAG_FLOAT
-                double dval = const_fp->getValueAPF().convertToDouble();
-                memcpy(&val, &dval, sizeof(double));
-                can_create_constant = true;
-            }
-        } else if (auto* bool_type = dynamic_cast<Boolean*>(nv_type.get())) {
-            if (auto* const_int = llvm::dyn_cast<llvm::ConstantInt>(value)) {
-                tag = 3; // TAG_BOOL
-                val = const_int->getZExtValue();
-                can_create_constant = true;
-            }
-        }
-        // Para outros tipos (string, array, etc), não podemos criar constantes facilmente
-        // Eles precisam ser inicializados em runtime
-    }
-    
-    if (can_create_constant) {
-        return create_value_constant_with_tag(ctx, tag, val);
-    }
-    
+    // Para Value v2 (NvObject*), não podemos criar constantes úteis para strings/objetos
+    // porque precisamos de alocação runtime. Retornar nullptr força runtime init.
+    // Apenas para inteiros/floats/bools puros podemos criar uma constante null (será inicializada depois).
     return nullptr;
 }
 
