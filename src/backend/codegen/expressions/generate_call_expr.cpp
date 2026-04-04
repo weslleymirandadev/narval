@@ -133,10 +133,9 @@ static llvm::Value* value_to_i32(IRGenerationContext& ctx, llvm::Value* v) {
         B.CreateStore(v, tmp);
         auto* ensure_fn = ctx.ensure_runtime_func("ensure_value_type", {ValuePtr});
         B.CreateCall(ensure_fn, {tmp});
-        // Value struct field 1 is the value (i64); load and trunc to i32
-        auto* value_gep = B.CreateStructGEP(ValueTy, tmp, 1);
-        auto* val64 = B.CreateLoad(I64, value_gep, "exit_val64");
-        return B.CreateTrunc(val64, I32, "exit_code");
+        // Para a nova estrutura, usar função runtime para extrair int
+        auto* extract_int_func = ctx.ensure_runtime_func("extract_int_from_value", {I32, ValuePtr});
+        return B.CreateCall(extract_int_func, {tmp}, "exit_code");
     }
     return llvm::ConstantInt::get(I32, 0);
 }
@@ -598,16 +597,15 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
                 auto* ensure_fn = ctx.ensure_runtime_func("ensure_value_type", {ValuePtr});
                 B.CreateCall(ensure_fn, {tmp_alloca});
 
-                // Extrair primitivo do Value struct inline (sem depender de função runtime extract_*)
-                auto* valuePtr = B.CreateStructGEP(ValueTy, tmp_alloca, 1);
-                auto* value64 = B.CreateLoad(I64, valuePtr);
-
+                // Para a nova estrutura, precisamos extrair o valor usando funções runtime
                 if (param_types[i]->isIntegerTy()) {
-                    // Truncar i64 para i32
-                    arg_val = B.CreateTrunc(value64, I32, "arg_int_val");
+                    // Usar função runtime para extrair int
+                    auto* extract_int_func = ctx.ensure_runtime_func("extract_int_from_value", {I32, ValuePtr});
+                    arg_val = B.CreateCall(extract_int_func, {tmp_alloca}, "arg_int_val");
                 } else if (param_types[i]->isFloatingPointTy()) {
-                    // Reinterpretar bits de i64 como double
-                    arg_val = B.CreateBitCast(value64, F64, "arg_float_bits");
+                    // Usar função runtime para extrair float
+                    auto* extract_float_func = ctx.ensure_runtime_func("extract_float_from_value", {F64, ValuePtr});
+                    arg_val = B.CreateCall(extract_float_func, {tmp_alloca}, "arg_float_val");
                 }
             }
             
