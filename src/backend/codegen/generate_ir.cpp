@@ -32,26 +32,17 @@ const FeatureTracker& get_feature_tracker() {
     return g_feature_tracker;
 }
 
-static llvm::StructType* get_or_create_value_ty(llvm::LLVMContext& C) {
-    if (auto* T = llvm::StructType::getTypeByName(C, "nv.rt.Value")) return T;
-    auto* i32 = llvm::Type::getInt32Ty(C);
-    auto* i64 = llvm::Type::getInt64Ty(C);
-    auto* i8  = llvm::Type::getInt8Ty(C);
-    auto* i8p = llvm::PointerType::getUnqual(i8);
-    // Value struct: { int32_t type; int64_t value; void* prototype; void* type_info; uint32_t flags; }
-    return llvm::StructType::create(C, {i32, i64, i8p, i8p, i32}, "nv.rt.Value");
-}
-
 static void declare_runtime(IRGenerationContext& context) {
     auto& M = context.get_module();
     auto& C = context.get_context();
-    auto* ValueTy = get_or_create_value_ty(C);
+    // Use the canonical Value type from ir_utils so all codegen agrees on the same struct
+    auto* ValueTy  = ir_utils::get_value_struct(context);
+    auto* ValuePtr = ir_utils::get_value_ptr(context);
     auto* VoidTy  = llvm::Type::getVoidTy(C);
     auto* I32     = llvm::Type::getInt32Ty(C);
     auto* I64     = llvm::Type::getInt64Ty(C);
     auto* I8      = llvm::Type::getInt8Ty(C);
     auto* I8Ptr   = llvm::PointerType::getUnqual(I8);
-    auto* ValuePtr= llvm::PointerType::getUnqual(ValueTy);
 
     // Object and Array opaque pointers
     auto* ObjPtr  = I8Ptr;
@@ -97,9 +88,10 @@ static void declare_runtime(IRGenerationContext& context) {
     }
 
     // nv_write(Value*) - função builtin para escrita com nova linha
-    M.getOrInsertFunction("nv_write", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy)}, false));
-
+    M.getOrInsertFunction("nv_write", llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
     // nv_write_no_nl(Value*) - função builtin para escrita sem nova linha
+    M.getOrInsertFunction("nv_write_no_nl", llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
+
     M.getOrInsertFunction("nv_read", llvm::FunctionType::get(I8Ptr, {}, false));
     M.getOrInsertFunction("atoi", llvm::FunctionType::get(I32, {I8Ptr}, false));
     M.getOrInsertFunction("_exit", llvm::FunctionType::get(VoidTy, {I32}, false));
@@ -212,11 +204,8 @@ void generate_ir(
         }
     }
 
-    // Inicializar o runtime de forma segura
-    auto* register_init_fn = context.get_module().getFunction("register_global_init");
-    if (register_init_fn) {
-        context.get_builder().CreateCall(register_init_fn, {});
-    }
+    // register_global_init é chamado uma única vez em main.cpp antes de generate_ir()
+    // Não duplicar o call aqui para evitar realocação dos type pointers
 
     for (size_t i = 0; i < program->body.size(); ++i) {
         program->body[i]->codegen(context);

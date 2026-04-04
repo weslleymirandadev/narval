@@ -120,6 +120,20 @@ int run_batch_mode(const std::string& filename) {
         context.set_current_function(main_start);
         context.set_program_function(main_start);
 
+        // Chamar register_global_init primeiro para inicializar os tipos
+        auto* register_init_fn = Mod.getFunction("register_global_init");
+        if (!register_init_fn) {
+            auto* void_ty = llvm::Type::getVoidTy(Context);
+            auto* fn_ty = llvm::FunctionType::get(void_ty, false);
+            register_init_fn = llvm::Function::Create(
+                fn_ty,
+                llvm::Function::ExternalLinkage,
+                "register_global_init",
+                &Mod
+            );
+        }
+        context.get_builder().CreateCall(register_init_fn, {});
+
         nv::generate_ir(std::move(ast), context);
         
         // IMPORTANTE: Finalizar inicializações de globais DEPOIS de gerar o código principal
@@ -161,71 +175,21 @@ int run_batch_mode(const std::string& filename) {
 
         if (return_value->getType() != i32_ty) {
             auto* ValueTy = nv::ir_utils::get_value_struct(context);
-            auto* ValuePtr = nv::ir_utils::get_value_ptr(context);
-            // Check if it's a Value struct - extract the value based on its type tag
+            auto* i8_ty   = llvm::Type::getInt8Ty(Context);
+            // Value struct is { NvObject* obj }.  NVInt layout:
+            //   NvObject { NvTypeObject*(8) + ref_count(4) + flags(4) } = 16 bytes
+            //   then int32_t value at byte offset 16.
             if (return_value->getType() == ValueTy) {
-                // Ensure the value type is correct before extracting
                 auto* tmp_alloca = context.get_builder().CreateAlloca(ValueTy, nullptr, "return_val_tmp");
                 context.get_builder().CreateStore(return_value, tmp_alloca);
-                
-                // Call ensure_value_type to guarantee the tag is correct
-                auto* ensure_func = context.ensure_runtime_func("ensure_value_type", {ValuePtr});
-                context.get_builder().CreateCall(ensure_func, {tmp_alloca});
-                
-                // Extract type tag (field 0) to determine how to extract the value
-                auto* typePtr = context.get_builder().CreateStructGEP(ValueTy, tmp_alloca, 0);
-                auto* i32_ty_tag = llvm::Type::getInt32Ty(Context);
-                auto* type_tag = context.get_builder().CreateLoad(i32_ty_tag, typePtr, "type_tag");
-                
-                // Extract value field (field 1 contains the value as i64)
-                auto* valuePtr = context.get_builder().CreateStructGEP(ValueTy, tmp_alloca, 1);
-                auto* i64_ty = llvm::Type::getInt64Ty(Context);
-                auto* value64 = context.get_builder().CreateLoad(i64_ty, valuePtr, "value64");
-                
-                // Check if it's TAG_FLOAT (2) or TAG_INT (1)
-                auto* TAG_INT_const = llvm::ConstantInt::get(i32_ty_tag, 1);
-                auto* TAG_FLOAT_const = llvm::ConstantInt::get(i32_ty_tag, 2);
-                auto* is_int = context.get_builder().CreateICmpEQ(type_tag, TAG_INT_const, "is_int");
-                auto* is_float = context.get_builder().CreateICmpEQ(type_tag, TAG_FLOAT_const, "is_float");
-                
-                // Create basic blocks for different extraction paths
-                auto* int_block = llvm::BasicBlock::Create(Context, "extract_int", main_start);
-                auto* float_block = llvm::BasicBlock::Create(Context, "extract_float", main_start);
-                auto* default_block = llvm::BasicBlock::Create(Context, "extract_default", main_start);
-                auto* merge_block = llvm::BasicBlock::Create(Context, "extract_merge", main_start);
-                
-                // Branch based on type - first check if int, then if float, else default
-                auto* builder = &context.get_builder();
-                auto* check_float_block = llvm::BasicBlock::Create(Context, "check_float", main_start);
-                builder->CreateCondBr(is_int, int_block, check_float_block);
-                
-                builder->SetInsertPoint(check_float_block);
-                builder->CreateCondBr(is_float, float_block, default_block);
-                
-                // Extract as integer (TAG_INT)
-                builder->SetInsertPoint(int_block);
-                auto* int_val = builder->CreateTrunc(value64, i32_ty, "int_val");
-                builder->CreateBr(merge_block);
-                
-                // Extract as float (TAG_FLOAT) - bitcast i64 to double, then convert to i32
-                builder->SetInsertPoint(float_block);
-                auto* f64_ty = llvm::Type::getDoubleTy(Context);
-                auto* float_val_bits = builder->CreateBitCast(value64, f64_ty, "float_bits");
-                auto* float_val = builder->CreateFPToSI(float_val_bits, i32_ty, "float_val");
-                builder->CreateBr(merge_block);
-                
-                // Default case - return 0 for other types
-                builder->SetInsertPoint(default_block);
-                auto* default_val = llvm::ConstantInt::get(i32_ty, 0);
-                builder->CreateBr(merge_block);
-                
-                // Merge block - phi node to select the correct value
-                builder->SetInsertPoint(merge_block);
-                auto* phi = builder->CreatePHI(i32_ty, 3, "extracted_val");
-                phi->addIncoming(int_val, int_block);
-                phi->addIncoming(float_val, float_block);
-                phi->addIncoming(default_val, default_block);
-                return_value = phi;
+                // Load obj pointer from field 0
+                auto* obj_gep = context.get_builder().CreateStructGEP(ValueTy, tmp_alloca, 0, "obj_gep");
+                auto* obj_ptr = context.get_builder().CreateLoad(
+                    llvm::PointerType::getUnqual(i8_ty), obj_gep, "obj_ptr");
+                // Byte-GEP to NVInt.value at offset 16
+                auto* val_byte_ptr = context.get_builder().CreateConstGEP1_64(
+                    i8_ty, obj_ptr, 16, "int_val_byte_ptr");
+                return_value = context.get_builder().CreateLoad(i32_ty, val_byte_ptr, "exit_code");
             } else if (return_value->getType()->isIntegerTy()) {
                 return_value = context.get_builder().CreateIntCast(return_value, i32_ty, true);
             } else if (return_value->getType()->isFloatingPointTy()) {
@@ -273,6 +237,13 @@ int run_batch_mode(const std::string& filename) {
             return 1;
         }
 
+        // DEBUG: dump IR for inspection
+        {
+            std::error_code ec;
+            llvm::raw_fd_ostream llFile("/tmp/narval_debug.ll", ec, llvm::sys::fs::OF_Text);
+            if (!ec) { Mod.print(llFile, nullptr); }
+        }
+
         if (llvm::verifyModule(Mod, &llvm::errs())) {
             llvm::errs() << "IR verification failed\n";
             return 1;
@@ -310,7 +281,7 @@ int run_batch_mode(const std::string& filename) {
             "-no-pie " +               // opcional
             "-lc -w";                // libc + sem warnings
 
-        const char* rm_cmd = "rm narval_module.o narval_module.ll";
+        const char* rm_cmd = "rm -f narval_module.o narval_module.ll";
 
         if (system(link_cmd.c_str()) != 0) {
             llvm::errs() << "Falha na linkedição\n";

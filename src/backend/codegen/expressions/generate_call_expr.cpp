@@ -622,6 +622,19 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
                 auto* ret_alloca = ctx.create_alloca(ValueTy, "ret_val");
                 auto* ValuePtr = ir_utils::get_value_ptr(ctx);
                 
+                // DEBUG: Verificar o tipo de retorno
+                auto* debug_func = ctx.get_module().getFunction("printf");
+                if (!debug_func) {
+                    auto* I8Ptr_debug = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(ctx.get_context()));
+                    auto* printf_ty = llvm::FunctionType::get(llvm::Type::getInt32Ty(ctx.get_context()), {I8Ptr_debug}, true);
+                    debug_func = llvm::Function::Create(printf_ty, llvm::Function::ExternalLinkage, "printf", ctx.get_module());
+                }
+                auto* type_name = call->getType()->isPointerTy() ? "pointer" : 
+                                 call->getType()->isIntegerTy() ? "integer" :
+                                 call->getType()->isFloatingPointTy() ? "float" : "unknown";
+                auto* debug_msg = B.CreateGlobalStringPtr("DEBUG: Return type is %s\n");
+                B.CreateCall(debug_func, {debug_msg, B.CreateGlobalStringPtr(type_name)});
+                
                 if (call->getType() == I32) {
                     auto* create_int_func = ctx.ensure_runtime_func("create_int", {ValuePtr, I32});
                     B.CreateCall(create_int_func, {ret_alloca, call});
@@ -633,6 +646,23 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
                 } else if (call->getType() == F64) {
                     auto* create_float_func = ctx.ensure_runtime_func("create_float", {ValuePtr, F64});
                     B.CreateCall(create_float_func, {ret_alloca, call});
+                } else if (call->getType()->isPointerTy()) {
+                    // Tratar retorno como string
+                    auto* I8P = nv::ir_utils::get_i8_ptr(ctx);
+                    llvm::Value* s = (call->getType() == I8P) ? call : B.CreateBitCast(call, I8P);
+                    
+                    // DEBUG: Log para verificar se está entrando aqui
+                    auto* debug_func = ctx.get_module().getFunction("printf");
+                    if (!debug_func) {
+                        auto* I8Ptr_debug = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(ctx.get_context()));
+                        auto* printf_ty = llvm::FunctionType::get(llvm::Type::getInt32Ty(ctx.get_context()), {I8Ptr_debug}, true);
+                        debug_func = llvm::Function::Create(printf_ty, llvm::Function::ExternalLinkage, "printf", ctx.get_module());
+                    }
+                    auto* debug_msg = B.CreateGlobalStringPtr("DEBUG: Creating string Value\n");
+                    B.CreateCall(debug_func, {debug_msg});
+                    
+                    auto* create_str_func = ctx.ensure_runtime_func("create_str", {ValuePtr, I8P});
+                    B.CreateCall(create_str_func, {ret_alloca, s});
                 } else {
                     // Tipo não suportado, usar UndefValue
                     B.CreateStore(llvm::UndefValue::get(ValueTy), ret_alloca);
