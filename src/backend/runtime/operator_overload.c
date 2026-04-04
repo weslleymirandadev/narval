@@ -2,6 +2,7 @@
 #include "backend/runtime/nv_runtime.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 // Sistema de sobrecarga de operadores como Python __add__
 
@@ -24,24 +25,35 @@ int binary_add(Value* result, Value* lhs, Value* rhs) {
         return 0; // Erro
     }
     
+    // Limpar resultado para evitar problemas
+    memset(result, 0, sizeof(Value));
+    
     NvTypeObject* lhs_type = lhs->obj->ob_type;
     NvTypeObject* rhs_type = rhs->obj->ob_type;
+    
+    // Verificação de segurança - só operar se ambos tiverem tipos
+    if (!lhs_type || !rhs_type) {
+        return 0;
+    }
     
     // Caso 1: String + qualquer coisa -> concatenação
     if (lhs_type == NVStr_Type) {
         char* lhs_str = ((NVStr*)lhs->obj)->value;
+        if (!lhs_str) lhs_str = "";
         
         if (rhs_type == NVStr_Type) {
             // String + String
             char* rhs_str = ((NVStr*)rhs->obj)->value;
+            if (!rhs_str) rhs_str = "";
             char* result_str = string_concat(lhs_str, rhs_str);
             create_str(result, result_str);
-            if (result_str) free(result_str); // Liberar memória alocada por string_concat
+            if (result_str) free(result_str);
             return 1;
         } else if (rhs_type == NVInt_Type) {
             // String + Int -> converter int para string e concatenar
             int32_t rhs_int = ((NVInt*)rhs->obj)->value;
             Value temp_str;
+            memset(&temp_str, 0, sizeof(Value));
             int_to_string(&temp_str, rhs_int);
             char* rhs_str = extract_string_from_value(&temp_str);
             char* result_str = string_concat(lhs_str, rhs_str);
@@ -52,6 +64,7 @@ int binary_add(Value* result, Value* lhs, Value* rhs) {
             // String + Float -> converter float para string e concatenar
             double rhs_float = ((NVFloat*)rhs->obj)->value;
             Value temp_str;
+            memset(&temp_str, 0, sizeof(Value));
             float_to_string(&temp_str, rhs_float);
             char* rhs_str = extract_string_from_value(&temp_str);
             char* result_str = string_concat(lhs_str, rhs_str);
@@ -68,6 +81,7 @@ int binary_add(Value* result, Value* lhs, Value* rhs) {
         
         // Converter int para string
         Value temp_str;
+        memset(&temp_str, 0, sizeof(Value));  // Inicializar para evitar lixo
         int_to_string(&temp_str, lhs_int);
         char* lhs_str = extract_string_from_value(&temp_str);
         
@@ -84,6 +98,7 @@ int binary_add(Value* result, Value* lhs, Value* rhs) {
         
         // Converter float para string
         Value temp_str;
+        memset(&temp_str, 0, sizeof(Value));  // Inicializar para evitar lixo
         float_to_string(&temp_str, lhs_float);
         char* lhs_str = extract_string_from_value(&temp_str);
         

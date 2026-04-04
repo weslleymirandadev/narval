@@ -16,6 +16,9 @@
 // TODO: Implementar modo Notebook no futuro
 // #include "frontend/interactive/notebook.hpp"
 
+// Inicialização do runtime
+#include "backend/runtime/nv_runtime.h"
+
 #include <filesystem>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/FileSystem.h>
@@ -357,6 +360,10 @@ int run_notebook_mode() {
 }
 
 int main(int argc, char* argv[]) {
+    // Inicializar o sistema de tipos do runtime antes de tudo
+    extern void register_global_init(void);
+    register_global_init();
+    
     // Parse argumentos de linha de comando
     bool repl_mode = false;
     bool notebook_mode = false;

@@ -22,6 +22,9 @@ void create_map(Value* out);
 void create_tuple(Value* out);
 void create_any(Value* out);
 
+// Inicialização do sistema de tipos
+void register_global_init(void);
+
 // Funções de conversão de tipo (estilo Python)
 void nv_str_convert(Value* out, Value* input);
 void nv_int_convert(Value* out, Value* input);

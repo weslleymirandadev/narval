@@ -1,8 +1,8 @@
 #include "backend/runtime/nv_runtime.h"
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
 #include <stdbool.h>
+#include <stdio.h>
 
 /* ============================================================= */
 /*                    FUNÇÕES DE CONVERSÃO DE TIPO             */
@@ -200,27 +200,25 @@ void nv_bool_convert(Value* out, Value* input) {
 
 // Converte inteiro para string (versão simples para concatenação)
 void int_to_string(Value* out, int32_t value) {
-    printf("DEBUG int_to_string: out=%p, value=%d\n", (void*)out, value);
-    if (!out) {
-        printf("DEBUG int_to_string: out is NULL\n");
-        return;
-    }
+    if (!out) return;
+    
+    // Limpar struct para evitar problemas com lixo de memória
+    memset(out, 0, sizeof(Value));
     
     // Buffer temporário para conversão
     char buffer[32];
-    printf("DEBUG int_to_string: about to snprintf\n");
     int len = snprintf(buffer, sizeof(buffer), "%d", value);
-    printf("DEBUG int_to_string: snprintf returned %d, buffer='%s'\n", len, buffer);
     
     // Criar string com o resultado
-    printf("DEBUG int_to_string: about to call create_str\n");
     create_str(out, buffer);
-    printf("DEBUG int_to_string: created string\n");
 }
 
 // Converte float para string (versão simples para concatenação)
 void float_to_string(Value* out, double value) {
     if (!out) return;
+    
+    // Limpar struct para evitar problemas com lixo de memória
+    memset(out, 0, sizeof(Value));
     
     // Buffer temporário para conversão
     char buffer[64];

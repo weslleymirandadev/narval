@@ -1,5 +1,6 @@
 #include "backend/runtime/nv_runtime.h"
 #include <stdio.h>
+#include <string.h>
 
 int32_t extract_int_from_value(Value* v) {
     if (!v || !v->obj) {
@@ -49,10 +50,8 @@ char* extract_string_from_value(Value* v) {
     }
     
     NvTypeObject* type = v->obj->ob_type;
-    if (!type) {
-        return "";
-    }
     
+    // Só funcionar se tiver tipo NVStr_Type
     if (type == NVStr_Type) {
         NVStr* str_obj = (NVStr*)v->obj;
         return str_obj->value ? str_obj->value : "";

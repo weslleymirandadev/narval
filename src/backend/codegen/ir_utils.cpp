@@ -201,9 +201,6 @@ llvm::Value* create_binary_op(IRGenerationContext& context, llvm::Value* lhs, ll
     auto* lhs_type = lhs->getType();
     auto* rhs_type = rhs->getType();
     
-    // DEBUG: Print para depurar
-    printf("DEBUG create_binary_op: op=%s, lhs_type=%p, rhs_type=%p\n", op.c_str(), lhs_type, rhs_type);
-    
     // Sistema de sobrecarga de operadores para "+"
     if (op == "+") {
         auto* i8p = llvm::PointerType::getUnqual(get_i8(context));
@@ -220,12 +217,8 @@ llvm::Value* create_binary_op(IRGenerationContext& context, llvm::Value* lhs, ll
         bool lhs_is_value = (lhs_type == valueStruct);
         bool rhs_is_value = (rhs_type == valueStruct);
         
-        printf("DEBUG: lhs_is_int=%d, rhs_is_str=%d, lhs_is_str=%d, rhs_is_int=%d\n", 
-               lhs_is_int, rhs_is_str, lhs_is_str, rhs_is_int);
-        
         // Caso 4: Int literal + String literal -> converter int para string e concatenar
         if (lhs_is_int && rhs_is_str) {
-            printf("DEBUG: Entrou no caso Int + String\n");
             
             // Método alternativo: usar snprintf diretamente no LLVM IR
             auto* i8 = llvm::Type::getInt8Ty(context.get_context());
