@@ -42,3 +42,21 @@ double extract_float_from_value(Value* v) {
     
     return 0.0;
 }
+
+char* extract_string_from_value(Value* v) {
+    if (!v || !v->obj) {
+        return "";
+    }
+    
+    NvTypeObject* type = v->obj->ob_type;
+    if (!type) {
+        return "";
+    }
+    
+    if (type == NVStr_Type) {
+        NVStr* str_obj = (NVStr*)v->obj;
+        return str_obj->value ? str_obj->value : "";
+    }
+    
+    return "";
+}

@@ -158,31 +158,15 @@ llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name
         
         llvm::Value* arg = ctx.pop_value();
         
-        // Usar printf para imprimir o argumento
-        auto& ctx_module = ctx.get_context();
-        auto* I8Ptr = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(ctx_module));
-        auto* printf_ty = llvm::FunctionType::get(llvm::Type::getInt32Ty(ctx_module), {I8Ptr}, true);
-        auto* printf_fn = ctx.get_module().getFunction("printf");
-        if (!printf_fn) {
-            printf_fn = llvm::Function::Create(printf_ty, llvm::Function::ExternalLinkage, "printf", ctx.get_module());
-        }
+        // nv_write espera um ponteiro para Value
+        auto* arg_ptr = ctx.create_alloca(ValueTy, "write_arg_ptr");
+        B.CreateStore(arg, arg_ptr);
         
-        // Usar printf com o argumento real (string literal) e adicionar \n
-        if (arg->getType()->isPointerTy()) {
-            // Criar string formatada com \n
-            auto* newline_str = llvm::ConstantDataArray::getString(ctx_module, "%s\n", true);
-            auto* newline_global = new llvm::GlobalVariable(ctx.get_module(), newline_str->getType(), true, llvm::GlobalValue::PrivateLinkage, newline_str, "newline.str");
-            llvm::Constant* indices[] = {
-                llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx_module), 0),
-                llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx_module), 0)
-            };
-            auto* newline_ptr = llvm::ConstantExpr::getGetElementPtr(newline_str->getType(), newline_global, indices);
-            
-            std::vector<llvm::Value*> args_printf = {newline_ptr, arg};
-            ctx.get_builder().CreateCall(printf_fn, args_printf);
-        }
+        // Usar nv_write para imprimir o argumento
+        auto* nv_write_func = ctx.ensure_runtime_func("nv_write", {llvm::Type::getVoidTy(ctx.get_context()), ir_utils::get_value_ptr(ctx)});
+        B.CreateCall(nv_write_func, {arg_ptr});
         
-        return nullptr;
+        return llvm::Constant::getNullValue(llvm::Type::getInt32Ty(ctx.get_context()));
     }
     
     // Fallback para implementação antiga
@@ -631,6 +615,10 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
                 } else if (call->getType() == F64) {
                     auto* create_float_func = ctx.ensure_runtime_func("create_float", {ValuePtr, F64});
                     B.CreateCall(create_float_func, {ret_alloca, call});
+                } else if (call->getType()->isPointerTy()) {
+                    // Tratar como string
+                    auto* create_str_func = ctx.ensure_runtime_func("create_str", {ValuePtr, call->getType()});
+                    B.CreateCall(create_str_func, {ret_alloca, call});
                 } else {
                     // Tipo não suportado, usar UndefValue
                     B.CreateStore(llvm::UndefValue::get(ValueTy), ret_alloca);

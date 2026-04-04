@@ -409,13 +409,13 @@ llvm::Type* get_i8_ptr(IRGenerationContext& ctx) {
 }
 
 llvm::StructType* get_value_struct(IRGenerationContext& ctx) {
-    auto* t = llvm::StructType::getTypeByName(ctx.get_context(), "nv.rt.Value");
+    auto* t = llvm::StructType::getTypeByName(ctx.get_context(), "nv.rt.Value.v2");
     if (!t) {
-        // Value struct: { int32_t type; int64_t value; void* prototype; void* type_info; uint32_t flags; }
+        // Value struct: { NvObject* obj } - corresponde à estrutura C
         t = llvm::StructType::create(
             ctx.get_context(), 
-            { get_i32(ctx), get_i64(ctx), get_i8_ptr(ctx), get_i8_ptr(ctx), get_i32(ctx) }, 
-            "nv.rt.Value"
+            { get_i8_ptr(ctx) }, 
+            "nv.rt.Value.v2"
         );
     }
     return t;
