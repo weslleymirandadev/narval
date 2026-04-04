@@ -17,36 +17,33 @@ void IncrementExprNode::codegen(nv::IRGenerationContext& ctx) {
     if (auto* id = dynamic_cast<IdentifierNode*>(operand.get())) {
         // Identificador simples - usar código original
         auto info_opt = ctx.get_symbol_table().lookup_symbol(id->symbol);
-        if (!info_opt.has_value()) { ctx.push_value(nullptr); return; }
+        if (!info_opt.has_value()) {
+            ctx.push_value(nullptr);
+            return;
+        }
         auto info = info_opt.value();
         llvm::Value* addr = info.value;
         llvm::Type* elemTy = info.llvm_type;
 
         auto* loaded = b.CreateLoad(elemTy, addr);
         auto* one = elemTy->isDoubleTy() ? (llvm::Value*)llvm::ConstantFP::get(elemTy, 1.0)
-                                         : (llvm::Value*)llvm::ConstantInt::get(elemTy, 1);
-        llvm::Value* next = elemTy->isDoubleTy() ? (llvm::Value*)b.CreateFAdd(loaded, one)
-                                                 : (llvm::Value*)b.CreateAdd(loaded, one);
+                                       : (llvm::Value*)llvm::ConstantInt::get(elemTy, 1);
+        llvm::Value* next = elemTy->isDoubleTy() ? (llvm::Value*)b.CreateFSub(loaded, one)
+                                                 : (llvm::Value*)b.CreateSub(loaded, one);
         b.CreateStore(next, addr);
-        
-        // Retornar novo valor como Value
-        auto* nextBox = ctx.create_alloca(ValueTy, "next.box");
-        if (elemTy->isDoubleTy()) {
-            auto* f = ctx.ensure_runtime_func("create_float", {ValuePtr, F64});
-            b.CreateCall(f, {nextBox, next});
-        } else {
-            llvm::Value* i32_val = next;
-            if (next->getType() != I32) i32_val = b.CreateTrunc(next, I32);
-            auto* f = ctx.ensure_runtime_func("create_int", {ValuePtr, I32});
-            b.CreateCall(f, {nextBox, i32_val});
-        }
-        ctx.push_value(b.CreateLoad(ValueTy, nextBox));
-    } else if (auto* acc = dynamic_cast<AccessExprNode*>(operand.get())) {
-        // AccessExpression - usar funções runtime
-        if (acc->expr) acc->expr->codegen(ctx);
+
+        ctx.push_value(next);
+        return;
+    }
+
+    // Access expression (array/vector)
+    if (auto* acc = dynamic_cast<AccessExprNode*>(operand.get())) {
+        // Gerar código para o self (array/vector)
+        acc->expr->codegen(ctx);
         llvm::Value* base = ctx.pop_value();
-        if (!base || base->getType() != ValueTy) { ctx.push_value(nullptr); return; }
-        
+        if (!base || base->getType() != ValueTy) return;
+
+        // Gerar código para o índice
         if (acc->index) acc->index->codegen(ctx);
         llvm::Value* idx_v = ctx.pop_value();
         if (!idx_v || idx_v->getType() != I32) idx_v = nv::ir_utils::promote_type(ctx, idx_v, I32);
@@ -69,92 +66,30 @@ void IncrementExprNode::codegen(nv::IRGenerationContext& ctx) {
         auto* tmp = ctx.create_alloca(ValueTy, "inc.tmp");
         b.CreateStore(oldv, tmp);
         
-        // Para a nova estrutura, precisamos verificar o tipo em runtime
-        // Vamos extrair o valor como int e float, e verificar qual funciona
+        // Usar função runtime para extrair int
         auto* extract_int_func = ctx.ensure_runtime_func("extract_int_from_value", {I32, ValuePtr});
-        auto* extract_float_func = ctx.ensure_runtime_func("extract_float_from_value", {F64, ValuePtr});
+        auto* value64 = b.CreateCall(extract_int_func, {tmp}, "value64");
+        auto* i64 = llvm::Type::getInt64Ty(c);
+        auto* value64_cast = b.CreateSExt(value64, i64, "value64_cast");
         
-        auto* int_val = b.CreateCall(extract_int_func, {tmp}, "int_val");
-        auto* float_val = b.CreateCall(extract_float_func, {tmp}, "float_val");
-        
-        // Verificar se é int ou float (simplificado - assumimos int por enquanto)
-        auto* is_int = llvm::ConstantInt::get(b.getInt1Ty(), 1); // TODO: verificar tipo em runtime
-        
-        auto* curFn = ctx.get_current_function();
-        auto* bbInt = llvm::BasicBlock::Create(c, "inc.int", curFn);
-        auto* bbFloat = llvm::BasicBlock::Create(c, "inc.float", curFn);
-        auto* bbMerge = llvm::BasicBlock::Create(c, "inc.merge", curFn);
-
-        b.CreateCondBr(is_int, bbInt, bbFloat);
-
-        // Int path
-        b.SetInsertPoint(bbInt);
+        auto* intVal = b.CreateTrunc(value64_cast, I32, "int.val");
         auto* intOne = llvm::ConstantInt::get(I32, 1);
-        auto* intNext = b.CreateAdd(int_val, intOne, "int.next");
+        auto* intNext = b.CreateAdd(intVal, intOne, "int.next");
         auto* intNextBox = ctx.create_alloca(ValueTy, "int.next.box");
         auto* fInt = ctx.ensure_runtime_func("create_int", {ValuePtr, I32});
         b.CreateCall(fInt, {intNextBox, intNext});
         auto* intNextVal = b.CreateLoad(ValueTy, intNextBox);
-        b.CreateBr(bbMerge);
 
-        // Float path
-        b.SetInsertPoint(bbFloat);
-        auto* floatOne = llvm::ConstantFP::get(F64, 1.0);
-        auto* floatNext = b.CreateFAdd(float_val, floatOne, "float.next");
-        auto* floatNextBox = ctx.create_alloca(ValueTy, "float.next.box");
-        auto* fFloat = ctx.ensure_runtime_func("create_float", {ValuePtr, F64});
-        b.CreateCall(fFloat, {floatNextBox, floatNext});
-        auto* floatNextVal = b.CreateLoad(ValueTy, floatNextBox);
-        b.CreateBr(bbMerge);
+        // Atualizar usando array_set_index_v
+        auto* nextBox = ctx.create_alloca(ValueTy, "inc.next.box");
+        b.CreateStore(intNextVal, nextBox);
+        auto decl = m.getOrInsertFunction(
+            "array_set_index_v",
+            llvm::FunctionType::get(llvm::Type::getVoidTy(c), {ValuePtr, I32, ValuePtr}, false)
+        );
+        b.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {selfAlloca, idx_v, nextBox});
 
-        // Merge
-        b.SetInsertPoint(bbMerge);
-        auto* phi = b.CreatePHI(ValueTy, 2, "inc.result");
-        phi->addIncoming(intNextVal, bbInt);
-        phi->addIncoming(floatNextVal, bbFloat);
-
-        // Atualizar usando array_set_index_v ou vector_set_method
-        auto selfVal = b.CreateLoad(ValueTy, selfAlloca);
-        // Para a nova estrutura, não podemos extrair tag diretamente
-        // Vamos assumir array por enquanto (TODO: verificar tipo em runtime)
-        auto* is_array = llvm::ConstantInt::get(b.getInt1Ty(), 1);
-
-        auto* bbArr = llvm::BasicBlock::Create(c, "inc.set.array", curFn);
-        auto* bbVec = llvm::BasicBlock::Create(c, "inc.set.vector", curFn);
-        auto* bbSetMerge = llvm::BasicBlock::Create(c, "inc.set.merge", curFn);
-
-        b.CreateCondBr(is_array, bbArr, bbVec);
-
-        // Array path
-        b.SetInsertPoint(bbArr);
-        {
-            auto* nextBox = ctx.create_alloca(ValueTy, "next.box");
-            b.CreateStore(phi, nextBox);
-            auto decl = m.getOrInsertFunction(
-                "array_set_index_v",
-                llvm::FunctionType::get(llvm::Type::getVoidTy(c), {ValuePtr, I32, ValuePtr}, false)
-            );
-            b.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {selfAlloca, idx_v, nextBox});
-            b.CreateBr(bbSetMerge);
-        }
-
-        // Vector path
-        b.SetInsertPoint(bbVec);
-        {
-            auto* nextBox = ctx.create_alloca(ValueTy, "next.box");
-            b.CreateStore(phi, nextBox);
-            auto decl = m.getOrInsertFunction(
-                "vector_set_method",
-                llvm::FunctionType::get(llvm::Type::getVoidTy(c), {ValuePtr, I32, ValuePtr}, false)
-            );
-            b.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {selfAlloca, idx_v, nextBox});
-            b.CreateBr(bbSetMerge);
-        }
-
-        // Set merge
-        b.SetInsertPoint(bbSetMerge);
-        ctx.push_value(phi); // Retornar novo valor
-    } else {
-        ctx.push_value(nullptr);
+        ctx.push_value(intNextVal);
+        return;
     }
 }
