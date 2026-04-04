@@ -133,10 +133,9 @@ static llvm::Value* value_to_i32(IRGenerationContext& ctx, llvm::Value* v) {
         B.CreateStore(v, tmp);
         auto* ensure_fn = ctx.ensure_runtime_func("ensure_value_type", {ValuePtr});
         B.CreateCall(ensure_fn, {tmp});
-        // Value struct field 1 is the value (i64); load and trunc to i32
-        auto* value_gep = B.CreateStructGEP(ValueTy, tmp, 1);
-        auto* val64 = B.CreateLoad(I64, value_gep, "exit_val64");
-        return B.CreateTrunc(val64, I32, "exit_code");
+        // Para a nova estrutura, usar função runtime para extrair int
+        auto* extract_int_func = ctx.ensure_runtime_func("extract_int_from_value", {I32, ValuePtr});
+        return B.CreateCall(extract_int_func, {tmp}, "exit_code");
     }
     return llvm::ConstantInt::get(I32, 0);
 }
@@ -150,40 +149,22 @@ llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name
     // Implementar write diretamente
     if (name == "write") {
         if (args.empty()) {
-            return nullptr;
+            auto* empty = B.CreateGlobalStringPtr("");
+            emit_write(ctx, empty, true);
+            return llvm::UndefValue::get(ValueTy);
         }
-        
+
         // Gerar código para o argumento
         args[0]->codegen(ctx);
         if (!ctx.has_value()) return nullptr;
-        
+
         llvm::Value* arg = ctx.pop_value();
-        
-        // Usar printf para imprimir o argumento
-        auto& ctx_module = ctx.get_context();
-        auto* I8Ptr = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(ctx_module));
-        auto* printf_ty = llvm::FunctionType::get(llvm::Type::getInt32Ty(ctx_module), {I8Ptr}, true);
-        auto* printf_fn = ctx.get_module().getFunction("printf");
-        if (!printf_fn) {
-            printf_fn = llvm::Function::Create(printf_ty, llvm::Function::ExternalLinkage, "printf", ctx.get_module());
-        }
-        
-        // Usar printf com o argumento real (string literal) e adicionar \n
-        if (arg->getType()->isPointerTy()) {
-            // Criar string formatada com \n
-            auto* newline_str = llvm::ConstantDataArray::getString(ctx_module, "%s\n", true);
-            auto* newline_global = new llvm::GlobalVariable(ctx.get_module(), newline_str->getType(), true, llvm::GlobalValue::PrivateLinkage, newline_str, "newline.str");
-            llvm::Constant* indices[] = {
-                llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx_module), 0),
-                llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx_module), 0)
-            };
-            auto* newline_ptr = llvm::ConstantExpr::getGetElementPtr(newline_str->getType(), newline_global, indices);
-            
-            std::vector<llvm::Value*> args_printf = {newline_ptr, arg};
-            ctx.get_builder().CreateCall(printf_fn, args_printf);
-        }
-        
-        return nullptr;
+
+        // Sempre boxear antes de chamar o runtime: nv_write espera Value*
+        emit_write(ctx, arg, true);
+
+        // write retorna "void" no nível da linguagem; em IR usamos um Value indefinido.
+        return llvm::UndefValue::get(ValueTy);
     }
     
     // Fallback para implementação antiga
@@ -598,16 +579,15 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
                 auto* ensure_fn = ctx.ensure_runtime_func("ensure_value_type", {ValuePtr});
                 B.CreateCall(ensure_fn, {tmp_alloca});
 
-                // Extrair primitivo do Value struct inline (sem depender de função runtime extract_*)
-                auto* valuePtr = B.CreateStructGEP(ValueTy, tmp_alloca, 1);
-                auto* value64 = B.CreateLoad(I64, valuePtr);
-
+                // Para a nova estrutura, precisamos extrair o valor usando funções runtime
                 if (param_types[i]->isIntegerTy()) {
-                    // Truncar i64 para i32
-                    arg_val = B.CreateTrunc(value64, I32, "arg_int_val");
+                    // Usar função runtime para extrair int
+                    auto* extract_int_func = ctx.ensure_runtime_func("extract_int_from_value", {I32, ValuePtr});
+                    arg_val = B.CreateCall(extract_int_func, {tmp_alloca}, "arg_int_val");
                 } else if (param_types[i]->isFloatingPointTy()) {
-                    // Reinterpretar bits de i64 como double
-                    arg_val = B.CreateBitCast(value64, F64, "arg_float_bits");
+                    // Usar função runtime para extrair float
+                    auto* extract_float_func = ctx.ensure_runtime_func("extract_float_from_value", {F64, ValuePtr});
+                    arg_val = B.CreateCall(extract_float_func, {tmp_alloca}, "arg_float_val");
                 }
             }
             
@@ -647,22 +627,9 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
                     auto* create_float_func = ctx.ensure_runtime_func("create_float", {ValuePtr, F64});
                     B.CreateCall(create_float_func, {ret_alloca, call});
                 } else if (call->getType()->isPointerTy()) {
-                    // Tratar retorno como string
-                    auto* I8P = nv::ir_utils::get_i8_ptr(ctx);
-                    llvm::Value* s = (call->getType() == I8P) ? call : B.CreateBitCast(call, I8P);
-                    
-                    // DEBUG: Log para verificar se está entrando aqui
-                    auto* debug_func = ctx.get_module().getFunction("printf");
-                    if (!debug_func) {
-                        auto* I8Ptr_debug = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(ctx.get_context()));
-                        auto* printf_ty = llvm::FunctionType::get(llvm::Type::getInt32Ty(ctx.get_context()), {I8Ptr_debug}, true);
-                        debug_func = llvm::Function::Create(printf_ty, llvm::Function::ExternalLinkage, "printf", ctx.get_module());
-                    }
-                    auto* debug_msg = B.CreateGlobalStringPtr("DEBUG: Creating string Value\n");
-                    B.CreateCall(debug_func, {debug_msg});
-                    
-                    auto* create_str_func = ctx.ensure_runtime_func("create_str", {ValuePtr, I8P});
-                    B.CreateCall(create_str_func, {ret_alloca, s});
+                    // Tratar como string
+                    auto* create_str_func = ctx.ensure_runtime_func("create_str", {ValuePtr, call->getType()});
+                    B.CreateCall(create_str_func, {ret_alloca, call});
                 } else {
                     // Tipo não suportado, usar UndefValue
                     B.CreateStore(llvm::UndefValue::get(ValueTy), ret_alloca);

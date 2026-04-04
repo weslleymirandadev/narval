@@ -217,6 +217,7 @@ void generate_ir(
         while (context.has_value()) {
             (void) context.pop_value();
         }
+        // Para a nova estrutura, simplesmente criar um valor int 0
         auto* ValueTy = ir_utils::get_value_struct(context);
         auto* ValuePtr = ir_utils::get_value_ptr(context);
         auto* I32 = llvm::Type::getInt32Ty(context.get_context());
