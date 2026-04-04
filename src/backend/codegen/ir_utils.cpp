@@ -198,18 +198,69 @@ llvm::Value* create_binary_op(IRGenerationContext& context, llvm::Value* lhs, ll
     auto& builder = context.get_builder();
     auto* valueStruct = get_value_struct(context);
     
+    auto* lhs_type = lhs->getType();
+    auto* rhs_type = rhs->getType();
+    
+    // Verificar concatenação de strings ANTES de extrair valores
+    if (op == "+") {
+        auto* i8p = llvm::PointerType::getUnqual(get_i8(context));
+        bool lhs_is_str = (lhs_type == i8p);
+        bool rhs_is_str = (rhs_type == i8p);
+        
+        // Se ambos são ponteiros para char (strings), fazer concatenação
+        if (lhs_is_str && rhs_is_str) {
+            auto* catTy = llvm::FunctionType::get(i8p, { i8p, i8p }, false);
+            auto* catFn = llvm::cast<llvm::Function>(context.get_module().getOrInsertFunction("string_concat", catTy).getCallee());
+            return builder.CreateCall(catFn, { lhs, rhs }, "strcat");
+        }
+        
+        // Se um dos operandos é Value struct e o outro é string, extrair string do Value e concatenar
+        if ((lhs_type == valueStruct && rhs_is_str) || (rhs_type == valueStruct && lhs_is_str)) {
+            auto* valuePtr = get_value_ptr(context);
+            
+            if (lhs_type == valueStruct && rhs_is_str) {
+                // LHS é Value, RHS é string
+                auto* lhsAlloca = context.create_alloca(valueStruct, "lhs_val");
+                builder.CreateStore(lhs, lhsAlloca);
+                
+                // Usar função runtime para extrair string do Value
+                auto* extractFn = context.ensure_runtime_func("extract_string_from_value", {valuePtr}, i8p);
+                auto* extractedStr = builder.CreateCall(extractFn, {lhsAlloca}, "extracted_str");
+                
+                auto* catTy = llvm::FunctionType::get(i8p, { i8p, i8p }, false);
+                auto* catFn = llvm::cast<llvm::Function>(context.get_module().getOrInsertFunction("string_concat", catTy).getCallee());
+                std::vector<llvm::Value*> args = {extractedStr, rhs};
+                return builder.CreateCall(catFn, args, "strcat");
+            } else {
+                // RHS é Value, LHS é string
+                auto* rhsAlloca = context.create_alloca(valueStruct, "rhs_val");
+                builder.CreateStore(rhs, rhsAlloca);
+                
+                // Usar função runtime para extrair string do Value
+                auto* extractFn = context.ensure_runtime_func("extract_string_from_value", {valuePtr}, i8p);
+                auto* extractedStr = builder.CreateCall(extractFn, {rhsAlloca}, "extracted_str");
+                
+                auto* catTy = llvm::FunctionType::get(i8p, { i8p, i8p }, false);
+                auto* catFn = llvm::cast<llvm::Function>(context.get_module().getOrInsertFunction("string_concat", catTy).getCallee());
+                std::vector<llvm::Value*> args = {lhs, extractedStr};
+                return builder.CreateCall(catFn, args, "strcat");
+            }
+        }
+    }
+
     // Se ambos são Value, extrair valores numéricos
-    if (lhs->getType() == valueStruct && rhs->getType() == valueStruct) {
+    if (lhs_type == valueStruct && rhs_type == valueStruct) {
         lhs = extract_int_from_value(context, lhs);
         rhs = extract_int_from_value(context, rhs);
-    } else if (lhs->getType() == valueStruct) {
+    } else if (lhs_type == valueStruct) {
         lhs = extract_int_from_value(context, lhs);
-    } else if (rhs->getType() == valueStruct) {
+    } else if (rhs_type == valueStruct) {
         rhs = extract_int_from_value(context, rhs);
     }
     
-    auto* lhs_type = lhs->getType();
-    auto* rhs_type = rhs->getType();
+    // Atualizar tipos após extração
+    lhs_type = lhs->getType();
+    rhs_type = rhs->getType();
 
     if (op == "**") {
         llvm::Type* f64 = get_f64(context);
@@ -219,17 +270,6 @@ llvm::Value* create_binary_op(IRGenerationContext& context, llvm::Value* lhs, ll
         else if (rhs_type != f64) rhs = builder.CreateFPExt(rhs, f64);
         auto* pow_decl = llvm::Intrinsic::getDeclaration(&context.get_module(), llvm::Intrinsic::pow, { f64 });
         return builder.CreateCall(pow_decl, { lhs, rhs }, "pow");
-    }
-
-    if (op == "+") {
-        auto* i8p = llvm::PointerType::getUnqual(get_i8(context));
-        bool lhs_is_str = (lhs_type == i8p);
-        bool rhs_is_str = (rhs_type == i8p);
-        if (lhs_is_str && rhs_is_str) {
-            auto* catTy = llvm::FunctionType::get(i8p, { i8p, i8p }, false);
-            auto* catFn = llvm::cast<llvm::Function>(context.get_module().getOrInsertFunction("string_concat", catTy).getCallee());
-            return builder.CreateCall(catFn, { lhs, rhs }, "strcat");
-        }
     }
 
     if ((op == "*") && ([&](){
