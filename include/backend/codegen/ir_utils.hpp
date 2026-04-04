@@ -94,6 +94,8 @@ llvm::Type* get_i1(IRGenerationContext& ctx);
 llvm::Type* get_void(IRGenerationContext& ctx);
 llvm::Type* get_i8(IRGenerationContext& ctx);
 llvm::Type* get_i8_ptr(IRGenerationContext& ctx);
+llvm::StructType* get_nv_type_object_struct(IRGenerationContext& ctx);
+llvm::StructType* get_nv_object_struct(IRGenerationContext& ctx);
 llvm::StructType* get_value_struct(IRGenerationContext& ctx);
 llvm::PointerType* get_value_ptr(IRGenerationContext& ctx);
 // Cria uma constante Value com a tag de tipo correta para inicialização de GlobalVariables

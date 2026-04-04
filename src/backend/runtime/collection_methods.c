@@ -4,6 +4,12 @@
 #include <string.h>
 #include <stdio.h>
 
+// Definição para resolver undefined reference se não for definida em nv_runtime.c
+#ifndef NV_TYPE_TYPE_DEFINED
+#define NV_TYPE_TYPE_DEFINED
+extern NvTypeObject* NVType_Type;
+#endif
+
 /* ============================================================= */
 /*                    MÉTODOS DE COLEÇÕES - NOVO SISTEMA   */
 /* ============================================================= */
@@ -134,67 +140,114 @@ Value array_pop_method(Array* a) {
 
 // Função de escrita principal
 void nv_write(Value* v) {
-    if (!v || !v->obj) {
+    printf("DEBUG: nv_write() called - ENTRY\n");
+    printf("DEBUG: v pointer = %p\n", v);
+    
+    if (!v) {
+        printf("DEBUG: v is null - returning\n");
         printf("null");
         return;
     }
     
+    // Verificar se o ponteiro é válido antes de acessar
+    if ((uintptr_t)v < 0x1000) {
+        printf("DEBUG: v pointer looks invalid (too small) - returning\n");
+        printf("null");
+        return;
+    }
+    
+    printf("DEBUG: About to access v->obj\n");
+    
+    // DEBUG: Verificar o conteúdo bruto da estrutura Value
+    printf("DEBUG: Raw Value struct content:\n");
+    unsigned char* bytes = (unsigned char*)v;
+    for (int i = 0; i < sizeof(Value); i++) {
+        printf("%02x ", bytes[i]);
+        if ((i + 1) % 8 == 0) printf("\n");
+    }
+    printf("\n");
+    
+    if (!v->obj) {
+        printf("DEBUG: v->obj is null - returning\n");
+        printf("null");
+        return;
+    }
+    
+    printf("DEBUG: v->obj = %p\n", v->obj);
+    
+    // Verificar se o ponteiro do objeto é válido
+    if ((uintptr_t)v->obj < 0x1000) {
+        printf("DEBUG: v->obj pointer looks invalid (too small) - returning\n");
+        printf("null");
+        return;
+    }
+    
+    printf("DEBUG: About to access v->obj->ob_type\n");
+    
     NvTypeObject* type = v->obj->ob_type;
+    printf("DEBUG: type pointer = %p\n", type);
+    
     if (!type) {
+        printf("DEBUG: type is null - returning\n");
         printf("<unknown>");
         return;
     }
     
-    // Usar sistema de impressão baseado no tipo
-    if (type == NVInt_Type) {
-        NVInt* int_obj = (NVInt*)v->obj;
-        printf("%d", int_obj->value);
-    } else if (type == NVFloat_Type) {
-        NVFloat* float_obj = (NVFloat*)v->obj;
-        printf("%f", float_obj->value);
-    } else if (type == NVBool_Type) {
-        NVBool* bool_obj = (NVBool*)v->obj;
-        printf("%s", bool_obj->value ? "true" : "false");
-    } else if (type == NVStr_Type) {
+    printf("DEBUG: type->tp_name = %s\n", type->tp_name ? type->tp_name : "NULL");
+    printf("DEBUG: NVStr_Type = %p\n", NVStr_Type);
+    printf("DEBUG: NVInt_Type = %p\n", NVInt_Type);
+    printf("DEBUG: NVFloat_Type = %p\n", NVFloat_Type);
+    printf("DEBUG: About to compare type with NVStr_Type\n");
+    
+    // Verificar se os ponteiros são válidos antes de comparar
+    if (type == NVStr_Type) {
+        printf("DEBUG: Found string type\n");
         NVStr* str_obj = (NVStr*)v->obj;
-        printf("%s", str_obj->value ? str_obj->value : "");
-    } else if (type == NVArray_Type) {
-        NVArray* array_obj = (NVArray*)v->obj;
-        printf("[");
-        for (int i = 0; i < array_obj->size; i++) {
-            if (i > 0) printf(", ");
-            nv_write(&array_obj->elements[i]);
+        printf("DEBUG: str_obj = %p\n", str_obj);
+        if (str_obj && str_obj->value) {
+            printf("DEBUG: str_obj->value = %s\n", str_obj->value);
+            printf("%s\n", str_obj->value);
+        } else {
+            printf("DEBUG: str_obj or str_obj->value is null\n");
+            printf("\n");
         }
-        printf("]");
-    } else if (type == NVVector_Type) {
-        NVVector* vector_obj = (NVVector*)v->obj;
-        printf("[");
-        for (int i = 0; i < vector_obj->size; i++) {
-            if (i > 0) printf(", ");
-            nv_write(&vector_obj->elements[i]);
-        }
-        printf("]");
-    } else if (type == NVMap_Type) {
-        NVMap* map_obj = (NVMap*)v->obj;
-        printf("{");
-        for (int i = 0; i < map_obj->size; i++) {
-            if (i > 0) printf(", ");
-            printf("\"%s\": ", map_obj->keys[i]);
-            nv_write(&map_obj->values[i]);
-        }
-        printf("}");
-    } else if (type == NVTuple_Type) {
-        NVTuple* tuple_obj = (NVTuple*)v->obj;
-        printf("(");
-        for (int i = 0; i < tuple_obj->field_count; i++) {
-            if (i > 0) printf(", ");
-            nv_write(&tuple_obj->fields[i]);
-        }
-        printf(")");
+    } else if (type == NVInt_Type) {
+        printf("DEBUG: Found int type\n");
+        NVInt* int_obj = (NVInt*)v->obj;
+        printf("%d\n", int_obj->value);
+    } else if (type == NVFloat_Type) {
+        printf("DEBUG: Found float type\n");
+        NVFloat* float_obj = (NVFloat*)v->obj;
+        printf("%f\n", float_obj->value);
+    } else if (type == NVBool_Type) {
+        printf("DEBUG: Found bool type\n");
+        NVBool* bool_obj = (NVBool*)v->obj;
+        printf("%s\n", bool_obj->value ? "true" : "false");
     } else {
-        // Tipo customizado ou desconhecido
-        printf("<%s>", type->tp_name ? type->tp_name : "object");
+        printf("DEBUG: Unknown type, falling back to <unknown>\n");
+        printf("<%s>\n", type->tp_name ? type->tp_name : "object");
     }
 
+    printf("DEBUG: nv_write() - EXIT\n");
+    fflush(stdout);
+}
+
+// nv_write_no_nl: igual a nv_write mas sem '\n' (usado como prompt em read())
+void nv_write_no_nl(Value* v) {
+    if (!v || !v->obj) { printf("null"); return; }
+    NvTypeObject* type = v->obj->ob_type;
+    if (!type) { printf("<unknown>"); return; }
+    if (type == NVStr_Type) {
+        NVStr* s = (NVStr*)v->obj;
+        if (s && s->value) printf("%s", s->value);
+    } else if (type == NVInt_Type) {
+        printf("%d", ((NVInt*)v->obj)->value);
+    } else if (type == NVFloat_Type) {
+        printf("%f", ((NVFloat*)v->obj)->value);
+    } else if (type == NVBool_Type) {
+        printf("%s", ((NVBool*)v->obj)->value ? "true" : "false");
+    } else {
+        printf("<%s>", type->tp_name ? type->tp_name : "object");
+    }
     fflush(stdout);
 }

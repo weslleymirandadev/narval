@@ -20,7 +20,8 @@ NvTypeObject* nv_type_new(const char* name, NvTypeObject** bases, int bases_coun
     NvTypeObject* type = (NvTypeObject*)calloc(1, sizeof(NvTypeObject));
     if (!type) return NULL;
     
-    type->ob_base.ob_type = NVType_Type;
+    // Para o tipo 'type' itself, ob_type deve ser NULL para evitar referência circular
+    type->ob_base.ob_type = (strcmp(name, "type") == 0) ? NULL : NVType_Type;
     type->ob_base.ref_count = 1;
     type->ob_base.flags = 0;
     
@@ -35,7 +36,7 @@ NvTypeObject* nv_type_new(const char* name, NvTypeObject** bases, int bases_coun
     type->tp_methods_count = 0;
     type->tp_bases = bases;
     type->tp_bases_count = bases_count;
-    type->tp_metaclass = NVType_Type;
+    type->tp_metaclass = NULL;  // Remover dependência circular
     type->tp_cache = NULL;
     
     return type;
