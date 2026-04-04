@@ -39,6 +39,30 @@ std::shared_ptr<nv::Type> check_binary_expr(nv::Checker* ch, Node* node) {
         }
     }
     
+    // Caso especial: sobrecarga de operadores para "+" (como Python __add__)
+    if (bin->op == "+") {
+        // String + qualquer tipo -> concatenação (retorna string)
+        if (left_is_string) {
+            return ch->gettyptr("string");
+        }
+        // Qualquer tipo + String -> concatenação (retorna string)
+        if (right_is_string) {
+            return ch->gettyptr("string");
+        }
+        // Int + Int -> soma (retorna int)
+        if (left_is_int && right_is_int) {
+            return ch->gettyptr("int");
+        }
+        // Float + Float -> soma (retorna float)
+        if (left_is_float && right_is_float) {
+            return ch->gettyptr("float");
+        }
+        // Int + Float ou Float + Int -> soma com promoção (retorna float)
+        if ((left_is_int && right_is_float) || (left_is_float && right_is_int)) {
+            return ch->gettyptr("float");
+        }
+    }
+    
     // Se um é int e outro é float, promover int para float
     if (left_is_int && right_is_float) {
         left_type = ch->gettyptr("float");

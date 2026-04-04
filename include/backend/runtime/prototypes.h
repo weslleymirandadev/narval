@@ -345,4 +345,8 @@ char* string_concat(const char* str1, const char* str2);
 void int_to_string(Value* out, int32_t value);
 void float_to_string(Value* out, double value);
 
+// Sistema de sobrecarga de operadores (como Python __add__)
+int has_add_method(NvTypeObject* type);
+int binary_add(Value* result, Value* lhs, Value* rhs);
+
 #endif /* PROTOTYPES_H */

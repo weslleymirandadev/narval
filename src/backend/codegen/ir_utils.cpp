@@ -201,55 +201,104 @@ llvm::Value* create_binary_op(IRGenerationContext& context, llvm::Value* lhs, ll
     auto* lhs_type = lhs->getType();
     auto* rhs_type = rhs->getType();
     
-    // Verificar concatenação de strings ANTES de extrair valores
+    // DEBUG: Print para depurar
+    printf("DEBUG create_binary_op: op=%s, lhs_type=%p, rhs_type=%p\n", op.c_str(), lhs_type, rhs_type);
+    
+    // Sistema de sobrecarga de operadores para "+"
     if (op == "+") {
         auto* i8p = llvm::PointerType::getUnqual(get_i8(context));
+        auto* i32 = get_i32(context);
+        auto* f64 = get_f64(context);
+        auto* valuePtr = get_value_ptr(context);
+        
         bool lhs_is_str = (lhs_type == i8p);
         bool rhs_is_str = (rhs_type == i8p);
+        bool lhs_is_int = (lhs_type == i32);
+        bool rhs_is_int = (rhs_type == i32);
+        bool lhs_is_float = (lhs_type == f64);
+        bool rhs_is_float = (rhs_type == f64);
+        bool lhs_is_value = (lhs_type == valueStruct);
+        bool rhs_is_value = (rhs_type == valueStruct);
         
-        // Se ambos são ponteiros para char (strings), fazer concatenação
-        if (lhs_is_str && rhs_is_str) {
+        printf("DEBUG: lhs_is_int=%d, rhs_is_str=%d, lhs_is_str=%d, rhs_is_int=%d\n", 
+               lhs_is_int, rhs_is_str, lhs_is_str, rhs_is_int);
+        
+        // Caso 4: Int literal + String literal -> converter int para string e concatenar
+        if (lhs_is_int && rhs_is_str) {
+            printf("DEBUG: Entrou no caso Int + String\n");
+            
+            // Método alternativo: usar snprintf diretamente no LLVM IR
+            auto* i8 = llvm::Type::getInt8Ty(context.get_context());
+            auto* bufferAlloca = builder.CreateAlloca(i8, 0u, nullptr, "int_buffer");
+            
+            // snprintf(buffer, 32, "%d", int_value)
+            auto* snprintfTy = llvm::FunctionType::get(i32, {i8p, i32, i8p}, true);
+            llvm::FunctionCallee snprintfCallee = context.get_module().getOrInsertFunction("snprintf", snprintfTy);
+            
+            auto* formatStr = create_string_constant(context, "%d");
+            std::vector<llvm::Value*> snprintfArgs = {bufferAlloca, 
+                                                     llvm::ConstantInt::get(i32, 32), 
+                                                     formatStr, 
+                                                     lhs};
+            builder.CreateCall(snprintfCallee, snprintfArgs);
+            
+            // Concatenar
             auto* catTy = llvm::FunctionType::get(i8p, { i8p, i8p }, false);
             auto* catFn = llvm::cast<llvm::Function>(context.get_module().getOrInsertFunction("string_concat", catTy).getCallee());
-            return builder.CreateCall(catFn, { lhs, rhs }, "strcat");
+            std::vector<llvm::Value*> args = {bufferAlloca, rhs};
+            return builder.CreateCall(catFn, args, "strcat");
         }
         
-        // Se um dos operandos é Value struct e o outro é string, extrair string do Value e concatenar
-        if ((lhs_type == valueStruct && rhs_is_str) || (rhs_type == valueStruct && lhs_is_str)) {
-            auto* valuePtr = get_value_ptr(context);
+        // Caso 5: Value + String literal -> extrair string do Value e concatenar
+        if (lhs_is_value && rhs_is_str) {
+            auto* lhsAlloca = context.create_alloca(valueStruct, "lhs_val");
+            builder.CreateStore(lhs, lhsAlloca);
+            auto* extractFn = context.ensure_runtime_func("extract_string_from_value", {valuePtr}, i8p);
+            auto* lhsStr = builder.CreateCall(extractFn, {lhsAlloca}, "lhs_str");
             
-            if (lhs_type == valueStruct && rhs_is_str) {
-                // LHS é Value, RHS é string
-                auto* lhsAlloca = context.create_alloca(valueStruct, "lhs_val");
-                builder.CreateStore(lhs, lhsAlloca);
-                
-                // Usar função runtime para extrair string do Value
-                auto* extractFn = context.ensure_runtime_func("extract_string_from_value", {valuePtr}, i8p);
-                auto* extractedStr = builder.CreateCall(extractFn, {lhsAlloca}, "extracted_str");
-                
-                auto* catTy = llvm::FunctionType::get(i8p, { i8p, i8p }, false);
-                auto* catFn = llvm::cast<llvm::Function>(context.get_module().getOrInsertFunction("string_concat", catTy).getCallee());
-                std::vector<llvm::Value*> args = {extractedStr, rhs};
-                return builder.CreateCall(catFn, args, "strcat");
+            auto* catTy = llvm::FunctionType::get(i8p, { i8p, i8p }, false);
+            auto* catFn = llvm::cast<llvm::Function>(context.get_module().getOrInsertFunction("string_concat", catTy).getCallee());
+            std::vector<llvm::Value*> args = {lhsStr, rhs};
+            return builder.CreateCall(catFn, args, "strcat");
+        }
+        
+        // Caso 6: String literal + Value -> extrair string do Value e concatenar
+        if (lhs_is_str && rhs_is_value) {
+            auto* rhsAlloca = context.create_alloca(valueStruct, "rhs_val");
+            builder.CreateStore(rhs, rhsAlloca);
+            auto* extractFn = context.ensure_runtime_func("extract_string_from_value", {valuePtr}, i8p);
+            auto* rhsStr = builder.CreateCall(extractFn, {rhsAlloca}, "rhs_str");
+            
+            auto* catTy = llvm::FunctionType::get(i8p, { i8p, i8p }, false);
+            auto* catFn = llvm::cast<llvm::Function>(context.get_module().getOrInsertFunction("string_concat", catTy).getCallee());
+            std::vector<llvm::Value*> args = {lhs, rhsStr};
+            return builder.CreateCall(catFn, args, "strcat");
+        }
+        
+        // Caso 7: Int literal + Int literal -> soma direta
+        if (lhs_is_int && rhs_is_int) {
+            return builder.CreateAdd(lhs, rhs, "add");
+        }
+        
+        // Caso 8: Float literal + Float literal -> soma direta
+        if (lhs_is_float && rhs_is_float) {
+            return builder.CreateFAdd(lhs, rhs, "add");
+        }
+        
+        // Caso 9: Int literal + Float literal ou vice-versa -> soma com promoção
+        if ((lhs_is_int && rhs_is_float) || (lhs_is_float && rhs_is_int)) {
+            if (lhs_is_int) {
+                lhs = builder.CreateSIToFP(lhs, f64);
             } else {
-                // RHS é Value, LHS é string
-                auto* rhsAlloca = context.create_alloca(valueStruct, "rhs_val");
-                builder.CreateStore(rhs, rhsAlloca);
-                
-                // Usar função runtime para extrair string do Value
-                auto* extractFn = context.ensure_runtime_func("extract_string_from_value", {valuePtr}, i8p);
-                auto* extractedStr = builder.CreateCall(extractFn, {rhsAlloca}, "extracted_str");
-                
-                auto* catTy = llvm::FunctionType::get(i8p, { i8p, i8p }, false);
-                auto* catFn = llvm::cast<llvm::Function>(context.get_module().getOrInsertFunction("string_concat", catTy).getCallee());
-                std::vector<llvm::Value*> args = {lhs, extractedStr};
-                return builder.CreateCall(catFn, args, "strcat");
+                rhs = builder.CreateSIToFP(rhs, f64);
             }
+            return builder.CreateFAdd(lhs, rhs, "add");
         }
     }
-
-    // Se ambos são Value, extrair valores numéricos
+    
+    // Para operações numéricas puras (quando não há strings envolvidas)
     if (lhs_type == valueStruct && rhs_type == valueStruct) {
+        // Extrair valores numéricos para operações aritméticas
         lhs = extract_int_from_value(context, lhs);
         rhs = extract_int_from_value(context, rhs);
     } else if (lhs_type == valueStruct) {
@@ -262,58 +311,14 @@ llvm::Value* create_binary_op(IRGenerationContext& context, llvm::Value* lhs, ll
     lhs_type = lhs->getType();
     rhs_type = rhs->getType();
 
-    if (op == "**") {
-        llvm::Type* f64 = get_f64(context);
-        if (!lhs_type->isFloatingPointTy()) lhs = builder.CreateSIToFP(lhs, f64);
-        else if (lhs_type != f64) lhs = builder.CreateFPExt(lhs, f64);
-        if (!rhs_type->isFloatingPointTy()) rhs = builder.CreateSIToFP(rhs, f64);
-        else if (rhs_type != f64) rhs = builder.CreateFPExt(rhs, f64);
-        auto* pow_decl = llvm::Intrinsic::getDeclaration(&context.get_module(), llvm::Intrinsic::pow, { f64 });
-        return builder.CreateCall(pow_decl, { lhs, rhs }, "pow");
+    // Verificar se algum operando é string após extração (não deveria acontecer para operações aritméticas)
+    if (op == "+" && (lhs_type->isPointerTy() || rhs_type->isPointerTy())) {
+        // Se chegamos aqui com ponteiros, é um caso não suportado
+        // TODO: Gerar erro de tipo em tempo de execução
+        return nullptr;
     }
 
-    if ((op == "*") && ([&](){
-        auto* i8ptr = llvm::PointerType::getUnqual(get_i8(context));
-        bool lhs_is_str = (lhs_type == i8ptr);
-        bool rhs_is_str = (rhs_type == i8ptr);
-        return (lhs_is_str && rhs_type->isIntegerTy()) || (rhs_is_str && lhs_type->isIntegerTy());
-    }())) {
-        llvm::Value* str = lhs_type->isPointerTy() ? lhs : rhs;
-        llvm::Value* n   = lhs_type->isIntegerTy() ? lhs : rhs;
-        auto* i8p = llvm::PointerType::getUnqual(get_i8(context));
-        auto* i32 = get_i32(context);
-        if (!n->getType()->isIntegerTy(32)) n = builder.CreateIntCast(n, i32, true);
-        auto* zero32 = llvm::ConstantInt::get(i32, 0);
-        auto* is_le_zero = builder.CreateICmpSLE(n, zero32);
-        auto* thenBB = llvm::BasicBlock::Create(context.get_context(), "strrep_then", context.get_current_function());
-        auto* elseBB = llvm::BasicBlock::Create(context.get_context(), "strrep_else", context.get_current_function());
-        auto* mergeBB = llvm::BasicBlock::Create(context.get_context(), "strrep_merge", context.get_current_function());
-        builder.CreateCondBr(is_le_zero, thenBB, elseBB);
-        builder.SetInsertPoint(thenBB);
-        auto* empty = create_string_constant(context, "");
-        builder.CreateBr(mergeBB);
-        builder.SetInsertPoint(elseBB);
-        auto* repTy = llvm::FunctionType::get(i8p, { i8p, i32 }, false);
-        auto* repFn = llvm::cast<llvm::Function>(context.get_module().getOrInsertFunction("string_repeat", repTy).getCallee());
-        auto* outp = builder.CreateCall(repFn, { str, n }, "strrep");
-        builder.CreateBr(mergeBB);
-        builder.SetInsertPoint(mergeBB);
-        auto* phi = builder.CreatePHI(i8p, 2);
-        phi->addIncoming(empty, thenBB);
-        phi->addIncoming(outp, elseBB);
-        return phi;
-    }
-
-    if (lhs_type != rhs_type) {
-        if (lhs_type->isIntegerTy() && rhs_type->isFloatingPointTy()) {
-            lhs = builder.CreateSIToFP(lhs, rhs_type);
-            lhs_type = rhs_type;
-        } else if (lhs_type->isFloatingPointTy() && rhs_type->isIntegerTy()) {
-            rhs = builder.CreateSIToFP(rhs, lhs_type);
-            rhs_type = lhs_type;
-        }
-    }
-
+    // Operações aritméticas padrão para tipos numéricos
     if (op == "+") return lhs_type->isFloatingPointTy() ? builder.CreateFAdd(lhs, rhs, "add") : builder.CreateAdd(lhs, rhs, "add");
     if (op == "-") return lhs_type->isFloatingPointTy() ? builder.CreateFSub(lhs, rhs, "sub") : builder.CreateSub(lhs, rhs, "sub");
     if (op == "*") return lhs_type->isFloatingPointTy() ? builder.CreateFMul(lhs, rhs, "mul") : builder.CreateMul(lhs, rhs, "mul");
