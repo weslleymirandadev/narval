@@ -596,47 +596,50 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
         
         auto* call = B.CreateCall(F, argv);
         // Se a função retorna um tipo primitivo, converter para Value struct para manter consistência
+        // EXCETO quando estamos em um contexto de return - nesse caso, manter o tipo original
         if (!call->getType()->isVoidTy()) {
             if (call->getType() != ValueTy) {
-                // Converter retorno primitivo para Value struct
-                auto* ret_alloca = ctx.create_alloca(ValueTy, "ret_val");
-                auto* ValuePtr = ir_utils::get_value_ptr(ctx);
+                // Verificar se estamos em um contexto de return (dentro de uma função que retorna o mesmo tipo)
+                auto* current_func = ctx.get_current_function();
+                bool in_return_context = false;
                 
-                // DEBUG: Verificar o tipo de retorno
-                auto* debug_func = ctx.get_module().getFunction("printf");
-                if (!debug_func) {
-                    auto* I8Ptr_debug = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(ctx.get_context()));
-                    auto* printf_ty = llvm::FunctionType::get(llvm::Type::getInt32Ty(ctx.get_context()), {I8Ptr_debug}, true);
-                    debug_func = llvm::Function::Create(printf_ty, llvm::Function::ExternalLinkage, "printf", ctx.get_module());
+                if (current_func && current_func->getReturnType() == call->getType()) {
+                    // Estamos em um contexto de return, não converter para Value
+                    in_return_context = true;
                 }
-                auto* type_name = call->getType()->isPointerTy() ? "pointer" : 
-                                 call->getType()->isIntegerTy() ? "integer" :
-                                 call->getType()->isFloatingPointTy() ? "float" : "unknown";
-                auto* debug_msg = B.CreateGlobalStringPtr("DEBUG: Return type is %s\n");
-                B.CreateCall(debug_func, {debug_msg, B.CreateGlobalStringPtr(type_name)});
                 
-                if (call->getType() == I32) {
-                    auto* create_int_func = ctx.ensure_runtime_func("create_int", {ValuePtr, I32});
-                    B.CreateCall(create_int_func, {ret_alloca, call});
-                } else if (call->getType() == I64) {
-                    // Para i64, precisamos converter para i32 primeiro (create_int espera i32)
-                    auto* i32_val = B.CreateTrunc(call, I32, "ret_i32");
-                    auto* create_int_func = ctx.ensure_runtime_func("create_int", {ValuePtr, I32});
-                    B.CreateCall(create_int_func, {ret_alloca, i32_val});
-                } else if (call->getType() == F64) {
-                    auto* create_float_func = ctx.ensure_runtime_func("create_float", {ValuePtr, F64});
-                    B.CreateCall(create_float_func, {ret_alloca, call});
-                } else if (call->getType()->isPointerTy()) {
-                    // Tratar como string
-                    auto* create_str_func = ctx.ensure_runtime_func("create_str", {ValuePtr, call->getType()});
-                    B.CreateCall(create_str_func, {ret_alloca, call});
+                if (!in_return_context) {
+                    // Converter retorno primitivo para Value struct
+                    auto* ret_alloca = ctx.create_alloca(ValueTy, "ret_val");
+                    auto* ValuePtr = ir_utils::get_value_ptr(ctx);
+                    
+                    if (call->getType() == I32) {
+                        auto* create_int_func = ctx.ensure_runtime_func("create_int", {ValuePtr, I32});
+                        B.CreateCall(create_int_func, {ret_alloca, call});
+                    } else if (call->getType() == I64) {
+                        // Para i64, precisamos converter para i32 primeiro (create_int espera i32)
+                        auto* i32_val = B.CreateTrunc(call, I32, "ret_i32");
+                        auto* create_int_func = ctx.ensure_runtime_func("create_int", {ValuePtr, I32});
+                        B.CreateCall(create_int_func, {ret_alloca, i32_val});
+                    } else if (call->getType() == F64) {
+                        auto* create_float_func = ctx.ensure_runtime_func("create_float", {ValuePtr, F64});
+                        B.CreateCall(create_float_func, {ret_alloca, call});
+                    } else if (call->getType()->isPointerTy()) {
+                        // Tratar como string
+                        auto* create_str_func = ctx.ensure_runtime_func("create_str", {ValuePtr, call->getType()});
+                        B.CreateCall(create_str_func, {ret_alloca, call});
+                    } else {
+                        // Tipo não suportado, usar UndefValue
+                        B.CreateStore(llvm::UndefValue::get(ValueTy), ret_alloca);
+                    }
+                    
+                    // CORREÇÃO: Fazer load do ret_alloca e retornar o valor
+                    auto* ret_value = B.CreateLoad(ValueTy, ret_alloca, "ret_value");
+                    ctx.push_value(ret_value);
                 } else {
-                    // Tipo não suportado, usar UndefValue
-                    B.CreateStore(llvm::UndefValue::get(ValueTy), ret_alloca);
+                    // Estamos em um contexto de return, manter o tipo original
+                    ctx.push_value(call);
                 }
-                
-                auto* ret_value = B.CreateLoad(ValueTy, ret_alloca, "ret_value");
-                ctx.push_value(ret_value);
             } else {
                 // Já é Value struct, apenas empurrar
                 ctx.push_value(call);

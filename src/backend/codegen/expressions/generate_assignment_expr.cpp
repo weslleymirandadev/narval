@@ -7,6 +7,7 @@
 
 void AssignmentExprNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
+    
     if (!target) { ctx.push_value(nullptr); return; }
     
     // Suporte a atribuição para access expressions: base[index] = value
@@ -264,6 +265,12 @@ void AssignmentExprNode::codegen(nv::IRGenerationContext& ctx) {
             auto* f = ctx.ensure_runtime_func("create_str", {ValuePtr, nv::ir_utils::get_i8_ptr(ctx)});
             B.CreateCall(f, {global_ptr, rhs});
             rhs = B.CreateLoad(ValueTy, global);  // Para retornar o valor embrulhado
+        } else if (rhs->getType()->isPointerTy() && rhs->getType()->getNonOpaquePointerElementType() == ValueTy) {
+            // É um ponteiro para Value (retornado por função), precisamos copiar o conteúdo
+            // Carregar o valor do ponteiro e armazenar na global
+            auto* loaded_val = B.CreateLoad(ValueTy, rhs);
+            B.CreateStore(loaded_val, global);
+            rhs = loaded_val;  // Retornar o valor carregado
         } else {
             B.CreateStore(llvm::UndefValue::get(ValueTy), global);
             rhs = B.CreateLoad(ValueTy, global);  // Para retornar o valor

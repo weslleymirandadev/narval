@@ -140,117 +140,64 @@ Value array_pop_method(Array* a) {
 
 // Função de escrita principal
 void nv_write(Value* v) {
-    printf("DEBUG: nv_write() called - ENTRY\n");
-    printf("DEBUG: v pointer = %p\n", v);
-    
     if (!v) {
-        printf("DEBUG: v is null - returning\n");
         printf("null");
         return;
     }
     
-    // Verificar se o ponteiro é válido antes de acessar
     if ((uintptr_t)v < 0x1000) {
-        printf("DEBUG: v pointer looks invalid (too small) - returning\n");
-        printf("null");
-        return;
-    }
-    
-    printf("DEBUG: About to access v->obj\n");
-    
-    // DEBUG: Verificar o conteúdo bruto da estrutura Value
-    printf("DEBUG: Raw Value struct content:\n");
-    unsigned char* bytes = (unsigned char*)v;
-    for (int i = 0; i < sizeof(Value); i++) {
-        printf("%02x ", bytes[i]);
-        if ((i + 1) % 8 == 0) printf("\n");
-    }
-    printf("\n");
-    
-    // DEBUG: Verificar se v->obj é um ponteiro válido
-    uintptr_t obj_ptr = (uintptr_t)v->obj;
-    printf("DEBUG: v->obj raw value = %p\n", (void*)obj_ptr);
-    
-    // Verificar se o ponteiro do objeto parece válido
-    if (obj_ptr < 0x1000) {
-        printf("DEBUG: v->obj pointer looks invalid (too small): 0x%lx\n", obj_ptr);
         printf("null");
         return;
     }
     
     // Tentar acessar v->obj com verificação adicional
-    printf("DEBUG: Attempting to access v->obj\n");
     NvObject* obj = v->obj;
-    printf("DEBUG: Successfully accessed v->obj = %p\n", obj);
     
     if (!obj) {
-        printf("DEBUG: obj is null after access - returning\n");
         printf("null");
         return;
     }
     
-    printf("DEBUG: About to access obj->ob_type\n");
-    
     // Verificar se ob_type é válido
     if ((uintptr_t)obj < 0x1000) {
-        printf("DEBUG: obj pointer looks invalid (too small) - returning\n");
         printf("null");
         return;
     }
     
     NvTypeObject* type = obj->ob_type;
-    printf("DEBUG: type pointer = %p\n", type);
     
     if (!type) {
-        printf("DEBUG: type is null - returning\n");
         printf("<unknown>");
         return;
     }
     
     // Verificar se type é válido
     if ((uintptr_t)type < 0x1000) {
-        printf("DEBUG: type pointer looks invalid (too small) - returning\n");
         printf("<unknown>");
         return;
     }
-    
-    printf("DEBUG: type->tp_name = %s\n", type->tp_name ? type->tp_name : "NULL");
-    printf("DEBUG: NVStr_Type = %p\n", NVStr_Type);
-    printf("DEBUG: NVInt_Type = %p\n", NVInt_Type);
-    printf("DEBUG: NVFloat_Type = %p\n", NVFloat_Type);
-    printf("DEBUG: About to compare type with NVStr_Type\n");
-    
+        
     // Verificar se os ponteiros são válidos antes de comparar
     if (type == NVStr_Type) {
-        printf("DEBUG: Found string type\n");
         NVStr* str_obj = (NVStr*)obj;
-        printf("DEBUG: str_obj = %p\n", str_obj);
         if (str_obj && str_obj->value) {
-            printf("DEBUG: str_obj->value = %s\n", str_obj->value);
             printf("%s\n", str_obj->value);
         } else {
-            printf("DEBUG: str_obj or str_obj->value is null\n");
             printf("\n");
         }
     } else if (type == NVInt_Type) {
-        printf("DEBUG: Found int type\n");
         NVInt* int_obj = (NVInt*)obj;
         printf("%d\n", int_obj->value);
     } else if (type == NVFloat_Type) {
-        printf("DEBUG: Found float type\n");
         NVFloat* float_obj = (NVFloat*)obj;
         printf("%f\n", float_obj->value);
     } else if (type == NVBool_Type) {
-        printf("DEBUG: Found bool type\n");
         NVBool* bool_obj = (NVBool*)obj;
         printf("%s\n", bool_obj->value ? "true" : "false");
     } else {
-        printf("DEBUG: Unknown type, falling back to <unknown>\n");
-        printf("DEBUG: type address = %p, NVStr_Type address = %p\n", (void*)type, (void*)NVStr_Type);
         printf("<%s>\n", type->tp_name ? type->tp_name : "object");
     }
 
-    printf("DEBUG: nv_write() - EXIT\n");
     fflush(stdout);
 }
 
