@@ -198,8 +198,6 @@ int main(int argc, char* argv[]) {
             "-no-pie " +               // opcional
             "-lc -w";                // libc + sem warnings
 
-        // const char* rm_cmd = "rm narval_module.o narval_module.ll";
-
         if (system(link_cmd.c_str()) != 0) {
             llvm::errs() << "Falha na linkedição\n";
             return 1;

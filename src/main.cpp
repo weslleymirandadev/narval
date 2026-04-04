@@ -175,21 +175,16 @@ int run_batch_mode(const std::string& filename) {
 
         if (return_value->getType() != i32_ty) {
             auto* ValueTy = nv::ir_utils::get_value_struct(context);
-            auto* i8_ty   = llvm::Type::getInt8Ty(Context);
-            // Value struct is { NvObject* obj }.  NVInt layout:
-            //   NvObject { NvTypeObject*(8) + ref_count(4) + flags(4) } = 16 bytes
-            //   then int32_t value at byte offset 16.
+            auto* ValuePtr = nv::ir_utils::get_value_ptr(context);
+            // Check if it's a Value struct - extract the value manually
             if (return_value->getType() == ValueTy) {
+                // Para a nova estrutura, declarar função manualmente
+                auto* funcType = llvm::FunctionType::get(i32_ty, {ValuePtr}, false);
+                auto* extract_func = llvm::cast<llvm::Function>(Mod.getOrInsertFunction("extract_int_from_value", funcType).getCallee());
+                
                 auto* tmp_alloca = context.get_builder().CreateAlloca(ValueTy, nullptr, "return_val_tmp");
                 context.get_builder().CreateStore(return_value, tmp_alloca);
-                // Load obj pointer from field 0
-                auto* obj_gep = context.get_builder().CreateStructGEP(ValueTy, tmp_alloca, 0, "obj_gep");
-                auto* obj_ptr = context.get_builder().CreateLoad(
-                    llvm::PointerType::getUnqual(i8_ty), obj_gep, "obj_ptr");
-                // Byte-GEP to NVInt.value at offset 16
-                auto* val_byte_ptr = context.get_builder().CreateConstGEP1_64(
-                    i8_ty, obj_ptr, 16, "int_val_byte_ptr");
-                return_value = context.get_builder().CreateLoad(i32_ty, val_byte_ptr, "exit_code");
+                return_value = context.get_builder().CreateCall(extract_func, {tmp_alloca}, "exit_code");
             } else if (return_value->getType()->isIntegerTy()) {
                 return_value = context.get_builder().CreateIntCast(return_value, i32_ty, true);
             } else if (return_value->getType()->isFloatingPointTy()) {
@@ -281,16 +276,16 @@ int run_batch_mode(const std::string& filename) {
             "-no-pie " +               // opcional
             "-lc -w";                // libc + sem warnings
 
-        const char* rm_cmd = "rm -f narval_module.o narval_module.ll";
-
         if (system(link_cmd.c_str()) != 0) {
             llvm::errs() << "Falha na linkedição\n";
             return 1;
         }
-
-        if (system(rm_cmd) != 0) {
-            llvm::errs() << "Falha ao remover arquivos temporários\n";
-            return 1;
+        
+        // Salvar LLVM IR para debug
+        std::error_code ec;
+        llvm::raw_fd_ostream ll_file("narval_module.ll", ec);
+        if (!ec) {
+            Mod.print(ll_file, nullptr);
         }
     } catch (const std::exception& e) {
         std::cerr << "Erro durante compilação: " << e.what() << "\n";
