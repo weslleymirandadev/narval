@@ -91,8 +91,19 @@ void DefStmtNode::codegen(nv::IRGenerationContext& ctx) {
 
     auto* current_bb = ctx.get_builder().GetInsertBlock();
     if (current_bb && !current_bb->getTerminator()) {
-        if (ret_ty->isVoidTy()) ctx.get_builder().CreateRetVoid();
-        else ctx.get_builder().CreateRet(llvm::UndefValue::get(ret_ty));
+        if (ret_ty->isVoidTy()) {
+            ctx.get_builder().CreateRetVoid();
+        } else if (ret_ty == nv::ir_utils::get_value_struct(ctx)) {
+            // Se a função retorna Value struct, verificar se há um valor na pilha
+            auto* ret_val = ctx.pop_value();
+            if (ret_val) {
+                ctx.get_builder().CreateRet(ret_val);
+            } else {
+                ctx.get_builder().CreateRet(llvm::UndefValue::get(ret_ty));
+            }
+        } else {
+            ctx.get_builder().CreateRet(llvm::UndefValue::get(ret_ty));
+        }
     }
 
     // Restore previous codegen state so following nodes are emitted into the original function/scope

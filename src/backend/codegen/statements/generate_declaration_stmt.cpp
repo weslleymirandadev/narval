@@ -69,32 +69,32 @@ void DeclarationStmtNode::codegen(nv::IRGenerationContext& context) {
             auto& M = context.get_module();
             auto* I32 = llvm::Type::getInt32Ty(C);
             auto* F64 = llvm::Type::getDoubleTy(C);
-            llvm::Value* boxed = nullptr;
-            auto* tmp_alloca = context.create_alloca(ValueTy, symbol + "_init");
+            
+            // CORREÇÃO: Em vez de criar um tmp_alloca e depois carregar, passar diretamente o ponteiro global
+            // Isso evita problemas de dominação pois não dependemos de valores temporários
+            auto* global_ptr = B.CreateBitCast(info.value, ValuePtr);
+            
             if (init_val->getType() == ValueTy) {
-                B.CreateStore(init_val, tmp_alloca);
-                boxed = B.CreateLoad(ValueTy, tmp_alloca);
+                // Já é Value, apenas copiar diretamente
+                B.CreateStore(init_val, info.value);
+                return;
             } else if (init_val->getType()->isIntegerTy(1)) {
                 auto decl = M.getOrInsertFunction("create_bool", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, I32}, false));
-                B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp_alloca, B.CreateZExt(init_val, I32)});
-                boxed = B.CreateLoad(ValueTy, tmp_alloca);
+                B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {global_ptr, B.CreateZExt(init_val, I32)});
+                return;
             } else if (init_val->getType()->isIntegerTy()) {
                 auto decl = M.getOrInsertFunction("create_int", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, I32}, false));
                 llvm::Value* iv = init_val->getType()->isIntegerTy(32) ? init_val : B.CreateSExtOrTrunc(init_val, I32);
-                B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp_alloca, iv});
-                boxed = B.CreateLoad(ValueTy, tmp_alloca);
+                B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {global_ptr, iv});
+                return;
             } else if (init_val->getType()->isFloatingPointTy()) {
                 auto decl = M.getOrInsertFunction("create_float", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, F64}, false));
                 llvm::Value* fp = init_val->getType() == F64 ? init_val : B.CreateFPExt(init_val, F64);
-                B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp_alloca, fp});
-                boxed = B.CreateLoad(ValueTy, tmp_alloca);
+                B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {global_ptr, fp});
+                return;
             } else if (init_val->getType() == nv::ir_utils::get_i8_ptr(context)) {
                 auto decl = M.getOrInsertFunction("create_str", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, nv::ir_utils::get_i8_ptr(context)}, false));
-                B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp_alloca, init_val});
-                boxed = B.CreateLoad(ValueTy, tmp_alloca);
-            }
-            if (boxed) {
-                B.CreateStore(boxed, info.value);
+                B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {global_ptr, init_val});
                 return;
             }
         }
@@ -123,15 +123,13 @@ void DeclarationStmtNode::codegen(nv::IRGenerationContext& context) {
         
         bool constant_initialized = false;
         if (!global) {
-            // Criar variável global com inicializador constante (se disponível)
+            // Criar variável global inicializada como zero
             global = new llvm::GlobalVariable(
-                M, ValueTy, false,  // não constante
-                llvm::GlobalValue::ExternalLinkage,  // Usar ExternalLinkage para permitir acesso entre fragmentos no REPL
-                initializer,  // usar constante com tag ou zero
+                M, ValueTy, false,
+                llvm::GlobalValue::ExternalLinkage,  // Usar ExternalLinkage para permitir acesso entre fragmentos
+                llvm::Constant::getNullValue(ValueTy),  // inicializar como zero
                 symbol
             );
-            // Se usamos uma constante (não zero), já está inicializado
-            constant_initialized = (initializer != llvm::Constant::getNullValue(ValueTy));
         } else {
             // Se o GlobalVariable já existe (criado por import), precisamos atualizar o inicializador
             // setInitializer funciona mesmo se o GlobalVariable já foi referenciado, desde que não tenha sido modificado
@@ -177,12 +175,26 @@ void DeclarationStmtNode::codegen(nv::IRGenerationContext& context) {
             }
         }
         
-        // IMPORTANTE: Registrar para inicialização via @llvm.global_ctors apenas se não foi inicializado com constante
-        // Se já foi inicializado com constante, não precisa de inicialização runtime
-        // A função de inicialização será chamada explicitamente no início de main.start
-        // Isso garante que a tag de tipo seja sempre definida corretamente
+        // IMPORTANTE: Se há um valor inicial não constante, inicializar a variável global diretamente
+        // Isso evita problemas de dominação pois não usa @llvm.global_ctors
         if (init_val != nullptr && !constant_initialized) {
-            context.register_global_init(global, init_val, symbol);
+            // Inicializar a variável global diretamente com o valor
+            // Isso funciona porque init_val está disponível no escopo atual
+            if (init_val->getType() == ValueTy) {
+                // Já é Value, apenas armazenar
+                context.get_builder().CreateStore(init_val, global);
+            } else if (init_val->getType()->isPointerTy()) {
+                // É um ponteiro (ex: string), precisa ser embrulhado
+                auto& B = context.get_builder();
+                auto* ValuePtr = nv::ir_utils::get_value_ptr(context);
+                auto* global_ptr = B.CreateBitCast(global, ValuePtr);
+                
+                if (init_val->getType() == nv::ir_utils::get_i8_ptr(context)) {
+                    // String
+                    auto* f = context.ensure_runtime_func("create_str", {ValuePtr, nv::ir_utils::get_i8_ptr(context)});
+                    B.CreateCall(f, {global_ptr, init_val});
+                }
+            }
         }
         
         // Garantir que o GlobalVariable está registrado na tabela de símbolos

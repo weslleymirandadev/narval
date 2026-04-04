@@ -232,11 +232,12 @@ int run_batch_mode(const std::string& filename) {
             return 1;
         }
 
-        // DEBUG: dump IR for inspection
-        {
-            std::error_code ec;
-            llvm::raw_fd_ostream llFile("/tmp/narval_debug.ll", ec, llvm::sys::fs::OF_Text);
-            if (!ec) { Mod.print(llFile, nullptr); }
+        // Salvar LLVM IR para debug - ANTES da verificação
+        std::string ll_path = "/home/bacal/projects/cpp/narval/build/narval_module.ll";
+        std::error_code ec;
+        llvm::raw_fd_ostream ll_file(ll_path, ec);
+        if (!ec) {
+            Mod.print(ll_file, nullptr);
         }
 
         if (llvm::verifyModule(Mod, &llvm::errs())) {
@@ -281,12 +282,11 @@ int run_batch_mode(const std::string& filename) {
             return 1;
         }
         
-        // Salvar LLVM IR para debug
-        std::error_code ec;
-        llvm::raw_fd_ostream ll_file("narval_module.ll", ec);
-        if (!ec) {
-            Mod.print(ll_file, nullptr);
-        }
+        // IGNORAR VERIFICAÇÃO PARA DEBUG
+        // if (llvm::verifyModule(Mod, &llvm::errs())) {
+        //     llvm::errs() << "IR verification failed\n";
+        //     return 1;
+        // }
     } catch (const std::exception& e) {
         std::cerr << "Erro durante compilação: " << e.what() << "\n";
         return 1;
