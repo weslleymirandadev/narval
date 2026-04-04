@@ -395,7 +395,18 @@ llvm::Type* get_f64(IRGenerationContext& ctx) { return llvm::Type::getDoubleTy(c
 llvm::Type* get_i1(IRGenerationContext& ctx)  { return llvm::Type::getInt1Ty(ctx.get_context()); }
 llvm::Type* get_void(IRGenerationContext& ctx){ return llvm::Type::getVoidTy(ctx.get_context()); }
 llvm::Type* get_i8(IRGenerationContext& ctx)  { return llvm::Type::getInt8Ty(ctx.get_context()); }
-llvm::Type* get_i8_ptr(IRGenerationContext& ctx) { return llvm::PointerType::getUnqual(get_i8(ctx)); }
+llvm::Type* get_i8_ptr(IRGenerationContext& ctx) { 
+    // Para strings, queremos um tipo específico que possa ser identificado
+    static llvm::Type* string_type = nullptr;
+    if (!string_type) {
+        string_type = llvm::PointerType::getUnqual(get_i8(ctx));
+        // Dar um nome ao tipo para facilitar debug
+        if (auto* ptr = llvm::dyn_cast<llvm::PointerType>(string_type)) {
+            // Não podemos nomear ponteiros diretamente, mas podemos usar um tipo identificado
+        }
+    }
+    return string_type;
+}
 
 llvm::StructType* get_value_struct(IRGenerationContext& ctx) {
     auto* t = llvm::StructType::getTypeByName(ctx.get_context(), "nv.rt.Value");

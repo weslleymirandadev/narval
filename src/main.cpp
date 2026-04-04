@@ -310,15 +310,8 @@ int run_batch_mode(const std::string& filename) {
             "-no-pie " +               // opcional
             "-lc -w";                // libc + sem warnings
 
-        const char* rm_cmd = "rm narval_module.o narval_module.ll";
-
         if (system(link_cmd.c_str()) != 0) {
             llvm::errs() << "Falha na linkedição\n";
-            return 1;
-        }
-
-        if (system(rm_cmd) != 0) {
-            llvm::errs() << "Falha ao remover arquivos temporários\n";
             return 1;
         }
     } catch (const std::exception& e) {
