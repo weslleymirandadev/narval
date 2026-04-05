@@ -26,6 +26,9 @@
 #include "expressions/conditional_expr_node.hpp"
 #include "expressions/vector_expr_node.hpp"
 #include "expressions/boolean_literal_node.hpp"
+#include "expressions/new_expr_node.hpp"
+#include "expressions/this_expr_node.hpp"
+#include "expressions/super_expr_node.hpp"
 
 // Statements
 #include "statements/return_stmt_node.hpp"
@@ -39,6 +42,7 @@
 #include "statements/while_stmt_node.hpp"
 #include "statements/match_stmt_node.hpp"
 #include "statements/import_stmt_node.hpp"
+#include "statements/class_def_node.hpp"
 
 // Program
 #include "program.hpp"

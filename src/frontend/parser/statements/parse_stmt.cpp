@@ -10,12 +10,14 @@
 #include "frontend/parser/statements/parse_while_stmt.hpp"
 #include "frontend/parser/statements/parse_match_stmt.hpp"
 #include "frontend/parser/statements/parse_declaration_stmt.hpp"
+#include "frontend/parser/statements/parse_class_def.hpp"
 
 std::unique_ptr<Node> parse_stmt(Parser* parser) {
     switch (parser->current_token().type) {
         case TokenType::MUT: 
             parser->consume_token(); // Consumir o token MUT
             return parse_declaration_stmt(parser, true);
+        case TokenType::CLASS: return parse_class_def(parser);
         case TokenType::DEF: return parse_def_stmt(parser);
         case TokenType::IF: return parse_if_stmt(parser);
         case TokenType::RETURN: return parse_return_stmt(parser);

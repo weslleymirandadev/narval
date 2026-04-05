@@ -4,6 +4,9 @@
 #include "frontend/parser/expressions/parse_array_map_expr.hpp"
 #include "frontend/parser/expressions/parse_vector_expr.hpp"
 #include "frontend/parser/expressions/parse_boolean_literal.hpp"
+#include "frontend/parser/expressions/parse_new_expr.hpp"
+#include "frontend/parser/expressions/parse_this_super.hpp"
+#include "frontend/parser/expressions/parse_instanceof_expr.hpp"
 #include "frontend/ast/expressions/binary_expr_node.hpp"
 #include <cctype>
 
@@ -27,6 +30,30 @@ std::unique_ptr<Node> parse_primary_expr(Parser* parser) {
         case TokenType::IDENTIFIER: {
             Token idToken = parser->consume_token();
             auto node = std::make_unique<IdentifierNode>(idToken.lexeme);
+            node->position = std::move(pos);
+            expr = std::move(node);
+            break;
+        }
+        case TokenType::NEW: {
+            auto node = parse_new_expr(parser);
+            node->position = std::move(pos);
+            expr = std::move(node);
+            break;
+        }
+        case TokenType::THIS: {
+            auto node = parse_this_expr(parser);
+            node->position = std::move(pos);
+            expr = std::move(node);
+            break;
+        }
+        case TokenType::SUPER: {
+            auto node = parse_super_expr(parser);
+            node->position = std::move(pos);
+            expr = std::move(node);
+            break;
+        }
+        case TokenType::INSTANCEOF: {
+            auto node = parse_instanceof_expr(parser);
             node->position = std::move(pos);
             expr = std::move(node);
             break;

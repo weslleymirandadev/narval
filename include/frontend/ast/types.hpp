@@ -45,7 +45,14 @@ enum class NodeType {
     ListComprehension,
     VectorExpression,
     RangeExpression,
-    ImportStatement
+    ImportStatement,
+    ClassDef,
+    ClassField,
+    ClassMethod,
+    NewExpression,
+    ThisExpression,
+    SuperExpression,
+    InstanceofExpression
 };
 
 class PositionData {

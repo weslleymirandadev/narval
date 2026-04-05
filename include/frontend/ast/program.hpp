@@ -26,6 +26,10 @@
 #include "expressions/vector_expr_node.hpp"
 #include "expressions/boolean_literal_node.hpp"
 #include "expressions/range_expr_node.hpp"
+#include "expressions/new_expr_node.hpp"
+#include "expressions/this_expr_node.hpp"
+#include "expressions/super_expr_node.hpp"
+#include "expressions/instanceof_expr_node.hpp"
 #include "statements/return_stmt_node.hpp"
 #include "statements/declaration_stmt_node.hpp"
 #include "statements/def_stmt_node.hpp"
@@ -34,6 +38,7 @@
 #include "statements/forever_stmt_node.hpp"
 #include "statements/while_stmt_node.hpp"
 #include "statements/match_stmt_node.hpp"
+#include "statements/class_def_node.hpp"
 
 class Program : public Stmt {
 public:
@@ -136,6 +141,33 @@ private:
                 std::cout << indent << "  Operator: " << assignExpr->op << std::endl;
                 std::cout << indent << "  Value:\n";
                 print_statement(assignExpr->value.get(), indentNum + 2);
+                break;
+            }
+            case NodeType::ClassDef: {
+                const auto* classDef = static_cast<const ClassDefNode*>(stmt);
+                std::cout << indent << "ClassDef: " << classDef->name;
+                if (!classDef->parent_class.empty()) {
+                    std::cout << " extends " << classDef->parent_class;
+                }
+                std::cout << "\n";
+                
+                if (!classDef->fields.empty()) {
+                    std::cout << indent << "  Fields:\n";
+                    for (const auto& field : classDef->fields) {
+                        std::cout << indent << "    " << field->name << ": " << field->type;
+                        if (field->is_mutable) {
+                            std::cout << " (mut)";
+                        }
+                        std::cout << "\n";
+                    }
+                }
+                
+                if (!classDef->methods.empty()) {
+                    std::cout << indent << "  Methods:\n";
+                    for (const auto& method : classDef->methods) {
+                        std::cout << indent << "    " << method->access_modifier << " " << method->name << "()\n";
+                    }
+                }
                 break;
             }
             case NodeType::DeclarationStatement: {
@@ -397,6 +429,33 @@ private:
             case NodeType::BooleanLiteral: {
                 const auto* boolExpr = static_cast<const BooleanLiteralNode*>(stmt);
                 std::cout << indent << "Boolean: " << (boolExpr->value ? "true" : "false") << "\n";
+                break;
+            }
+            case NodeType::NewExpression: {
+                const auto* newExpr = static_cast<const NewExprNode*>(stmt);
+                std::cout << indent << "NewExpression: " << newExpr->class_name << "\n";
+                if (!newExpr->arguments.empty()) {
+                    std::cout << indent << "  Arguments:\n";
+                    for (const auto& arg : newExpr->arguments) {
+                        print_statement(arg.get(), indentNum + 2);
+                    }
+                }
+                break;
+            }
+            case NodeType::ThisExpression: {
+                std::cout << indent << "ThisExpression\n";
+                break;
+            }
+            case NodeType::SuperExpression: {
+                std::cout << indent << "SuperExpression\n";
+                break;
+            }
+            case NodeType::InstanceofExpression: {
+                const auto* instanceofExpr = static_cast<const InstanceofExprNode*>(stmt);
+                std::cout << indent << "InstanceofExpression\n";
+                std::cout << indent << "  Object:\n";
+                print_statement(instanceofExpr->object.get(), indentNum + 2);
+                std::cout << indent << "  Class: " << instanceofExpr->class_name << "\n";
                 break;
             }
             default: std::cout << indent << "Unknown Statement\n";
