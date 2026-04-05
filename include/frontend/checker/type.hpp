@@ -193,7 +193,11 @@ namespace nv {
         String() : Type(Kind::STRING) {}
         void init_prototype();
 
+<<<<<<< HEAD
         std::string toString() override { return "str"; }
+=======
+        std::string toString() override { return "string"; }
+>>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
     };
 
     struct Int : public Type {

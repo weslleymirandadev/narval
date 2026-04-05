@@ -29,6 +29,7 @@
 #include "expressions/new_expr_node.hpp"
 #include "expressions/this_expr_node.hpp"
 #include "expressions/super_expr_node.hpp"
+#include "expressions/instanceof_expr_node.hpp"
 
 // Statements
 #include "statements/return_stmt_node.hpp"

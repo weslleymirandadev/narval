@@ -401,7 +401,11 @@ std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
                             if (id->symbol == item.name) {
                                 // Inferir o tipo da declaração
                                 symbol_type = module_checker.infer_expr(decl->target.get());
+<<<<<<< HEAD
                                 is_constant = !decl->mutable_;
+=======
+                                is_constant = decl->constant;
+>>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
                                 symbol_found = true;
                                 break;
                             }

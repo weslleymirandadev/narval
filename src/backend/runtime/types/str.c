@@ -1,7 +1,12 @@
 #include "backend/runtime/nv_runtime.h"
 #include <stdlib.h>
+<<<<<<< HEAD
 #include <stdio.h>
 #include <string.h>
+=======
+#include <string.h>
+#include <stdio.h>
+>>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
 
 // Declaração da função de inicialização
 extern void register_global_init(void);
@@ -11,6 +16,7 @@ void create_str(Value* out, const char* value) {
         return;
     }
     
+<<<<<<< HEAD
     // Limpar struct para evitar problemas
     memset(out, 0, sizeof(Value));
     
@@ -59,6 +65,30 @@ void create_str(Value* out, const char* value) {
         printf("[DEBUG] create_str: calloc failed\n");
         out->obj = NULL; 
         return; 
+=======
+    // Verificar se o ponteiro value é válido
+    if (!value) {
+        value = "";
+    }
+    
+    // Verificar se o ponteiro está em uma região válida (não é stack corrompido)
+    if ((unsigned long)value < 0x1000) {
+        // Criar string vazia como fallback
+        value = "";
+    }
+    
+    // Garantir que os tipos estejam inicializados
+    if (!NVStr_Type) {
+        register_global_init();
+    }
+    
+    // Criar NVStr
+    NVStr* str_obj = (NVStr*)calloc(1, sizeof(NVStr));
+    
+    if (!str_obj) {
+        out->obj = NULL;
+        return;
+>>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
     }
     
     str_obj->ob_base.ob_type = NVStr_Type;
@@ -69,5 +99,8 @@ void create_str(Value* out, const char* value) {
     str_obj->len = strlen(value);
     
     out->obj = (NvObject*)str_obj;
+<<<<<<< HEAD
     printf("[DEBUG] create_str: normal object created, value='%s'\n", str_obj->value);
+=======
+>>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
 }

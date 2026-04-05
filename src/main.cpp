@@ -360,10 +360,13 @@ int run_notebook_mode() {
 }
 
 int main(int argc, char* argv[]) {
+<<<<<<< HEAD
     // Inicializar o sistema de tipos do runtime antes de tudo
     extern void register_global_init(void);
     register_global_init();
     
+=======
+>>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
     // Parse argumentos de linha de comando
     bool repl_mode = false;
     bool notebook_mode = false;

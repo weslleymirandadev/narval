@@ -7,7 +7,11 @@ void StringLiteralNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
     
     // Registrar features usadas
+<<<<<<< HEAD
     nv::register_feature("str");
+=======
+    nv::register_feature("string");
+>>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
     nv::register_feature("string_operations");
     
     // TEMP: Voltar para versão simples que funcionava

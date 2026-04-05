@@ -1,8 +1,13 @@
 #include "backend/runtime/nv_runtime.h"
 #include <stdlib.h>
 #include <string.h>
+<<<<<<< HEAD
 #include <stdbool.h>
 #include <stdio.h>
+=======
+#include <stdio.h>
+#include <stdbool.h>
+>>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
 
 /* ============================================================= */
 /*                    FUNÇÕES DE CONVERSÃO DE TIPO             */
@@ -197,6 +202,7 @@ void nv_bool_convert(Value* out, Value* input) {
         create_bool(out, 1);
     }
 }
+<<<<<<< HEAD
 
 // Converte inteiro para string (versão simples para concatenação)
 void int_to_string(Value* out, int32_t value) {
@@ -230,3 +236,5 @@ void float_to_string(Value* out, double value) {
     // Criar string com o resultado
     create_str(out, buffer);
 }
+=======
+>>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1

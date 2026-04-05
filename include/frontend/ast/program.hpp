@@ -143,6 +143,7 @@ private:
                 print_statement(assignExpr->value.get(), indentNum + 2);
                 break;
             }
+<<<<<<< HEAD
             case NodeType::ClassDef: {
                 const auto* classDef = static_cast<const ClassDefNode*>(stmt);
                 std::cout << indent << "ClassDef: " << classDef->name;
@@ -170,6 +171,8 @@ private:
                 }
                 break;
             }
+=======
+>>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
             case NodeType::DeclarationStatement: {
                 const auto* declStmt = static_cast<const DeclarationStmtNode*>(stmt);
                 std::cout << indent << "DeclarationStatement:\n";
@@ -183,7 +186,11 @@ private:
                     std::cout << " NULO\n";
                 }
                 std::cout << indent << "  Type: " << declStmt->typ << std::endl;
+<<<<<<< HEAD
                 std::cout << indent << "  Mutable: " << (declStmt->mutable_ ? "yes" : "no") << std::endl;
+=======
+                std::cout << indent << "  Locked: " << (declStmt->constant ? "yes" : "no") << std::endl;
+>>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
                 break;
             }
             case NodeType::DefStatement: {
@@ -431,6 +438,7 @@ private:
                 std::cout << indent << "Boolean: " << (boolExpr->value ? "true" : "false") << "\n";
                 break;
             }
+<<<<<<< HEAD
             case NodeType::NewExpression: {
                 const auto* newExpr = static_cast<const NewExprNode*>(stmt);
                 std::cout << indent << "NewExpression: " << newExpr->class_name << "\n";
@@ -458,6 +466,8 @@ private:
                 std::cout << indent << "  Class: " << instanceofExpr->class_name << "\n";
                 break;
             }
+=======
+>>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
             default: std::cout << indent << "Unknown Statement\n";
         }
     }

@@ -35,6 +35,7 @@ std::shared_ptr<nv::Type> check_binary_expr(nv::Checker* ch, Node* node) {
     if (bin->op == "*") {
         if ((left_is_string && right_is_int) || (left_is_int && right_is_string)) {
             // string * int ou int * string retorna string
+<<<<<<< HEAD
             return ch->gettyptr("str");
         }
     }
@@ -60,6 +61,9 @@ std::shared_ptr<nv::Type> check_binary_expr(nv::Checker* ch, Node* node) {
         // Int + Float ou Float + Int -> soma com promoção (retorna float)
         if ((left_is_int && right_is_float) || (left_is_float && right_is_int)) {
             return ch->gettyptr("float");
+=======
+            return ch->gettyptr("string");
+>>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
         }
     }
     

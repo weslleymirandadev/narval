@@ -4,9 +4,12 @@
 #include "frontend/parser/expressions/parse_array_map_expr.hpp"
 #include "frontend/parser/expressions/parse_vector_expr.hpp"
 #include "frontend/parser/expressions/parse_boolean_literal.hpp"
+<<<<<<< HEAD
 #include "frontend/parser/expressions/parse_new_expr.hpp"
 #include "frontend/parser/expressions/parse_this_super.hpp"
 #include "frontend/parser/expressions/parse_instanceof_expr.hpp"
+=======
+>>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
 #include "frontend/ast/expressions/binary_expr_node.hpp"
 #include <cctype>
 
@@ -34,6 +37,7 @@ std::unique_ptr<Node> parse_primary_expr(Parser* parser) {
             expr = std::move(node);
             break;
         }
+<<<<<<< HEAD
         case TokenType::NEW: {
             auto node = parse_new_expr(parser);
             node->position = std::move(pos);
@@ -58,6 +62,8 @@ std::unique_ptr<Node> parse_primary_expr(Parser* parser) {
             expr = std::move(node);
             break;
         }
+=======
+>>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
         case TokenType::STRING: {
             Token strToken = parser->consume_token();
             const std::string& s = strToken.lexeme;

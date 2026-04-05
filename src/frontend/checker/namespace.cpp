@@ -18,13 +18,21 @@ std::shared_ptr<nv::Type>& nv::Namespace::get_key(const std::string& k) {
     return names[k];
 }
 
+<<<<<<< HEAD
 void nv::Namespace::put_key(const std::string& k, const std::shared_ptr<nv::Type>& v, bool ismutable) {
+=======
+void nv::Namespace::put_key(const std::string& k, const std::shared_ptr<nv::Type>& v, bool islocked) {
+>>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
     if (is_const(k)) {
         throw std::runtime_error(std::string("'") + k + "' can not be changed.");
     }
 
     names[k] = v;
+<<<<<<< HEAD
     if (ismutable)
+=======
+    if (islocked)
+>>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
         consts[k] = true;
 }
 

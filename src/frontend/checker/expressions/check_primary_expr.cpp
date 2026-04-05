@@ -64,7 +64,11 @@ std::shared_ptr<nv::Type>& check_primary_expr(nv::Checker* ch, Node* node) {
             return temp_result;
         }
         case NodeType::StringLiteral:
+<<<<<<< HEAD
             temp_result = ch->gettyptr("str");
+=======
+            temp_result = ch->gettyptr("string");
+>>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
             ensure_proto(temp_result);
             return temp_result;
         case NodeType::BooleanLiteral:

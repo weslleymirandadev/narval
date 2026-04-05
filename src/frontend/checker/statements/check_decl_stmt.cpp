@@ -48,7 +48,11 @@ std::shared_ptr<nv::Type>& check_decl_stmt(nv::Checker* ch, Node* node) {
         auto free_in_env = ch->get_free_vars_in_env();
         auto generalized = ch->unify_ctx.generalize(inferred_type, free_in_env);
         
+<<<<<<< HEAD
         ch->scope->put_key(name->symbol, generalized, decl->mutable_);
+=======
+        ch->scope->put_key(name->symbol, generalized, decl->constant);
+>>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
         
         // Retornar referência ao tipo no namespace
         return ch->scope->get_key(name->symbol);
@@ -110,7 +114,11 @@ std::shared_ptr<nv::Type>& check_decl_stmt(nv::Checker* ch, Node* node) {
         
         // Resolver tipo após unificação
         dtype = ch->unify_ctx.resolve(dtype);
+<<<<<<< HEAD
         ch->scope->put_key(name->symbol, dtype, decl->mutable_);
+=======
+        ch->scope->put_key(name->symbol, dtype, decl->constant);
+>>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
         return ch->scope->get_key(name->symbol);
     }
 }

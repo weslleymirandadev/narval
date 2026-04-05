@@ -23,12 +23,17 @@ Token tokenize_identifier_or_keyword(const std::string& input, size_t& pos, size
     else if (value == "forever") type = TokenType::FOREVER;
     else if (value == "break") type = TokenType::BREAK;
     else if (value == "continue") type = TokenType::CONTINUE;
+<<<<<<< HEAD
     else if (value == "mut") type = TokenType::MUT;
+=======
+    else if (value == "lock") type = TokenType::LOCK;
+>>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
     else if (value == "def") type = TokenType::DEF;
     else if (value == "return") type = TokenType::RETURN;
     else if (value == "true") type = TokenType::TRUE;
     else if (value == "false") type = TokenType::FALSE;
     else if (value == "_") type = TokenType::UNDERSCORE;
+<<<<<<< HEAD
     else if (value == "class") type = TokenType::CLASS;
     else if (value == "public") type = TokenType::PUBLIC;
     else if (value == "private") type = TokenType::PRIVATE;
@@ -41,6 +46,8 @@ Token tokenize_identifier_or_keyword(const std::string& input, size_t& pos, size
     else if (value == "this") type = TokenType::THIS;
     else if (value == "super") type = TokenType::SUPER;
     else if (value == "instanceof") type = TokenType::INSTANCEOF;
+=======
+>>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
 
     return Token(type, value, line, start_column, column, start_position, pos, filename);
 }
