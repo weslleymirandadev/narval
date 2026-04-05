@@ -50,34 +50,46 @@ public:
         body.push_back(std::move(stmt));
     }
 
-    const std::vector<std::unique_ptr<Stmt>>& get_statements() const {
-        return body;
-    }
-
     Node* clone() const override {
-        auto new_program = std::make_unique<Program>();
+        auto* program = new Program();
         for (const auto& stmt : body) {
-            new_program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
+            program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
         }
-        return new_program.release();
+        if (position) {
+            program->position = std::make_unique<PositionData>(*position);
+        }
+        return program;
     }
 
-    // Debug
-    void print() {
-        std::cout << "Program: \n";
-        for (const auto& stmt : body) {
-            print_statement(stmt.get(), 1);
-        }
+    void print(int indentNum = 0) const {
+        print_statement(this, indentNum);
     }
 
-private:
-    static void print_statement(const Stmt* stmt, int indentNum) {
+    static void print_statement(const Stmt* stmt, int indentNum = 0) {
         std::string indent(indentNum * 2, ' ');
+        
+        if (!stmt) {
+            std::cout << indent << "NULL Statement\n";
+            return;
+        }
 
         switch (stmt->kind) {
+            case NodeType::Program: {
+                const auto* program = static_cast<const Program*>(stmt);
+                std::cout << indent << "Program:\n";
+                for (const auto& stmt : program->body) {
+                    print_statement(stmt.get(), indentNum + 1);
+                }
+                break;
+            }
             case NodeType::NumericLiteral: {
                 const auto* numLit = static_cast<const NumericLiteralNode*>(stmt);
                 std::cout << indent << "NumericLiteral: " << numLit->value << "\n";
+                break;
+            }
+            case NodeType::StringLiteral: {
+                const auto* strLit = static_cast<const StringLiteralNode*>(stmt);
+                std::cout << indent << "StringLiteral: \"" << strLit->value << "\"\n";
                 break;
             }
             case NodeType::Identifier: {
@@ -85,52 +97,14 @@ private:
                 std::cout << indent << "Identifier: " << ident->symbol << "\n";
                 break;
             }
-            case NodeType::StringLiteral: {
-                const auto* strLit = static_cast<const StringLiteralNode*>(stmt);
-                std::cout << indent << "StringLiteral: " << strLit->value << "\n";
-                break;
-            }
-            case NodeType::LogicalNotExpression: {
-                const auto* not_expr = static_cast<const LogicalNotExprNode*>(stmt);
-                std::cout << indent << "LogicalNotExpression:\n";
-                print_statement(not_expr->operand.get(), indentNum + 1);
-                break;
-            }
-            case NodeType::UnaryMinusExpression: {
-                const auto* not_expr = static_cast<const UnaryMinusExprNode*>(stmt);
-                std::cout << indent << "UnaryMinusExpression:\n";
-                print_statement(not_expr->operand.get(), indentNum + 1);
-                break;
-            }
-            case NodeType::IncrementExpression: {
-                const auto* not_expr = static_cast<const IncrementExprNode*>(stmt);
-                std::cout << indent << "IncrementExpression:\n";
-                print_statement(not_expr->operand.get(), indentNum + 1);
-                break;
-            }
-            case NodeType::DecrementExpression: {
-                const auto* not_expr = static_cast<const DecrementExprNode*>(stmt);
-                std::cout << indent << "IncrementExpression:\n";
-                print_statement(not_expr->operand.get(), indentNum + 1);
-                break;
-            }
-            case NodeType::PostIncrementExpression: {
-                const auto* not_expr = static_cast<const PostIncrementExprNode*>(stmt);
-                std::cout << indent << "PostIncrementExpression:\n";
-                print_statement(not_expr->operand.get(), indentNum + 1);
-                break;
-            }
-            case NodeType::PostDecrementExpression: {
-                const auto* not_expr = static_cast<const PostDecrementExprNode*>(stmt);
-                std::cout << indent << "PostIncrementExpression:\n";
-                print_statement(not_expr->operand.get(), indentNum + 1);
-                break;
-            }
             case NodeType::BinaryExpression: {
                 const auto* binExpr = static_cast<const BinaryExprNode*>(stmt);
-                std::cout << indent << "BinaryExpression: " << binExpr->op << "\n";
-                print_statement(binExpr->left.get(), indentNum + 1);
-                print_statement(binExpr->right.get(), indentNum + 1);
+                std::cout << indent << "BinaryExpression:\n";
+                std::cout << indent << "  Left:\n";
+                print_statement(binExpr->left.get(), indentNum + 2);
+                std::cout << indent << "  Operator: " << binExpr->op << "\n";
+                std::cout << indent << "  Right:\n";
+                print_statement(binExpr->right.get(), indentNum + 2);
                 break;
             }
             case NodeType::AssignmentExpression: {
@@ -143,7 +117,6 @@ private:
                 print_statement(assignExpr->value.get(), indentNum + 2);
                 break;
             }
-<<<<<<< HEAD
             case NodeType::ClassDef: {
                 const auto* classDef = static_cast<const ClassDefNode*>(stmt);
                 std::cout << indent << "ClassDef: " << classDef->name;
@@ -171,8 +144,6 @@ private:
                 }
                 break;
             }
-=======
->>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
             case NodeType::DeclarationStatement: {
                 const auto* declStmt = static_cast<const DeclarationStmtNode*>(stmt);
                 std::cout << indent << "DeclarationStatement:\n";
@@ -186,11 +157,7 @@ private:
                     std::cout << " NULO\n";
                 }
                 std::cout << indent << "  Type: " << declStmt->typ << std::endl;
-<<<<<<< HEAD
                 std::cout << indent << "  Mutable: " << (declStmt->mutable_ ? "yes" : "no") << std::endl;
-=======
-                std::cout << indent << "  Locked: " << (declStmt->constant ? "yes" : "no") << std::endl;
->>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
                 break;
             }
             case NodeType::DefStatement: {
@@ -218,14 +185,31 @@ private:
                 std::cout << indent << "IfStatement:\n";
                 std::cout << indent << "  Condition:\n";
                 print_statement(ifStmt->condition.get(), indentNum + 2);
-                std::cout << indent << "  Consequent:\n";
-                for (const auto& consStmt : ifStmt->consequent) {
-                    print_statement(consStmt.get(), indentNum + 2);
+                std::cout << indent << "  Then:\n";
+
+                for (const auto& thenStmt : ifStmt->then_branch) {
+                    print_statement(thenStmt.get(), indentNum + 2);
                 }
-                std::cout << indent << "  Alternate:\n";
-                for (const auto& altStmt : ifStmt->alternate) {
-                    print_statement(altStmt.get(), indentNum + 2);
+
+                if (!ifStmt->elif_branches.empty()) {
+                    std::cout << indent << "  Elif:\n";
+                    for (const auto& elif : ifStmt->elif_branches) {
+                        std::cout << indent << "    Condition:\n";
+                        print_statement(elif.first.get(), indentNum + 4);
+                        std::cout << indent << "    Then:\n";
+                        for (const auto& elifStmt : elif.second) {
+                            print_statement(elifStmt.get(), indentNum + 4);
+                        }
+                    }
                 }
+
+                if (ifStmt->else_branch) {
+                    std::cout << indent << "  Else:\n";
+                    for (const auto& elseStmt : ifStmt->else_branch.value()) {
+                        print_statement(elseStmt.get(), indentNum + 2);
+                    }
+                }
+
                 break;
             }
             case NodeType::AccessExpression: {
@@ -377,7 +361,6 @@ private:
 
                 for (const auto& [v, s] : lc->generators) {
                     if (v) {
-                        // Dependendo do tipo de v, pode ser Identifier ou TupleExprNode, etc.
                         if (v->kind == NodeType::Identifier) {
                             auto* id = static_cast<const IdentifierNode*>(v.get());
                             std::cout << indent << "  For " << id->symbol << " :\n";
@@ -438,15 +421,12 @@ private:
                 std::cout << indent << "Boolean: " << (boolExpr->value ? "true" : "false") << "\n";
                 break;
             }
-<<<<<<< HEAD
             case NodeType::NewExpression: {
                 const auto* newExpr = static_cast<const NewExprNode*>(stmt);
                 std::cout << indent << "NewExpression: " << newExpr->class_name << "\n";
-                if (!newExpr->arguments.empty()) {
-                    std::cout << indent << "  Arguments:\n";
-                    for (const auto& arg : newExpr->arguments) {
-                        print_statement(arg.get(), indentNum + 2);
-                    }
+                std::cout << indent << "  Arguments:\n";
+                for (const auto& arg : newExpr->arguments) {
+                    print_statement(arg.get(), indentNum + 2);
                 }
                 break;
             }
@@ -466,10 +446,7 @@ private:
                 std::cout << indent << "  Class: " << instanceofExpr->class_name << "\n";
                 break;
             }
-=======
->>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
             default: std::cout << indent << "Unknown Statement\n";
         }
     }
 };
-
