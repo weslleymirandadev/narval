@@ -233,7 +233,7 @@ void DeclarationStmtNode::codegen(nv::IRGenerationContext& context) {
             stored_ty,
             nv_type,
             true,  // is_allocated: true para locais
-            constant
+            mutable_
         );
         context.get_symbol_table().define_symbol(symbol, info);
     }

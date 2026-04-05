@@ -35,7 +35,7 @@ std::shared_ptr<nv::Type> check_binary_expr(nv::Checker* ch, Node* node) {
     if (bin->op == "*") {
         if ((left_is_string && right_is_int) || (left_is_int && right_is_string)) {
             // string * int ou int * string retorna string
-            return ch->gettyptr("string");
+            return ch->gettyptr("str");
         }
     }
     
@@ -43,11 +43,11 @@ std::shared_ptr<nv::Type> check_binary_expr(nv::Checker* ch, Node* node) {
     if (bin->op == "+") {
         // String + qualquer tipo -> concatenação (retorna string)
         if (left_is_string) {
-            return ch->gettyptr("string");
+            return ch->gettyptr("str");
         }
         // Qualquer tipo + String -> concatenação (retorna string)
         if (right_is_string) {
-            return ch->gettyptr("string");
+            return ch->gettyptr("str");
         }
         // Int + Int -> soma (retorna int)
         if (left_is_int && right_is_int) {

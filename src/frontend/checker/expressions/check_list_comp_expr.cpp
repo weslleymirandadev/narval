@@ -54,7 +54,7 @@ std::shared_ptr<nv::Type>& check_list_comp_expr(nv::Checker* ch, Node* node) {
             int next_id = ch->unify_ctx.get_next_var_id();
             element_type = std::make_shared<nv::TypeVar>(next_id);
         } else if (source_type->kind == nv::Kind::STRING) {
-            element_type = ch->gettyptr("string");
+            element_type = ch->gettyptr("str");
         } else if (source_type->kind == nv::Kind::MAP) {
             // Para Map, o elemento é uma tupla (key, value)
             auto* map = static_cast<nv::Map*>(source_type.get());

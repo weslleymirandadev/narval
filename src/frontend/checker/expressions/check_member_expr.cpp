@@ -38,7 +38,7 @@ std::shared_ptr<nv::Type>& check_member_expr(nv::Checker* ch, Node* node) {
         // Para Map, o tipo do valor depende do tipo do valor armazenado
         // Por enquanto, retornamos o tipo do valor (string, int, etc.)
         // TODO: Implementar inferência de tipo mais precisa para Map
-        temp_result = ch->gettyptr("string");
+        temp_result = ch->gettyptr("str");
         return temp_result;
     }
     

@@ -1,8 +1,11 @@
-#include "frontend/parser/statements/parse_locked_stmt.hpp"
+#include "frontend/parser/statements/parse_declaration_stmt.hpp"
 #include "frontend/parser/expressions/parse_expr.hpp"
 #include "frontend/parser/expressions/parse_type.hpp"
 
-std::unique_ptr<Node> parse_locked_stmt(Parser* parser, bool lockd) {
+std::unique_ptr<Node> parse_declaration_stmt(Parser* parser, bool is_mutable) {
+    // Se is_mutable=true, o token MUT já foi consumido pelo parse_stmt
+    // Se is_mutable=false, estamos no parse_expr e o token atual é o identificador
+    
     auto nametoken = parser->expect(TokenType::IDENTIFIER, "Expected an identifier");
     
     size_t line = nametoken.line;
@@ -26,11 +29,13 @@ std::unique_ptr<Node> parse_locked_stmt(Parser* parser, bool lockd) {
 
     parser->expect(TokenType::SEMICOLON, "Expected ';'.");
 
+    // Se is_mutable=false, então é constante (padrão)
+    // Se is_mutable=true, então é mutável
     auto node = std::make_unique<DeclarationStmtNode>(
             std::unique_ptr<Expr>(static_cast<Expr*>(name.release())),
             std::unique_ptr<Expr>(static_cast<Expr*>(value.release())),
             typ,
-            lockd
+            is_mutable  // Passar is_mutable diretamente
         );
     if (value && value->position) {
         node->position = std::make_unique<PositionData>(value->position->line, col[0], value->position->col[1], pos[0], value->position->pos[1]);

@@ -19,7 +19,7 @@ namespace nv {
             std::shared_ptr<nv::Type>& get_key(const std::string& k);
             bool has_key(std::string k);
             bool is_const(std::string k);
-            void put_key(const std::string& k, const std::shared_ptr<nv::Type>& v, bool islocked);
+            void put_key(const std::string& k, const std::shared_ptr<nv::Type>& v, bool ismutable);
             void put_key(const std::string& k, const std::shared_ptr<nv::Type>& v);
             void set_key(const std::string& k, const std::shared_ptr<nv::Type>& v);
             

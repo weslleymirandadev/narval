@@ -151,7 +151,7 @@ private:
                     std::cout << " NULO\n";
                 }
                 std::cout << indent << "  Type: " << declStmt->typ << std::endl;
-                std::cout << indent << "  Locked: " << (declStmt->constant ? "yes" : "no") << std::endl;
+                std::cout << indent << "  Mutable: " << (declStmt->mutable_ ? "yes" : "no") << std::endl;
                 break;
             }
             case NodeType::DefStatement: {

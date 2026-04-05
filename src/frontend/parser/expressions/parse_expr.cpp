@@ -1,4 +1,4 @@
-#include "frontend/parser/statements/parse_locked_stmt.hpp"
+#include "frontend/parser/statements/parse_declaration_stmt.hpp"
 #include "frontend/parser/expressions/parse_expr.hpp"
 #include "frontend/parser/expressions/parse_primary_expr.hpp"
 #include "frontend/parser/expressions/parse_access_expr.hpp"
@@ -42,7 +42,7 @@ std::unique_ptr<Node> parse_expr(Parser* parser) {
     }
 
     if (parser->next_token().type == TokenType::COLON) {
-        return parse_locked_stmt(parser, false);
+        return parse_declaration_stmt(parser, false);
     }
 
     switch (parser->next_token().type) {

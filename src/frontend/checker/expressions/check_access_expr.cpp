@@ -66,7 +66,7 @@ std::shared_ptr<nv::Type>& check_access_expr(nv::Checker* ch, Node* node) {
             return ch->gettyptr("void");
         }
         
-        return ch->gettyptr("string");
+        return ch->gettyptr("str");
     } else if (expr_type->kind == nv::Kind::MAP) {
         // Map - índice deve ser compatível com o tipo da chave
         auto* map = static_cast<nv::Map*>(expr_type.get());

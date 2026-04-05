@@ -252,7 +252,7 @@ bool ImportProcessor::process_single_import(
                                 // Criar tipo básico para o parâmetro
                                 if (param_type == "int") {
                                     param_types.push_back(std::make_shared<Int>());
-                                } else if (param_type == "string") {
+                                } else if (param_type == "str") {
                                     param_types.push_back(std::make_shared<String>());
                                 } else if (param_type == "float") {
                                     param_types.push_back(std::make_shared<Float>());
@@ -268,7 +268,7 @@ bool ImportProcessor::process_single_import(
                         std::shared_ptr<Type> return_type;
                         if (def_stmt->return_type == "int") {
                             return_type = std::make_shared<Int>();
-                        } else if (def_stmt->return_type == "string") {
+                        } else if (def_stmt->return_type == "str") {
                             return_type = std::make_shared<String>();
                         } else if (def_stmt->return_type == "float") {
                             return_type = std::make_shared<Float>();

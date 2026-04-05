@@ -15,7 +15,7 @@ public:
         
         if (method == "parseString") {
             nv::register_feature("json");
-            nv::register_feature("string");
+            nv::register_feature("str");
             
             if (args.empty()) return nullptr;
             

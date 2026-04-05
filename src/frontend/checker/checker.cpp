@@ -69,14 +69,14 @@ nv::Checker::Checker() {
     namespaces.push_back(globalnamespace);
     scope = globalnamespace;
     types["int"] = std::make_shared<nv::Int>();
-    types["string"] = std::make_shared<nv::String>();
+    types["str"] = std::make_shared<nv::String>();
     types["float"] = std::make_shared<nv::Float>();
     types["bool"] = std::make_shared<nv::Boolean>();
     types["void"] = std::make_shared<nv::Void>();
 
     // Agora que os objetos Type estão dentro de shared_ptr, inicializar seus prototypes
     types["int"]->init_prototype();
-    types["string"]->init_prototype();
+    types["str"]->init_prototype();
     types["float"]->init_prototype();
     types["bool"]->init_prototype();
     types["void"]->init_prototype();

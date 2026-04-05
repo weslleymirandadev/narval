@@ -18,7 +18,7 @@ void MemberExprNode::codegen(nv::IRGenerationContext& ctx) {
     llvm::Value* prop = nullptr;
     if (auto* id = dynamic_cast<IdentifierNode*>(property.get())) {
         // Criar string para a propriedade
-        nv::register_feature("string");
+        nv::register_feature("str");
         prop = ctx.get_builder().CreateGlobalStringPtr(id->symbol.c_str());
     } else {
         property->codegen(ctx);

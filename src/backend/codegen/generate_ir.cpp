@@ -17,7 +17,7 @@ static FeatureTracker g_feature_tracker;
 // Função para registrar uso de features
 void register_feature(const std::string& feature) {
     if (feature == "vector") g_feature_tracker.has_vectors = true;
-    else if (feature == "string") g_feature_tracker.has_strings = true;
+    else if (feature == "str") g_feature_tracker.has_strings = true;
     else if (feature == "map") g_feature_tracker.has_maps = true;
     else if (feature == "json") g_feature_tracker.has_json = true;
     else if (feature == "read") g_feature_tracker.has_read = true;

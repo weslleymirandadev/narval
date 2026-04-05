@@ -353,7 +353,7 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
         if (method == "parseString") {
             // Registrar features JSON
             nv::register_feature("json");
-            nv::register_feature("string");
+            nv::register_feature("str");
             
             // Verifica se o objeto é o identifier "json"
             if (auto* objId = dynamic_cast<IdentifierNode*>(mem->object.get())) {

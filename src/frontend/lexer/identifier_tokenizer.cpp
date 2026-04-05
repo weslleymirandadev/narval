@@ -23,12 +23,24 @@ Token tokenize_identifier_or_keyword(const std::string& input, size_t& pos, size
     else if (value == "forever") type = TokenType::FOREVER;
     else if (value == "break") type = TokenType::BREAK;
     else if (value == "continue") type = TokenType::CONTINUE;
-    else if (value == "lock") type = TokenType::LOCK;
+    else if (value == "mut") type = TokenType::MUT;
     else if (value == "def") type = TokenType::DEF;
     else if (value == "return") type = TokenType::RETURN;
     else if (value == "true") type = TokenType::TRUE;
     else if (value == "false") type = TokenType::FALSE;
     else if (value == "_") type = TokenType::UNDERSCORE;
+    else if (value == "class") type = TokenType::CLASS;
+    else if (value == "public") type = TokenType::PUBLIC;
+    else if (value == "private") type = TokenType::PRIVATE;
+    else if (value == "protected") type = TokenType::PROTECTED;
+    else if (value == "abstract") type = TokenType::ABSTRACT;
+    else if (value == "extends") type = TokenType::EXTENDS;
+    else if (value == "implements") type = TokenType::IMPLEMENTS;
+    else if (value == "interface") type = TokenType::INTERFACE;
+    else if (value == "new") type = TokenType::NEW;
+    else if (value == "this") type = TokenType::THIS;
+    else if (value == "super") type = TokenType::SUPER;
+    else if (value == "instanceof") type = TokenType::INSTANCEOF;
 
     return Token(type, value, line, start_column, column, start_position, pos, filename);
 }

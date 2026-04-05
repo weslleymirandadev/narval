@@ -35,28 +35,28 @@ namespace nv {
         // json: objeto especial para operações JSON
         // Criamos um tipo específico para json com método parse
         // Usamos Map como tipo genérico para JSON objetos, Vector para arrays
-        auto json_type = std::make_shared<Map>(checker.gettyptr("string"), checker.gettyptr("string"));
+        auto json_type = std::make_shared<Map>(checker.gettyptr("str"), checker.gettyptr("str"));
         json_type->init_prototype();  // Inicializar o prototype
         
         // Adicionar métodos manualmente ao prototype do json
         if (json_type->prototype) {
             // Método parse: (string) -> Map (para arquivo)
             auto parse_func_type = std::make_shared<Def>(
-                std::vector<std::shared_ptr<Type>>{checker.gettyptr("string")},
+                std::vector<std::shared_ptr<Type>>{checker.gettyptr("str")},
                 json_type
             );
             json_type->prototype->put_key("parse", parse_func_type, true);
             
             // Método parseString: (string) -> Map (para string JSON)
             auto parse_string_func_type = std::make_shared<Def>(
-                std::vector<std::shared_ptr<Type>>{checker.gettyptr("string")},
+                std::vector<std::shared_ptr<Type>>{checker.gettyptr("str")},
                 json_type
             );
             json_type->prototype->put_key("parseString", parse_string_func_type, true);
             
             // Método dump: (Map, string) -> void
             auto dump_func_type = std::make_shared<Def>(
-                std::vector<std::shared_ptr<Type>>{json_type, checker.gettyptr("string")},
+                std::vector<std::shared_ptr<Type>>{json_type, checker.gettyptr("str")},
                 checker.gettyptr("void")
             );
             json_type->prototype->put_key("dump", dump_func_type, true);
@@ -64,7 +64,7 @@ namespace nv {
             // Método stringify: (Map) -> string
             auto stringify_func_type = std::make_shared<Def>(
                 std::vector<std::shared_ptr<Type>>{json_type},
-                checker.gettyptr("string")
+                checker.gettyptr("str")
             );
             json_type->prototype->put_key("stringify", stringify_func_type, true);
         }

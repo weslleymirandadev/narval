@@ -7,7 +7,6 @@ enum class TokenType {
     FALSE,
     IDENTIFIER,
     STRING,
-    LOCK,
     RETURN,
     NUMBER,
     ASSIGNMENT,
@@ -63,7 +62,20 @@ enum class TokenType {
     DIV_ASSIGN,
     INTEGER_DIV_ASSIGN,
     POWER_ASSIGN, //that's kinda poetic
-    MOD_ASSIGN
+    MOD_ASSIGN,
+    CLASS,
+    PUBLIC,
+    PRIVATE,
+    PROTECTED,
+    ABSTRACT,
+    EXTENDS,
+    IMPLEMENTS,
+    INTERFACE,
+    NEW,
+    THIS,
+    SUPER,
+    INSTANCEOF,
+    MUT
 };
 
 inline const char* get_token_name(TokenType type) {
@@ -77,7 +89,6 @@ inline const char* get_token_name(TokenType type) {
         case TokenType::OBRACKET: return "OBRACKET";
         case TokenType::CBRACKET: return "CBRACKET";
         case TokenType::COMMA: return "COMMA";
-        case TokenType::LOCK: return "LOCK";
         case TokenType::RETURN: return "RETURN";
         case TokenType::NUMBER: return "NUMBER";
         case TokenType::ASSIGNMENT: return "ASSIGNMENT";
@@ -128,6 +139,19 @@ inline const char* get_token_name(TokenType type) {
         case TokenType::INTEGER_DIV_ASSIGN: return "INTEGER_DIV_ASSIGN";
         case TokenType::POWER_ASSIGN: return "POWER_ASSIGN";
         case TokenType::MOD_ASSIGN: return "MOD_ASSIGN";
+        case TokenType::CLASS: return "CLASS";
+        case TokenType::PUBLIC: return "PUBLIC";
+        case TokenType::PRIVATE: return "PRIVATE";
+        case TokenType::PROTECTED: return "PROTECTED";
+        case TokenType::ABSTRACT: return "ABSTRACT";
+        case TokenType::EXTENDS: return "EXTENDS";
+        case TokenType::IMPLEMENTS: return "IMPLEMENTS";
+        case TokenType::INTERFACE: return "INTERFACE";
+        case TokenType::NEW: return "NEW";
+        case TokenType::THIS: return "THIS";
+        case TokenType::SUPER: return "SUPER";
+        case TokenType::INSTANCEOF: return "INSTANCEOF";
+        case TokenType::MUT: return "MUT";
         default: return "UNKNOWN";
     }
 }
