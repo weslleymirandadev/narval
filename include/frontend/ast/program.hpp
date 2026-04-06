@@ -187,25 +187,13 @@ public:
                 print_statement(ifStmt->condition.get(), indentNum + 2);
                 std::cout << indent << "  Then:\n";
 
-                for (const auto& thenStmt : ifStmt->then_branch) {
+                for (const auto& thenStmt : ifStmt->consequent) {
                     print_statement(thenStmt.get(), indentNum + 2);
                 }
 
-                if (!ifStmt->elif_branches.empty()) {
-                    std::cout << indent << "  Elif:\n";
-                    for (const auto& elif : ifStmt->elif_branches) {
-                        std::cout << indent << "    Condition:\n";
-                        print_statement(elif.first.get(), indentNum + 4);
-                        std::cout << indent << "    Then:\n";
-                        for (const auto& elifStmt : elif.second) {
-                            print_statement(elifStmt.get(), indentNum + 4);
-                        }
-                    }
-                }
-
-                if (ifStmt->else_branch) {
+                if (!ifStmt->alternate.empty()) {
                     std::cout << indent << "  Else:\n";
-                    for (const auto& elseStmt : ifStmt->else_branch.value()) {
+                    for (const auto& elseStmt : ifStmt->alternate) {
                         print_statement(elseStmt.get(), indentNum + 2);
                     }
                 }
