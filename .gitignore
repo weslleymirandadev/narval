@@ -2,3 +2,7 @@ test/
 build/
 .vscode/
 narval_program
+CLAUDE.md
+MEMORY.md
+memory
+*.o
