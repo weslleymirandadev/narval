@@ -1,7 +1,9 @@
 #pragma once
 #include "frontend/ast/types.hpp"
+#include "frontend/ast/statements/def_stmt_node.hpp"
 #include <vector>
 #include <memory>
+#include <string>
 
 // Nó para campos de classe
 class ClassFieldNode : public Expr {
@@ -59,4 +61,6 @@ public:
         }
         return node;
     }
+
+    void codegen(nv::IRGenerationContext& ctx) override;
 };

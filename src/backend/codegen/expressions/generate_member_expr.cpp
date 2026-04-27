@@ -18,11 +18,7 @@ void MemberExprNode::codegen(nv::IRGenerationContext& ctx) {
     llvm::Value* prop = nullptr;
     if (auto* id = dynamic_cast<IdentifierNode*>(property.get())) {
         // Criar string para a propriedade
-<<<<<<< HEAD
         nv::register_feature("str");
-=======
-        nv::register_feature("string");
->>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
         prop = ctx.get_builder().CreateGlobalStringPtr(id->symbol.c_str());
     } else {
         property->codegen(ctx);
@@ -33,9 +29,9 @@ void MemberExprNode::codegen(nv::IRGenerationContext& ctx) {
     auto* ValueTy = nv::ir_utils::get_value_struct(ctx);
     auto* I8P = nv::ir_utils::get_i8_ptr(ctx);
     
-    // Simplificar: sempre chamar map_get_method, sem verificação de tipo por enquanto
+    // Use nv_object_get_field: void(Value* out, Value* self, const char* key)
     auto* map_get_fn = ctx.ensure_runtime_func(
-        "map_get_method",
+        "nv_object_get_field",
         {nv::ir_utils::get_value_ptr(ctx), nv::ir_utils::get_value_ptr(ctx), I8P},
         llvm::Type::getVoidTy(ctx.get_context())
     );

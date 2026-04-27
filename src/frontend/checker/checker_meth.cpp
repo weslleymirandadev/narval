@@ -66,6 +66,10 @@ std::shared_ptr<nv::Type>& nv::Checker::check_node(Node* node) {
           return check_list_comp_expr(this, node);
         case NodeType::RangeExpression:
           return check_range_expr(this, node);
+        case NodeType::NewExpression:
+          return check_primary_expr(this, node);
+        case NodeType::ClassDef:
+          return gettyptr("void");
         case NodeType::BreakStatement:
         case NodeType::ContinueStatement:
           // break e continue não têm tipo, apenas controle de fluxo

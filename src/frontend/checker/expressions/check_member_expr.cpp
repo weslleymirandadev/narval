@@ -38,12 +38,32 @@ std::shared_ptr<nv::Type>& check_member_expr(nv::Checker* ch, Node* node) {
         // Para Map, o tipo do valor depende do tipo do valor armazenado
         // Por enquanto, retornamos o tipo do valor (string, int, etc.)
         // TODO: Implementar inferência de tipo mais precisa para Map
-<<<<<<< HEAD
         temp_result = ch->gettyptr("str");
-=======
-        temp_result = ch->gettyptr("string");
->>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
         return temp_result;
+    }
+    
+    // Se o objeto for uma Class, verificar campos e métodos
+    if (object_type->kind == nv::Kind::CLASS) {
+        auto* class_type = static_cast<nv::Class*>(object_type.get());
+        
+        // Primeiro verificar se é um campo
+        auto field_type = class_type->get_field(prop_name);
+        if (field_type) {
+            temp_result = field_type;
+            return temp_result;
+        }
+        
+        // Depois verificar se é um método
+        auto method_type = class_type->get_method(prop_name);
+        if (method_type) {
+            temp_result = method_type;
+            return temp_result;
+        }
+        
+        // Se não encontrou nem campo nem método, reportar erro
+        ch->error(member_expr->property.get(), 
+                  "Class '" + class_type->name + "' does not have member '" + prop_name + "'");
+        return ch->gettyptr("void");
     }
     
     // Verificar se o tipo tem o método/membro

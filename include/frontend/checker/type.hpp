@@ -5,6 +5,7 @@
 #include <vector>
 #include <unordered_set>
 #include <unordered_map>
+#include "namespace.hpp" // Adicionado include completo do Namespace
 
 namespace nv {
     class Namespace;
@@ -19,6 +20,7 @@ namespace nv {
         TUPLE,
         VECTOR,
         MAP,
+        CLASS,
         TYPE_VAR,
         POLY_TYPE,
         ERROR
@@ -220,6 +222,79 @@ namespace nv {
     struct Void : public Type {
         Void() : Type(Kind::VOID) {}
         std::string toString() override { return "()"; }
+    };
+
+    struct Class : public Type {
+        std::string name;
+        std::shared_ptr<Class> parent_class;
+        std::unordered_map<std::string, std::shared_ptr<Type>> fields;
+        std::unordered_map<std::string, std::shared_ptr<Type>> methods;
+        
+        Class(const std::string& class_name) : Type(Kind::CLASS), name(class_name) {}
+        
+        std::string toString() override { return name; }
+        
+        bool equals(const Type &other) const override {
+            if (other.kind != Kind::CLASS) return false;
+            const Class* other_class = static_cast<const Class*>(&other);
+            return name == other_class->name;
+        }
+        
+        bool equals(std::shared_ptr<Type> &other) const override {
+            if (other->kind != Kind::CLASS) return false;
+            auto other_class = std::static_pointer_cast<Class>(other);
+            return name == other_class->name;
+        }
+        
+        void add_field(const std::string& field_name, std::shared_ptr<Type> field_type, bool is_mutable = false) {
+            fields[field_name] = field_type;
+        }
+        
+        void add_method(const std::string& method_name, std::shared_ptr<Type> method_type) {
+            methods[method_name] = method_type;
+        }
+        
+        std::shared_ptr<Type> get_field(const std::string& field_name) const {
+            auto it = fields.find(field_name);
+            if (it != fields.end()) {
+                return it->second;
+            }
+            
+            // Verificar na classe pai
+            if (parent_class) {
+                return parent_class->get_field(field_name);
+            }
+            
+            return nullptr;
+        }
+        
+        std::shared_ptr<Type> get_method(const std::string& method_name) const {
+            auto it = methods.find(method_name);
+            if (it != methods.end()) {
+                return it->second;
+            }
+            
+            // Verificar na classe pai
+            if (parent_class) {
+                return parent_class->get_method(method_name);
+            }
+            
+            return nullptr;
+        }
+        
+        void init_prototype() override {
+            prototype = std::shared_ptr<Namespace>(new Namespace(nullptr));
+            
+            // Adicionar campos ao prototype
+            for (const auto& field : fields) {
+                prototype->put_key(field.first, field.second, true);
+            }
+            
+            // Adicionar métodos ao prototype
+            for (const auto& method : methods) {
+                prototype->put_key(method.first, method.second, true);
+            }
+        }
     };
 
     struct Def : public Type {

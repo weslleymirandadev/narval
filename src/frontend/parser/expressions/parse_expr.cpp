@@ -9,6 +9,7 @@
 #include "frontend/parser/expressions/parse_assignment_expr.hpp"
 #include "frontend/parser/expressions/parse_vector_expr.hpp"
 #include "frontend/parser/expressions/parse_array_map_expr.hpp"
+#include "frontend/ast/expressions/assignment_expr_node.hpp"
 
 std::unique_ptr<Node> parse_expr(Parser* parser) {
     if (parser->current_token().type == TokenType::OBRACKET) {
@@ -37,7 +38,29 @@ std::unique_ptr<Node> parse_expr(Parser* parser) {
         parser->next_token().type == TokenType::DOT
     ) {
         std::unique_ptr<Node> expr = parse_primary_expr(parser);
-        expr =  parse_call_member_expr(parser, std::move(expr));
+        expr = parse_call_member_expr(parser, std::move(expr));
+
+        // Handle assignment to member/call result: obj.field = value
+        if (parser->current_token().type == TokenType::ASSIGNMENT ||
+            parser->current_token().type == TokenType::PLUS_ASSIGN ||
+            parser->current_token().type == TokenType::MINUS_ASSIGN ||
+            parser->current_token().type == TokenType::MUL_ASSIGN ||
+            parser->current_token().type == TokenType::DIV_ASSIGN ||
+            parser->current_token().type == TokenType::INTEGER_DIV_ASSIGN ||
+            parser->current_token().type == TokenType::POWER_ASSIGN ||
+            parser->current_token().type == TokenType::MOD_ASSIGN) {
+
+            std::string assign_op = parser->consume_token().lexeme;
+            auto value = parse_assignment_expr(parser);
+            parser->expect(TokenType::SEMICOLON, "Expected ';'.");
+
+            return std::make_unique<AssignmentExprNode>(
+                std::unique_ptr<Expr>(static_cast<Expr*>(expr.release())),
+                assign_op,
+                std::unique_ptr<Expr>(static_cast<Expr*>(value.release()))
+            );
+        }
+
         return expr;
     }
 

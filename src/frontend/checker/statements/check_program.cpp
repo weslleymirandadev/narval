@@ -1,4 +1,5 @@
 #include "frontend/checker/statements/check_program.hpp"
+#include "frontend/checker/statements/check_class_def.hpp"
 #include "frontend/ast/ast.hpp"
 #include "frontend/ast/expressions/assignment_expr_node.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
@@ -177,6 +178,13 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
             // Registrar função no escopo SEM checar o corpo ainda
             // Passamos false para não travar o símbolo
             ch->scope->put_key(def_stmt->name, func_type, false);
+        }
+    }
+
+    // QUARTA PASSAGEM: Registrar assinaturas de todas as classes antes de checar corpos
+    for (auto& el : program->body) {
+        if (el->kind == NodeType::ClassDef) {
+            check_class_def(ch, el.get());
         }
     }
 

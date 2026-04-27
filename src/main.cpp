@@ -39,7 +39,8 @@ extern "C" const char* nv_base_dir = nullptr; // visible to C runtime
 static std::string nv_base_dir_storage;
 
 // Função para executar modo batch (compilação normal)
-int run_batch_mode(const std::string& filename) {
+// build_only=true → apenas compila e linka, não executa
+int run_batch_mode(const std::string& filename, bool build_only = false) {
     // Use the file stem as the initial module name (consistent with Lexer)
     std::string module_name = std::filesystem::path(filename).stem().string();
 
@@ -271,31 +272,30 @@ int run_batch_mode(const std::string& filename) {
             #endif
         }
         
+        std::string output_name = build_only
+            ? std::filesystem::path(filename).stem().string()
+            : "narval_program";
+
         std::string link_cmd =
             std::string("gcc -g ") + runtime_path + " " +
             NARVAL_SOURCE_DIR + "/build/lib/std.o " +
-            "narval_module.o -lgc -pthread -ldl -lm -o narval_program " +
-            "-Wl,-e,main.start " +     // entry point
-            "-nostartfiles " +         // sem crt0, _start
-            "-no-pie " +               // opcional
-            "-lc -w";                // libc + sem warnings
+            "narval_module.o -lgc -pthread -ldl -lm -o " + output_name + " " +
+            "-Wl,-e,main.start " +
+            "-nostartfiles " +
+            "-no-pie " +
+            "-lc -w";
 
         if (system(link_cmd.c_str()) != 0) {
             llvm::errs() << "Falha na linkedição\n";
             return 1;
         }
-        
-        // IGNORAR VERIFICAÇÃO PARA DEBUG
-        // if (llvm::verifyModule(Mod, &llvm::errs())) {
-        //     llvm::errs() << "IR verification failed\n";
-        //     return 1;
-        // }
     } catch (const std::exception& e) {
         std::cerr << "Erro durante compilação: " << e.what() << "\n";
         return 1;
     }
 
-    return 0;
+    if (build_only) return 0;
+    return system("./narval_program");
 }
 
 // Função para executar modo REPL usando novo sistema JIT
@@ -360,65 +360,51 @@ int run_notebook_mode() {
 }
 
 int main(int argc, char* argv[]) {
-<<<<<<< HEAD
     // Inicializar o sistema de tipos do runtime antes de tudo
     extern void register_global_init(void);
     register_global_init();
     
-=======
->>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
     // Parse argumentos de linha de comando
     bool repl_mode = false;
     bool notebook_mode = false;
+    bool build_only = false;
     std::string filename;
-    
+
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
-        
+
         if (arg == "--repl" || arg == "-i" || arg == "-r") {
             repl_mode = true;
         } else if (arg == "--notebook" || arg == "-n") {
             notebook_mode = true;
+        } else if (arg == "--build" || arg == "-b") {
+            build_only = true;
         } else if (arg == "--help" || arg == "-h") {
             std::cout << "Uso: narval [opções] [arquivo.nv]\n";
             std::cout << "\nOpções:\n";
-            std::cout << "  --repl, -i, -r     Iniciar REPL interativo com JIT\n";
+            std::cout << "  --repl, -i, -r     Iniciar REPL interativo\n";
             std::cout << "  --notebook, -n     Iniciar Notebook interativo\n";
-            std::cout << "  --help, -h          Mostrar esta ajuda\n";
-            std::cout << "\nREPL Commands:\n";
-            std::cout << "  :help          - Show available commands\n";
-            std::cout << "  :quit, :exit   - Exit REPL\n";
-            std::cout << "  :reset         - Reset REPL context\n";
-            std::cout << "  :vars          - Show defined variables\n";
-            std::cout << "  :history       - Show command history\n";
-            std::cout << "  :load <file>   - Load and execute file\n";
-            std::cout << "  :save <file>   - Save command history\n";
-            std::cout << "\nNotebook Commands (when running with --notebook):\n";
-            std::cout << "  :new           - Create a new cell (end with a single . on a line)\n";
-            std::cout << "  :list          - List notebook cells\n";
-            std::cout << "  :run <id>      - Execute a specific cell by number\n";
-            std::cout << "  :runall        - Execute all cells in order\n";
-            std::cout << "  :del <id>      - Delete a specific cell by number\n";
-            std::cout << "  :save <file>   - Save notebook to file (JSON if available)\n";
-            std::cout << "  :load <file>   - Load notebook from file\n";
-            std::cout << "  :exit          - Exit the notebook\n";
+            std::cout << "  --build, -b        Compilar para binário sem executar\n";
+            std::cout << "  --help, -h         Mostrar esta ajuda\n";
+            std::cout << "\nExemplos:\n";
+            std::cout << "  narval              # abre o REPL\n";
+            std::cout << "  narval prog.nv      # compila e executa\n";
+            std::cout << "  narval --build prog.nv  # gera binário ./prog\n";
             return 0;
         } else if (arg[0] != '-') {
-            // Argumento posicional (nome de arquivo)
             filename = arg;
         }
     }
-    
+
     // Determinar modo de execução
     if (notebook_mode) {
         return run_notebook_mode();
     } else if (repl_mode) {
         return run_repl_mode();
     } else if (!filename.empty()) {
-        return run_batch_mode(filename);
+        return run_batch_mode(filename, build_only);
     } else {
-        std::cerr << "Uso: narval [--repl] [--notebook] [arquivo.nv]\n";
-        std::cerr << "Use --help para mais informações.\n";
-        return 1;
+        // Sem argumentos: entrar no REPL
+        return run_repl_mode();
     }
 }

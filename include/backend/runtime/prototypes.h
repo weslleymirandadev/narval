@@ -339,17 +339,4 @@ int is_valid_type(int32_t type);
 // Obter nome do tipo como string (legado)
 const char* get_type_name(int32_t type);
 
-<<<<<<< HEAD
-// Funções de concatenação e conversão para strings
-char* extract_string_from_value(Value* v);
-char* string_concat(const char* str1, const char* str2);
-void int_to_string(Value* out, int32_t value);
-void float_to_string(Value* out, double value);
-
-// Sistema de sobrecarga de operadores (como Python __add__)
-int has_add_method(NvTypeObject* type);
-int binary_add(Value* result, Value* lhs, Value* rhs);
-
-=======
->>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
 #endif /* PROTOTYPES_H */

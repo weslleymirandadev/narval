@@ -4,7 +4,7 @@
 namespace nv {
 
 const std::string NotebookUI::PROMPT = "nb> ";
-const std::string NotebookUI::MULTILINE_PROMPT = ">>> ";
+const std::string NotebookUI::MULTILINE_PROMPT = " ";
 
 std::string NotebookUI::read_multiline() {
     std::string buffer;
