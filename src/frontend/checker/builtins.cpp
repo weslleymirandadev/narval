@@ -7,8 +7,8 @@ namespace nv {
     
     // Lista de funções builtin disponíveis
     const std::vector<BuiltinFunction> BUILTIN_FUNCTIONS = {
-        // write: aceita 1 argumento (string) -> void
-        BuiltinFunction("write", {std::make_shared<String>()}, std::make_shared<Void>(), false, false, 1, 1),
+        // write: aceita 1 argumento de qualquer tipo -> void (como print() do Python)
+        BuiltinFunction("write", {}, std::make_shared<Void>(), false, true, 1, 1),
         
         // read: aceita 0 ou 1 argumento (prompt opcional), retorna string
         BuiltinFunction("read", {}, std::make_shared<String>(), false, true, 0, 1),
