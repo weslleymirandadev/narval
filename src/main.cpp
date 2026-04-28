@@ -13,8 +13,6 @@
 
 // Notebook mode (Jupyter-like)
 #include "frontend/interactive/notebook.hpp"
-// TODO: Implementar modo Notebook no futuro
-// #include "frontend/interactive/notebook.hpp"
 
 // Inicialização do runtime
 #include "backend/runtime/nv_runtime.h"
@@ -331,17 +329,6 @@ int run_repl_mode() {
         return 1;
     }
 }
-
-// TODO: Implementar modo Notebook no futuro
-// Esta função será implementada quando o módulo notebook estiver completo
-/*
-// Função para executar modo Notebook
-int run_notebook_mode() {
-    std::cout << "Modo Notebook ainda não implementado.\n";
-    std::cout << "Use --repl para modo interativo.\n";
-    return 1;
-}
-*/
 
 int run_notebook_mode() {
     try {
