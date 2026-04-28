@@ -259,17 +259,18 @@ int run_batch_mode(const std::string& filename, bool build_only = false) {
 
         
         std::string runtime_path;
-        // Verificar variável de ambiente NARVAL_HOME primeiro
+        // Verificar variável de ambiente NARVAL_HOME primeiro.
         const char* narval_home = std::getenv("NARVAL_HOME");
         if (narval_home) {
             runtime_path = std::string(narval_home) + "/runtime.o";
         } else {
-            // Usar caminho padrão baseado no modo de build
-            #ifdef NARVAL_DEV_MODE
-                runtime_path = std::string(NARVAL_SOURCE_DIR) + "/build/lib/runtime.o";
-            #else
+            // Prefer local runtime in source tree if available, then fallback to system install.
+            const std::string local_runtime = std::string(NARVAL_SOURCE_DIR) + "/build/lib/runtime.o";
+            if (std::filesystem::exists(local_runtime)) {
+                runtime_path = local_runtime;
+            } else {
                 runtime_path = "/usr/lib/narval/runtime.o";
-            #endif
+            }
         }
         
         std::string output_name = build_only
