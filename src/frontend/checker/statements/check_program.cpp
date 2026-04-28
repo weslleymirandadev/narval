@@ -142,7 +142,16 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
     // Processa recursivamente todos os blocos de código (incluindo aninhados)
     process_codeblock(program->body, ch);
 
-    // TERCEIRA PASSAGEM [NOVA]: Registrar assinaturas de todas as funções (defs) antes de checar corpos
+    // TERCEIRA PASSAGEM [NOVA]: Registrar todas as classes primeiro.
+    // Isso permite usar classes como tipos em parâmetros/retornos de funções
+    // e em declarações mesmo quando a classe aparece depois no arquivo.
+    for (auto& el : program->body) {
+        if (el->kind == NodeType::ClassDef) {
+            check_class_def(ch, el.get());
+        }
+    }
+
+    // QUARTA PASSAGEM [NOVA]: Registrar assinaturas de todas as funções (defs) antes de checar corpos
     for (auto& el : program->body) {
         if (el->kind == NodeType::DefStatement) {
             auto* def_stmt = static_cast<DefStmtNode*>(el.get());
@@ -178,13 +187,6 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
             // Registrar função no escopo SEM checar o corpo ainda
             // Passamos false para não travar o símbolo
             ch->scope->put_key(def_stmt->name, func_type, false);
-        }
-    }
-
-    // QUARTA PASSAGEM: Registrar assinaturas de todas as classes antes de checar corpos
-    for (auto& el : program->body) {
-        if (el->kind == NodeType::ClassDef) {
-            check_class_def(ch, el.get());
         }
     }
 

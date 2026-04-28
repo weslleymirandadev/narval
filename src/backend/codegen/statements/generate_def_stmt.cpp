@@ -1,6 +1,7 @@
 #include "frontend/ast/statements/def_stmt_node.hpp"
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
+#include "frontend/checker/checker.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/IR/DIBuilder.h>
 
@@ -12,13 +13,45 @@ void DefStmtNode::codegen(nv::IRGenerationContext& ctx) {
 
     std::vector<llvm::Type*> param_types;
     std::vector<std::string> param_names;
+    nv::Checker* checker = static_cast<nv::Checker*>(ctx.get_type_checker());
+
     for (auto& p : parameters) {
         for (auto& kv : p.parameter) {
             param_names.push_back(kv.first);
-            param_types.push_back(nv::ir_utils::llvm_type_from_string(ctx, kv.second));
+            llvm::Type* param_ty = nullptr;
+            if (checker) {
+                try {
+                    auto param_nv_ty = checker->gettyptr(kv.second);
+                    param_ty = ctx.nv_type_to_llvm(param_nv_ty);
+                } catch (...) {
+                    param_ty = nullptr;
+                }
+            }
+            if (!param_ty) {
+                param_ty = nv::ir_utils::llvm_type_from_string(ctx, kv.second);
+            }
+            // LLVM não permite parâmetro do tipo void.
+            if (param_ty && param_ty->isVoidTy() && kv.second != "void") {
+                param_ty = nv::ir_utils::get_value_struct(ctx);
+            }
+            param_types.push_back(param_ty);
         }
     }
-    llvm::Type* ret_ty = nv::ir_utils::llvm_type_from_string(ctx, return_type);
+    llvm::Type* ret_ty = nullptr;
+    if (checker) {
+        try {
+            auto ret_nv_ty = checker->gettyptr(return_type);
+            ret_ty = ctx.nv_type_to_llvm(ret_nv_ty);
+        } catch (...) {
+            ret_ty = nullptr;
+        }
+    }
+    if (!ret_ty) {
+        ret_ty = nv::ir_utils::llvm_type_from_string(ctx, return_type);
+    }
+    if (ret_ty && ret_ty->isVoidTy() && return_type != "void") {
+        ret_ty = nv::ir_utils::get_value_struct(ctx);
+    }
     auto* fn_ty = llvm::FunctionType::get(ret_ty, param_types, false);
     
     // Tenta encontrar a função se ela já foi declarada (por exemplo, no pre-pass de assinaturas)

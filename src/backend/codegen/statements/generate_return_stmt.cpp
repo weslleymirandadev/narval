@@ -16,28 +16,51 @@ void ReturnStmtNode::codegen(nv::IRGenerationContext& ctx) {
                 if (val_type != ret_type) {
                     auto& builder = ctx.get_builder();
                     auto* valueStruct = nv::ir_utils::get_value_struct(ctx);
+                    auto* valuePtr = nv::ir_utils::get_value_ptr(ctx);
+                    auto* i32Ty = nv::ir_utils::get_i32(ctx);
+                    auto* f64Ty = nv::ir_utils::get_f64(ctx);
 
                     // Box primitive into Value if the function returns a Value struct
                     if (ret_type == valueStruct && !val_type->isStructTy()) {
                         auto* outAlloca = ctx.create_alloca(ret_type, "ret_boxed");
-                        auto* valPtr = nv::ir_utils::get_value_ptr(ctx);
                         auto* voidTy = llvm::Type::getVoidTy(ctx.get_context());
 
-                        if (val_type == nv::ir_utils::get_i32(ctx)) {
-                            auto* fn = ctx.ensure_runtime_func("create_int", {valPtr, val_type}, voidTy);
+                        if (val_type == i32Ty) {
+                            auto* fn = ctx.ensure_runtime_func("create_int", {valuePtr, val_type}, voidTy);
                             builder.CreateCall(fn, {outAlloca, v});
-                        } else if (val_type == nv::ir_utils::get_f64(ctx)) {
-                            auto* fn = ctx.ensure_runtime_func("create_float", {valPtr, val_type}, voidTy);
+                        } else if (val_type == f64Ty) {
+                            auto* fn = ctx.ensure_runtime_func("create_float", {valuePtr, val_type}, voidTy);
                             builder.CreateCall(fn, {outAlloca, v});
                         } else if (val_type == nv::ir_utils::get_i1(ctx)) {
-                            auto* i32v = builder.CreateZExt(v, nv::ir_utils::get_i32(ctx), "b2i");
-                            auto* fn = ctx.ensure_runtime_func("create_bool", {valPtr, nv::ir_utils::get_i32(ctx)}, voidTy);
+                            auto* i32v = builder.CreateZExt(v, i32Ty, "b2i");
+                            auto* fn = ctx.ensure_runtime_func("create_bool", {valuePtr, i32Ty}, voidTy);
                             builder.CreateCall(fn, {outAlloca, i32v});
                         } else if (val_type->isPointerTy()) {
-                            auto* fn = ctx.ensure_runtime_func("create_str", {valPtr, val_type}, voidTy);
+                            auto* fn = ctx.ensure_runtime_func("create_str", {valuePtr, val_type}, voidTy);
                             builder.CreateCall(fn, {outAlloca, v});
                         }
                         v = builder.CreateLoad(ret_type, outAlloca, "ret_val");
+                    }
+                    // Unbox Value into primitive when function expects primitive return
+                    else if (val_type == valueStruct && ret_type != valueStruct) {
+                        auto* inAlloca = ctx.create_alloca(valueStruct, "ret_unbox_in");
+                        builder.CreateStore(v, inAlloca);
+
+                        if (ret_type->isIntegerTy(32)) {
+                            auto* fn = ctx.ensure_runtime_func("extract_int_from_value", {i32Ty, valuePtr});
+                            v = builder.CreateCall(fn, {inAlloca}, "ret_int");
+                        } else if (ret_type->isFloatingPointTy()) {
+                            auto* fn = ctx.ensure_runtime_func("extract_float_from_value", {f64Ty, valuePtr});
+                            auto* fv = builder.CreateCall(fn, {inAlloca}, "ret_float");
+                            v = (ret_type == f64Ty) ? fv : builder.CreateFPTrunc(fv, ret_type, "ret_float_cast");
+                        } else if (ret_type->isIntegerTy(1)) {
+                            auto* fn = ctx.ensure_runtime_func("extract_int_from_value", {i32Ty, valuePtr});
+                            auto* iv = builder.CreateCall(fn, {inAlloca}, "ret_bool_i32");
+                            v = builder.CreateICmpNE(iv, llvm::ConstantInt::get(i32Ty, 0), "ret_bool");
+                        } else if (ret_type->isPointerTy()) {
+                            auto* fn = ctx.ensure_runtime_func("extract_string_from_value", {ret_type, valuePtr});
+                            v = builder.CreateCall(fn, {inAlloca}, "ret_str");
+                        }
                     }
                     // Conversão de int para float
                     else if (val_type->isIntegerTy() && ret_type->isFloatingPointTy()) {

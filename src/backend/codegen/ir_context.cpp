@@ -144,6 +144,16 @@ llvm::Type* IRGenerationContext::nv_type_to_llvm(std::shared_ptr<Type> nv_type) 
             // Retornar ponteiro genérico (será tratado como Value* no runtime)
             return ir_utils::get_value_ptr(*this);
         }
+
+        case Kind::MAP: {
+            // Map também é representado como Value no runtime.
+            return ir_utils::get_value_struct(*this);
+        }
+
+        case Kind::CLASS: {
+            // Instâncias de classe são objetos dinâmicos encapsulados em Value.
+            return ir_utils::get_value_struct(*this);
+        }
         
         case Kind::TUPLE: {
             auto tuple_type = std::static_pointer_cast<Tuple>(nv_type);
