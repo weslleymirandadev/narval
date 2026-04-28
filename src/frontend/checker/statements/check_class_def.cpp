@@ -32,13 +32,25 @@ namespace nv {
             class_type->add_field(field->name, field_type, field->is_mutable);
         }
         
-        // Adicionar métodos (por enquanto, criamos tipos básicos para métodos)
+        // Adicionar métodos com assinatura real a partir do DefStmtNode
         for (const auto& method : class_def->methods) {
-            // Por enquanto, métodos são tratados como funções void sem parâmetros
-            auto method_type = std::make_shared<Def>(
-                std::vector<std::shared_ptr<Type>>{},
-                std::make_shared<Void>()
-            );
+            std::vector<std::shared_ptr<Type>> param_types;
+            std::shared_ptr<Type> ret_type = std::make_shared<Void>();
+
+            if (method->method_def) {
+                auto* def = static_cast<DefStmtNode*>(method->method_def.get());
+                for (const auto& pn : def->parameters) {
+                    for (const auto& kv : pn.parameter) {
+                        param_types.push_back(checker->gettyptr(kv.second));
+                    }
+                }
+                if (!def->return_type.empty() && def->return_type != "void" &&
+                    def->return_type != "automatic") {
+                    ret_type = checker->gettyptr(def->return_type);
+                }
+            }
+
+            auto method_type = std::make_shared<Def>(param_types, ret_type);
             class_type->add_method(method->name, method_type);
         }
         
