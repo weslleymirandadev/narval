@@ -100,7 +100,14 @@ std::unique_ptr<Node> parse_class_def(Parser* parser) {
                 }
                 
                 parser->expect(TokenType::CPAREN, "Expected ')' after parameters");
-                
+
+                // Tipo de retorno opcional: ): tipo {
+                std::string return_type = "void";
+                if (parser->current_token().type == TokenType::COLON) {
+                    parser->consume_token();
+                    return_type = parse_type(parser);
+                }
+
                 // Parse corpo do método
                 parser->expect(TokenType::OBRACE, "Expected '{' after method signature");
 
@@ -116,7 +123,7 @@ std::unique_ptr<Node> parse_class_def(Parser* parser) {
                 auto def_node = std::make_unique<DefStmtNode>(
                     member_name,
                     std::move(param_nodes),
-                    "void",
+                    return_type,
                     std::vector<std::unique_ptr<Stmt>>{}
                 );
 
