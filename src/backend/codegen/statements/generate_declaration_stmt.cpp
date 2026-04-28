@@ -178,19 +178,28 @@ void DeclarationStmtNode::codegen(nv::IRGenerationContext& context) {
         // IMPORTANTE: Se há um valor inicial não constante, inicializar a variável global diretamente
         // Isso evita problemas de dominação pois não usa @llvm.global_ctors
         if (init_val != nullptr && !constant_initialized) {
-            // Inicializar a variável global diretamente com o valor
-            // Isso funciona porque init_val está disponível no escopo atual
+            auto& B = context.get_builder();
+            auto& C = context.get_context();
+            auto* I32 = llvm::Type::getInt32Ty(C);
+            auto* F64 = llvm::Type::getDoubleTy(C);
+            auto* ValuePtr = nv::ir_utils::get_value_ptr(context);
+            auto* global_ptr = B.CreateBitCast(global, ValuePtr);
+
             if (init_val->getType() == ValueTy) {
-                // Já é Value, apenas armazenar
-                context.get_builder().CreateStore(init_val, global);
+                B.CreateStore(init_val, global);
+            } else if (init_val->getType()->isIntegerTy(1)) {
+                auto* f = context.ensure_runtime_func("create_bool", {ValuePtr, I32});
+                B.CreateCall(f, {global_ptr, B.CreateZExt(init_val, I32)});
+            } else if (init_val->getType()->isIntegerTy()) {
+                auto* f = context.ensure_runtime_func("create_int", {ValuePtr, I32});
+                llvm::Value* iv = init_val->getType()->isIntegerTy(32) ? init_val : B.CreateSExtOrTrunc(init_val, I32);
+                B.CreateCall(f, {global_ptr, iv});
+            } else if (init_val->getType()->isFloatingPointTy()) {
+                auto* f = context.ensure_runtime_func("create_float", {ValuePtr, F64});
+                llvm::Value* fp = init_val->getType() == F64 ? init_val : B.CreateFPExt(init_val, F64);
+                B.CreateCall(f, {global_ptr, fp});
             } else if (init_val->getType()->isPointerTy()) {
-                // É um ponteiro (ex: string), precisa ser embrulhado
-                auto& B = context.get_builder();
-                auto* ValuePtr = nv::ir_utils::get_value_ptr(context);
-                auto* global_ptr = B.CreateBitCast(global, ValuePtr);
-                
                 if (init_val->getType() == nv::ir_utils::get_i8_ptr(context)) {
-                    // String
                     auto* f = context.ensure_runtime_func("create_str", {ValuePtr, nv::ir_utils::get_i8_ptr(context)});
                     B.CreateCall(f, {global_ptr, init_val});
                 }

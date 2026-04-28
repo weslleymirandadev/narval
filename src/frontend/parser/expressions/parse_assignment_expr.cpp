@@ -82,7 +82,8 @@ std::unique_ptr<Node> parse_assignment_expr(Parser* parser) {
             node = std::make_unique<DeclarationStmtNode>(
             std::unique_ptr<Expr>(static_cast<Expr*>(target.release())),
             std::unique_ptr<Expr>(static_cast<Expr*>(value.release())),
-            typ            
+            typ,
+            false  // declarações sem 'mut' são constantes por padrão
         );
         } else {
             node = std::make_unique<AssignmentExprNode>(

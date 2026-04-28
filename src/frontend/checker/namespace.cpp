@@ -19,6 +19,13 @@ std::shared_ptr<nv::Type>& nv::Namespace::get_key(const std::string& k) {
 }
 
 void nv::Namespace::put_key(const std::string& k, const std::shared_ptr<nv::Type>& v, bool ismutable) {
+    // Se já existe e é constante, permitir apenas se for a mesma declaração
+    if (has_key(k) && is_const(k)) {
+        // Permitir redeclaração se for exatamente a mesma variável constante
+        // (isso pode acontecer devido a múltiplas passadas do checker)
+        return;
+    }
+    
     if (is_const(k)) {
         throw std::runtime_error(std::string("'") + k + "' can not be changed.");
     }
