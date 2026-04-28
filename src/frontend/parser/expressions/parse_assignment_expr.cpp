@@ -14,7 +14,28 @@ std::unique_ptr<Node> parse_assignment_expr(Parser* parser) {
     
     if (parser->current_token().type == TokenType::MUT) {
         parser->consume_token();
-        return parse_declaration_stmt(parser, true);
+        // Verificar se tem tipo explícito após o identificador
+        auto target = parse_array_map_expr(parser);
+        std::string typ = "automatic";
+        
+        if (parser->current_token().type == TokenType::COLON) {
+            parser->consume_token();
+            typ = parse_type(parser);
+        }
+        
+        parser->expect(TokenType::ASSIGNMENT, "Expected '=' after declaration.");
+        auto value = parse_conditional_expr(parser, nullptr);
+        parser->expect(TokenType::SEMICOLON, "Expected ';' after declaration.");
+        
+        // Criar DeclarationStmtNode com tipo explícito e mutável
+        auto node = std::make_unique<DeclarationStmtNode>(
+            std::unique_ptr<Expr>(static_cast<Expr*>(target.release())),
+            std::unique_ptr<Expr>(static_cast<Expr*>(value.release())),
+            typ,
+            true  // is_mutable = true
+        );
+        node->position = std::move(pos);
+        return node;
     }
     
     auto target = parse_array_map_expr(parser);

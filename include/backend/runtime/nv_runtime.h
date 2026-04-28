@@ -25,6 +25,9 @@ void create_any(Value* out);
 // Inicialização do sistema de tipos
 void register_global_init(void);
 
+// Inicializar classes builtin (int, float, str, etc.) como classes completas
+void initialize_builtin_classes(void);
+
 // Funções de conversão de tipo (estilo Python)
 void nv_str_convert(Value* out, Value* input);
 void nv_int_convert(Value* out, Value* input);

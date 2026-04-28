@@ -24,7 +24,8 @@ void nv::Namespace::put_key(const std::string& k, const std::shared_ptr<nv::Type
     }
 
     names[k] = v;
-    if (ismutable)
+    // consts armazena variáveis CONSTANTES (não mutáveis), não mutáveis
+    if (!ismutable)
         consts[k] = true;
 }
 

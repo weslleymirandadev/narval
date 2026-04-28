@@ -227,6 +227,8 @@ namespace nv {
     struct Class : public Type {
         std::string name;
         std::shared_ptr<Class> parent_class;
+        std::shared_ptr<Type> parent_builtin_type;  // Para herança de tipos builtin
+        bool is_builtin_derived = false;
         std::unordered_map<std::string, std::shared_ptr<Type>> fields;
         std::unordered_map<std::string, std::shared_ptr<Type>> methods;
         

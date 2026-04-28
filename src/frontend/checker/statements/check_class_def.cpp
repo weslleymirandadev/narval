@@ -19,10 +19,24 @@ namespace nv {
         // Se tiver classe pai, configurar herança
         if (!class_def->parent_class.empty()) {
             auto parent_type = checker->gettyptr(class_def->parent_class);
+            
+            // Permitir herança de classes ou tipos builtin
             if (parent_type->kind == Kind::CLASS) {
                 class_type->parent_class = std::static_pointer_cast<Class>(parent_type);
+            } else if (parent_type->kind == Kind::INT || 
+                      parent_type->kind == Kind::FLOAT || 
+                      parent_type->kind == Kind::STRING ||
+                      parent_type->kind == Kind::BOOL ||
+                      parent_type->kind == Kind::ARRAY ||
+                      parent_type->kind == Kind::VECTOR ||
+                      parent_type->kind == Kind::MAP ||
+                      parent_type->kind == Kind::TUPLE) {
+                // Para tipos builtin, criar uma classe wrapper que herda as propriedades
+                // Por enquanto, tratamos como se fosse uma classe normal
+                class_type->parent_builtin_type = parent_type;
+                class_type->is_builtin_derived = true;
             } else {
-                checker->error(node, "Parent class '" + class_def->parent_class + "' is not a class");
+                checker->error(node, "Parent class '" + class_def->parent_class + "' is not a class or builtin type");
             }
         }
         

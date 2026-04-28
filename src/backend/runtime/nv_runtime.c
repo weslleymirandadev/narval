@@ -27,6 +27,9 @@ void* array_prototype = NULL;
 void* vector_prototype = NULL;
 void* map_prototype = NULL;
 
+// Declaração da função de inicialização de classes builtin
+void initialize_builtin_classes(void);
+
 // Registrar símbolos globais (para compatibilidade com compilador)
 void register_global_init(void) {
     static int initialized = 0;
@@ -37,24 +40,8 @@ void register_global_init(void) {
 
     nv_type_system_init();
 
-    NVType_Type = nv_type_new("type", NULL, 0);
-
-    NvTypeObject* type_type = NVType_Type;
-    if (type_type) {
-        type_type->ob_base.ob_type = type_type;
-        type_type->tp_metaclass = type_type;
-        NVType_Type = type_type;
-    }
-
-    NVInt_Type    = nv_type_new("int",    NULL, 0);
-    NVFloat_Type  = nv_type_new("float",  NULL, 0);
-    NVStr_Type    = nv_type_new("str",    NULL, 0);
-    NVBool_Type   = nv_type_new("bool",   NULL, 0);
-    NVArray_Type  = nv_type_new("array",  NULL, 0);
-    NVVector_Type = nv_type_new("vector", NULL, 0);
-    NVMap_Type    = nv_type_new("map",    NULL, 0);
-    NVTuple_Type  = nv_type_new("tuple",  NULL, 0);
-    NVObject_Type = nv_type_new("object", NULL, 0);
+    // Usar novo sistema de classes builtin
+    initialize_builtin_classes();
 }
 
 /* ============================================================= */

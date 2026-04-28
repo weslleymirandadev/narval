@@ -4,6 +4,7 @@
 #include "frontend/ast/expressions/array_expr_node.hpp"
 #include "frontend/ast/expressions/vector_expr_node.hpp"
 #include <stdexcept>
+#include <cstdio> // Adicionado para usar printf
 
 namespace {
     // Converte ArrayExpression para VectorExpression
