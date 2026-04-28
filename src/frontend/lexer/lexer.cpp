@@ -131,21 +131,55 @@ std::vector<Token> Lexer::tokenize()
 
         char c = peek();
 
-        // ignore comments
-        if (c == '#' && std::distance(current, input.cend()) > 1)
+        // ignore comments: `# ...` or multiline `#" ... "#`
+        if (c == '#')
         {
+            if (std::distance(current, input.cend()) > 1 && *(current + 1) == '"')
+            {
+                size_t comment_line = line;
+                size_t comment_column = column;
+
+                advance(); // #
+                advance(); // "
+
+                bool comment_closed = false;
+                while (!is_eof())
+                {
+                    if (peek() == '"' && std::distance(current, input.cend()) > 1 && *(current + 1) == '#')
+                    {
+                        advance(); // "
+                        advance(); // #
+                        comment_closed = true;
+                        break;
+                    }
+
+                    advance();
+                }
+
+                if (!comment_closed)
+                {
+                    throw std::runtime_error(
+                        "Unterminated multiline comment at line " +
+                        std::to_string(comment_line) +
+                        ", column " +
+                        std::to_string(comment_column));
+                }
+
+                continue;
+            }
+
             advance();
-            
+
             while (!is_eof() && peek() != '\n')
             {
                 advance();
             }
-            
+
             continue;
         }
 
         // strings
-        if (c == '"' || c == '\'') {
+        if (c == '"' || c == '\'' || c == '`') {
             tokens.push_back(tokenize_string(input, position, line, column, filename));
             current = input.cbegin() + position;
             continue;
