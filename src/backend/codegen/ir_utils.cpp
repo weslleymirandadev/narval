@@ -104,27 +104,21 @@ llvm::Value* promote_nv_type(
     return promote_type(context, value, target_llvm_type);
 }
 
-// Helper: extrai valor numérico de um Value (assume TAG_INT)
+// Helper: extrai valor numérico de um Value via runtime
 static llvm::Value* extract_int_from_value(IRGenerationContext& context, llvm::Value* val) {
     if (!val) return nullptr;
     auto* valueStruct = get_value_struct(context);
     if (val->getType() != valueStruct) return val; // Não é Value, retornar como está
-    
+
     auto& builder = context.get_builder();
     auto* i32 = get_i32(context);
-    auto* i64 = get_i64(context);
-    
-    // Armazenar Value temporariamente
+    auto* valPtr = get_value_ptr(context);
+
     auto* tmp = context.create_alloca(valueStruct, "val.tmp");
     builder.CreateStore(val, tmp);
-    
-    // Extrair valor (campo 1) e converter para i32
-    // Assumimos que é TAG_INT - em runtime será verificado
-    auto* valuePtr = builder.CreateStructGEP(valueStruct, tmp, 1);
-    auto* value64 = builder.CreateLoad(i64, valuePtr);
-    auto* value32 = builder.CreateTrunc(value64, i32, "int.val");
-    
-    return value32;
+
+    auto* extractFn = context.ensure_runtime_func("extract_int_from_value", {valPtr}, i32);
+    return builder.CreateCall(extractFn, {tmp}, "int.val");
 }
 
 llvm::Value* create_comparison(IRGenerationContext& context, llvm::Value* lhs, llvm::Value* rhs, const std::string& op) {
@@ -217,6 +211,13 @@ llvm::Value* create_binary_op(IRGenerationContext& context, llvm::Value* lhs, ll
         bool lhs_is_value = (lhs_type == valueStruct);
         bool rhs_is_value = (rhs_type == valueStruct);
         
+        // Caso 3: String literal + String literal -> concat
+        if (lhs_is_str && rhs_is_str) {
+            auto* catTy = llvm::FunctionType::get(i8p, { i8p, i8p }, false);
+            auto* catFn = llvm::cast<llvm::Function>(context.get_module().getOrInsertFunction("string_concat", catTy).getCallee());
+            return builder.CreateCall(catFn, {lhs, rhs}, "strcat");
+        }
+
         // Caso 4: Int literal + String literal -> fallback para operador padrão
         if (lhs_is_int && rhs_is_str) {
             // TODO: Implementar através de sistema de classes quando disponível
