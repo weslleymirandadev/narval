@@ -141,12 +141,12 @@ Value array_pop_method(Array* a) {
 // Função de escrita principal
 void nv_write(Value* v) {
     if (!v) {
-        printf("null");
+        printf("null\n");
         return;
     }
-    
+
     if ((uintptr_t)v < 0x1000) {
-        printf("null");
+        printf("null\n");
         return;
     }
     
@@ -154,7 +154,7 @@ void nv_write(Value* v) {
     NvObject* obj = v->obj;
     
     if (!obj) {
-        printf("null");
+        printf("null\n");
         return;
     }
     

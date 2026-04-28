@@ -50,6 +50,10 @@ public:
         body.push_back(std::move(stmt));
     }
 
+    const std::vector<std::unique_ptr<Stmt>>& get_statements() const {
+        return body;
+    }
+
     Node* clone() const override {
         auto* program = new Program();
         for (const auto& stmt : body) {

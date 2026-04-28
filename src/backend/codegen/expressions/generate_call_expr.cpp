@@ -5,6 +5,8 @@
 #include "backend/codegen/method_handler.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
 #include "frontend/ast/expressions/member_expr_node.hpp"
+#include "frontend/checker/checker.hpp"
+#include "frontend/checker/type.hpp"
 
 // Forward declarations para handlers
 namespace nv {
@@ -167,7 +169,24 @@ llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name
         return llvm::UndefValue::get(ValueTy);
     }
     
-    // Fallback para implementação antiga
+    // str/int/float/bool conversions
+    auto try_convert = [&](const char* fn_name, const char* alloca_name) -> llvm::Value* {
+        if (args.empty()) return llvm::UndefValue::get(ValueTy);
+        args[0]->codegen(ctx);
+        if (!ctx.has_value()) return llvm::UndefValue::get(ValueTy);
+        llvm::Value* arg = ctx.pop_value();
+        auto* out = ctx.create_alloca(ValueTy, alloca_name);
+        auto* in_box = box_value(ctx, arg);
+        auto* fn = ctx.ensure_runtime_func(fn_name,
+            {ir_utils::get_value_ptr(ctx), ir_utils::get_value_ptr(ctx)},
+            llvm::Type::getVoidTy(ctx.get_context()));
+        B.CreateCall(fn, {out, in_box});
+        return B.CreateLoad(ValueTy, out);
+    };
+    if (name == "str")   return try_convert("nv_str_convert",   "str_out");
+    if (name == "int")   return try_convert("nv_int_convert",   "int_out");
+    if (name == "float") return try_convert("nv_float_convert", "flt_out");
+    if (name == "bool")  return try_convert("nv_bool_convert",  "boo_out");
 
     if (name == "exit") {
         if (args.size() != 1) return nullptr;
@@ -260,7 +279,7 @@ llvm::Value* lower_method_call(IRGenerationContext& ctx, llvm::Value* selfAlloca
 
     // Load self to get prototype
     llvm::Value* selfVal = B.CreateLoad(ValueTy, selfAlloca);
-    llvm::Value* proto = B.CreateExtractValue(selfVal, 2);
+    (void)selfVal;
 
     // String methods (explicit signatures)
     if (method == "toUpperCase") {
@@ -353,11 +372,7 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
         if (method == "parseString") {
             // Registrar features JSON
             nv::register_feature("json");
-<<<<<<< HEAD
             nv::register_feature("str");
-=======
-            nv::register_feature("string");
->>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
             
             // Verifica se o objeto é o identifier "json"
             if (auto* objId = dynamic_cast<IdentifierNode*>(mem->object.get())) {
@@ -529,7 +544,52 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
 
         // === FIM DO ESPECIAL json.load ===
 
-        // === MÉTODOS NORMAIS (push, pop, etc) ===
+        // === MÉTODOS DE CLASSE DEFINIDOS PELO USUÁRIO ===
+        if (ctx.get_type_checker()) {
+            auto* checker = static_cast<nv::Checker*>(ctx.get_type_checker());
+            auto obj_type = checker->infer_expr(mem->object.get());
+            if (obj_type) {
+                obj_type = checker->unify_ctx.resolve(obj_type);
+                if (obj_type && obj_type->kind == nv::Kind::CLASS) {
+                    auto* cls = static_cast<nv::Class*>(obj_type.get());
+                    std::string fn_name = "__method_" + cls->name + "_" + method;
+                    auto* method_fn = ctx.get_module().getFunction(fn_name);
+                    if (method_fn) {
+                        auto* ValueTy  = ir_utils::get_value_struct(ctx);
+                        auto* ValuePtr = ir_utils::get_value_ptr(ctx);
+
+                        // Build self as Value* (method ABI requires Value* as first arg).
+                        auto* self_alloca = ctx.create_alloca(ValueTy, "cls_self");
+                        if (obj && obj->getType() == ValueTy) {
+                            B.CreateStore(obj, self_alloca);
+                        } else if (obj && obj->getType()->isPointerTy()) {
+                            auto* loaded = B.CreateLoad(ValueTy, obj);
+                            B.CreateStore(loaded, self_alloca);
+                        } else {
+                            B.CreateStore(llvm::UndefValue::get(ValueTy), self_alloca);
+                        }
+
+                        // Box each argument as Value*
+                        std::vector<llvm::Value*> call_args = {self_alloca};
+                        for (auto& a : args) {
+                            a->codegen(ctx);
+                            auto* av = ctx.pop_value();
+                            call_args.push_back(box_value(ctx, av));
+                        }
+
+                        auto* call = B.CreateCall(method_fn, call_args);
+                        if (!method_fn->getReturnType()->isVoidTy()) {
+                            ctx.push_value(call);
+                        } else {
+                            ctx.push_value(llvm::UndefValue::get(ir_utils::get_value_struct(ctx)));
+                        }
+                        return;
+                    }
+                }
+            }
+        }
+
+        // === MÉTODOS NORMAIS de primitivos (push, pop, toUpperCase, etc) ===
         auto* selfAlloca = box_value(ctx, obj);
 
         std::vector<llvm::Value*> argv;

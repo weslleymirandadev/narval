@@ -126,6 +126,67 @@ void AssignmentExprNode::codegen(nv::IRGenerationContext& ctx) {
         return;
     }
 
+    // Suporte a atribuição para member expressions: obj.field = value
+    if (auto* mem = dynamic_cast<MemberExprNode*>(target.get())) {
+        auto* prop_id = dynamic_cast<IdentifierNode*>(mem->property.get());
+        if (!prop_id) { ctx.push_value(nullptr); return; }
+
+        if (value) value->codegen(ctx);
+        llvm::Value* rhs = ctx.pop_value();
+        if (!rhs) { ctx.push_value(nullptr); return; }
+
+        mem->object->codegen(ctx);
+        llvm::Value* obj = ctx.pop_value();
+
+        auto& B  = ctx.get_builder();
+        auto& C  = ctx.get_context();
+        auto* ValueTy  = nv::ir_utils::get_value_struct(ctx);
+        auto* ValuePtr = nv::ir_utils::get_value_ptr(ctx);
+        auto* I8P      = nv::ir_utils::get_i8_ptr(ctx);
+
+        // Key string constant
+        auto* key = B.CreateGlobalStringPtr(prop_id->symbol.c_str());
+
+        // Box RHS into a Value alloca
+        auto* rhs_alloca = ctx.create_alloca(ValueTy, "mset_rhs");
+        if (rhs && rhs->getType() == ValueTy) {
+            B.CreateStore(rhs, rhs_alloca);
+        } else if (rhs) {
+            auto* I32 = llvm::Type::getInt32Ty(C);
+            auto* F64 = llvm::Type::getDoubleTy(C);
+            auto& M   = ctx.get_module();
+            if (rhs->getType()->isIntegerTy(1)) {
+                auto decl = M.getOrInsertFunction("create_bool", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, I32}, false));
+                B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {rhs_alloca, B.CreateZExt(rhs, I32)});
+            } else if (rhs->getType()->isIntegerTy()) {
+                auto decl = M.getOrInsertFunction("create_int", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, I32}, false));
+                llvm::Value* iv = rhs->getType()->isIntegerTy(32) ? rhs : B.CreateSExtOrTrunc(rhs, I32);
+                B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {rhs_alloca, iv});
+            } else if (rhs->getType()->isFloatingPointTy()) {
+                auto* f64 = llvm::Type::getDoubleTy(C);
+                auto decl = M.getOrInsertFunction("create_float", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, f64}, false));
+                llvm::Value* fp = rhs->getType() == f64 ? rhs : B.CreateFPExt(rhs, f64);
+                B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {rhs_alloca, fp});
+            } else if (rhs->getType() == I8P) {
+                auto decl = M.getOrInsertFunction("create_str", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, I8P}, false));
+                B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {rhs_alloca, rhs});
+            }
+        }
+
+        // Store self into an alloca
+        auto* self_alloca = ctx.create_alloca(ValueTy, "mset_self");
+        if (obj && obj->getType() == ValueTy) {
+            B.CreateStore(obj, self_alloca);
+        }
+
+        // Call nv_object_set_field(Value* self, const char* key, Value* val)
+        auto* set_fn = ctx.ensure_runtime_func("nv_object_set_field", {ValuePtr, I8P, ValuePtr});
+        B.CreateCall(set_fn, {self_alloca, key, rhs_alloca});
+
+        ctx.push_value(rhs);
+        return;
+    }
+
     auto* id = dynamic_cast<IdentifierNode*>(target.get());
     if (!id) { ctx.push_value(nullptr); return; } // por enquanto só suportamos atribuição a identificadores
 

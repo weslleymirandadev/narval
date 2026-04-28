@@ -95,7 +95,7 @@ void Notebook::run() {
             // Treat normal input as start of a multiline cell (terminated by a single '.')
             std::string src = line + "\n";
             while (true) {
-                std::cout << ">>> "; std::cout.flush();
+                std::cout << " "; std::cout.flush();
                 if (!std::getline(std::cin, line)) break;
                 if (line == ".") break;
                 src += line + "\n";

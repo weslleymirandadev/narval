@@ -1,34 +1,32 @@
 #include "frontend/parser/statements/parse_class_def.hpp"
-#include "frontend/parser/statements/parse_def_stmt.hpp"
+#include "frontend/parser/expressions/parse_primary_expr.hpp"
 #include "frontend/parser/expressions/parse_type.hpp"
-#include "frontend/parser/expressions/parse_expr.hpp"
+#include "frontend/parser/statements/parse_stmt.hpp"
 
 std::unique_ptr<Node> parse_class_def(Parser* parser) {
-    // Consumir o token CLASS
-    parser->consume_token();
+    parser->consume_token(); // consumir CLASS
     
-    // Obter o nome da classe
-    auto name_token = parser->expect(TokenType::IDENTIFIER, "Expected class name");
-    std::string class_name = name_token.lexeme;
+    std::string class_name = parser->current_token().lexeme;
+    parser->consume_token(); // consumir nome da classe
     
     auto class_node = std::make_unique<ClassDefNode>(class_name);
     
-    // Verificar se há herança (extends)
+    // Verificar herança
     if (parser->current_token().type == TokenType::EXTENDS) {
         parser->consume_token(); // consumir EXTENDS
-        auto parent_token = parser->expect(TokenType::IDENTIFIER, "Expected parent class name after 'extends'");
+        Token parent_token = parser->current_token();
+        parser->consume_token(); // consumir nome da classe pai
         class_node->parent_class = parent_token.lexeme;
     }
     
-    // Esperar {
     parser->expect(TokenType::OBRACE, "Expected '{' after class name");
     
     // Parse do corpo da classe
     while (parser->current_token().type != TokenType::CBRACE && 
            parser->current_token().type != TokenType::EOF_TOKEN) {
         
-        // Verificar se é um modificador de acesso
-        std::string access_modifier = "public"; // padrão
+        // Verificar modificador de acesso
+        std::string access_modifier = "public";
         if (parser->current_token().type == TokenType::PUBLIC ||
             parser->current_token().type == TokenType::PRIVATE ||
             parser->current_token().type == TokenType::PROTECTED) {
@@ -43,85 +41,115 @@ std::unique_ptr<Node> parse_class_def(Parser* parser) {
             parser->consume_token();
         }
         
-        // Verificar se é um campo ou método
-        if (parser->current_token().type == TokenType::IDENTIFIER) {
-            std::string member_name = parser->current_token().lexeme;
-            parser->consume_token();
+        // Verificar se é um membro válido
+        if (parser->current_token().type == TokenType::IDENTIFIER ||
+            parser->current_token().type == TokenType::MUT ||
+            parser->current_token().type == TokenType::NEW) {
             
-            // Se o próximo token for :, é um campo
+            std::string member_name;
+            bool is_mutable_field = false;
+            
+            // Se for MUT, é um campo mutável
+            if (parser->current_token().type == TokenType::MUT) {
+                is_mutable_field = true;
+                parser->consume_token(); // consumir MUT
+                // Próximo token deve ser o nome do campo
+                if (parser->current_token().type == TokenType::IDENTIFIER) {
+                    member_name = parser->current_token().lexeme;
+                    parser->consume_token();
+                }
+            }
+            // Se for IDENTIFIER ou NEW, é o nome diretamente
+            else if (parser->current_token().type == TokenType::IDENTIFIER ||
+                      parser->current_token().type == TokenType::NEW) {
+                member_name = parser->current_token().lexeme;
+                parser->consume_token();
+            }
+            
+            // Campo
             if (parser->current_token().type == TokenType::COLON) {
                 parser->consume_token();
                 std::string field_type = parse_type(parser);
                 
-                // Verificar se é mutável
-                bool is_mutable = false;
-                if (parser->current_token().type == TokenType::MUT) {
-                    is_mutable = true;
-                    parser->consume_token();
-                }
-                
-                auto field = std::make_unique<ClassFieldNode>(member_name, field_type, is_mutable);
+                auto field = std::make_unique<ClassFieldNode>(member_name, field_type, is_mutable_field);
                 class_node->fields.push_back(std::move(field));
-                
-                // Exigir ; após o campo
                 parser->expect(TokenType::SEMICOLON, "Expected ';' after field declaration");
             }
-            // Se o próximo token for (, é um método
+            // Método
             else if (parser->current_token().type == TokenType::OPAREN) {
-                // Parse da definição do método
-                // Por enquanto, vamos pular o corpo do método
+                // Parse parâmetros
                 parser->consume_token(); // consumir (
+                std::vector<std::pair<std::string, std::string>> params;
                 
-                // Pular parâmetros
-                int paren_count = 1;
-                while (paren_count > 0 && parser->current_token().type != TokenType::EOF_TOKEN) {
-                    if (parser->current_token().type == TokenType::OPAREN) {
-                        paren_count++;
-                    } else if (parser->current_token().type == TokenType::CPAREN) {
-                        paren_count--;
-                    }
-                    parser->consume_token();
-                }
-                
-                // Pular corpo do método { ... }
-                if (parser->current_token().type == TokenType::OBRACE) {
-                    int brace_count = 1;
-                    parser->consume_token(); // consumir {
-                    
-                    while (brace_count > 0 && parser->current_token().type != TokenType::EOF_TOKEN) {
-                        if (parser->current_token().type == TokenType::OBRACE) {
-                            brace_count++;
-                        } else if (parser->current_token().type == TokenType::CBRACE) {
-                            brace_count--;
-                        }
+                while (parser->current_token().type != TokenType::CPAREN && 
+                       parser->current_token().type != TokenType::EOF_TOKEN) {
+                    if (parser->current_token().type == TokenType::IDENTIFIER) {
+                        std::string param_name = parser->current_token().lexeme;
                         parser->consume_token();
+                        
+                        if (parser->current_token().type == TokenType::COLON) {
+                            parser->consume_token();
+                            std::string param_type = parse_type(parser);
+                            params.push_back({param_name, param_type});
+                        }
+                        
+                        if (parser->current_token().type == TokenType::COMMA) {
+                            parser->consume_token();
+                        }
                     }
                 }
                 
-                // Criar um nó de método vazio por enquanto
-                auto method = std::make_unique<ClassMethodNode>(member_name, access_modifier, nullptr);
+                parser->expect(TokenType::CPAREN, "Expected ')' after parameters");
+
+                // Tipo de retorno opcional: ): tipo {
+                std::string return_type = "void";
+                if (parser->current_token().type == TokenType::COLON) {
+                    parser->consume_token();
+                    return_type = parse_type(parser);
+                }
+
+                // Parse corpo do método
+                parser->expect(TokenType::OBRACE, "Expected '{' after method signature");
+
+                // Converter params em ParamNodes
+                std::vector<ParamNode> param_nodes;
+                for (auto& [pname, ptype] : params) {
+                    std::unordered_map<std::string, std::string> pm;
+                    pm[pname] = ptype;
+                    param_nodes.emplace_back(std::move(pm));
+                }
+
+                // Criar DefStmtNode para armazenar o método com corpo
+                auto def_node = std::make_unique<DefStmtNode>(
+                    member_name,
+                    std::move(param_nodes),
+                    return_type,
+                    std::vector<std::unique_ptr<Stmt>>{}
+                );
+
+                // Parsear corpo do método
+                while (parser->not_eof() && parser->current_token().type != TokenType::CBRACE) {
+                    auto stmt = parse_stmt(parser);
+                    if (stmt) {
+                        def_node->body.push_back(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt.release())));
+                    }
+                }
+                parser->expect(TokenType::CBRACE, "Expected '}'");
+
+                auto method = std::make_unique<ClassMethodNode>(member_name, access_modifier, std::move(def_node));
                 class_node->methods.push_back(std::move(method));
             }
             else {
-                // Erro: esperado : ou (
                 parser->error("Expected ':' for field or '(' for method");
+                break;
             }
         }
         else {
-            // Pular tokens desconhecidos até encontrar ; ou }
-            while (parser->current_token().type != TokenType::SEMICOLON && 
-                   parser->current_token().type != TokenType::CBRACE &&
-                   parser->current_token().type != TokenType::EOF_TOKEN) {
-                parser->consume_token();
-            }
-            if (parser->current_token().type == TokenType::SEMICOLON) {
-                parser->consume_token();
-            }
+            parser->error("Expected class member");
+            break;
         }
     }
     
-    // Esperar }
     parser->expect(TokenType::CBRACE, "Expected '}' after class body");
-    
     return std::move(class_node);
 }

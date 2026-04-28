@@ -22,17 +22,18 @@ void create_map(Value* out);
 void create_tuple(Value* out);
 void create_any(Value* out);
 
-<<<<<<< HEAD
 // Inicialização do sistema de tipos
 void register_global_init(void);
 
-=======
->>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
 // Funções de conversão de tipo (estilo Python)
 void nv_str_convert(Value* out, Value* input);
 void nv_int_convert(Value* out, Value* input);
 void nv_float_convert(Value* out, Value* input);
 void nv_bool_convert(Value* out, Value* input);
+
+// Funções de conversão para concatenação
+void int_to_string(Value* out, int32_t value);
+void float_to_string(Value* out, double value);
 
 // Obter tipo de um valor
 int32_t get_value_type(const Value* v);
@@ -99,6 +100,11 @@ void type_builder_set_number_protocol(TypeBuilder* builder, NvNumberMethods* met
 void type_builder_set_sequence_protocol(TypeBuilder* builder, NvSequenceMethods* methods);
 void type_builder_set_mapping_protocol(TypeBuilder* builder, NvMappingMethods* methods);
 NvTypeObject* type_builder_build(TypeBuilder* builder);
+
+// Acesso a campos de objetos (instâncias de classes)
+// Convenção: void fn(Value* out, Value* self, const char* key)  /  void fn(Value* self, const char* key, Value* val)
+void nv_object_get_field(Value* out, Value* self, const char* key);
+void nv_object_set_field(Value* self, const char* key, Value* val);
 
 // Funções de debug
 void nv_type_print_info(NvTypeObject* type);

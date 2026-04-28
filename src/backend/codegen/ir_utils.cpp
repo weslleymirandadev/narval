@@ -104,27 +104,21 @@ llvm::Value* promote_nv_type(
     return promote_type(context, value, target_llvm_type);
 }
 
-// Helper: extrai valor numérico de um Value (assume TAG_INT)
+// Helper: extrai valor numérico de um Value via runtime
 static llvm::Value* extract_int_from_value(IRGenerationContext& context, llvm::Value* val) {
     if (!val) return nullptr;
     auto* valueStruct = get_value_struct(context);
     if (val->getType() != valueStruct) return val; // Não é Value, retornar como está
-    
+
     auto& builder = context.get_builder();
     auto* i32 = get_i32(context);
-    auto* i64 = get_i64(context);
-    
-    // Armazenar Value temporariamente
+    auto* valPtr = get_value_ptr(context);
+
     auto* tmp = context.create_alloca(valueStruct, "val.tmp");
     builder.CreateStore(val, tmp);
-    
-    // Extrair valor (campo 1) e converter para i32
-    // Assumimos que é TAG_INT - em runtime será verificado
-    auto* valuePtr = builder.CreateStructGEP(valueStruct, tmp, 1);
-    auto* value64 = builder.CreateLoad(i64, valuePtr);
-    auto* value32 = builder.CreateTrunc(value64, i32, "int.val");
-    
-    return value32;
+
+    auto* extractFn = context.ensure_runtime_func("extract_int_from_value", {valPtr}, i32);
+    return builder.CreateCall(extractFn, {tmp}, "int.val");
 }
 
 llvm::Value* create_comparison(IRGenerationContext& context, llvm::Value* lhs, llvm::Value* rhs, const std::string& op) {
@@ -198,7 +192,6 @@ llvm::Value* create_binary_op(IRGenerationContext& context, llvm::Value* lhs, ll
     auto& builder = context.get_builder();
     auto* valueStruct = get_value_struct(context);
     
-<<<<<<< HEAD
     auto* lhs_type = lhs->getType();
     auto* rhs_type = rhs->getType();
     
@@ -218,6 +211,13 @@ llvm::Value* create_binary_op(IRGenerationContext& context, llvm::Value* lhs, ll
         bool lhs_is_value = (lhs_type == valueStruct);
         bool rhs_is_value = (rhs_type == valueStruct);
         
+        // Caso 3: String literal + String literal -> concat
+        if (lhs_is_str && rhs_is_str) {
+            auto* catTy = llvm::FunctionType::get(i8p, { i8p, i8p }, false);
+            auto* catFn = llvm::cast<llvm::Function>(context.get_module().getOrInsertFunction("string_concat", catTy).getCallee());
+            return builder.CreateCall(catFn, {lhs, rhs}, "strcat");
+        }
+
         // Caso 4: Int literal + String literal -> fallback para operador padrão
         if (lhs_is_int && rhs_is_str) {
             // TODO: Implementar através de sistema de classes quando disponível
@@ -300,84 +300,6 @@ llvm::Value* create_binary_op(IRGenerationContext& context, llvm::Value* lhs, ll
     }
 
     // Operações aritméticas padrão para tipos numéricos
-=======
-    // Se ambos são Value, extrair valores numéricos
-    if (lhs->getType() == valueStruct && rhs->getType() == valueStruct) {
-        lhs = extract_int_from_value(context, lhs);
-        rhs = extract_int_from_value(context, rhs);
-    } else if (lhs->getType() == valueStruct) {
-        lhs = extract_int_from_value(context, lhs);
-    } else if (rhs->getType() == valueStruct) {
-        rhs = extract_int_from_value(context, rhs);
-    }
-    
-    auto* lhs_type = lhs->getType();
-    auto* rhs_type = rhs->getType();
-
-    if (op == "**") {
-        llvm::Type* f64 = get_f64(context);
-        if (!lhs_type->isFloatingPointTy()) lhs = builder.CreateSIToFP(lhs, f64);
-        else if (lhs_type != f64) lhs = builder.CreateFPExt(lhs, f64);
-        if (!rhs_type->isFloatingPointTy()) rhs = builder.CreateSIToFP(rhs, f64);
-        else if (rhs_type != f64) rhs = builder.CreateFPExt(rhs, f64);
-        auto* pow_decl = llvm::Intrinsic::getDeclaration(&context.get_module(), llvm::Intrinsic::pow, { f64 });
-        return builder.CreateCall(pow_decl, { lhs, rhs }, "pow");
-    }
-
-    if (op == "+") {
-        auto* i8p = llvm::PointerType::getUnqual(get_i8(context));
-        bool lhs_is_str = (lhs_type == i8p);
-        bool rhs_is_str = (rhs_type == i8p);
-        if (lhs_is_str && rhs_is_str) {
-            auto* catTy = llvm::FunctionType::get(i8p, { i8p, i8p }, false);
-            auto* catFn = llvm::cast<llvm::Function>(context.get_module().getOrInsertFunction("string_concat", catTy).getCallee());
-            return builder.CreateCall(catFn, { lhs, rhs }, "strcat");
-        }
-    }
-
-    if ((op == "*") && ([&](){
-        auto* i8ptr = llvm::PointerType::getUnqual(get_i8(context));
-        bool lhs_is_str = (lhs_type == i8ptr);
-        bool rhs_is_str = (rhs_type == i8ptr);
-        return (lhs_is_str && rhs_type->isIntegerTy()) || (rhs_is_str && lhs_type->isIntegerTy());
-    }())) {
-        llvm::Value* str = lhs_type->isPointerTy() ? lhs : rhs;
-        llvm::Value* n   = lhs_type->isIntegerTy() ? lhs : rhs;
-        auto* i8p = llvm::PointerType::getUnqual(get_i8(context));
-        auto* i32 = get_i32(context);
-        if (!n->getType()->isIntegerTy(32)) n = builder.CreateIntCast(n, i32, true);
-        auto* zero32 = llvm::ConstantInt::get(i32, 0);
-        auto* is_le_zero = builder.CreateICmpSLE(n, zero32);
-        auto* thenBB = llvm::BasicBlock::Create(context.get_context(), "strrep_then", context.get_current_function());
-        auto* elseBB = llvm::BasicBlock::Create(context.get_context(), "strrep_else", context.get_current_function());
-        auto* mergeBB = llvm::BasicBlock::Create(context.get_context(), "strrep_merge", context.get_current_function());
-        builder.CreateCondBr(is_le_zero, thenBB, elseBB);
-        builder.SetInsertPoint(thenBB);
-        auto* empty = create_string_constant(context, "");
-        builder.CreateBr(mergeBB);
-        builder.SetInsertPoint(elseBB);
-        auto* repTy = llvm::FunctionType::get(i8p, { i8p, i32 }, false);
-        auto* repFn = llvm::cast<llvm::Function>(context.get_module().getOrInsertFunction("string_repeat", repTy).getCallee());
-        auto* outp = builder.CreateCall(repFn, { str, n }, "strrep");
-        builder.CreateBr(mergeBB);
-        builder.SetInsertPoint(mergeBB);
-        auto* phi = builder.CreatePHI(i8p, 2);
-        phi->addIncoming(empty, thenBB);
-        phi->addIncoming(outp, elseBB);
-        return phi;
-    }
-
-    if (lhs_type != rhs_type) {
-        if (lhs_type->isIntegerTy() && rhs_type->isFloatingPointTy()) {
-            lhs = builder.CreateSIToFP(lhs, rhs_type);
-            lhs_type = rhs_type;
-        } else if (lhs_type->isFloatingPointTy() && rhs_type->isIntegerTy()) {
-            rhs = builder.CreateSIToFP(rhs, lhs_type);
-            rhs_type = lhs_type;
-        }
-    }
-
->>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
     if (op == "+") return lhs_type->isFloatingPointTy() ? builder.CreateFAdd(lhs, rhs, "add") : builder.CreateAdd(lhs, rhs, "add");
     if (op == "-") return lhs_type->isFloatingPointTy() ? builder.CreateFSub(lhs, rhs, "sub") : builder.CreateSub(lhs, rhs, "sub");
     if (op == "*") return lhs_type->isFloatingPointTy() ? builder.CreateFMul(lhs, rhs, "mul") : builder.CreateMul(lhs, rhs, "mul");
@@ -644,11 +566,7 @@ static llvm::Type* parse_type_recursive(const std::string& s, size_t& p, IRGener
         }
         return get_i1(ctx); 
     }
-<<<<<<< HEAD
-    if (s.substr(p, 6) == "str") {
-=======
     if (s.substr(p, 6) == "string") {
->>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
         p += 6;
         // Verificar se é array: string[10]
         if (p < s.size() && s[p] == '[') {

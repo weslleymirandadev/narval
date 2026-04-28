@@ -1,4 +1,5 @@
 #include "frontend/checker/expressions/check_primary_expr.hpp"
+#include "frontend/checker/expressions/check_new_expr.hpp"
 #include "frontend/ast/ast.hpp"
 #include "frontend/checker/checker.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
@@ -12,7 +13,7 @@
 // Usa chave composta: filename:line:col:symbol
 static std::unordered_set<std::string> reported_identifier_errors;
 
-namespace {
+namespace nv { // Corrigido namespace
     // Converte um caminho relativo em absoluto
     std::string to_absolute_path(const std::string& path) {
         if (path.empty()) {
@@ -64,11 +65,7 @@ std::shared_ptr<nv::Type>& check_primary_expr(nv::Checker* ch, Node* node) {
             return temp_result;
         }
         case NodeType::StringLiteral:
-<<<<<<< HEAD
             temp_result = ch->gettyptr("str");
-=======
-            temp_result = ch->gettyptr("string");
->>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
             ensure_proto(temp_result);
             return temp_result;
         case NodeType::BooleanLiteral:
@@ -101,7 +98,7 @@ std::shared_ptr<nv::Type>& check_primary_expr(nv::Checker* ch, Node* node) {
                 std::string error_key_str;
                 if (node->position) {
                     std::ostringstream key_oss;
-                    key_oss << to_absolute_path(ch->current_filename) << ":" 
+                    key_oss << nv::to_absolute_path(ch->current_filename) << ":" 
                             << node->position->line << ":" 
                             << node->position->col[0] << ":" 
                             << id->symbol;
@@ -129,6 +126,10 @@ std::shared_ptr<nv::Type>& check_primary_expr(nv::Checker* ch, Node* node) {
                 return temp_result;
             }
         }
+        case NodeType::NewExpression:
+            temp_result = check_new_expr(ch, node);
+            ensure_proto(temp_result);
+            return temp_result;
         default:
             temp_result = ch->gettyptr("void");
             return temp_result;

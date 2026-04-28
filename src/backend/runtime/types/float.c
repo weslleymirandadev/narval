@@ -1,14 +1,10 @@
 #include "backend/runtime/nv_runtime.h"
 #include <stdlib.h>
-<<<<<<< HEAD
 #include <string.h>
-=======
->>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
 
 void create_float(Value* out, double value) {
     if (!out) return;
     
-<<<<<<< HEAD
     // Limpar struct para evitar problemas
     memset(out, 0, sizeof(Value));
     
@@ -32,9 +28,6 @@ void create_float(Value* out, double value) {
     }
     
     // Criar NVFloat normalmente
-=======
-    // Criar NVFloat
->>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
     NVFloat* float_obj = (NVFloat*)calloc(1, sizeof(NVFloat));
     if (!float_obj) {
         out->obj = NULL;

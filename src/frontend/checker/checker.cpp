@@ -69,22 +69,14 @@ nv::Checker::Checker() {
     namespaces.push_back(globalnamespace);
     scope = globalnamespace;
     types["int"] = std::make_shared<nv::Int>();
-<<<<<<< HEAD
     types["str"] = std::make_shared<nv::String>();
-=======
-    types["string"] = std::make_shared<nv::String>();
->>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
     types["float"] = std::make_shared<nv::Float>();
     types["bool"] = std::make_shared<nv::Boolean>();
     types["void"] = std::make_shared<nv::Void>();
 
     // Agora que os objetos Type estão dentro de shared_ptr, inicializar seus prototypes
     types["int"]->init_prototype();
-<<<<<<< HEAD
     types["str"]->init_prototype();
-=======
-    types["string"]->init_prototype();
->>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
     types["float"]->init_prototype();
     types["bool"]->init_prototype();
     types["void"]->init_prototype();
@@ -98,6 +90,9 @@ nv::Type& nv::Checker::getty(std::string ty) {
 }
 
 std::shared_ptr<nv::Type>& nv::Checker::gettyptr(std::string ty){
+    // Alias: "string" → "str"
+    if (ty == "string") ty = "str";
+
     // Verificar se já existe no cache
     auto it = types.find(ty);
     if (it != types.end()) {

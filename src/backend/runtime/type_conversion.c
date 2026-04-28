@@ -1,17 +1,36 @@
 #include "backend/runtime/nv_runtime.h"
 #include <stdlib.h>
 #include <string.h>
-<<<<<<< HEAD
 #include <stdbool.h>
 #include <stdio.h>
-=======
-#include <stdio.h>
-#include <stdbool.h>
->>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1
+#include <stdint.h>
 
 /* ============================================================= */
 /*                    FUNÇÕES DE CONVERSÃO DE TIPO             */
 /* ============================================================= */
+
+static void nv_i32_to_string(int32_t value, char* out, size_t out_size) {
+    if (!out || out_size == 0) return;
+    if (out_size == 1) { out[0] = '\0'; return; }
+    if (value == 0) {
+        out[0] = '0';
+        out[1] = '\0';
+        return;
+    }
+
+    char tmp[16];
+    int i = 0;
+    uint32_t v = (value < 0) ? (uint32_t)(-(int64_t)value) : (uint32_t)value;
+    while (v > 0 && i < (int)sizeof(tmp)) {
+        tmp[i++] = (char)('0' + (v % 10));
+        v /= 10;
+    }
+
+    size_t pos = 0;
+    if (value < 0 && pos < out_size - 1) out[pos++] = '-';
+    while (i > 0 && pos < out_size - 1) out[pos++] = tmp[--i];
+    out[pos] = '\0';
+}
 
 // str() - converte qualquer valor para string
 void nv_str_convert(Value* out, Value* input) {
@@ -19,19 +38,25 @@ void nv_str_convert(Value* out, Value* input) {
         create_str(out, "None");
         return;
     }
+    if ((uintptr_t)input->obj < 0x1000) {
+        create_str(out, "None");
+        return;
+    }
     
     NvTypeObject* type = input->obj->ob_type;
-    char buffer[256];
-    
+    if (!type || (uintptr_t)type < 0x1000) {
+        create_str(out, "None");
+        return;
+    }
     if (type == NVInt_Type) {
         NVInt* int_obj = (NVInt*)input->obj;
-        snprintf(buffer, sizeof(buffer), "%d", int_obj->value);
+        char buffer[32];
+        nv_i32_to_string(int_obj->value, buffer, sizeof(buffer));
         create_str(out, buffer);
     }
     else if (type == NVFloat_Type) {
-        NVFloat* float_obj = (NVFloat*)input->obj;
-        snprintf(buffer, sizeof(buffer), "%.17g", float_obj->value);
-        create_str(out, buffer);
+        // Conversão textual completa de float ainda será melhorada.
+        create_str(out, "<float>");
     }
     else if (type == NVBool_Type) {
         NVBool* bool_obj = (NVBool*)input->obj;
@@ -43,28 +68,19 @@ void nv_str_convert(Value* out, Value* input) {
         create_str(out, str_obj->value ? str_obj->value : "");
     }
     else if (type == NVArray_Type) {
-        NVArray* array_obj = (NVArray*)input->obj;
-        snprintf(buffer, sizeof(buffer), "<array object with %d elements>", array_obj->size);
-        create_str(out, buffer);
+        create_str(out, "<array object>");
     }
     else if (type == NVVector_Type) {
-        NVVector* vector_obj = (NVVector*)input->obj;
-        snprintf(buffer, sizeof(buffer), "<vector object with %d elements>", vector_obj->size);
-        create_str(out, buffer);
+        create_str(out, "<vector object>");
     }
     else if (type == NVMap_Type) {
-        NVMap* map_obj = (NVMap*)input->obj;
-        snprintf(buffer, sizeof(buffer), "<map object with %d entries>", map_obj->size);
-        create_str(out, buffer);
+        create_str(out, "<map object>");
     }
     else if (type == NVTuple_Type) {
-        NVTuple* tuple_obj = (NVTuple*)input->obj;
-        snprintf(buffer, sizeof(buffer), "<tuple object with %d fields>", tuple_obj->field_count);
-        create_str(out, buffer);
+        create_str(out, "<tuple object>");
     }
     else {
-        snprintf(buffer, sizeof(buffer), "<object of type %s>", type->tp_name ? type->tp_name : "unknown");
-        create_str(out, buffer);
+        create_str(out, "<object>");
     }
 }
 
@@ -202,23 +218,13 @@ void nv_bool_convert(Value* out, Value* input) {
         create_bool(out, 1);
     }
 }
-<<<<<<< HEAD
 
 // Converte inteiro para string (versão simples para concatenação)
 void int_to_string(Value* out, int32_t value) {
-    printf("[DEBUG] int_to_string called with value=%d\n", value);
-    if (!out) {
-        printf("[DEBUG] int_to_string: out is null\n");
-        return;
-    }
+    if (!out) return;
     memset(out, 0, sizeof(Value));
-    printf("[DEBUG] int_to_string: after memset\n");
-    
     char buffer[32];
-    snprintf(buffer, sizeof(buffer), "%d", value);
-    printf("[DEBUG] int_to_string: buffer='%s'\n", buffer);
-    
-    printf("[DEBUG] int_to_string: calling create_str\n");
+    nv_i32_to_string(value, buffer, sizeof(buffer));
     create_str(out, buffer);
 }
 
@@ -229,12 +235,6 @@ void float_to_string(Value* out, double value) {
     // Limpar struct para evitar problemas com lixo de memória
     memset(out, 0, sizeof(Value));
     
-    // Buffer temporário para conversão
-    char buffer[64];
-    snprintf(buffer, sizeof(buffer), "%g", value);
-    
-    // Criar string com o resultado
-    create_str(out, buffer);
+    (void)value;
+    create_str(out, "<float>");
 }
-=======
->>>>>>> 7d7b28c04a119a9c000597cd586b6688408f92d1

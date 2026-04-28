@@ -9,4 +9,6 @@ public:
     Node* clone() const override {
         return new ThisExprNode();
     }
+
+    void codegen(nv::IRGenerationContext& ctx) override;
 };

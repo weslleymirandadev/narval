@@ -2,6 +2,7 @@
 #include "frontend/ast/types.hpp"
 #include <vector>
 #include <memory>
+#include <string>
 
 // Nó para expressão new (instanciação de classe)
 class NewExprNode : public Expr {
@@ -19,4 +20,6 @@ public:
         }
         return node;
     }
+
+    void codegen(nv::IRGenerationContext& ctx) override;
 };
