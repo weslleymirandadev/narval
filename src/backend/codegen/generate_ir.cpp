@@ -1,6 +1,7 @@
 #include "backend/codegen/generate_ir.hpp"
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
+#include "frontend/checker/checker.hpp"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
@@ -182,14 +183,44 @@ void generate_ir(
     for (size_t i = 0; i < program->body.size(); ++i) {
         if (program->body[i]->kind == NodeType::DefStatement) {
             auto* def_stmt = static_cast<DefStmtNode*>(program->body[i].get());
+            auto* checker = static_cast<nv::Checker*>(context.get_type_checker());
             
             std::vector<llvm::Type*> param_types;
             for (auto& p : def_stmt->parameters) {
                 for (auto& kv : p.parameter) {
-                    param_types.push_back(nv::ir_utils::llvm_type_from_string(context, kv.second));
+                    llvm::Type* param_ty = nullptr;
+                    if (checker) {
+                        try {
+                            auto param_nv_ty = checker->gettyptr(kv.second);
+                            param_ty = context.nv_type_to_llvm(param_nv_ty);
+                        } catch (...) {
+                            param_ty = nullptr;
+                        }
+                    }
+                    if (!param_ty) {
+                        param_ty = nv::ir_utils::llvm_type_from_string(context, kv.second);
+                    }
+                    if (!param_ty || param_ty->isVoidTy()) {
+                        param_ty = nv::ir_utils::get_value_struct(context);
+                    }
+                    param_types.push_back(param_ty);
                 }
             }
-            llvm::Type* ret_ty = nv::ir_utils::llvm_type_from_string(context, def_stmt->return_type);
+            llvm::Type* ret_ty = nullptr;
+            if (checker) {
+                try {
+                    auto ret_nv_ty = checker->gettyptr(def_stmt->return_type);
+                    ret_ty = context.nv_type_to_llvm(ret_nv_ty);
+                } catch (...) {
+                    ret_ty = nullptr;
+                }
+            }
+            if (!ret_ty) {
+                ret_ty = nv::ir_utils::llvm_type_from_string(context, def_stmt->return_type);
+            }
+            if (!ret_ty) {
+                ret_ty = llvm::Type::getVoidTy(context.get_context());
+            }
             auto* fn_ty = llvm::FunctionType::get(ret_ty, param_types, false);
             
             // Criar a declaração da função no módulo LLVM se ainda não existir

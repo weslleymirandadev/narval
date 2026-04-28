@@ -208,6 +208,12 @@ void IRGenerationContext::emit_local_variable_dbg(
 }
 
 llvm::AllocaInst* IRGenerationContext::create_alloca(llvm::Type* type, const std::string& name) {
+    // Guard rail: LLVM alloca does not accept void or null types.
+    // In these fallback cases use runtime Value storage to keep codegen alive.
+    if (!type || type->isVoidTy()) {
+        type = ir_utils::get_value_struct(*this);
+    }
+
     // Cria alocação no início da função atual
     if (!current_function) {
         // Se não há função atual, cria na posição atual

@@ -47,18 +47,18 @@ void ReturnStmtNode::codegen(nv::IRGenerationContext& ctx) {
                         builder.CreateStore(v, inAlloca);
 
                         if (ret_type->isIntegerTy(32)) {
-                            auto* fn = ctx.ensure_runtime_func("extract_int_from_value", {i32Ty, valuePtr});
+                            auto* fn = ctx.ensure_runtime_func("extract_int_from_value", {valuePtr}, i32Ty);
                             v = builder.CreateCall(fn, {inAlloca}, "ret_int");
                         } else if (ret_type->isFloatingPointTy()) {
-                            auto* fn = ctx.ensure_runtime_func("extract_float_from_value", {f64Ty, valuePtr});
+                            auto* fn = ctx.ensure_runtime_func("extract_float_from_value", {valuePtr}, f64Ty);
                             auto* fv = builder.CreateCall(fn, {inAlloca}, "ret_float");
                             v = (ret_type == f64Ty) ? fv : builder.CreateFPTrunc(fv, ret_type, "ret_float_cast");
                         } else if (ret_type->isIntegerTy(1)) {
-                            auto* fn = ctx.ensure_runtime_func("extract_int_from_value", {i32Ty, valuePtr});
+                            auto* fn = ctx.ensure_runtime_func("extract_int_from_value", {valuePtr}, i32Ty);
                             auto* iv = builder.CreateCall(fn, {inAlloca}, "ret_bool_i32");
                             v = builder.CreateICmpNE(iv, llvm::ConstantInt::get(i32Ty, 0), "ret_bool");
                         } else if (ret_type->isPointerTy()) {
-                            auto* fn = ctx.ensure_runtime_func("extract_string_from_value", {ret_type, valuePtr});
+                            auto* fn = ctx.ensure_runtime_func("extract_string_from_value", {valuePtr}, ret_type);
                             v = builder.CreateCall(fn, {inAlloca}, "ret_str");
                         }
                     }
