@@ -38,11 +38,11 @@ void ModuleManager::load_module(const std::string& module_name, const std::strin
     module.import_infos = lexer.get_import_infos();
     module.name = lexer.get_module_name();
 
-    if (config && ENABLE_PARSE == ENABLE_PARSE) {
+    if (config & ENABLE_PARSE) {
         Parser parser;
         module.ast = parser.produce_ast(module.tokens, module.import_infos);
     }
-    if (config && ENABLE_CHECKING == ENABLE_CHECKING) {
+    if (config & ENABLE_CHECKING) {
         nv::Checker checker;
         checker.set_source_file(file_path);
         checker.check_node(module.ast.get());
