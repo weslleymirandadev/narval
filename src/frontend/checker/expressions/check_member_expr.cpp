@@ -56,6 +56,11 @@ std::shared_ptr<nv::Type>& check_member_expr(nv::Checker* ch, Node* node) {
         // Depois verificar se é um método
         auto method_type = class_type->get_method(prop_name);
         if (method_type) {
+            if (!class_type->is_method_accessible(prop_name, ch->current_class_name)) {
+                ch->error(member_expr->property.get(),
+                          "Method '" + prop_name + "' is private in class '" + class_type->name + "'");
+                return ch->gettyptr("void");
+            }
             temp_result = method_type;
             return temp_result;
         }

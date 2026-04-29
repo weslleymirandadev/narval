@@ -231,6 +231,7 @@ namespace nv {
         bool is_builtin_derived = false;
         std::unordered_map<std::string, std::shared_ptr<Type>> fields;
         std::unordered_map<std::string, std::shared_ptr<Type>> methods;
+        std::unordered_map<std::string, std::string> method_access; // method_name -> "public"/"private"/"protected"
         
         Class(const std::string& class_name) : Type(Kind::CLASS), name(class_name) {}
         
@@ -252,8 +253,17 @@ namespace nv {
             fields[field_name] = field_type;
         }
         
-        void add_method(const std::string& method_name, std::shared_ptr<Type> method_type) {
+        void add_method(const std::string& method_name, std::shared_ptr<Type> method_type, const std::string& access = "public") {
             methods[method_name] = method_type;
+            method_access[method_name] = access;
+        }
+
+        bool is_method_accessible(const std::string& method_name, const std::string& from_class) const {
+            auto it = method_access.find(method_name);
+            if (it == method_access.end()) return true; // sem info = acessível (builtins)
+            if (it->second == "public") return true;
+            // private e protected: apenas da própria classe
+            return from_class == name;
         }
         
         std::shared_ptr<Type> get_field(const std::string& field_name) const {

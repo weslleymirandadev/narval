@@ -27,6 +27,8 @@ namespace nv {
             std::unordered_set<const void*> reported_errors;  // Nós que já tiveram erros reportados (usando ponteiro como chave)
             // Rastrear tipo de retorno da função atual (para verificação de return statements)
             std::shared_ptr<Type> current_return_type = nullptr;
+            // Rastrear classe atual sendo verificada (para controle de acesso)
+            std::string current_class_name = "";
             Checker();
             nv::Type& getty(std::string ty);
             std::shared_ptr<nv::Type>& gettyptr(std::string ty);

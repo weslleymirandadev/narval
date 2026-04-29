@@ -45,7 +45,11 @@ namespace nv {
             auto field_type = checker->gettyptr(field->type);
             class_type->add_field(field->name, field_type, field->is_mutable);
         }
-        
+
+        // Definir contexto de classe para verificação de acesso em corpos de métodos
+        std::string previous_class = checker->current_class_name;
+        checker->current_class_name = class_def->name;
+
         // Adicionar métodos com assinatura real a partir do DefStmtNode
         for (const auto& method : class_def->methods) {
             std::vector<std::shared_ptr<Type>> param_types;
@@ -65,8 +69,10 @@ namespace nv {
             }
 
             auto method_type = std::make_shared<Def>(param_types, ret_type);
-            class_type->add_method(method->name, method_type);
+            class_type->add_method(method->name, method_type, method->access_modifier);
         }
+
+        checker->current_class_name = previous_class;
         
         // Inicializar prototype da classe
         class_type->init_prototype();

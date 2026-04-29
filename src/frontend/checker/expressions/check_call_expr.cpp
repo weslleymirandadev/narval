@@ -34,9 +34,19 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
         
         auto method_type = object_type->get_method(method_name);
         if (!method_type) {
-            ch->error(member_expr->property.get(), 
+            ch->error(member_expr->property.get(),
                       "Type '" + object_type->toString() + "' does not have method '" + method_name + "'");
             return ch->gettyptr("void");
+        }
+
+        // Verificar visibilidade para tipos Class
+        if (object_type->kind == nv::Kind::CLASS) {
+            auto* class_type = static_cast<nv::Class*>(object_type.get());
+            if (!class_type->is_method_accessible(method_name, ch->current_class_name)) {
+                ch->error(member_expr->property.get(),
+                          "Method '" + method_name + "' is private in class '" + class_type->name + "'");
+                return ch->gettyptr("void");
+            }
         }
         
         // Verificar se é uma função

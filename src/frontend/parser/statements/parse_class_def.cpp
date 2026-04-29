@@ -25,8 +25,8 @@ std::unique_ptr<Node> parse_class_def(Parser* parser) {
     while (parser->current_token().type != TokenType::CBRACE && 
            parser->current_token().type != TokenType::EOF_TOKEN) {
         
-        // Verificar modificador de acesso
-        std::string access_modifier = "public";
+        // Verificar modificador de acesso (privado por padrão)
+        std::string access_modifier = "private";
         if (parser->current_token().type == TokenType::PUBLIC ||
             parser->current_token().type == TokenType::PRIVATE ||
             parser->current_token().type == TokenType::PROTECTED) {
