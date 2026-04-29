@@ -25,9 +25,3 @@ Narval transfere a responsabilidade operacional do código para o compilador, ma
   - Decide move/borrow/clone
   - Gerencia lifetime automaticamente
   - Ownership explicável com flag `--explain-ownership` no build
-- Sharp edges explícitas
-  - `@unsafe`
-  - `@trust_me`
-  - `@no_infer`
-  - Escape hatches conscientes
-  - Segurança sem "magia infinita"
