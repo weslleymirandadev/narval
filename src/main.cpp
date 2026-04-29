@@ -69,6 +69,7 @@ int run_batch_mode(const std::string& filename, bool build_only = false) {
         llvm::Module Mod("narval_module", Context);
         llvm::IRBuilder<llvm::NoFolder> Builder(Context);
         nv::IRGenerationContext context(Context, Mod, Builder, &checker);
+        context.set_source_file(filename);
 
         // === Debug info setup (same as main.cpp) ===
         llvm::DIBuilder DIB(Mod);
