@@ -112,22 +112,29 @@ void DefStmtNode::codegen(nv::IRGenerationContext& ctx) {
                 false
             );
             ctx.get_builder().CreateStore(&arg, alloca);
-            // Local variable debug info for parameters is temporarily disabled
-            // to avoid crashes inside LLVM's DwarfDebug. The IR still has
-            // function-level DISubprogram and locations.
         }
     }
+
+    // Push frame de traceback desta função
+    const std::string& src_file = ctx.get_source_file();
+    if (!src_file.empty())
+        nv::ir_utils::emit_push_frame(ctx, src_file, name);
+
     for (auto& stmt : body) {
-        if (stmt) stmt->codegen(ctx);
+        if (stmt) {
+            if (stmt->position && !src_file.empty())
+                nv::ir_utils::emit_set_line(ctx, static_cast<int>(stmt->position->line));
+            stmt->codegen(ctx);
+        }
     }
     ctx.exit_scope();
 
     auto* current_bb = ctx.get_builder().GetInsertBlock();
     if (current_bb && !current_bb->getTerminator()) {
+        if (!src_file.empty()) nv::ir_utils::emit_pop_frame(ctx);
         if (ret_ty->isVoidTy()) {
             ctx.get_builder().CreateRetVoid();
         } else if (ret_ty == nv::ir_utils::get_value_struct(ctx)) {
-            // Se a função retorna Value struct, verificar se há um valor na pilha
             auto* ret_val = ctx.pop_value();
             if (ret_val) {
                 ctx.get_builder().CreateRet(ret_val);

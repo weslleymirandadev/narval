@@ -28,6 +28,29 @@ void register_global_init(void);
 // Inicializar classes builtin (int, float, str, etc.) como classes completas
 void initialize_builtin_classes(void);
 
+/* ============================================================= */
+/*                    TRACEBACK EM RUNTIME                       */
+/* ============================================================= */
+
+#define NV_TRACE_MAX_FRAMES 64
+
+typedef struct {
+    const char* file;
+    const char* func;
+    int line;
+} NvTraceFrame;
+
+extern NvTraceFrame nv_trace_stack[NV_TRACE_MAX_FRAMES];
+extern int nv_trace_depth;
+
+void nv_push_frame(const char* file, const char* func);
+void nv_pop_frame(void);
+void nv_set_line(int line);
+
+// Tratamento de erros em runtime
+void nv_raise_value_error(const char* msg);
+void nv_raise_type_error(const char* msg);
+
 // Funções de conversão de tipo (estilo Python)
 void nv_str_convert(Value* out, Value* input);
 void nv_int_convert(Value* out, Value* input);

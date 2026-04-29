@@ -144,6 +144,11 @@ static void declare_runtime(IRGenerationContext& context) {
     M.getOrInsertFunction("nv_register_write_value", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy)}, false));
     M.getOrInsertFunction("nv_register_function_return", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy), I8Ptr}, false));
     M.getOrInsertFunction("ensure_value_type", llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
+
+    // Traceback / shadow call stack
+    M.getOrInsertFunction("nv_push_frame", llvm::FunctionType::get(VoidTy, {I8Ptr, I8Ptr}, false));
+    M.getOrInsertFunction("nv_pop_frame",  llvm::FunctionType::get(VoidTy, {}, false));
+    M.getOrInsertFunction("nv_set_line",   llvm::FunctionType::get(VoidTy, {I32}, false));
     
     // Plain C helper usado por codegen para string repetition
     M.getOrInsertFunction("memset", llvm::FunctionType::get(I8Ptr, {I8Ptr, I32, I64}, false));
@@ -238,8 +243,17 @@ void generate_ir(
     // register_global_init é chamado uma única vez em main.cpp antes de generate_ir()
     // Não duplicar o call aqui para evitar realocação dos type pointers
 
+    // Push frame do módulo no shadow stack de traceback
+    const std::string& src_file = context.get_source_file();
+    if (!src_file.empty()) {
+        ir_utils::emit_push_frame(context, src_file, "<module>");
+    }
+
     for (size_t i = 0; i < program->body.size(); ++i) {
-        program->body[i]->codegen(context);
+        auto* stmt = program->body[i].get();
+        if (stmt && stmt->position && !src_file.empty())
+            ir_utils::emit_set_line(context, static_cast<int>(stmt->position->line));
+        stmt->codegen(context);
     }
 
     // In REPL (keep_result=true) leave the last value on the stack for auto-print.

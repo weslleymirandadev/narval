@@ -72,9 +72,19 @@ static void compile_class_method(
         idx++;
     }
 
+    // Push traceback frame para o método
+    const std::string& src_file = ctx.get_source_file();
+    std::string display_name = class_name + "." + method_name;
+    if (!src_file.empty())
+        nv::ir_utils::emit_push_frame(ctx, src_file, display_name);
+
     // Compile body statements
     for (const auto& stmt : def->body) {
-        if (stmt) stmt->codegen(ctx);
+        if (stmt) {
+            if (stmt->position && !src_file.empty())
+                nv::ir_utils::emit_set_line(ctx, static_cast<int>(stmt->position->line));
+            stmt->codegen(ctx);
+        }
     }
 
     ctx.exit_scope();
@@ -82,10 +92,10 @@ static void compile_class_method(
     // Terminate the last block if needed
     auto* cur_bb = B.GetInsertBlock();
     if (cur_bb && !cur_bb->getTerminator()) {
+        if (!src_file.empty()) nv::ir_utils::emit_pop_frame(ctx);
         if (is_ctor || ret_ty->isVoidTy()) {
             B.CreateRetVoid();
         } else {
-            // Pop a result if one was left on the value stack
             if (ctx.has_value()) {
                 auto* ret_val = ctx.pop_value();
                 if (ret_val && ret_val->getType() == ValueTy) {

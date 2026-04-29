@@ -674,5 +674,28 @@ static llvm::Type* parse_type_recursive(const std::string& s, size_t& p, IRGener
     return nullptr;
 }
 
+void emit_push_frame(IRGenerationContext& ctx, const std::string& file, const std::string& func) {
+    auto& B   = ctx.get_builder();
+    auto* I8P = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(ctx.get_context()));
+    auto* VoidTy = llvm::Type::getVoidTy(ctx.get_context());
+    auto* fn  = ctx.ensure_runtime_func("nv_push_frame", {I8P, I8P}, VoidTy);
+    auto* fs  = B.CreateGlobalStringPtr(file, "frame.file");
+    auto* fn2 = B.CreateGlobalStringPtr(func, "frame.func");
+    B.CreateCall(fn, {fs, fn2});
+}
+
+void emit_pop_frame(IRGenerationContext& ctx) {
+    auto* VoidTy = llvm::Type::getVoidTy(ctx.get_context());
+    auto* fn = ctx.ensure_runtime_func("nv_pop_frame", {}, VoidTy);
+    ctx.get_builder().CreateCall(fn, {});
+}
+
+void emit_set_line(IRGenerationContext& ctx, int line) {
+    auto* I32    = llvm::Type::getInt32Ty(ctx.get_context());
+    auto* VoidTy = llvm::Type::getVoidTy(ctx.get_context());
+    auto* fn = ctx.ensure_runtime_func("nv_set_line", {I32}, VoidTy);
+    ctx.get_builder().CreateCall(fn, {llvm::ConstantInt::get(I32, line)});
+}
+
 } // namespace ir_utils
 } // namespace nv

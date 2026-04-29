@@ -2,6 +2,12 @@
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
 
+static void pop_and_return(nv::IRGenerationContext& ctx, llvm::Value* v) {
+    if (!ctx.get_source_file().empty())
+        nv::ir_utils::emit_pop_frame(ctx);
+    nv::ir_utils::create_return(ctx, v);
+}
+
 void ReturnStmtNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
     if (value) {
@@ -86,9 +92,9 @@ void ReturnStmtNode::codegen(nv::IRGenerationContext& ctx) {
                 }
             }
 
-            nv::ir_utils::create_return(ctx, v);
+            pop_and_return(ctx, v);
             return;
         }
     }
-    nv::ir_utils::create_return(ctx, nullptr);
+    pop_and_return(ctx, nullptr);
 }

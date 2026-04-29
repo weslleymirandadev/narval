@@ -112,5 +112,10 @@ llvm::Constant* create_value_constant_from_llvm_value(
 llvm::Type* llvm_type_from_string(IRGenerationContext& ctx, const std::string& type_str);
 static llvm::Type* parse_type_recursive(const std::string& s, size_t& p, IRGenerationContext& ctx);
 
+// === Traceback / shadow call stack ===
+void emit_push_frame(IRGenerationContext& ctx, const std::string& file, const std::string& func);
+void emit_pop_frame(IRGenerationContext& ctx);
+void emit_set_line(IRGenerationContext& ctx, int line);
+
 } // namespace ir_utils
 } // namespace nv

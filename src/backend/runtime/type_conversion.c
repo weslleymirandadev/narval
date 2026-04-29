@@ -113,18 +113,19 @@ void nv_int_convert(Value* out, Value* input) {
         if (str_obj->value) {
             char* endptr;
             long val = strtol(str_obj->value, &endptr, 10);
-            if (*endptr == '\0') {
+            if (*endptr == '\0' && endptr != str_obj->value) {
                 create_int(out, (int32_t)val);
             } else {
-                create_int(out, 0);  // Erro de conversão, retorna 0 como Python
+                char msg[256];
+                snprintf(msg, sizeof(msg), "invalid literal for int(): '%s'", str_obj->value);
+                nv_raise_value_error(msg);
             }
         } else {
-            create_int(out, 0);
+            nv_raise_value_error("invalid literal for int(): ''");
         }
     }
     else {
-        // Para outros tipos, tentar converter magicamente
-        create_int(out, 0);
+        nv_raise_type_error("int() argument must be a str or number");
     }
 }
 
@@ -155,18 +156,19 @@ void nv_float_convert(Value* out, Value* input) {
         if (str_obj->value) {
             char* endptr;
             double val = strtod(str_obj->value, &endptr);
-            if (*endptr == '\0') {
+            if (*endptr == '\0' && endptr != str_obj->value) {
                 create_float(out, val);
             } else {
-                create_float(out, 0.0);  // Erro de conversão
+                char msg[256];
+                snprintf(msg, sizeof(msg), "invalid literal for float(): '%s'", str_obj->value);
+                nv_raise_value_error(msg);
             }
         } else {
-            create_float(out, 0.0);
+            nv_raise_value_error("invalid literal for float(): ''");
         }
     }
     else {
-        // Para outros tipos
-        create_float(out, 0.0);
+        nv_raise_type_error("float() argument must be a str or number");
     }
 }
 
