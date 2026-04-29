@@ -3,26 +3,67 @@
 #include "frontend/checker/unification.hpp"
 #include <stdexcept>
 
+static const char* op_to_dunder(const std::string& op) {
+    if (op == "+")  return "__add__";
+    if (op == "-")  return "__sub__";
+    if (op == "*")  return "__mul__";
+    if (op == "/")  return "__div__";
+    if (op == "//") return "__floordiv__";
+    if (op == "%")  return "__mod__";
+    if (op == "**") return "__pow__";
+    if (op == "==") return "__eq__";
+    if (op == "!=") return "__ne__";
+    if (op == "<")  return "__lt__";
+    if (op == ">")  return "__gt__";
+    if (op == "<=") return "__le__";
+    if (op == ">=") return "__ge__";
+    return nullptr;
+}
+
 std::shared_ptr<nv::Type> check_binary_expr(nv::Checker* ch, Node* node) {
     const auto* bin = static_cast<BinaryExprNode*>(node);
     auto left_type = ch->infer_expr(bin->left.get());
-    
+
     // Se há erros, parar imediatamente
     if (ch->err) {
         return ch->gettyptr("void");
     }
-    
+
     auto right_type = ch->infer_expr(bin->right.get());
-    
+
     // Se há erros, parar imediatamente
     if (ch->err) {
         return ch->gettyptr("void");
     }
-    
+
     // Resolver tipos antes de unificar
     left_type = ch->unify_ctx.resolve(left_type);
     right_type = ch->unify_ctx.resolve(right_type);
-    
+
+    // Operator overloading para classes definidas pelo usuário
+    if (left_type->kind == nv::Kind::CLASS) {
+        auto* cls = static_cast<nv::Class*>(left_type.get());
+        const char* dunder = op_to_dunder(bin->op);
+        if (dunder) {
+            auto method_type = cls->get_method(dunder);
+            if (method_type) {
+                // Anotar o nó para o codegen usar sem re-invocar o checker
+                auto* mut_bin = const_cast<BinaryExprNode*>(bin);
+                mut_bin->overload_class  = cls->name;
+                mut_bin->overload_dunder = dunder;
+
+                auto resolved = ch->unify_ctx.resolve(method_type);
+                if (resolved && resolved->kind == nv::Kind::DEF) {
+                    return static_cast<nv::Def*>(resolved.get())->returntype;
+                }
+                return resolved ? resolved : ch->gettyptr("void");
+            }
+            ch->error(node, "Classe '" + cls->name + "' não implementa o operador '" +
+                      bin->op + "' (método " + dunder + " não encontrado)");
+            return ch->gettyptr("void");
+        }
+    }
+
     // Verificar casos especiais antes de unificar
     bool left_is_int = left_type->kind == nv::Kind::INT;
     bool left_is_float = left_type->kind == nv::Kind::FLOAT;

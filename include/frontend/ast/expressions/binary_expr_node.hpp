@@ -9,6 +9,11 @@ public:
     std::unique_ptr<Expr> left;
     std::unique_ptr<Expr> right;
 
+    // Preenchido pelo type-checker quando o operador é sobrecarregado por uma classe.
+    // Vazio quando é operação primitiva normal.
+    std::string overload_class;  // nome da classe (ex: "Vec2")
+    std::string overload_dunder; // nome do método (ex: "__add__")
+
     BinaryExprNode(std::string operator_, std::unique_ptr<Expr> lhs, std::unique_ptr<Expr> rhs)
         : Expr(NodeType::BinaryExpression), op(std::move(operator_)), left(std::move(lhs)), right(std::move(rhs)) {}
 

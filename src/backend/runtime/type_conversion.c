@@ -55,8 +55,10 @@ void nv_str_convert(Value* out, Value* input) {
         create_str(out, buffer);
     }
     else if (type == NVFloat_Type) {
-        // Conversão textual completa de float ainda será melhorada.
-        create_str(out, "<float>");
+        NVFloat* float_obj = (NVFloat*)input->obj;
+        char buffer[64];
+        snprintf(buffer, sizeof(buffer), "%g", float_obj->value);
+        create_str(out, buffer);
     }
     else if (type == NVBool_Type) {
         NVBool* bool_obj = (NVBool*)input->obj;
@@ -231,10 +233,9 @@ void int_to_string(Value* out, int32_t value) {
 // Converte float para string (versão simples para concatenação)
 void float_to_string(Value* out, double value) {
     if (!out) return;
-    
-    // Limpar struct para evitar problemas com lixo de memória
     memset(out, 0, sizeof(Value));
-    
-    (void)value;
-    create_str(out, "<float>");
+    char buffer[64];
+    snprintf(buffer, sizeof(buffer), "%g", value);
+    create_str(out, buffer);
 }
+

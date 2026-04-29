@@ -27,6 +27,7 @@
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Verifier.h>
+#include <llvm/IR/InlineAsm.h>
 #include <llvm/Support/CodeGen.h>
 #include <llvm/IR/DIBuilder.h>
 #include <sstream>
@@ -121,6 +122,19 @@ int run_batch_mode(const std::string& filename, bool build_only = false) {
         context.get_builder().SetInsertPoint(entry_bb);
         context.set_current_function(main_start);
         context.set_program_function(main_start);
+
+        // Alinhar RSP a 16 bytes: sem _start wrapper, o OS não garante alinhamento.
+        // movaps/movaps dentro de variadic fns (printf) exige RSP alinhado a 16.
+        {
+            auto* AsmTy = llvm::FunctionType::get(llvm::Type::getVoidTy(Context), false);
+            auto* Asm   = llvm::InlineAsm::get(
+                AsmTy,
+                "and $$-16, %rsp",
+                "~{rsp},~{dirflag},~{fpsr},~{flags}",
+                /*hasSideEffects=*/true
+            );
+            context.get_builder().CreateCall(Asm, {});
+        }
 
         // Chamar register_global_init primeiro para inicializar os tipos
         auto* register_init_fn = Mod.getFunction("register_global_init");

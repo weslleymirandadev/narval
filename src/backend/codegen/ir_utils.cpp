@@ -126,16 +126,31 @@ llvm::Value* create_comparison(IRGenerationContext& context, llvm::Value* lhs, l
     auto& builder = context.get_builder();
     auto* valueStruct = get_value_struct(context);
     
-    // Se ambos são Value, extrair valores numéricos
+    // Se ambos são Value structs, usar comparação type-aware (int vs float resolvido em runtime)
     if (lhs->getType() == valueStruct && rhs->getType() == valueStruct) {
-        lhs = extract_int_from_value(context, lhs);
-        rhs = extract_int_from_value(context, rhs);
-    } else if (lhs->getType() == valueStruct) {
+        auto* ValuePtr = get_value_ptr(context);
+        auto* I32 = get_i32(context);
+        auto* lhs_alloca = context.create_alloca(valueStruct, "cmp_lhs");
+        auto* rhs_alloca = context.create_alloca(valueStruct, "cmp_rhs");
+        builder.CreateStore(lhs, lhs_alloca);
+        builder.CreateStore(rhs, rhs_alloca);
+        auto* cmp_fn = context.ensure_runtime_func("nv_value_cmp", {ValuePtr, ValuePtr}, I32);
+        auto* cmp_result = builder.CreateCall(cmp_fn, {lhs_alloca, rhs_alloca}, "cmp_val");
+        auto* zero = llvm::ConstantInt::get(I32, 0);
+        if (op == "==") return builder.CreateICmpEQ(cmp_result, zero, "cmpeq");
+        if (op == "!=") return builder.CreateICmpNE(cmp_result, zero, "cmpne");
+        if (op == "<")  return builder.CreateICmpSLT(cmp_result, zero, "cmplt");
+        if (op == ">")  return builder.CreateICmpSGT(cmp_result, zero, "cmpgt");
+        if (op == "<=") return builder.CreateICmpSLE(cmp_result, zero, "cmple");
+        if (op == ">=") return builder.CreateICmpSGE(cmp_result, zero, "cmpge");
+        return nullptr;
+    }
+    if (lhs->getType() == valueStruct) {
         lhs = extract_int_from_value(context, lhs);
     } else if (rhs->getType() == valueStruct) {
         rhs = extract_int_from_value(context, rhs);
     }
-    
+
     auto* lhs_type = lhs->getType();
 
     // String (i8*) content comparison via strcmp
@@ -277,12 +292,30 @@ llvm::Value* create_binary_op(IRGenerationContext& context, llvm::Value* lhs, ll
         }
     }
     
-    // Para operações numéricas puras (quando não há strings envolvidas)
+    // Para operações numéricas com dois Value structs, usar funções type-aware do runtime
+    // (detectam int vs float em runtime e produzem o resultado correto)
     if (lhs_type == valueStruct && rhs_type == valueStruct) {
-        // Extrair valores numéricos para operações aritméticas
-        lhs = extract_int_from_value(context, lhs);
-        rhs = extract_int_from_value(context, rhs);
-    } else if (lhs_type == valueStruct) {
+        auto* ValuePtr = get_value_ptr(context);
+        auto* VoidTy   = llvm::Type::getVoidTy(context.get_context());
+        auto* lhs_alloca = context.create_alloca(valueStruct, "arith_lhs");
+        auto* rhs_alloca = context.create_alloca(valueStruct, "arith_rhs");
+        auto* out_alloca = context.create_alloca(valueStruct, "arith_out");
+        builder.CreateStore(lhs, lhs_alloca);
+        builder.CreateStore(rhs, rhs_alloca);
+        const char* fn_name = nullptr;
+        if (op == "+")  fn_name = "nv_value_add";
+        else if (op == "-")  fn_name = "nv_value_sub";
+        else if (op == "*")  fn_name = "nv_value_mul";
+        else if (op == "/")  fn_name = "nv_value_div";
+        else if (op == "%")  fn_name = "nv_value_mod";
+        if (fn_name) {
+            auto* fn = context.ensure_runtime_func(fn_name, {ValuePtr, ValuePtr, ValuePtr}, VoidTy);
+            builder.CreateCall(fn, {out_alloca, lhs_alloca, rhs_alloca});
+            return builder.CreateLoad(valueStruct, out_alloca, "arith_val");
+        }
+        return nullptr;
+    }
+    if (lhs_type == valueStruct) {
         lhs = extract_int_from_value(context, lhs);
     } else if (rhs_type == valueStruct) {
         rhs = extract_int_from_value(context, rhs);

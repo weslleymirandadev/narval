@@ -135,13 +135,14 @@ void create_int(Value* out, int32_t value) {
         return;
     }
     
-    // Criar NVInt usando o novo sistema de classes
-    NVInt* int_obj = (NVInt*)nv_object_new(NVInt_Type, NULL, NULL);
+    NVInt* int_obj = (NVInt*)calloc(1, sizeof(NVInt));
     if (!int_obj) {
         out->obj = NULL;
         return;
     }
-    
+    int_obj->ob_base.ob_type = NVInt_Type;
+    int_obj->ob_base.ref_count = 1;
+    int_obj->ob_base.flags = 0;
     int_obj->value = value;
     out->obj = (NvObject*)int_obj;
 }
@@ -173,13 +174,16 @@ void create_float(Value* out, double value) {
         return;
     }
     
-    // Criar NVFloat usando o novo sistema
-    NVFloat* float_obj = (NVFloat*)nv_object_new(NVFloat_Type, NULL, NULL);
+    // Alocar diretamente com tamanho correto (nv_object_new usa tp_basicsize que pode ser
+    // inicializado como sizeof(NvObject) antes do override em create_builtin_numeric_class)
+    NVFloat* float_obj = (NVFloat*)calloc(1, sizeof(NVFloat));
     if (!float_obj) {
         out->obj = NULL;
         return;
     }
-    
+    float_obj->ob_base.ob_type = NVFloat_Type;
+    float_obj->ob_base.ref_count = 1;
+    float_obj->ob_base.flags = 0;
     float_obj->value = value;
     out->obj = (NvObject*)float_obj;
 }

@@ -203,6 +203,52 @@ static Value* builtin_divide(Value* a, Value* b) {
 }
 
 /* ============================================================= */
+/*                    ARITMÉTICA PÚBLICA TYPE-AWARE               */
+/* ============================================================= */
+
+static void copy_and_free(Value* out, Value* result) {
+    if (result) { *out = *result; free(result); } else { out->obj = NULL; }
+}
+
+void nv_value_add(Value* out, Value* a, Value* b) {
+    if (!out) return;
+    copy_and_free(out, builtin_add(a, b));
+}
+
+void nv_value_sub(Value* out, Value* a, Value* b) {
+    if (!out) return;
+    copy_and_free(out, builtin_subtract(a, b));
+}
+
+void nv_value_mul(Value* out, Value* a, Value* b) {
+    if (!out) return;
+    copy_and_free(out, builtin_multiply(a, b));
+}
+
+void nv_value_div(Value* out, Value* a, Value* b) {
+    if (!out) return;
+    copy_and_free(out, builtin_divide(a, b));
+}
+
+void nv_value_mod(Value* out, Value* a, Value* b) {
+    if (!out || !a || !b || !a->obj || !b->obj) { if (out) out->obj = NULL; return; }
+    NvTypeObject* ta = a->obj->ob_type;
+    NvTypeObject* tb = b->obj->ob_type;
+    if (ta == NVInt_Type && tb == NVInt_Type) {
+        int32_t va = ((NVInt*)a->obj)->value;
+        int32_t vb = ((NVInt*)b->obj)->value;
+        if (vb == 0) { out->obj = NULL; return; }
+        create_int(out, va % vb);
+    } else {
+        double va = (ta == NVFloat_Type) ? ((NVFloat*)a->obj)->value : (double)((NVInt*)a->obj)->value;
+        double vb = (tb == NVFloat_Type) ? ((NVFloat*)b->obj)->value : (double)((NVInt*)b->obj)->value;
+        if (vb == 0.0) { out->obj = NULL; return; }
+        extern double fmod(double, double);
+        create_float(out, fmod(va, vb));
+    }
+}
+
+/* ============================================================= */
 /*                    MÉTODOS BUILTIN DE STRING                   */
 /* ============================================================= */
 

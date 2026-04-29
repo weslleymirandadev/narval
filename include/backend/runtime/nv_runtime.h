@@ -53,6 +53,16 @@ int validate_value_type(const Value* v, int32_t expected_type);
 // Liberar valor
 void free_value(Value* v);
 
+// Aritmética type-aware entre dois Value (int/float detectado em runtime)
+void nv_value_add(Value* out, Value* a, Value* b);
+void nv_value_sub(Value* out, Value* a, Value* b);
+void nv_value_mul(Value* out, Value* a, Value* b);
+void nv_value_div(Value* out, Value* a, Value* b);
+void nv_value_mod(Value* out, Value* a, Value* b);
+
+// Comparação type-aware: retorna -1, 0 ou 1 (como strcmp)
+int32_t nv_value_cmp(Value* a, Value* b);
+
 /* ============================================================= */
 /*                    MÉTODOS DE COLEÇÕES                        */
 /* ============================================================= */
