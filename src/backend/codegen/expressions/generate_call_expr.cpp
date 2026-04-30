@@ -552,7 +552,12 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
                 obj_type = checker->unify_ctx.resolve(obj_type);
                 if (obj_type && obj_type->kind == nv::Kind::CLASS) {
                     auto* cls = static_cast<nv::Class*>(obj_type.get());
-                    std::string fn_name = "__method_" + cls->name + "_" + method;
+                    // Subir na cadeia de herança para achar a classe que definiu o método
+                    auto* defining = cls;
+                    while (defining && defining->methods.find(method) == defining->methods.end()) {
+                        defining = defining->parent_class.get();
+                    }
+                    std::string fn_name = "__method_" + (defining ? defining->name : cls->name) + "_" + method;
                     auto* method_fn = ctx.get_module().getFunction(fn_name);
                     if (method_fn) {
                         auto* ValueTy  = ir_utils::get_value_struct(ctx);
