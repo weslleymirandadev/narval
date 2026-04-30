@@ -75,7 +75,11 @@ enum class TokenType {
     THIS,
     SUPER,
     INSTANCEOF,
-    MUT
+    MUT,
+    TRY,
+    CATCH,
+    FINALLY,
+    THROW
 };
 
 inline const char* get_token_name(TokenType type) {
@@ -152,6 +156,10 @@ inline const char* get_token_name(TokenType type) {
         case TokenType::SUPER: return "SUPER";
         case TokenType::INSTANCEOF: return "INSTANCEOF";
         case TokenType::MUT: return "MUT";
+        case TokenType::TRY: return "TRY";
+        case TokenType::CATCH: return "CATCH";
+        case TokenType::FINALLY: return "FINALLY";
+        case TokenType::THROW: return "THROW";
         default: return "UNKNOWN";
     }
 }
