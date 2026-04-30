@@ -28,6 +28,9 @@ void register_global_init(void);
 // Inicializar classes builtin (int, float, str, etc.) como classes completas
 void initialize_builtin_classes(void);
 
+// Inicializar tipos de exceção
+void initialize_exception_types(void);
+
 /* ============================================================= */
 /*                    TRACEBACK EM RUNTIME                       */
 /* ============================================================= */
@@ -50,6 +53,53 @@ void nv_set_line(int line);
 // Tratamento de erros em runtime
 void nv_raise_value_error(const char* msg);
 void nv_raise_type_error(const char* msg);
+
+/* ============================================================= */
+/*                    CRIAÇÃO DE EXCEÇÕES                        */
+/* ============================================================= */
+
+// Criar exceções
+void create_error(Value* out, const char* message);
+void create_value_error(Value* out, const char* message);
+void create_type_error(Value* out, const char* message);
+void create_runtime_error(Value* out, const char* message);
+void create_index_error(Value* out, const char* message);
+void create_key_error(Value* out, const char* message);
+void create_attribute_error(Value* out, const char* message);
+void create_name_error(Value* out, const char* message);
+void create_assertion_error(Value* out, const char* message);
+
+// Lançar exceções (para uso no throw)
+void nv_throw_exception(Value* exception);
+
+// API de exception handler baseada em setjmp/longjmp
+// Empurra um handler e retorna ponteiro para o jmp_buf interno (chamar setjmp nele)
+void* nv_push_try_handler(void);
+// Remove o handler após saída normal do bloco try
+void nv_pop_try_handler(void);
+// Preenche *out com a exceção atual completa (objeto NVError)
+void nv_get_current_exception_into(Value* out);
+// Preenche *out com a mensagem da exceção atual como string Value
+void nv_get_exception_message_into(Value* out);
+// Retorna o nome do tipo da exceção atual (ou NULL se não há)
+const char* nv_get_exception_type_name(void);
+// Retorna 1 se a exceção atual é do tipo type_name (ou subtipo), 0 caso contrário
+int nv_exception_matches(const char* type_name);
+// Limpa a exceção atual (chamar após tratar a exceção)
+void nv_clear_current_exception(void);
+// Relança a exceção atual para o próximo handler
+void nv_rethrow_current_exception(void);
+
+// Cria exceção por nome de tipo e mensagem C string
+void nv_create_exception(Value* out, const char* type_name, const char* message);
+// Extrai ponteiro C string de um Value de string (uso interno)
+const char* nv_extract_string_ptr(Value* v);
+
+// Verificar se um valor é uma exceção
+int is_exception(Value* v);
+
+// Obter mensagem de uma exceção
+char* get_exception_message(Value* exception);
 
 // Funções de conversão de tipo (estilo Python)
 void nv_str_convert(Value* out, Value* input);
