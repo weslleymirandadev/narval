@@ -152,6 +152,27 @@ static void declare_runtime(IRGenerationContext& context) {
     
     // Plain C helper usado por codegen para string repetition
     M.getOrInsertFunction("memset", llvm::FunctionType::get(I8Ptr, {I8Ptr, I32, I64}, false));
+
+    // Exception handling (setjmp-based)
+    M.getOrInsertFunction("nv_push_try_handler",          llvm::FunctionType::get(I8Ptr, {}, false));
+    M.getOrInsertFunction("nv_pop_try_handler",           llvm::FunctionType::get(VoidTy, {}, false));
+    M.getOrInsertFunction("nv_get_current_exception_into",  llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
+    M.getOrInsertFunction("nv_get_exception_message_into",  llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
+    M.getOrInsertFunction("nv_exception_matches",         llvm::FunctionType::get(I32, {I8Ptr}, false));
+    M.getOrInsertFunction("nv_clear_current_exception",   llvm::FunctionType::get(VoidTy, {}, false));
+    M.getOrInsertFunction("nv_rethrow_current_exception", llvm::FunctionType::get(VoidTy, {}, false));
+    M.getOrInsertFunction("nv_throw_exception",           llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
+    M.getOrInsertFunction("nv_create_exception",          llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr, I8Ptr}, false));
+    M.getOrInsertFunction("nv_extract_string_ptr",        llvm::FunctionType::get(I8Ptr, {ValuePtr}, false));
+    M.getOrInsertFunction("create_error",                 llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
+    M.getOrInsertFunction("create_value_error",           llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
+    M.getOrInsertFunction("create_type_error",            llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
+    M.getOrInsertFunction("create_runtime_error",         llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
+    M.getOrInsertFunction("create_index_error",           llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
+    M.getOrInsertFunction("create_key_error",             llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
+    M.getOrInsertFunction("create_attribute_error",       llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
+    M.getOrInsertFunction("create_name_error",            llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
+    M.getOrInsertFunction("create_assertion_error",       llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
 }
 
 void generate_ir(
