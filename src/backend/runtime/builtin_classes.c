@@ -410,4 +410,57 @@ void initialize_builtin_classes(void) {
         NVObject_Type->ob_base.ob_type = NVType_Type;
         NVObject_Type->tp_metaclass = NVType_Type;
     }
+    
+    // Criar tipos de exceção
+    initialize_exception_types();
+}
+
+/* ============================================================= */
+/*                    INICIALIZAÇÃO DE EXCEÇÕES                  */
+/* ============================================================= */
+
+// Definições globais dos tipos de exceção
+NvTypeObject* NVError_Type = NULL;
+NvTypeObject* NVValueError_Type = NULL;
+NvTypeObject* NVTypeError_Type = NULL;
+NvTypeObject* NVRuntimeError_Type = NULL;
+NvTypeObject* NVIndexError_Type = NULL;
+NvTypeObject* NVKeyError_Type = NULL;
+NvTypeObject* NVAttributeError_Type = NULL;
+NvTypeObject* NVNameError_Type = NULL;
+NvTypeObject* NVAssertionError_Type = NULL;
+
+void initialize_exception_types(void) {
+    // Criar tipo base Error
+    NVError_Type = nv_type_new("Error", NULL, 0);
+    
+    // Criar tipos específicos de exceção que herdam de Error
+    NvTypeObject* error_bases[] = {NVError_Type};
+    
+    NVValueError_Type = nv_type_new("ValueError", error_bases, 1);
+    NVTypeError_Type = nv_type_new("TypeError", error_bases, 1);
+    NVRuntimeError_Type = nv_type_new("RuntimeError", error_bases, 1);
+    NVIndexError_Type = nv_type_new("IndexError", error_bases, 1);
+    NVKeyError_Type = nv_type_new("KeyError", error_bases, 1);
+    NVAttributeError_Type = nv_type_new("AttributeError", error_bases, 1);
+    NVNameError_Type = nv_type_new("NameError", error_bases, 1);
+    NVAssertionError_Type = nv_type_new("AssertionError", error_bases, 1);
+    
+    // Configurar destrutores para exceções
+    if (NVError_Type) {
+        NVError_Type->tp_dealloc = (void (*)(struct NvObject*))free;
+    }
+    
+    // Configurar destrutores para tipos específicos
+    NvTypeObject* exception_types[] = {
+        NVValueError_Type, NVTypeError_Type, NVRuntimeError_Type,
+        NVIndexError_Type, NVKeyError_Type, NVAttributeError_Type,
+        NVNameError_Type, NVAssertionError_Type
+    };
+    
+    for (int i = 0; i < 8; i++) {
+        if (exception_types[i]) {
+            exception_types[i]->tp_dealloc = (void (*)(struct NvObject*))free;
+        }
+    }
 }
