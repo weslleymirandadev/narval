@@ -11,6 +11,8 @@
 #include "frontend/parser/statements/parse_match_stmt.hpp"
 #include "frontend/parser/statements/parse_declaration_stmt.hpp"
 #include "frontend/parser/statements/parse_class_def.hpp"
+#include "frontend/parser/statements/parse_try_stmt.hpp"
+#include "frontend/parser/statements/parse_throw_stmt.hpp"
 
 std::unique_ptr<Node> parse_stmt(Parser* parser) {
     switch (parser->current_token().type) {
@@ -27,6 +29,8 @@ std::unique_ptr<Node> parse_stmt(Parser* parser) {
         case TokenType::FOREVER: return parse_forever_stmt(parser);
         case TokenType::WHILE: return parse_while_stmt(parser);
         case TokenType::MATCH: return parse_match_stmt(parser);
+        case TokenType::TRY: return parse_try_stmt(parser);
+        case TokenType::THROW: return parse_throw_stmt(parser);
         default: {
             auto node = parse_expr(parser);
             if (parser->current_token().type == TokenType::SEMICOLON) {
