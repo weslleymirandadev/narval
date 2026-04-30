@@ -65,6 +65,17 @@ typedef struct NvTypeObject {
 #define NV_OBJECT_BASE 10  // O tipo 'object' base
 #define NV_ANY_BASE    11  // Tipo dinâmico (como 'any' em linguagens modernas)
 
+// Tipos de exceção
+#define NV_ERROR_BASE      12  // Base Error class
+#define NV_VALUE_ERROR     13  // ValueError
+#define NV_TYPE_ERROR      14  // TypeError
+#define NV_RUNTIME_ERROR   15  // RuntimeError
+#define NV_INDEX_ERROR     16  // IndexError
+#define NV_KEY_ERROR       17  // KeyError
+#define NV_ATTRIBUTE_ERROR 18  // AttributeError
+#define NV_NAME_ERROR      19  // NameError
+#define NV_ASSERTION_ERROR 20  // AssertionError
+
 // Estrutura Value simplificada - agora é apenas um wrapper para NvObject
 typedef struct {
     NvObject* obj;                  // Ponteiro para o objeto real
@@ -136,6 +147,73 @@ typedef struct {
     NvTypeObject base;
     // Métodos da metaclass
 } NVType;
+
+/* ============================================================= */
+/*                    ESTRUTURAS DE EXCEÇÃO                      */
+/* ============================================================= */
+
+// Base Error class - todas as exceções herdam desta
+typedef struct {
+    NvObject_HEAD;
+    char* message;      // Mensagem de erro
+    char* traceback;    // Stack trace (opcional)
+} NVError;
+
+// ValueError - erro em valor de argumento
+typedef struct {
+    NvObject_HEAD;
+    char* message;
+    char* traceback;
+} NVValueError;
+
+// TypeError - erro de tipo
+typedef struct {
+    NvObject_HEAD;
+    char* message;
+    char* traceback;
+} NVTypeError;
+
+// RuntimeError - erro em runtime
+typedef struct {
+    NvObject_HEAD;
+    char* message;
+    char* traceback;
+} NVRuntimeError;
+
+// IndexError - erro de índice
+typedef struct {
+    NvObject_HEAD;
+    char* message;
+    char* traceback;
+} NVIndexError;
+
+// KeyError - erro de chave
+typedef struct {
+    NvObject_HEAD;
+    char* message;
+    char* traceback;
+} NVKeyError;
+
+// AttributeError - erro de atributo
+typedef struct {
+    NvObject_HEAD;
+    char* message;
+    char* traceback;
+} NVAttributeError;
+
+// NameError - erro de nome
+typedef struct {
+    NvObject_HEAD;
+    char* message;
+    char* traceback;
+} NVNameError;
+
+// AssertionError - erro de asserção
+typedef struct {
+    NvObject_HEAD;
+    char* message;
+    char* traceback;
+} NVAssertionError;
 
 // Estrutura para definição de tipos dinâmicos (equivalente a criar classes)
 typedef struct TypeSpec {
