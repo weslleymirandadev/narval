@@ -44,6 +44,8 @@
 #include "statements/match_stmt_node.hpp"
 #include "statements/import_stmt_node.hpp"
 #include "statements/class_def_node.hpp"
+#include "statements/try_stmt_node.hpp"
+#include "statements/throw_stmt_node.hpp"
 
 // Program
 #include "program.hpp"
