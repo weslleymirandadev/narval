@@ -52,7 +52,9 @@ enum class NodeType {
     NewExpression,
     ThisExpression,
     SuperExpression,
-    InstanceofExpression
+    InstanceofExpression,
+    TryStatement,
+    ThrowStatement
 };
 
 class PositionData {
