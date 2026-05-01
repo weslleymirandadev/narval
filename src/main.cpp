@@ -293,7 +293,7 @@ int run_batch_mode(const std::string& filename, bool build_only = false) {
         std::string link_cmd =
             std::string("gcc -g ") + runtime_path + " " +
             NARVAL_SOURCE_DIR + "/build/lib/std.o " +
-            "narval_module.o -lgc -pthread -ldl -lm -o " + output_name + " " +
+            "narval_module.o -pthread -ldl -lm -o " + output_name + " " +
             "-Wl,-e,main.start " +
             "-nostartfiles " +
             "-no-pie " +
