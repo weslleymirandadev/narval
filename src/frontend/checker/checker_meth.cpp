@@ -1,6 +1,7 @@
 #include "frontend/checker/checker_meth.hpp"
 #include "frontend/checker/statements/check_import_stmt.hpp"
 #include "frontend/checker/statements/check_enum_def.hpp"
+#include "frontend/checker/expressions/check_or_expr.hpp"
 #include "frontend/checker/statements/check_def_stmt.hpp"
 #include "frontend/checker/statements/check_if_stmt.hpp"
 #include "frontend/checker/statements/check_for_stmt.hpp"
@@ -72,6 +73,12 @@ std::shared_ptr<nv::Type>& nv::Checker::check_node(Node* node) {
         case NodeType::ClassDef:
           return gettyptr("void");
         case NodeType::EnumDef:
+          return gettyptr("void");
+        case NodeType::OrExpression:
+          return check_or_expr(this, node);
+        case NodeType::NoneLiteral:
+          return gettyptr("void");
+        case NodeType::PropagateStatement:
           return gettyptr("void");
         case NodeType::BreakStatement:
         case NodeType::ContinueStatement:

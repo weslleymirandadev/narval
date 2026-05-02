@@ -6,9 +6,14 @@
 std::shared_ptr<nv::Type>& check_return_stmt(nv::Checker* ch, Node* node) {
     auto* return_stmt = static_cast<ReturnStmtNode*>(node);
     
-    // Verificar se estamos dentro de uma função
-    if (!ch->current_return_type) {
+    // `return` é permitido dentro de blocos `or { }` (redireciona o resultado do or)
+    if (!ch->current_return_type && ch->or_block_depth == 0) {
         ch->error(node, "Return statement outside of function");
+        return ch->gettyptr("void");
+    }
+    // Dentro de um bloco or sem função envolvente, aceitar qualquer tipo de retorno
+    if (!ch->current_return_type) {
+        if (return_stmt->value) ch->infer_expr(return_stmt->value.get());
         return ch->gettyptr("void");
     }
     

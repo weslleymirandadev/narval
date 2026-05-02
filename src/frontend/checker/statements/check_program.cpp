@@ -11,6 +11,7 @@
 #include "frontend/ast/statements/forever_stmt_node.hpp"
 #include "frontend/ast/statements/def_stmt_node.hpp"
 #include "frontend/ast/statements/match_stmt_node.hpp"
+#include "frontend/ast/expressions/or_expr_node.hpp"
 #include <stdexcept>
 
 namespace {
@@ -68,6 +69,26 @@ namespace {
         return decl_node;
     }
     
+    // Processa recursivamente uma lista de nodes (ex: or block stmts)
+    void process_nodelist(std::vector<std::unique_ptr<Node>>& nodes, nv::Checker* checker) {
+        for (size_t i = 0; i < nodes.size(); i++) {
+            auto& stmt = nodes[i];
+            if (!stmt) continue;
+            if (stmt->kind == NodeType::AssignmentExpression) {
+                auto* assign_node = static_cast<AssignmentExprNode*>(stmt.get());
+                auto converted = convert_assignment_to_declaration(assign_node, checker);
+                if (converted) {
+                    stmt.reset(converted.release());
+                }
+            }
+            // Recurse into or blocks nested inside
+            if (stmt->kind == NodeType::OrExpression) {
+                auto* or_node = static_cast<OrExprNode*>(stmt.get());
+                process_nodelist(or_node->block_stmts, checker);
+            }
+        }
+    }
+
     // Processa recursivamente um CodeBlock convertendo assignments não declarados
     void process_codeblock(CodeBlock& body, nv::Checker* checker) {
         for (size_t i = 0; i < body.size(); i++) {
@@ -120,6 +141,11 @@ namespace {
                     for (auto& case_body : match_stmt->bodies) {
                         process_codeblock(case_body, checker);
                     }
+                    break;
+                }
+                case NodeType::OrExpression: {
+                    auto* or_node = static_cast<OrExprNode*>(stmt.get());
+                    process_nodelist(or_node->block_stmts, checker);
                     break;
                 }
                 default:

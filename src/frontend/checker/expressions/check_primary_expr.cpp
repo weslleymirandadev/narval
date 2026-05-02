@@ -72,8 +72,15 @@ std::shared_ptr<nv::Type>& check_primary_expr(nv::Checker* ch, Node* node) {
             temp_result = ch->gettyptr("bool");
             ensure_proto(temp_result);
             return temp_result;
+        case NodeType::NoneLiteral:
+            return ch->gettyptr("void");
         case NodeType::Identifier: {
             const auto* id = static_cast<IdentifierNode*>(node);
+            // `err` é reservado: só pode ser usado dentro de blocos `or { }`
+            if (id->symbol == "err" && ch->or_block_depth == 0) {
+                ch->error(node, "'err' pode ser usado apenas dentro de expressões 'or'");
+                return ch->gettyptr("void");
+            }
             // Verificar se o identificador existe antes de tentar acessá-lo
             // Usar try-catch apenas para detectar, mas converter para error() imediatamente
             try {
