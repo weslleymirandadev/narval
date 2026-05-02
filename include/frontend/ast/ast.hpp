@@ -27,7 +27,7 @@
 #include "expressions/vector_expr_node.hpp"
 #include "expressions/boolean_literal_node.hpp"
 #include "expressions/new_expr_node.hpp"
-#include "expressions/this_expr_node.hpp"
+#include "expressions/self_expr_node.hpp"
 #include "expressions/super_expr_node.hpp"
 #include "expressions/instanceof_expr_node.hpp"
 

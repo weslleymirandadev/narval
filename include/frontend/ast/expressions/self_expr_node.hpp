@@ -2,12 +2,12 @@
 #include "frontend/ast/types.hpp"
 
 // Nó para expressão this
-class ThisExprNode : public Expr {
+class SelfExprNode : public Expr {
 public:
-    ThisExprNode() : Expr(NodeType::ThisExpression) {}
+    SelfExprNode() : Expr(NodeType::SelfExpression) {}
     
     Node* clone() const override {
-        return new ThisExprNode();
+        return new SelfExprNode();
     }
 
     void codegen(nv::IRGenerationContext& ctx) override;

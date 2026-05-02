@@ -38,7 +38,7 @@ Token tokenize_identifier_or_keyword(const std::string& input, size_t& pos, size
     else if (value == "implements") type = TokenType::IMPLEMENTS;
     else if (value == "interface") type = TokenType::INTERFACE;
     else if (value == "new") type = TokenType::NEW;
-    else if (value == "this") type = TokenType::THIS;
+    else if (value == "self") type = TokenType::SELF;
     else if (value == "super") type = TokenType::SUPER;
     else if (value == "instanceof") type = TokenType::INSTANCEOF;
     else if (value == "try") type = TokenType::TRY;

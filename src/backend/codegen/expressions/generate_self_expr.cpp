@@ -1,9 +1,9 @@
-#include "frontend/ast/expressions/this_expr_node.hpp"
+#include "frontend/ast/expressions/self_expr_node.hpp"
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
 
-void ThisExprNode::codegen(nv::IRGenerationContext& ctx) {
-    auto info = ctx.get_symbol_table().lookup_symbol("__this");
+void SelfExprNode::codegen(nv::IRGenerationContext& ctx) {
+    auto info = ctx.get_symbol_table().lookup_symbol("__self");
     if (!info.has_value()) {
         ctx.push_value(nullptr);
         return;

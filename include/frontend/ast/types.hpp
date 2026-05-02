@@ -50,7 +50,7 @@ enum class NodeType {
     ClassField,
     ClassMethod,
     NewExpression,
-    ThisExpression,
+    SelfExpression,
     SuperExpression,
     InstanceofExpression,
     TryStatement,

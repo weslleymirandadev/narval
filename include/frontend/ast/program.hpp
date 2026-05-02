@@ -27,7 +27,7 @@
 #include "expressions/boolean_literal_node.hpp"
 #include "expressions/range_expr_node.hpp"
 #include "expressions/new_expr_node.hpp"
-#include "expressions/this_expr_node.hpp"
+#include "expressions/self_expr_node.hpp"
 #include "expressions/super_expr_node.hpp"
 #include "expressions/instanceof_expr_node.hpp"
 #include "statements/return_stmt_node.hpp"
@@ -422,8 +422,8 @@ public:
                 }
                 break;
             }
-            case NodeType::ThisExpression: {
-                std::cout << indent << "ThisExpression\n";
+            case NodeType::SelfExpression: {
+                std::cout << indent << "SelfExpression\n";
                 break;
             }
             case NodeType::SuperExpression: {

@@ -5,7 +5,7 @@
 #include "frontend/parser/expressions/parse_vector_expr.hpp"
 #include "frontend/parser/expressions/parse_boolean_literal.hpp"
 #include "frontend/parser/expressions/parse_new_expr.hpp"
-#include "frontend/parser/expressions/parse_this_super.hpp"
+#include "frontend/parser/expressions/parse_self_super.hpp"
 #include "frontend/parser/expressions/parse_instanceof_expr.hpp"
 #include "frontend/ast/expressions/binary_expr_node.hpp"
 #include <cctype>
@@ -40,8 +40,8 @@ std::unique_ptr<Node> parse_primary_expr(Parser* parser) {
             expr = std::move(node);
             break;
         }
-        case TokenType::THIS: {
-            auto node = parse_this_expr(parser);
+        case TokenType::SELF: {
+            auto node = parse_self_expr(parser);
             node->position = std::move(pos);
             expr = std::move(node);
             break;

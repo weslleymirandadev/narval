@@ -72,7 +72,7 @@ enum class TokenType {
     IMPLEMENTS,
     INTERFACE,
     NEW,
-    THIS,
+    SELF,
     SUPER,
     INSTANCEOF,
     MUT,
@@ -152,7 +152,7 @@ inline const char* get_token_name(TokenType type) {
         case TokenType::IMPLEMENTS: return "IMPLEMENTS";
         case TokenType::INTERFACE: return "INTERFACE";
         case TokenType::NEW: return "NEW";
-        case TokenType::THIS: return "THIS";
+        case TokenType::SELF: return "SELF";
         case TokenType::SUPER: return "SUPER";
         case TokenType::INSTANCEOF: return "INSTANCEOF";
         case TokenType::MUT: return "MUT";
