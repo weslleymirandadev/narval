@@ -28,6 +28,11 @@ namespace nv {
         
         // bool: aceita 1 argumento de qualquer tipo, retorna bool
         BuiltinFunction("bool", {}, std::make_shared<Boolean>(), false, true, 1, 1),
+
+        // Option/Result constructors
+        BuiltinFunction("Some",   {}, std::make_shared<Void>(), false, true, 1, 1),
+        BuiltinFunction("Ok",     {}, std::make_shared<Void>(), false, true, 1, 1),
+        BuiltinFunction("Err",    {}, std::make_shared<Void>(), false, true, 1, 1),
     };
     
     // Variáveis globais builtin (não são funções, mas objetos especiais)

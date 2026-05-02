@@ -81,6 +81,13 @@ nv::Checker::Checker() {
     types["bool"]->init_prototype();
     types["void"]->init_prototype();
     
+    // Registrar classe Error builtin
+    auto error_class = std::make_shared<nv::Class>("Error");
+    error_class->add_field("message", types["str"], false);
+    error_class->init_prototype();
+    types["Error"] = error_class;
+    scope->put_key("Error", error_class, true);
+
     // Registrar funções builtin do runtime
     register_builtins(*this);
 }
@@ -133,6 +140,30 @@ std::shared_ptr<nv::Type>& nv::Checker::gettyptr(std::string ty){
         }
     }
     
+    // Option<T>
+    if (ty.size() > 8 && ty.substr(0, 7) == "Option<" && ty.back() == '>') {
+        std::string inner = ty.substr(7, ty.size() - 8);
+        auto& elem = gettyptr(inner);
+        auto opt = std::make_shared<nv::Option>(elem);
+        types[ty] = opt;
+        return types[ty];
+    }
+
+    // Result<T, E>
+    if (ty.size() > 8 && ty.substr(0, 7) == "Result<" && ty.back() == '>') {
+        std::string inner = ty.substr(7, ty.size() - 8);
+        auto comma = inner.find(", ");
+        if (comma != std::string::npos) {
+            auto ok_s  = inner.substr(0, comma);
+            auto err_s = inner.substr(comma + 2);
+            auto& ok_t  = gettyptr(ok_s);
+            auto& err_t = gettyptr(err_s);
+            auto res = std::make_shared<nv::Result>(ok_t, err_t);
+            types[ty] = res;
+            return types[ty];
+        }
+    }
+
     // Tipo não encontrado
     // Não temos Node aqui, então usar erro genérico
     std::string abs_filename = to_absolute_path(current_filename);

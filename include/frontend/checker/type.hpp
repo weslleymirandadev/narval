@@ -22,6 +22,8 @@ namespace nv {
         MAP,
         CLASS,
         ENUM,
+        OPTION,
+        RESULT,
         TYPE_VAR,
         POLY_TYPE,
         ERROR
@@ -338,6 +340,49 @@ namespace nv {
             for (const auto& [var_name, val] : variants) {
                 prototype->put_key(var_name, int_type, true);
             }
+        }
+    };
+
+    struct Option : public Type {
+        std::shared_ptr<Type> element_type;
+
+        Option(std::shared_ptr<Type> elem) : Type(Kind::OPTION), element_type(std::move(elem)) {}
+
+        std::string toString() override {
+            return "Option<" + element_type->toString() + ">";
+        }
+        bool equals(const Type& other) const override {
+            if (other.kind != Kind::OPTION) return false;
+            return element_type->equals(*static_cast<const Option*>(&other)->element_type);
+        }
+        bool equals(std::shared_ptr<Type>& other) const override { return equals(*other); }
+        void collect_free_vars(std::unordered_set<int>& fv) const override { element_type->collect_free_vars(fv); }
+        std::shared_ptr<Type> substitute(const std::unordered_map<int, std::shared_ptr<Type>>& s) const override {
+            return std::make_shared<Option>(element_type->substitute(s));
+        }
+    };
+
+    struct Result : public Type {
+        std::shared_ptr<Type> ok_type;
+        std::shared_ptr<Type> err_type;
+
+        Result(std::shared_ptr<Type> ok, std::shared_ptr<Type> err)
+            : Type(Kind::RESULT), ok_type(std::move(ok)), err_type(std::move(err)) {}
+
+        std::string toString() override {
+            return "Result<" + ok_type->toString() + ", " + err_type->toString() + ">";
+        }
+        bool equals(const Type& other) const override {
+            if (other.kind != Kind::RESULT) return false;
+            const Result* r = static_cast<const Result*>(&other);
+            return ok_type->equals(*r->ok_type) && err_type->equals(*r->err_type);
+        }
+        bool equals(std::shared_ptr<Type>& other) const override { return equals(*other); }
+        void collect_free_vars(std::unordered_set<int>& fv) const override {
+            ok_type->collect_free_vars(fv); err_type->collect_free_vars(fv);
+        }
+        std::shared_ptr<Type> substitute(const std::unordered_map<int, std::shared_ptr<Type>>& s) const override {
+            return std::make_shared<Result>(ok_type->substitute(s), err_type->substitute(s));
         }
     };
 

@@ -29,6 +29,8 @@ namespace nv {
             std::shared_ptr<Type> current_return_type = nullptr;
             // Rastrear classe atual sendo verificada (para controle de acesso)
             std::string current_class_name = "";
+            // Rastrear se estamos dentro de um bloco `or { }` (return é permitido lá)
+            int or_block_depth = 0;
             Checker();
             nv::Type& getty(std::string ty);
             std::shared_ptr<nv::Type>& gettyptr(std::string ty);
