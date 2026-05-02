@@ -81,6 +81,18 @@ void nv_str_convert(Value* out, Value* input) {
     else if (type == NVTuple_Type) {
         create_str(out, "<tuple object>");
     }
+    else if (type == NVOptionNone_Type) {
+        create_str(out, "None");
+    }
+    else if (type == NVOptionSome_Type) {
+        nv_str_convert(out, &((NVOptionSome*)input->obj)->inner);
+    }
+    else if (type == NVResultOk_Type) {
+        nv_str_convert(out, &((NVResultOk*)input->obj)->inner);
+    }
+    else if (type == NVResultErr_Type) {
+        nv_str_convert(out, &((NVResultErr*)input->obj)->inner);
+    }
     else {
         create_str(out, "<object>");
     }

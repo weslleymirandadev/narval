@@ -413,6 +413,9 @@ void initialize_builtin_classes(void) {
     
     // Criar tipos de exceção
     initialize_exception_types();
+
+    // Criar tipos Option/Result
+    initialize_option_result_types();
 }
 
 /* ============================================================= */

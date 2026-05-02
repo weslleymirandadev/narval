@@ -76,6 +76,12 @@ typedef struct NvTypeObject {
 #define NV_NAME_ERROR      19  // NameError
 #define NV_ASSERTION_ERROR 20  // AssertionError
 
+// Tipos Option / Result
+#define NV_OPTION_NONE_BASE 21
+#define NV_OPTION_SOME_BASE 22
+#define NV_RESULT_OK_BASE   23
+#define NV_RESULT_ERR_BASE  24
+
 // Estrutura Value simplificada - agora é apenas um wrapper para NvObject
 typedef struct {
     NvObject* obj;                  // Ponteiro para o objeto real
@@ -214,6 +220,20 @@ typedef struct {
     char* message;
     char* traceback;
 } NVAssertionError;
+
+/* ============================================================= */
+/*                    OPTION / RESULT                            */
+/* ============================================================= */
+
+typedef struct { NvObject_HEAD; }        NVOptionNone;
+typedef struct { NvObject_HEAD; Value inner; } NVOptionSome;
+typedef struct { NvObject_HEAD; Value inner; } NVResultOk;
+typedef struct { NvObject_HEAD; Value inner; } NVResultErr;
+
+extern NvTypeObject* NVOptionNone_Type;
+extern NvTypeObject* NVOptionSome_Type;
+extern NvTypeObject* NVResultOk_Type;
+extern NvTypeObject* NVResultErr_Type;
 
 // Estrutura para definição de tipos dinâmicos (equivalente a criar classes)
 typedef struct TypeSpec {

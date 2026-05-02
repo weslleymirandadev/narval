@@ -47,7 +47,11 @@ int32_t get_value_type(const Value* v) {
     if (type == NVTuple_Type) return NV_TUPLE_BASE;
     if (type == NVObject_Type) return NV_OBJECT_BASE;
     if (type == NVType_Type) return NV_TYPE_BASE;
-    
+    if (type == NVOptionNone_Type) return NV_OPTION_NONE_BASE;
+    if (type == NVOptionSome_Type) return NV_OPTION_SOME_BASE;
+    if (type == NVResultOk_Type)   return NV_RESULT_OK_BASE;
+    if (type == NVResultErr_Type)  return NV_RESULT_ERR_BASE;
+
     return NV_ANY_BASE;
 }
 

@@ -22,6 +22,18 @@ void create_map(Value* out);
 void create_tuple(Value* out);
 void create_any(Value* out);
 
+// Option / Result
+void create_option_some(Value* out, Value* val);
+void create_option_none(Value* out);
+void create_result_ok(Value* out, Value* val);
+void create_result_err(Value* out, Value* err);
+int  nv_is_failure(const Value* val);
+void nv_unwrap_inner(Value* out, const Value* val);
+void nv_get_failure_err(Value* out, const Value* val);
+
+// Inicializar tipos Option/Result
+void initialize_option_result_types(void);
+
 // Inicialização do sistema de tipos
 void register_global_init(void);
 
