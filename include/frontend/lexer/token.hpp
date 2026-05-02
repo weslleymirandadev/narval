@@ -80,7 +80,11 @@ enum class TokenType {
     CATCH,
     FINALLY,
     THROW,
-    ENUM
+    ENUM,
+    OR_KW,
+    PROPAGATE,
+    ERR_KW,
+    NONE_KW
 };
 
 inline const char* get_token_name(TokenType type) {
@@ -162,6 +166,10 @@ inline const char* get_token_name(TokenType type) {
         case TokenType::FINALLY: return "FINALLY";
         case TokenType::THROW: return "THROW";
         case TokenType::ENUM: return "ENUM";
+        case TokenType::OR_KW: return "OR_KW";
+        case TokenType::PROPAGATE: return "PROPAGATE";
+        case TokenType::ERR_KW: return "ERR_KW";
+        case TokenType::NONE_KW: return "NONE_KW";
         default: return "UNKNOWN";
     }
 }
