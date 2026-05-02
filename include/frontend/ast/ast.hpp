@@ -47,6 +47,9 @@
 #include "statements/try_stmt_node.hpp"
 #include "statements/throw_stmt_node.hpp"
 #include "statements/enum_def_node.hpp"
+#include "statements/propagate_stmt_node.hpp"
+#include "expressions/or_expr_node.hpp"
+#include "expressions/none_literal_node.hpp"
 
 // Program
 #include "program.hpp"

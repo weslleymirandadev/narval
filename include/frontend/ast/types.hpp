@@ -55,7 +55,10 @@ enum class NodeType {
     InstanceofExpression,
     TryStatement,
     ThrowStatement,
-    EnumDef
+    EnumDef,
+    OrExpression,
+    PropagateStatement,
+    NoneLiteral
 };
 
 class PositionData {
