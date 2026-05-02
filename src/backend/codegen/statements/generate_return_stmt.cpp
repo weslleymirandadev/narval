@@ -10,6 +10,49 @@ static void pop_and_return(nv::IRGenerationContext& ctx, llvm::Value* v) {
 
 void ReturnStmtNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
+
+    // Inside an `or { }` block, `return expr` sets the or-expression result
+    // and branches to the merge block instead of exiting the function.
+    if (ctx.in_or_block()) {
+        auto& or_ctx = ctx.current_or_block();
+        auto& B = ctx.get_builder();
+        auto* ValueTy  = nv::ir_utils::get_value_struct(ctx);
+        auto* ValuePtr = nv::ir_utils::get_value_ptr(ctx);
+
+        if (value) {
+            value->codegen(ctx);
+            llvm::Value* v = ctx.has_value() ? ctx.pop_value() : nullptr;
+            llvm::Value* boxed = nullptr;
+
+            if (v && v->getType() == ValueTy) {
+                boxed = v;
+            } else if (v) {
+                auto* slot = ctx.create_alloca(ValueTy, "or_ret_box");
+                auto* I32 = llvm::Type::getInt32Ty(ctx.get_context());
+                auto* F64 = llvm::Type::getDoubleTy(ctx.get_context());
+                auto* I8P = nv::ir_utils::get_i8_ptr(ctx);
+                if (v->getType()->isIntegerTy(1)) {
+                    B.CreateCall(ctx.ensure_runtime_func("create_bool", {ValuePtr, I32}),
+                                 {slot, B.CreateZExt(v, I32)});
+                } else if (v->getType()->isIntegerTy()) {
+                    auto* iv = v->getType()->isIntegerTy(32) ? v : B.CreateSExtOrTrunc(v, I32);
+                    B.CreateCall(ctx.ensure_runtime_func("create_int", {ValuePtr, I32}), {slot, iv});
+                } else if (v->getType()->isFloatingPointTy()) {
+                    auto* fv = v->getType() == F64 ? v : B.CreateFPExt(v, F64);
+                    B.CreateCall(ctx.ensure_runtime_func("create_float", {ValuePtr, F64}), {slot, fv});
+                } else if (v->getType() == I8P) {
+                    B.CreateCall(ctx.ensure_runtime_func("create_str", {ValuePtr, I8P}), {slot, v});
+                }
+                boxed = B.CreateLoad(ValueTy, slot, "or_ret_val");
+            }
+
+            if (boxed)
+                B.CreateStore(boxed, or_ctx.result_slot);
+        }
+        B.CreateBr(or_ctx.merge_bb);
+        return;
+    }
+
     if (value) {
         value->codegen(ctx);
         auto* v = ctx.pop_value();

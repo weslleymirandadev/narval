@@ -72,7 +72,29 @@ static void declare_runtime(IRGenerationContext& context) {
     {
         auto decl = M.getOrInsertFunction("create_vector", llvm::FunctionType::get(VoidTy, {ValuePtr, I32}, false));
     }
-    
+    // Option / Result
+    {
+        auto decl = M.getOrInsertFunction("create_option_some", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
+    }
+    {
+        auto decl = M.getOrInsertFunction("create_option_none", llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
+    }
+    {
+        auto decl = M.getOrInsertFunction("create_result_ok", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
+    }
+    {
+        auto decl = M.getOrInsertFunction("create_result_err", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
+    }
+    {
+        auto decl = M.getOrInsertFunction("nv_is_failure", llvm::FunctionType::get(I32, {ValuePtr}, false));
+    }
+    {
+        auto decl = M.getOrInsertFunction("nv_unwrap_inner", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
+    }
+    {
+        auto decl = M.getOrInsertFunction("nv_get_failure_err", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
+    }
+
     // Funções de conversão de tipo (estilo Python)
     // Convenção: void fn(Value* out, Value* in)
     {

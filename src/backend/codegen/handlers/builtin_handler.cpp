@@ -115,15 +115,50 @@ public:
             auto* out_box = ctx.create_alloca(ValueTy, "bool.out");
             b.CreateCall(bool_fn, {out_box, in_box});
             return b.CreateLoad(ValueTy, out_box, "bool.result");
+
+        } else if (method == "Some") {
+            if (args.empty()) return nullptr;
+            args[0]->codegen(ctx);
+            if (!ctx.has_value()) return nullptr;
+            auto* in = ctx.create_alloca(ValueTy, "some.in");
+            b.CreateStore(ctx.pop_value(), in);
+            auto* out = ctx.create_alloca(ValueTy, "some.out");
+            auto* fn = ctx.ensure_runtime_func("create_option_some", {ValuePtr, ValuePtr});
+            b.CreateCall(fn, {out, in});
+            return b.CreateLoad(ValueTy, out, "some.result");
+
+        } else if (method == "Ok") {
+            if (args.empty()) return nullptr;
+            args[0]->codegen(ctx);
+            if (!ctx.has_value()) return nullptr;
+            auto* in = ctx.create_alloca(ValueTy, "ok.in");
+            b.CreateStore(ctx.pop_value(), in);
+            auto* out = ctx.create_alloca(ValueTy, "ok.out");
+            auto* fn = ctx.ensure_runtime_func("create_result_ok", {ValuePtr, ValuePtr});
+            b.CreateCall(fn, {out, in});
+            return b.CreateLoad(ValueTy, out, "ok.result");
+
+        } else if (method == "Err") {
+            if (args.empty()) return nullptr;
+            args[0]->codegen(ctx);
+            if (!ctx.has_value()) return nullptr;
+            auto* in = ctx.create_alloca(ValueTy, "err.in");
+            b.CreateStore(ctx.pop_value(), in);
+            auto* out = ctx.create_alloca(ValueTy, "err.out");
+            auto* fn = ctx.ensure_runtime_func("create_result_err", {ValuePtr, ValuePtr});
+            b.CreateCall(fn, {out, in});
+            return b.CreateLoad(ValueTy, out, "err.result");
         }
-        
+
         return nullptr;
     }
-    
+
     bool can_handle(const std::string& method) const override {
-        return method == "write" || method == "read" || 
-               method == "str" || method == "int" || 
-               method == "float" || method == "bool";
+        return method == "write" || method == "read" ||
+               method == "str"   || method == "int"  ||
+               method == "float" || method == "bool" ||
+               method == "Some"  ||
+               method == "Ok"    || method == "Err";
     }
 };
 

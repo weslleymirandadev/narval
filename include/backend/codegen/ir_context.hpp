@@ -263,6 +263,14 @@ private:
     };
     std::vector<GlobalInit> pending_global_inits;
 
+    // Stack de contextos `or { }` — quando return é usado dentro de um bloco or,
+    // ele armazena o valor no result_slot e branch para merge_bb em vez de retornar da função.
+    struct OrBlockContext {
+        llvm::AllocaInst* result_slot;
+        llvm::BasicBlock* merge_bb;
+    };
+    std::vector<OrBlockContext> or_block_stack;
+
 public:
     IRGenerationContext(
         llvm::LLVMContext& ctx,
@@ -434,6 +442,16 @@ public:
      *                 Módulos importados devem ter prioridades menores que o módulo principal
      */
     void finalize_global_inits(int priority = 65535);
+
+    // Or-block context management
+    void push_or_block(llvm::AllocaInst* result_slot, llvm::BasicBlock* merge_bb) {
+        or_block_stack.push_back({result_slot, merge_bb});
+    }
+    void pop_or_block() {
+        if (!or_block_stack.empty()) or_block_stack.pop_back();
+    }
+    bool in_or_block() const { return !or_block_stack.empty(); }
+    OrBlockContext& current_or_block() { return or_block_stack.back(); }
 
     /**
      * Inicializa o cache de tipos LLVM

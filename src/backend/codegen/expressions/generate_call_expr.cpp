@@ -269,6 +269,52 @@ llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name
         return B.CreateCall(fn, {});
     }
     
+    // Option / Result constructors
+    auto* ValuePtr = ir_utils::get_value_ptr(ctx);
+    auto box_arg = [&]() -> llvm::Value* {
+        if (args.empty()) return nullptr;
+        args[0]->codegen(ctx);
+        if (!ctx.has_value()) return nullptr;
+        llvm::Value* v = ctx.pop_value();
+        auto* slot = ctx.create_alloca(ValueTy, "wrap_arg");
+        if (v && v->getType() == ValueTy) {
+            B.CreateStore(v, slot);
+        } else if (v) {
+            auto* I32 = llvm::Type::getInt32Ty(ctx.get_context());
+            auto* F64 = llvm::Type::getDoubleTy(ctx.get_context());
+            if (v->getType()->isIntegerTy(1)) {
+                B.CreateCall(ctx.ensure_runtime_func("create_bool",  {ValuePtr, I32}), {slot, B.CreateZExt(v, I32)});
+            } else if (v->getType()->isIntegerTy()) {
+                auto* iv = v->getType()->isIntegerTy(32) ? v : B.CreateSExtOrTrunc(v, I32);
+                B.CreateCall(ctx.ensure_runtime_func("create_int",   {ValuePtr, I32}), {slot, iv});
+            } else if (v->getType()->isFloatingPointTy()) {
+                auto* fv = v->getType() == F64 ? v : B.CreateFPExt(v, F64);
+                B.CreateCall(ctx.ensure_runtime_func("create_float", {ValuePtr, F64}), {slot, fv});
+            } else if (v->getType() == I8P) {
+                B.CreateCall(ctx.ensure_runtime_func("create_str",   {ValuePtr, I8P}), {slot, v});
+            }
+        }
+        return slot; // returns Value* (pointer)
+    };
+    if (name == "Some") {
+        auto* in  = box_arg();
+        auto* out = ctx.create_alloca(ValueTy, "some.out");
+        if (in) B.CreateCall(ctx.ensure_runtime_func("create_option_some", {ValuePtr, ValuePtr}), {out, in});
+        return B.CreateLoad(ValueTy, out, "some.val");
+    }
+    if (name == "Ok") {
+        auto* in  = box_arg();
+        auto* out = ctx.create_alloca(ValueTy, "ok.out");
+        if (in) B.CreateCall(ctx.ensure_runtime_func("create_result_ok", {ValuePtr, ValuePtr}), {out, in});
+        return B.CreateLoad(ValueTy, out, "ok.val");
+    }
+    if (name == "Err") {
+        auto* in  = box_arg();
+        auto* out = ctx.create_alloca(ValueTy, "err.out");
+        if (in) B.CreateCall(ctx.ensure_runtime_func("create_result_err", {ValuePtr, ValuePtr}), {out, in});
+        return B.CreateLoad(ValueTy, out, "err.val");
+    }
+
     return nullptr; // not builtin
 }
 
