@@ -27,7 +27,15 @@ std::unique_ptr<Node> parse_primary_expr(Parser* parser) {
             expr = std::move(node);
             break;
         }
-        case TokenType::IDENTIFIER: {
+        case TokenType::NONE_KW: {
+            parser->consume_token();
+            auto node = std::make_unique<NoneLiteralNode>();
+            node->position = std::move(pos);
+            expr = std::move(node);
+            break;
+        }
+        case TokenType::IDENTIFIER:
+        case TokenType::ERR_KW: {
             Token idToken = parser->consume_token();
             auto node = std::make_unique<IdentifierNode>(idToken.lexeme);
             node->position = std::move(pos);

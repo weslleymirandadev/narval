@@ -3,6 +3,7 @@
 #include "frontend/parser/expressions/parse_assignment_expr.hpp"
 #include "frontend/parser/expressions/parse_type.hpp"
 #include "frontend/parser/expressions/parse_conditional_expr.hpp"
+#include "frontend/parser/expressions/parse_or_expr.hpp"
 #include "frontend/parser/statements/parse_declaration_stmt.hpp"
 #include <iostream>
 
@@ -104,5 +105,5 @@ std::unique_ptr<Node> parse_assignment_expr(Parser* parser) {
     if (target && !target->position) {
         target->position = std::move(pos);
     }
-    return target;
+    return try_parse_or(parser, std::move(target));
 }

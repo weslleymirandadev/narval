@@ -33,6 +33,13 @@ std::unique_ptr<Node> parse_stmt(Parser* parser) {
         case TokenType::MATCH: return parse_match_stmt(parser);
         case TokenType::TRY: return parse_try_stmt(parser);
         case TokenType::THROW: return parse_throw_stmt(parser);
+        case TokenType::PROPAGATE: {
+            auto node = std::make_unique<PropagateStmtNode>();
+            parser->consume_token();
+            if (parser->current_token().type == TokenType::SEMICOLON)
+                parser->consume_token();
+            return node;
+        }
         default: {
             auto node = parse_expr(parser);
             if (parser->current_token().type == TokenType::SEMICOLON) {

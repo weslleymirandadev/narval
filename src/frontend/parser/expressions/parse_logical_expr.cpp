@@ -1,5 +1,6 @@
 #include "frontend/parser/expressions/parse_logical_expr.hpp"
 #include "frontend/parser/expressions/parse_equality_expr.hpp"
+#include "frontend/parser/expressions/parse_or_expr.hpp"
 
 std::unique_ptr<Node> parse_logical_expr(Parser* parser) {
     size_t line = parser->current_token().line;
@@ -31,5 +32,5 @@ std::unique_ptr<Node> parse_logical_expr(Parser* parser) {
 
         left = std::move(binaryNode);
     }
-    return left;
+    return try_parse_or(parser, std::move(left));
 }

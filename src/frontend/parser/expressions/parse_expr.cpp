@@ -1,5 +1,6 @@
 #include "frontend/parser/statements/parse_declaration_stmt.hpp"
 #include "frontend/parser/expressions/parse_expr.hpp"
+#include "frontend/parser/expressions/parse_or_expr.hpp"
 #include "frontend/parser/expressions/parse_primary_expr.hpp"
 #include "frontend/parser/expressions/parse_access_expr.hpp"
 #include "frontend/parser/expressions/parse_call_member_expr.hpp"
@@ -61,7 +62,7 @@ std::unique_ptr<Node> parse_expr(Parser* parser) {
             );
         }
 
-        return expr;
+        return try_parse_or(parser, std::move(expr));
     }
 
     if (parser->next_token().type == TokenType::COLON) {
