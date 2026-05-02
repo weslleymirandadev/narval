@@ -46,6 +46,7 @@
 #include "statements/class_def_node.hpp"
 #include "statements/try_stmt_node.hpp"
 #include "statements/throw_stmt_node.hpp"
+#include "statements/enum_def_node.hpp"
 
 // Program
 #include "program.hpp"

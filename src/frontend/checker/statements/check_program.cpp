@@ -1,5 +1,6 @@
 #include "frontend/checker/statements/check_program.hpp"
 #include "frontend/checker/statements/check_class_def.hpp"
+#include "frontend/checker/statements/check_enum_def.hpp"
 #include "frontend/ast/ast.hpp"
 #include "frontend/ast/expressions/assignment_expr_node.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
@@ -142,12 +143,14 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
     // Processa recursivamente todos os blocos de código (incluindo aninhados)
     process_codeblock(program->body, ch);
 
-    // TERCEIRA PASSAGEM [NOVA]: Registrar todas as classes primeiro.
-    // Isso permite usar classes como tipos em parâmetros/retornos de funções
-    // e em declarações mesmo quando a classe aparece depois no arquivo.
+    // TERCEIRA PASSAGEM [NOVA]: Registrar todas as classes e enums primeiro.
+    // Isso permite usar classes/enums como tipos em parâmetros/retornos de funções
+    // e em declarações mesmo quando aparecem depois no arquivo.
     for (auto& el : program->body) {
         if (el->kind == NodeType::ClassDef) {
             check_class_def(ch, el.get());
+        } else if (el->kind == NodeType::EnumDef) {
+            check_enum_def(ch, el.get());
         }
     }
 

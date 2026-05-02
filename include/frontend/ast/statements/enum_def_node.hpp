@@ -1,0 +1,33 @@
+#pragma once
+#include "frontend/ast/types.hpp"
+#include <string>
+#include <vector>
+
+struct EnumVariant {
+    std::string name;
+    bool has_explicit_value;
+    int explicit_value;
+
+    EnumVariant(const std::string& n, bool has_val = false, int val = 0)
+        : name(n), has_explicit_value(has_val), explicit_value(val) {}
+};
+
+class EnumDefNode : public Stmt {
+public:
+    std::string name;
+    std::vector<EnumVariant> variants;
+
+    EnumDefNode(const std::string& enum_name)
+        : Stmt(NodeType::EnumDef), name(enum_name) {}
+
+    Node* clone() const override {
+        auto* node = new EnumDefNode(name);
+        node->variants = variants;
+        if (position) {
+            node->position = std::make_unique<PositionData>(*position);
+        }
+        return node;
+    }
+
+    void codegen(nv::IRGenerationContext& ctx) override;
+};

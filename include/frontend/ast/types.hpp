@@ -54,7 +54,8 @@ enum class NodeType {
     SuperExpression,
     InstanceofExpression,
     TryStatement,
-    ThrowStatement
+    ThrowStatement,
+    EnumDef
 };
 
 class PositionData {

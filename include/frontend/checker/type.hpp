@@ -21,6 +21,7 @@ namespace nv {
         VECTOR,
         MAP,
         CLASS,
+        ENUM,
         TYPE_VAR,
         POLY_TYPE,
         ERROR
@@ -305,6 +306,37 @@ namespace nv {
             // Adicionar métodos ao prototype
             for (const auto& method : methods) {
                 prototype->put_key(method.first, method.second, true);
+            }
+        }
+    };
+
+    struct Enum : public Type {
+        std::string name;
+        std::vector<std::pair<std::string, int>> variants;
+
+        Enum(const std::string& enum_name) : Type(Kind::ENUM), name(enum_name) {}
+
+        std::string toString() override { return name; }
+
+        bool equals(const Type& other) const override {
+            if (other.kind != Kind::ENUM) return false;
+            return name == static_cast<const Enum*>(&other)->name;
+        }
+
+        bool equals(std::shared_ptr<Type>& other) const override {
+            if (other->kind != Kind::ENUM) return false;
+            return name == std::static_pointer_cast<Enum>(other)->name;
+        }
+
+        void add_variant(const std::string& variant_name, int value) {
+            variants.push_back({variant_name, value});
+        }
+
+        void init_prototype() override {
+            prototype = std::shared_ptr<Namespace>(new Namespace(nullptr));
+            auto int_type = std::make_shared<Int>();
+            for (const auto& [var_name, val] : variants) {
+                prototype->put_key(var_name, int_type, true);
             }
         }
     };

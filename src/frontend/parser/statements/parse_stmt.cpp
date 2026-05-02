@@ -13,6 +13,7 @@
 #include "frontend/parser/statements/parse_class_def.hpp"
 #include "frontend/parser/statements/parse_try_stmt.hpp"
 #include "frontend/parser/statements/parse_throw_stmt.hpp"
+#include "frontend/parser/statements/parse_enum_def.hpp"
 
 std::unique_ptr<Node> parse_stmt(Parser* parser) {
     switch (parser->current_token().type) {
@@ -20,6 +21,7 @@ std::unique_ptr<Node> parse_stmt(Parser* parser) {
             parser->consume_token(); // Consumir o token MUT
             return parse_declaration_stmt(parser, true);
         case TokenType::CLASS: return parse_class_def(parser);
+        case TokenType::ENUM: return parse_enum_def(parser);
         case TokenType::DEF: return parse_def_stmt(parser);
         case TokenType::IF: return parse_if_stmt(parser);
         case TokenType::RETURN: return parse_return_stmt(parser);

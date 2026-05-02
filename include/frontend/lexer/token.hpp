@@ -79,7 +79,8 @@ enum class TokenType {
     TRY,
     CATCH,
     FINALLY,
-    THROW
+    THROW,
+    ENUM
 };
 
 inline const char* get_token_name(TokenType type) {
@@ -160,6 +161,7 @@ inline const char* get_token_name(TokenType type) {
         case TokenType::CATCH: return "CATCH";
         case TokenType::FINALLY: return "FINALLY";
         case TokenType::THROW: return "THROW";
+        case TokenType::ENUM: return "ENUM";
         default: return "UNKNOWN";
     }
 }

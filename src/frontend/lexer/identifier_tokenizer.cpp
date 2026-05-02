@@ -45,6 +45,7 @@ Token tokenize_identifier_or_keyword(const std::string& input, size_t& pos, size
     else if (value == "catch") type = TokenType::CATCH;
     else if (value == "finally") type = TokenType::FINALLY;
     else if (value == "throw") type = TokenType::THROW;
+    else if (value == "enum") type = TokenType::ENUM;
 
     return Token(type, value, line, start_column, column, start_position, pos, filename);
 }
