@@ -21,6 +21,7 @@ namespace nv {
         VECTOR,
         MAP,
         CLASS,
+        INTERFACE,
         ENUM,
         OPTION,
         RESULT,
@@ -309,6 +310,44 @@ namespace nv {
             for (const auto& method : methods) {
                 prototype->put_key(method.first, method.second, true);
             }
+        }
+    };
+
+    struct Interface : public Type {
+        std::string name;
+        std::vector<std::string> parent_interfaces;
+        std::unordered_map<std::string, std::shared_ptr<Type>> methods;
+
+        Interface(const std::string& iname) : Type(Kind::INTERFACE), name(iname) {}
+
+        std::string toString() override { return name; }
+
+        bool equals(const Type& other) const override {
+            if (other.kind != Kind::INTERFACE) return false;
+            return name == static_cast<const Interface*>(&other)->name;
+        }
+        bool equals(std::shared_ptr<Type>& other) const override { return equals(*other); }
+
+        void add_method(const std::string& mname, std::shared_ptr<Type> mtype) {
+            methods[mname] = std::move(mtype);
+        }
+
+        // Retorna todos os métodos incluindo os herdados de parent interfaces
+        std::unordered_map<std::string, std::shared_ptr<Type>> all_methods(
+            const std::unordered_map<std::string, std::shared_ptr<Type>>& types) const
+        {
+            auto result = methods;
+            for (const auto& pname : parent_interfaces) {
+                auto it = types.find(pname);
+                if (it != types.end() && it->second->kind == Kind::INTERFACE) {
+                    auto* parent = static_cast<Interface*>(it->second.get());
+                    for (auto& [mn, mt] : parent->all_methods(types)) {
+                        if (result.find(mn) == result.end())
+                            result[mn] = mt;
+                    }
+                }
+            }
+            return result;
         }
     };
 

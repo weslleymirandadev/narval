@@ -58,7 +58,8 @@ enum class NodeType {
     EnumDef,
     OrExpression,
     PropagateStatement,
-    NoneLiteral
+    NoneLiteral,
+    InterfaceDef
 };
 
 class PositionData {

@@ -40,7 +40,8 @@ public:
 class ClassDefNode : public Stmt {
 public:
     std::string name;
-    std::string parent_class; // Para herança
+    std::string parent_class;
+    std::vector<std::string> implements_interfaces; // implements A, B, C
     std::vector<std::unique_ptr<ClassFieldNode>> fields;
     std::vector<std::unique_ptr<ClassMethodNode>> methods;
     
@@ -50,6 +51,7 @@ public:
     Node* clone() const override {
         auto* node = new ClassDefNode(name);
         node->parent_class = parent_class;
+        node->implements_interfaces = implements_interfaces;
         for (const auto& field : fields) {
             node->fields.push_back(std::unique_ptr<ClassFieldNode>(static_cast<ClassFieldNode*>(field->clone())));
         }

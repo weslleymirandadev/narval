@@ -4,6 +4,7 @@
 #include "frontend/checker/type.hpp"
 #include "frontend/ast/ast.hpp"
 #include <string>
+#include <sstream>
 
 namespace nv {
     std::shared_ptr<Type> check_class_def(Checker* checker, Node* node) {
@@ -73,10 +74,36 @@ namespace nv {
         }
 
         checker->current_class_name = previous_class;
-        
+
+        // Verificar que todos os métodos das interfaces implementadas estão presentes
+        // e promovê-los automaticamente a public (interface = contrato público)
+        for (const auto& iface_name : class_def->implements_interfaces) {
+            auto it = checker->types.find(iface_name);
+            if (it == checker->types.end() || it->second->kind != Kind::INTERFACE) {
+                checker->error(node, "'" + iface_name + "' não é uma interface");
+                continue;
+            }
+            auto* iface = static_cast<nv::Interface*>(it->second.get());
+            auto required = iface->all_methods(checker->types);
+            for (const auto& [mname, mtype] : required) {
+                bool found = class_type->methods.find(mname) != class_type->methods.end();
+                if (!found && class_type->parent_class) {
+                    found = class_type->parent_class->get_method(mname) != nullptr;
+                }
+                if (!found) {
+                    checker->error(node,
+                        "Classe '" + class_def->name + "' não implementa o método '" +
+                        mname + "' exigido pela interface '" + iface_name + "'");
+                } else {
+                    // Métodos que implementam interface são automaticamente públicos
+                    class_type->method_access[mname] = "public";
+                }
+            }
+        }
+
         // Inicializar prototype da classe
         class_type->init_prototype();
-        
+
         return class_type;
     }
 }

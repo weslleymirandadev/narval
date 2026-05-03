@@ -13,12 +13,24 @@ std::unique_ptr<Node> parse_class_def(Parser* parser) {
     
     // Verificar herança
     if (parser->current_token().type == TokenType::EXTENDS) {
-        parser->consume_token(); // consumir EXTENDS
-        Token parent_token = parser->current_token();
-        parser->consume_token(); // consumir nome da classe pai
-        class_node->parent_class = parent_token.lexeme;
+        parser->consume_token();
+        class_node->parent_class = parser->current_token().lexeme;
+        parser->consume_token();
     }
-    
+
+    // Verificar interfaces implementadas
+    if (parser->current_token().type == TokenType::IMPLEMENTS) {
+        parser->consume_token();
+        while (parser->current_token().type == TokenType::IDENTIFIER) {
+            class_node->implements_interfaces.push_back(parser->current_token().lexeme);
+            parser->consume_token();
+            if (parser->current_token().type == TokenType::COMMA)
+                parser->consume_token();
+            else
+                break;
+        }
+    }
+
     parser->expect(TokenType::OBRACE, "Expected '{' after class name");
     
     // Parse do corpo da classe
