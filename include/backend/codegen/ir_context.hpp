@@ -351,6 +351,7 @@ public:
 
     // Pilha de avaliação
     void push_value(llvm::Value* v) { eval_stack.push_back(v); }
+    size_t eval_stack_size() const { return eval_stack.size(); }
     llvm::Value* pop_value() {
         if (eval_stack.empty()) return nullptr;
         llvm::Value* v = eval_stack.back();

@@ -125,7 +125,17 @@ llvm::Value* create_comparison(IRGenerationContext& context, llvm::Value* lhs, l
     if (!lhs || !rhs) return nullptr;
     auto& builder = context.get_builder();
     auto* valueStruct = get_value_struct(context);
-    
+
+    // Print input types for debugging
+    {
+        std::string ltype, rtype;
+        llvm::raw_string_ostream lo(ltype), ro(rtype);
+        if (lhs) lhs->getType()->print(lo); else lo << "null";
+        if (rhs) rhs->getType()->print(ro); else ro << "null";
+    }
+
+    llvm::Value* out = nullptr;
+
     // Se ambos são Value structs, usar comparação type-aware (int vs float resolvido em runtime)
     if (lhs->getType() == valueStruct && rhs->getType() == valueStruct) {
         auto* ValuePtr = get_value_ptr(context);
@@ -137,13 +147,12 @@ llvm::Value* create_comparison(IRGenerationContext& context, llvm::Value* lhs, l
         auto* cmp_fn = context.ensure_runtime_func("nv_value_cmp", {ValuePtr, ValuePtr}, I32);
         auto* cmp_result = builder.CreateCall(cmp_fn, {lhs_alloca, rhs_alloca}, "cmp_val");
         auto* zero = llvm::ConstantInt::get(I32, 0);
-        if (op == "==") return builder.CreateICmpEQ(cmp_result, zero, "cmpeq");
-        if (op == "!=") return builder.CreateICmpNE(cmp_result, zero, "cmpne");
-        if (op == "<")  return builder.CreateICmpSLT(cmp_result, zero, "cmplt");
-        if (op == ">")  return builder.CreateICmpSGT(cmp_result, zero, "cmpgt");
-        if (op == "<=") return builder.CreateICmpSLE(cmp_result, zero, "cmple");
-        if (op == ">=") return builder.CreateICmpSGE(cmp_result, zero, "cmpge");
-        return nullptr;
+        if (op == "==") out = builder.CreateICmpEQ(cmp_result, zero, "cmpeq");
+        else if (op == "!=") out = builder.CreateICmpNE(cmp_result, zero, "cmpne");
+        else if (op == "<")  out = builder.CreateICmpSLT(cmp_result, zero, "cmplt");
+        else if (op == ">")  out = builder.CreateICmpSGT(cmp_result, zero, "cmpgt");
+        else if (op == "<=") out = builder.CreateICmpSLE(cmp_result, zero, "cmple");
+        else if (op == ">=") out = builder.CreateICmpSGE(cmp_result, zero, "cmpge");
     }
     if (lhs->getType() == valueStruct) {
         lhs = extract_int_from_value(context, lhs);
@@ -162,18 +171,24 @@ llvm::Value* create_comparison(IRGenerationContext& context, llvm::Value* lhs, l
             auto* strcmpFn = llvm::cast<llvm::Function>(context.get_module().getOrInsertFunction("strcmp", strcmpTy).getCallee());
             auto* cmpRes = builder.CreateCall(strcmpFn, { lhs, rhs }, "strcmp");
             auto* zero = llvm::ConstantInt::get(i32, 0);
-            if (op == "==") return builder.CreateICmpEQ(cmpRes, zero, "cmpeq");
-            if (op == "!=") return builder.CreateICmpNE(cmpRes, zero, "cmpne");
-            if (op == "<")  return builder.CreateICmpSLT(cmpRes, zero, "cmplt");
-            if (op == ">")  return builder.CreateICmpSGT(cmpRes, zero, "cmpgt");
-            if (op == "<=") return builder.CreateICmpSLE(cmpRes, zero, "cmple");
-            if (op == ">=") return builder.CreateICmpSGE(cmpRes, zero, "cmpge");
+            if (op == "==") out = builder.CreateICmpEQ(cmpRes, zero, "cmpeq");
+            else if (op == "!=") out = builder.CreateICmpNE(cmpRes, zero, "cmpne");
+            else if (op == "<")  out = builder.CreateICmpSLT(cmpRes, zero, "cmplt");
+            else if (op == ">")  out = builder.CreateICmpSGT(cmpRes, zero, "cmpgt");
+            else if (op == "<=") out = builder.CreateICmpSLE(cmpRes, zero, "cmple");
+            else if (op == ">=") out = builder.CreateICmpSGE(cmpRes, zero, "cmpge");
         }
     }
 
-    // Converter tipos diferentes (int <-> float)
+    // Converter tipos diferentes (int <-> float, i1 <-> i32)
     if (lhs_type != rhs->getType()) {
-        if (lhs_type->isIntegerTy() && rhs->getType()->isFloatingPointTy()) {
+        // CORREÇÃO: Converter i1 para i32 quando necessário
+        if (lhs_type->isIntegerTy(1) && rhs->getType()->isIntegerTy(32)) {
+            lhs = builder.CreateZExt(lhs, rhs->getType());
+            lhs_type = lhs->getType();
+        } else if (lhs_type->isIntegerTy(32) && rhs->getType()->isIntegerTy(1)) {
+            rhs = builder.CreateZExt(rhs, lhs_type);
+        } else if (lhs_type->isIntegerTy() && rhs->getType()->isFloatingPointTy()) {
             lhs = builder.CreateSIToFP(lhs, rhs->getType());
             lhs_type = lhs->getType(); // Atualizar tipo após conversão
         } else if (lhs_type->isFloatingPointTy() && rhs->getType()->isIntegerTy()) {
@@ -186,20 +201,18 @@ llvm::Value* create_comparison(IRGenerationContext& context, llvm::Value* lhs, l
     bool is_float = final_type->isFloatingPointTy();
     bool is_int = final_type->isIntegerTy() || final_type->isPointerTy();
 
-    if (op == "==") return is_float
+    if (op == "==") out = is_float
         ? builder.CreateFCmpOEQ(lhs, rhs, "cmpeq") : builder.CreateICmpEQ(lhs, rhs, "cmpeq");
-    if (op == "!=") return is_float
+    else if (op == "!=") out = is_float
         ? builder.CreateFCmpONE(lhs, rhs, "cmpne") : builder.CreateICmpNE(lhs, rhs, "cmpne");
-    if (op == "<") return is_float
+    else if (op == "<") out = is_float
         ? builder.CreateFCmpOLT(lhs, rhs, "cmplt") : builder.CreateICmpSLT(lhs, rhs, "cmplt");
-    if (op == ">") return is_float
+    else if (op == ">") out = is_float
         ? builder.CreateFCmpOGT(lhs, rhs, "cmpgt") : builder.CreateICmpSGT(lhs, rhs, "cmpgt");
-    if (op == "<=") return is_float
+    else if (op == "<=") out = is_float
         ? builder.CreateFCmpOLE(lhs, rhs, "cmple") : builder.CreateICmpSLE(lhs, rhs, "cmple");
-    if (op == ">=") return is_float
+    else if (op == ">=") out = is_float
         ? builder.CreateFCmpOGE(lhs, rhs, "cmpge") : builder.CreateICmpSGE(lhs, rhs, "cmpge");
-
-    return nullptr;
 }
 
 llvm::Value* create_binary_op(IRGenerationContext& context, llvm::Value* lhs, llvm::Value* rhs, const std::string& op) {

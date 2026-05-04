@@ -3,7 +3,7 @@
 #include "backend/codegen/ir_utils.hpp"
 
 void SelfExprNode::codegen(nv::IRGenerationContext& ctx) {
-    auto info = ctx.get_symbol_table().lookup_symbol("__self");
+    auto info = ctx.get_symbol_table().lookup_symbol("__this");
     if (!info.has_value()) {
         ctx.push_value(nullptr);
         return;

@@ -72,14 +72,14 @@ std::unique_ptr<Node> parse_expr(Parser* parser) {
     switch (parser->next_token().type) {
         case TokenType::AND:
         case TokenType::OR:
-        case TokenType::EQUALS:
-        case TokenType::DIFFERENT:
         case TokenType::LESS_THAN_EQUALS:
         case TokenType::GREATER_THAN_EQUALS:
         case TokenType::LT:
         case TokenType::GT: {
             return parse_logical_expr(parser);
         }
+        case TokenType::EQUALS:
+        case TokenType::DIFFERENT:
         case TokenType::PLUS:
         case TokenType::MINUS:
         case TokenType::MUL:

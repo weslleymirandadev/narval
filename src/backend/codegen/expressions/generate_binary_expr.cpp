@@ -75,25 +75,64 @@ void BinaryExprNode::codegen(nv::IRGenerationContext& ctx) {
     auto* rhs_v = ctx.pop_value();
     if (!lhs_v || !rhs_v) { ctx.push_value(nullptr); return; }
 
-    // Logical AND / OR (assume i1 operands; if not, compare != 0)
-    if (op == "&&") {
+
+
+    // Helper: coerce any value to i1 for logical ops
+    auto to_i1 = [&](llvm::Value* v) -> llvm::Value* {
+        if (!v) return ctx.get_builder().getFalse();
         auto& b = ctx.get_builder();
-        if (!lhs_v->getType()->isIntegerTy(1)) lhs_v = b.CreateICmpNE(lhs_v, llvm::ConstantInt::get(lhs_v->getType(), 0));
-        if (!rhs_v->getType()->isIntegerTy(1)) rhs_v = b.CreateICmpNE(rhs_v, llvm::ConstantInt::get(rhs_v->getType(), 0));
-        ctx.push_value(b.CreateAnd(lhs_v, rhs_v, "land"));
+        auto* I32     = llvm::Type::getInt32Ty(ctx.get_context());
+        auto* I1      = llvm::Type::getInt1Ty(ctx.get_context());
+        auto* ValueTy = nv::ir_utils::get_value_struct(ctx);
+        auto* ValuePtr = nv::ir_utils::get_value_ptr(ctx);
+
+        if (v->getType() == I1) return v;   // already i1
+
+        // ValueTy struct: use nv_bool_convert then nv_value_cmp with zero
+        if (v->getType() == ValueTy) {
+            auto* in  = ctx.create_alloca(ValueTy, "li_in");
+            auto* out = ctx.create_alloca(ValueTy, "li_out");
+            b.CreateStore(v, in);
+            auto* conv = ctx.ensure_runtime_func("nv_bool_convert", {ValuePtr, ValuePtr});
+            b.CreateCall(conv, {out, in});
+            // nv_bool_convert writes a bool Value; extract its int representation
+            auto* zero_val = ctx.create_alloca(ValueTy, "li_zero");
+            auto* ci_fn    = ctx.ensure_runtime_func("create_int", {ValuePtr, I32});
+            b.CreateCall(ci_fn, {zero_val, llvm::ConstantInt::get(I32, 0)});
+            auto* cmp_fn   = ctx.ensure_runtime_func("nv_value_cmp", {ValuePtr, ValuePtr}, I32);
+            auto* cmp_i32  = b.CreateCall(cmp_fn, {out, zero_val}, "li_cmp");
+            // cmp_i32 is i32; zero is i32 — safe ICmpNE
+            return b.CreateICmpNE(cmp_i32, llvm::ConstantInt::get(I32, 0), "li_i1");
+        }
+
+        // Any other integer: zero-extend or truncate to i1
+        if (v->getType()->isIntegerTy()) {
+            auto* i32v = v->getType()->isIntegerTy(32)
+                ? v : b.CreateSExtOrTrunc(v, I32, "li_i32");
+            return b.CreateICmpNE(i32v, llvm::ConstantInt::get(I32, 0), "li_i1");
+        }
+
+        return b.CreateIsNotNull(v, "li_notnull");
+    };
+
+    // Logical AND / OR
+    if (op == "&&") {
+        // CORREÇÃO: Forçar conversão explícita para i1 se necessário
+        auto* lhs_i1 = to_i1(lhs_v);
+        auto* rhs_i1 = to_i1(rhs_v);
+        ctx.push_value(ctx.get_builder().CreateAnd(lhs_i1, rhs_i1, "land"));
         return;
     }
     if (op == "||") {
-        auto& b = ctx.get_builder();
-        if (!lhs_v->getType()->isIntegerTy(1)) lhs_v = b.CreateICmpNE(lhs_v, llvm::ConstantInt::get(lhs_v->getType(), 0));
-        if (!rhs_v->getType()->isIntegerTy(1)) rhs_v = b.CreateICmpNE(rhs_v, llvm::ConstantInt::get(rhs_v->getType(), 0));
-        ctx.push_value(b.CreateOr(lhs_v, rhs_v, "lor"));
+        ctx.push_value(ctx.get_builder().CreateOr(to_i1(lhs_v), to_i1(rhs_v), "lor"));
         return;
     }
 
     // Comparisons
     if (op == "==" || op == "!=" || op == "<" || op == ">" || op == "<=" || op == ">=") {
-        ctx.push_value(nv::ir_utils::create_comparison(ctx, lhs_v, rhs_v, op));
+                
+        auto* cmp = nv::ir_utils::create_comparison(ctx, lhs_v, rhs_v, op);
+        ctx.push_value(cmp);
         return;
     }
 
