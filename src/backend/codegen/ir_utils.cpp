@@ -153,8 +153,8 @@ llvm::Value* create_comparison(IRGenerationContext& context, llvm::Value* lhs, l
         else if (op == ">")  out = builder.CreateICmpSGT(cmp_result, zero, "cmpgt");
         else if (op == "<=") out = builder.CreateICmpSLE(cmp_result, zero, "cmple");
         else if (op == ">=") out = builder.CreateICmpSGE(cmp_result, zero, "cmpge");
-    }
-    if (lhs->getType() == valueStruct) {
+        return out;
+    } else if (lhs->getType() == valueStruct) {
         lhs = extract_int_from_value(context, lhs);
     } else if (rhs->getType() == valueStruct) {
         rhs = extract_int_from_value(context, rhs);
@@ -213,6 +213,7 @@ llvm::Value* create_comparison(IRGenerationContext& context, llvm::Value* lhs, l
         ? builder.CreateFCmpOLE(lhs, rhs, "cmple") : builder.CreateICmpSLE(lhs, rhs, "cmple");
     else if (op == ">=") out = is_float
         ? builder.CreateFCmpOGE(lhs, rhs, "cmpge") : builder.CreateICmpSGE(lhs, rhs, "cmpge");
+    return out;
 }
 
 llvm::Value* create_binary_op(IRGenerationContext& context, llvm::Value* lhs, llvm::Value* rhs, const std::string& op) {

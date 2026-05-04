@@ -135,8 +135,9 @@ std::shared_ptr<nv::Type> check_binary_expr(nv::Checker* ch, Node* node) {
         // Operadores de comparação retornam bool
         return ch->gettyptr("bool");
     } else if (bin->op == "&&" || bin->op == "||") {
-        // Operadores lógicos retornam bool
+        // Operadores lógicos retornam bool - ambos operandos devem ser bool
         ch->unify_ctx.unify(left_type, ch->gettyptr("bool"));
+        ch->unify_ctx.unify(right_type, ch->gettyptr("bool"));
         return ch->gettyptr("bool");
     }
     

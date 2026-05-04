@@ -7,6 +7,8 @@
 #include "frontend/parser/expressions/parse_unary_expr.hpp"
 #include "frontend/parser/expressions/parse_additive_expr.hpp"
 #include "frontend/parser/expressions/parse_logical_expr.hpp"
+#include "frontend/parser/expressions/parse_equality_expr.hpp"
+#include "frontend/parser/expressions/parse_relational_expr.hpp"
 #include "frontend/parser/expressions/parse_assignment_expr.hpp"
 #include "frontend/parser/expressions/parse_vector_expr.hpp"
 #include "frontend/parser/expressions/parse_array_map_expr.hpp"
@@ -52,7 +54,7 @@ std::unique_ptr<Node> parse_expr(Parser* parser) {
             parser->current_token().type == TokenType::MOD_ASSIGN) {
 
             std::string assign_op = parser->consume_token().lexeme;
-            auto value = parse_assignment_expr(parser);
+            auto value = parse_logical_expr(parser);
             parser->expect(TokenType::SEMICOLON, "Expected ';'.");
 
             return std::make_unique<AssignmentExprNode>(
@@ -72,14 +74,12 @@ std::unique_ptr<Node> parse_expr(Parser* parser) {
     switch (parser->next_token().type) {
         case TokenType::AND:
         case TokenType::OR:
+        case TokenType::EQUALS:
+        case TokenType::DIFFERENT:
         case TokenType::LESS_THAN_EQUALS:
         case TokenType::GREATER_THAN_EQUALS:
         case TokenType::LT:
-        case TokenType::GT: {
-            return parse_logical_expr(parser);
-        }
-        case TokenType::EQUALS:
-        case TokenType::DIFFERENT:
+        case TokenType::GT:
         case TokenType::PLUS:
         case TokenType::MINUS:
         case TokenType::MUL:
@@ -87,7 +87,7 @@ std::unique_ptr<Node> parse_expr(Parser* parser) {
         case TokenType::MOD:
         case TokenType::POWER:
         case TokenType::INTEGER_DIV: {
-            return parse_additive_expr(parser);
+            return parse_logical_expr(parser);
         }
         default: return parse_assignment_expr(parser);
     }

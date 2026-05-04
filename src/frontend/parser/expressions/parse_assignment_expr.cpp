@@ -1,6 +1,7 @@
 #include "frontend/parser/expressions/parse_array_map_expr.hpp"
 #include "frontend/parser/expressions/parse_vector_expr.hpp"
 #include "frontend/parser/expressions/parse_assignment_expr.hpp"
+#include "frontend/parser/expressions/parse_logical_expr.hpp"
 #include "frontend/parser/expressions/parse_type.hpp"
 #include "frontend/parser/expressions/parse_conditional_expr.hpp"
 #include "frontend/parser/expressions/parse_or_expr.hpp"
@@ -39,7 +40,14 @@ std::unique_ptr<Node> parse_assignment_expr(Parser* parser) {
         return node;
     }
     
-    auto target = parse_array_map_expr(parser);
+    std::unique_ptr<Node> target;
+    if (parser->current_token().type == TokenType::OBRACE) {
+        target = parse_array_map_expr(parser);
+    } else if (parser->current_token().type == TokenType::OBRACKET) {
+        target = parse_vector_expr(parser);
+    } else {
+        target = parse_logical_expr(parser);
+    }
     bool declaration = false;
     std::string typ = "automatic";
     
@@ -69,7 +77,7 @@ std::unique_ptr<Node> parse_assignment_expr(Parser* parser) {
                 value = parse_array_map_expr(parser);
             } break;
             default: {
-                value = parse_assignment_expr(parser);
+                value = parse_logical_expr(parser);
             } break;
         }
 

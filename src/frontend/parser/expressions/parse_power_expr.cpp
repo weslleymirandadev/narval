@@ -1,5 +1,5 @@
 #include "frontend/parser/expressions/parse_power_expr.hpp"
-#include "frontend/parser/expressions/parse_call_member_expr.hpp"
+#include "frontend/parser/expressions/parse_primary_chain.hpp"
 
 std::unique_ptr<Node> parse_power_expr(Parser* parser) {
     size_t line = parser->current_token().line;
@@ -7,11 +7,11 @@ std::unique_ptr<Node> parse_power_expr(Parser* parser) {
     size_t position[2] = { parser->current_token().position_start, parser->current_token().position_end };
     std::unique_ptr<PositionData> pos = std::make_unique<PositionData>(line, column[0], column[1], position[0], position[1]);
 
-    auto left = parse_call_member_expr(parser, nullptr);
-    
+    auto left = parse_primary_chain(parser);
+
     while (parser->current_token().type == TokenType::POWER) {
         std::string opToken = parser->consume_token().lexeme;
-        auto right = parse_call_member_expr(parser, nullptr); //ta ai?
+        auto right = parse_primary_chain(parser);
         
         auto binaryNode = std::make_unique<BinaryExprNode>(
             opToken,
