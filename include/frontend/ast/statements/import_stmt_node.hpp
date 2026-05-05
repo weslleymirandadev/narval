@@ -20,7 +20,9 @@ public:
     std::string module_path;              // Caminho do módulo (ex: "std", "test.nv")
     std::vector<ImportItem> imports;       // Lista de identificadores importados
     std::string filename;                  // Nome do arquivo onde o import está (do token original)
-    
+    bool is_wildcard = false;             // true se "import *" ou "import * as ALIAS"
+    std::string wildcard_alias;           // alias do namespace se "import * as ALIAS"
+
     ImportStmtNode(const std::string& module, const std::vector<ImportItem>& items, const std::string& file = "")
         : Stmt(NodeType::ImportStatement), module_path(module), imports(items), filename(file) {}
     
@@ -28,6 +30,8 @@ public:
 
     Node* clone() const override {
         auto* node = new ImportStmtNode(this->module_path, this->imports, this->filename);
+        node->is_wildcard = this->is_wildcard;
+        node->wildcard_alias = this->wildcard_alias;
         if (position) {
             node->position = std::make_unique<PositionData>(*position);
         }

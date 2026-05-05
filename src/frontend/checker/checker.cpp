@@ -97,16 +97,13 @@ nv::Type& nv::Checker::getty(std::string ty) {
 }
 
 std::shared_ptr<nv::Type>& nv::Checker::gettyptr(std::string ty){
-    // Alias: "string" → "str"
-    if (ty == "string") ty = "str";
-
-    // Verificar se já existe no cache
+        // Verificar se já existe no cache
     auto it = types.find(ty);
     if (it != types.end()) {
         return it->second;
     }
     
-    // Parsear tipos compostos: vector, int[10], string[5], etc.
+    // Parsear tipos compostos: vector, int[10], str[5], etc.
     
     // Tipo vector
     if (ty == "vector") {
@@ -116,7 +113,7 @@ std::shared_ptr<nv::Type>& nv::Checker::gettyptr(std::string ty){
         return types[ty];
     }
     
-    // Tipo array: int[10], string[5], etc.
+    // Tipo array: int[10], str[5], etc.
     // Formato: base_type[size]
     size_t bracket_pos = ty.find('[');
     if (bracket_pos != std::string::npos && bracket_pos > 0) {

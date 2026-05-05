@@ -5,12 +5,56 @@
 
 void ImportStmtNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
-    
-    // Para cada identificador importado, criar uma declaração externa
-    // da variável global correspondente
+
     auto& M = ctx.get_module();
     auto* ValueTy = nv::ir_utils::get_value_struct(ctx);
-    
+
+    // --- Wildcard import ---
+    if (is_wildcard) {
+        std::unordered_set<std::string> members;
+
+        // Registrar todos os globais e funções do módulo que ainda não estão na tabela
+        for (auto& G : M.globals()) {
+            const std::string& gname = G.getName().str();
+            if (gname.empty() || gname[0] == '.') continue; // skip LLVM internals
+            members.insert(gname);
+            auto existing = ctx.get_symbol_table().lookup_symbol(gname);
+            if (!existing.has_value()) {
+                nv::SymbolInfo info(&G, ValueTy, nullptr, false, false);
+                ctx.get_symbol_table().define_symbol(gname, info);
+            }
+        }
+        for (auto& F : M.functions()) {
+            const std::string& fname = F.getName().str();
+            if (fname.empty() || fname[0] == '.' || fname.rfind("llvm.", 0) == 0) continue;
+            members.insert(fname);
+            auto existing = ctx.get_symbol_table().lookup_symbol(fname);
+            if (!existing.has_value()) {
+                nv::SymbolInfo info(&F, F.getType(), nullptr, false, true);
+                ctx.get_symbol_table().define_symbol(fname, info);
+            }
+        }
+
+        if (!wildcard_alias.empty()) {
+            // Registrar o alias como namespace compile-time
+            ctx.add_namespace_alias(wildcard_alias, members);
+            // Criar um global placeholder para que o identifier resolver funcione
+            auto* existing_g = M.getGlobalVariable(wildcard_alias);
+            if (!existing_g) {
+                existing_g = new llvm::GlobalVariable(
+                    M, ValueTy, false,
+                    llvm::GlobalValue::InternalLinkage,
+                    llvm::Constant::getNullValue(ValueTy),
+                    wildcard_alias
+                );
+            }
+            nv::SymbolInfo ns_info(existing_g, ValueTy, nullptr, false, false);
+            ctx.get_symbol_table().define_symbol(wildcard_alias, ns_info);
+        }
+        return;
+    }
+
+    // --- Import normal (lista de símbolos) ---
     for (const auto& item : imports) {
         std::string var_name = item.alias.empty() ? item.name : item.alias;  // Nome usado no código (alias ou original)
         std::string original_name = item.name;  // Nome original no módulo exportado

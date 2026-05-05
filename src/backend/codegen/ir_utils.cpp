@@ -613,7 +613,7 @@ static llvm::Type* parse_type_recursive(const std::string& s, size_t& p, IRGener
         }
         return get_i1(ctx); 
     }
-    if (s.substr(p, 6) == "string") {
+    if (s.substr(p, 6) == "str") {
         p += 6;
         // Verificar se é array: string[10]
         if (p < s.size() && s[p] == '[') {

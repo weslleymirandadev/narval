@@ -5,6 +5,7 @@
 #include "frontend/checker/checker_meth.hpp"
 #include "frontend/ast/statements/declaration_stmt_node.hpp"
 #include "frontend/ast/statements/def_stmt_node.hpp"
+#include "frontend/ast/statements/import_stmt_node.hpp"
 #include "frontend/ast/expressions/assignment_expr_node.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
 #include <fstream>
@@ -128,8 +129,14 @@ std::unique_ptr<Node> ModuleManager::get_combined_ast(const std::string& main_mo
             // Adicionar identificadores importados ao conjunto
             // IMPORTANTE: Usar o nome original (name), não o alias
             // Porque a declaração no módulo exportado usa o nome original
-            for (const auto& [name, alias] : import_info.imports) {
-                imported_symbols[dep_name].insert(name);  // Sempre usar nome original
+            if (import_info.is_wildcard) {
+                // Wildcard: marcar o módulo inteiro como "incluir tudo"
+                // Usamos string vazia como sentinela
+                imported_symbols[dep_name].insert("*");
+            } else {
+                for (const auto& [name, alias] : import_info.imports) {
+                    imported_symbols[dep_name].insert(name);  // Sempre usar nome original
+                }
             }
         }
     }
@@ -178,7 +185,14 @@ std::unique_ptr<Node> ModuleManager::get_combined_ast(const std::string& main_mo
             for (auto& stmt : module_program->get_statements()) {
                 // Se for o módulo principal, incluir todos os statements, exceto imports (já resolvidos)
                 if (is_main) {
-                    if (stmt->kind != NodeType::ImportStatement) {
+                    if (stmt->kind == NodeType::ImportStatement) {
+                        // Manter imports wildcard com alias no combined AST para que o checker
+                        // possa registrar o namespace alias no escopo principal
+                        auto* import = static_cast<ImportStmtNode*>(stmt.get());
+                        if (import->is_wildcard && !import->wildcard_alias.empty()) {
+                            combined_program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
+                        }
+                    } else {
                         combined_program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
                     }
                     continue;

@@ -208,6 +208,8 @@ std::unique_ptr<Node> Parser::produce_ast(const std::vector<Token>& tokens, cons
                 }
                 
                 auto import_stmt = std::make_unique<ImportStmtNode>(import_info.module_path, items, current.filename);
+                import_stmt->is_wildcard = import_info.is_wildcard;
+                import_stmt->wildcard_alias = import_info.wildcard_alias;
                 // Usar a posição do token STRING (que contém o caminho do módulo)
                 import_stmt->position = std::make_unique<PositionData>(
                     string_token.line, string_token.column_start, string_token.column_end,

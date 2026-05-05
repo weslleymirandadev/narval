@@ -271,6 +271,9 @@ private:
     };
     std::vector<OrBlockContext> or_block_stack;
 
+    // Namespace aliases de wildcard imports: alias -> conjunto de nomes de membros
+    std::unordered_map<std::string, std::unordered_set<std::string>> namespace_aliases;
+
 public:
     IRGenerationContext(
         llvm::LLVMContext& ctx,
@@ -305,6 +308,18 @@ public:
 
     void set_source_file(const std::string& file) { source_file = file; }
     const std::string& get_source_file() const { return source_file; }
+
+    // Gerenciamento de namespace aliases (import * as ALIAS)
+    void add_namespace_alias(const std::string& alias, const std::unordered_set<std::string>& members) {
+        namespace_aliases[alias] = members;
+    }
+    bool is_namespace_alias(const std::string& name) const {
+        return namespace_aliases.count(name) > 0;
+    }
+    const std::unordered_set<std::string>* get_namespace_members(const std::string& alias) const {
+        auto it = namespace_aliases.find(alias);
+        return it != namespace_aliases.end() ? &it->second : nullptr;
+    }
 
     // Gerenciamento de símbolos
     SymbolTable& get_symbol_table() { return symbol_table; }

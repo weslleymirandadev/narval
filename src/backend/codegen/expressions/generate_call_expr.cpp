@@ -401,6 +401,117 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
     
     // === 2. METHOD CALL: obj.method(...) ===
     if (auto* mem = dynamic_cast<MemberExprNode*>(caller.get())) {
+
+        // === NAMESPACE ALIAS: import * as ALIAS → ALIAS.func(...) ===
+        if (auto* obj_id = dynamic_cast<IdentifierNode*>(mem->object.get())) {
+            if (ctx.is_namespace_alias(obj_id->symbol)) {
+                std::string member_name;
+                if (auto* prop_id = dynamic_cast<IdentifierNode*>(mem->property.get())) {
+                    member_name = prop_id->symbol;
+                }
+                if (!member_name.empty()) {
+                    auto* fn = ctx.get_module().getFunction(member_name);
+                    if (fn) {
+                        auto* ValueTy  = ir_utils::get_value_struct(ctx);
+                        auto* ValuePtr = ir_utils::get_value_ptr(ctx);
+                        auto* I32 = llvm::Type::getInt32Ty(ctx.get_context());
+                        auto* I64 = llvm::Type::getInt64Ty(ctx.get_context());
+                        auto* F64 = llvm::Type::getDoubleTy(ctx.get_context());
+
+                        // Usar os tipos reais dos parâmetros da função (mesma lógica do caminho normal)
+                        auto* func_ty = fn->getFunctionType();
+                        std::vector<llvm::Type*> param_types(func_ty->param_begin(), func_ty->param_end());
+
+                        std::vector<llvm::Value*> call_args;
+                        for (size_t i = 0; i < args.size(); ++i) {
+                            args[i]->codegen(ctx);
+                            auto* av = ctx.pop_value();
+
+                            if (i < param_types.size()) {
+                                auto* expected = param_types[i];
+                                // Value struct passado mas função espera primitivo: extrair
+                                if (av && av->getType() == ValueTy && expected != ValueTy) {
+                                    auto* tmp = ctx.create_alloca(ValueTy, "ns_arg_tmp");
+                                    B.CreateStore(av, tmp);
+                                    auto* ensure_fn = ctx.ensure_runtime_func("ensure_value_type", {ValuePtr});
+                                    B.CreateCall(ensure_fn, {tmp});
+                                    if (expected->isIntegerTy()) {
+                                        auto* f = ctx.ensure_runtime_func("extract_int_from_value", {I32, ValuePtr});
+                                        av = B.CreateCall(f, {tmp}, "ns_iarg");
+                                        if (!expected->isIntegerTy(32))
+                                            av = B.CreateSExtOrTrunc(av, expected);
+                                    } else if (expected->isFloatingPointTy()) {
+                                        auto* f = ctx.ensure_runtime_func("extract_float_from_value", {F64, ValuePtr});
+                                        av = B.CreateCall(f, {tmp}, "ns_farg");
+                                    } else if (expected->isPointerTy() && av->getType() == ValueTy) {
+                                        // pointer expected: box into alloca and pass ptr
+                                        auto* slot = ctx.create_alloca(ValueTy, "ns_arg");
+                                        B.CreateStore(av, slot);
+                                        av = slot;
+                                    }
+                                } else if (av && av->getType() != ValueTy && expected == ValueTy) {
+                                    // Primitivo mas função espera Value struct: box
+                                    auto* slot = ctx.create_alloca(ValueTy, "ns_arg");
+                                    if (av->getType()->isIntegerTy(1)) {
+                                        auto* f = ctx.ensure_runtime_func("create_bool", {ValuePtr, I32});
+                                        B.CreateCall(f, {slot, B.CreateZExt(av, I32)});
+                                    } else if (av->getType()->isIntegerTy()) {
+                                        auto* iv = av->getType()->isIntegerTy(32) ? av : B.CreateSExtOrTrunc(av, I32);
+                                        auto* f = ctx.ensure_runtime_func("create_int", {ValuePtr, I32});
+                                        B.CreateCall(f, {slot, iv});
+                                    } else if (av->getType()->isFloatingPointTy()) {
+                                        auto* fv = av->getType() == F64 ? av : B.CreateFPExt(av, F64);
+                                        auto* f = ctx.ensure_runtime_func("create_float", {ValuePtr, F64});
+                                        B.CreateCall(f, {slot, fv});
+                                    } else {
+                                        B.CreateStore(llvm::UndefValue::get(ValueTy), slot);
+                                    }
+                                    av = B.CreateLoad(ValueTy, slot);
+                                } else if (av && av->getType()->isPointerTy() && expected == ValueTy) {
+                                    // Ponteiro para Value, mas espera Value by-value: load
+                                    av = B.CreateLoad(ValueTy, av);
+                                }
+                            }
+                            call_args.push_back(av);
+                        }
+
+                        auto* result = B.CreateCall(fn, call_args);
+                        if (!fn->getReturnType()->isVoidTy()) {
+                            // Converter retorno primitivo para Value se necessário
+                            if (result->getType() != ValueTy) {
+                                auto* ret_alloca = ctx.create_alloca(ValueTy, "ns_ret");
+                                if (result->getType() == I32) {
+                                    auto* f = ctx.ensure_runtime_func("create_int", {ValuePtr, I32});
+                                    B.CreateCall(f, {ret_alloca, result});
+                                } else if (result->getType() == I64) {
+                                    auto* i32v = B.CreateTrunc(result, I32);
+                                    auto* f = ctx.ensure_runtime_func("create_int", {ValuePtr, I32});
+                                    B.CreateCall(f, {ret_alloca, i32v});
+                                } else if (result->getType() == F64) {
+                                    auto* f = ctx.ensure_runtime_func("create_float", {ValuePtr, F64});
+                                    B.CreateCall(f, {ret_alloca, result});
+                                } else {
+                                    B.CreateStore(llvm::UndefValue::get(ValueTy), ret_alloca);
+                                }
+                                ctx.push_value(B.CreateLoad(ValueTy, ret_alloca, "ns_ret_val"));
+                            } else {
+                                ctx.push_value(result);
+                            }
+                        } else {
+                            ctx.push_value(llvm::UndefValue::get(ValueTy));
+                        }
+                        return;
+                    }
+                    // Fallback: variável global
+                    auto sym = ctx.get_symbol_table().lookup_symbol(member_name);
+                    if (sym.has_value() && sym->value) {
+                        ctx.push_value(sym->value);
+                        return;
+                    }
+                }
+            }
+        }
+
         // Avalia o objeto (ex: "json")
         mem->object->codegen(ctx);
         llvm::Value* obj = ctx.pop_value();

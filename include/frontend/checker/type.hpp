@@ -199,7 +199,7 @@ namespace nv {
         String() : Type(Kind::STRING) {}
         void init_prototype();
 
-        std::string toString() override { return "string"; }
+        std::string toString() override { return "str"; }
     };
 
     struct Int : public Type {
@@ -225,7 +225,7 @@ namespace nv {
 
     struct Void : public Type {
         Void() : Type(Kind::VOID) {}
-        std::string toString() override { return "()"; }
+        std::string toString() override { return "None"; }
     };
 
     struct Class : public Type {

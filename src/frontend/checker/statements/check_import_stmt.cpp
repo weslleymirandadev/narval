@@ -3,6 +3,8 @@
 #include "frontend/ast/statements/import_stmt_node.hpp"
 #include "frontend/ast/statements/declaration_stmt_node.hpp"
 #include "frontend/ast/statements/def_stmt_node.hpp"
+#include "frontend/ast/statements/class_def_node.hpp"
+#include "frontend/ast/statements/enum_def_node.hpp"
 #include "frontend/ast/expressions/assignment_expr_node.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
 #include "frontend/lexer/lexer.hpp"
@@ -200,12 +202,12 @@ namespace {
         ch->err = true;
     }
     
-    // Extrai símbolos exportados de um módulo (variáveis e funções)
+    // Extrai símbolos exportados de um módulo (variáveis, funções, classes, enums)
     std::set<std::string> extract_exported_symbols(Program* program) {
         std::set<std::string> symbols;
-        
+
         if (!program) return symbols;
-        
+
         for (const auto& stmt : program->get_statements()) {
             // Variáveis declaradas
             if (stmt->kind == NodeType::DeclarationStatement) {
@@ -220,6 +222,16 @@ namespace {
                 auto* def = static_cast<DefStmtNode*>(stmt.get());
                 symbols.insert(def->name);
             }
+            // Classes
+            else if (stmt->kind == NodeType::ClassDef) {
+                auto* cls = static_cast<ClassDefNode*>(stmt.get());
+                symbols.insert(cls->name);
+            }
+            // Enums
+            else if (stmt->kind == NodeType::EnumDef) {
+                auto* en = static_cast<EnumDefNode*>(stmt.get());
+                symbols.insert(en->name);
+            }
             // Assignments que criam variáveis (serão convertidos em declarações pelo checker)
             else if (stmt->kind == NodeType::AssignmentExpression) {
                 auto* assign = static_cast<AssignmentExprNode*>(stmt.get());
@@ -229,7 +241,7 @@ namespace {
                 }
             }
         }
-        
+
         return symbols;
     }
     
@@ -268,23 +280,33 @@ std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
     // Se já verificamos este import, verificar se os símbolos já estão registrados
     // Se não estiverem, registrar novamente (pode acontecer se o checker foi resetado)
     bool already_checked = (checked_imports.find(import_key) != checked_imports.end());
-    
+
     if (already_checked) {
-        // Verificar se os símbolos já estão no escopo
-        bool all_registered = true;
-        for (const auto& item : import_stmt->imports) {
-            std::string scope_name = item.alias.empty() ? item.name : item.alias;
-            try {
-                ch->scope->get_key(scope_name);
-            } catch (std::runtime_error&) {
-                all_registered = false;
-                break;
+        if (import_stmt->is_wildcard) {
+            // Para wildcards, verificar se já está no namespace ou no scope
+            if (!import_stmt->wildcard_alias.empty()) {
+                try { ch->scope->get_key(import_stmt->wildcard_alias); return ch->gettyptr("void"); }
+                catch (std::runtime_error&) {}
+            } else {
+                // Flat wildcard: não há como checar facilmente, re-executar
             }
-        }
-        
-        // Se todos os símbolos já estão registrados, retornar
-        if (all_registered) {
-            return ch->gettyptr("void");
+        } else {
+            // Verificar se os símbolos já estão no escopo
+            bool all_registered = true;
+            for (const auto& item : import_stmt->imports) {
+                std::string scope_name = item.alias.empty() ? item.name : item.alias;
+                try {
+                    ch->scope->get_key(scope_name);
+                } catch (std::runtime_error&) {
+                    all_registered = false;
+                    break;
+                }
+            }
+
+            // Se todos os símbolos já estão registrados, retornar
+            if (all_registered) {
+                return ch->gettyptr("void");
+            }
         }
         // Caso contrário, continuar para registrar os símbolos novamente
     }
@@ -365,6 +387,46 @@ std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
             return ch->gettyptr("void");
         }
         
+        // --- Wildcard import: "import *" ou "import * as ALIAS" ---
+        if (import_stmt->is_wildcard) {
+            for (const auto& sym_name : exported_symbols) {
+                std::shared_ptr<nv::Type> sym_type = nullptr;
+                bool sym_constant = false;
+                try {
+                    auto& st = module_checker.scope->get_key(sym_name);
+                    sym_type = st;
+                    sym_constant = (st->kind == nv::Kind::DEF || st->kind == nv::Kind::CLASS || st->kind == nv::Kind::ENUM);
+                } catch (std::runtime_error&) {
+                    // se não estiver no scope, verificar no map de tipos (classes)
+                    auto ty_it = module_checker.types.find(sym_name);
+                    if (ty_it != module_checker.types.end()) {
+                        sym_type = ty_it->second;
+                        sym_constant = true;
+                    }
+                }
+                if (!sym_type) continue;
+
+                if (import_stmt->wildcard_alias.empty()) {
+                    // Flat: registra diretamente no escopo corrente
+                    ch->scope->put_key(sym_name, sym_type, sym_constant);
+                } else {
+                    // Namespace: acumula no mapa de namespaces do checker
+                    ch->import_namespaces[import_stmt->wildcard_alias][sym_name] = sym_type;
+                    // Copia tipo também para o types map se for classe/enum
+                    if (sym_type->kind == nv::Kind::CLASS || sym_type->kind == nv::Kind::ENUM) {
+                        ch->types[sym_name] = sym_type;
+                    }
+                }
+            }
+
+            if (!import_stmt->wildcard_alias.empty()) {
+                // Registra o alias no scope com tipo void como placeholder (evita "identifier not found")
+                // A resolução de membros via ALIAS.foo é feita via ch->import_namespaces, não por tipo
+                ch->scope->put_key(import_stmt->wildcard_alias, ch->gettyptr("void"), false);
+            }
+            return ch->gettyptr("void");
+        }
+
         // Verificar se cada símbolo importado existe no módulo e registrar no escopo
         for (const auto& item : import_stmt->imports) {
             if (exported_symbols.find(item.name) == exported_symbols.end()) {

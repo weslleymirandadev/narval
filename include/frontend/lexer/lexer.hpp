@@ -22,8 +22,10 @@ struct ImportInfo {
     std::string module_path;
     std::vector<std::pair<std::string, std::string>> imports; // (name, alias) - alias vazio se não houver (mantido para compatibilidade)
     std::vector<ImportItemInfo> import_items; // Nova estrutura com posições
-    
-    ImportInfo(const std::string& path) : module_path(path) {}
+    bool is_wildcard = false;      // true se "import *"
+    std::string wildcard_alias;    // alias do namespace se "import * as ALIAS", vazio para "import *"
+
+    ImportInfo(const std::string& path) : module_path(path), is_wildcard(false) {}
 };
 
 class Lexer {

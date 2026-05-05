@@ -6,6 +6,7 @@
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
+#include <map>
 
 namespace nv {
     class Checker {
@@ -31,6 +32,8 @@ namespace nv {
             std::string current_class_name = "";
             // Rastrear se estamos dentro de um bloco `or { }` (return é permitido lá)
             int or_block_depth = 0;
+            // Namespace aliases de wildcard imports: alias -> (nome_membro -> tipo)
+            std::unordered_map<std::string, std::map<std::string, std::shared_ptr<Type>>> import_namespaces;
             Checker();
             nv::Type& getty(std::string ty);
             std::shared_ptr<nv::Type>& gettyptr(std::string ty);

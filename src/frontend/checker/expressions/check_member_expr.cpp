@@ -19,6 +19,23 @@ std::shared_ptr<nv::Type>& check_member_expr(nv::Checker* ch, Node* node) {
         return ch->gettyptr("void");
     }
     
+    // Verificar se o objeto é um namespace alias de wildcard import
+    if (member_expr->object->kind == NodeType::Identifier) {
+        auto* obj_id = static_cast<IdentifierNode*>(member_expr->object.get());
+        auto ns_it = ch->import_namespaces.find(obj_id->symbol);
+        if (ns_it != ch->import_namespaces.end()) {
+            auto& prop_id2 = static_cast<IdentifierNode*>(member_expr->property.get())->symbol;
+            auto mem_it = ns_it->second.find(prop_id2);
+            if (mem_it != ns_it->second.end()) {
+                temp_result = mem_it->second;
+                return temp_result;
+            }
+            ch->error(member_expr->property.get(),
+                      "Namespace '" + obj_id->symbol + "' has no member '" + prop_id2 + "'");
+            return ch->gettyptr("void");
+        }
+    }
+
     // Verificar tipo do objeto
     auto object_type = ch->infer_expr(member_expr->object.get());
     object_type = ch->unify_ctx.resolve(object_type);

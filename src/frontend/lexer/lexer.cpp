@@ -223,7 +223,37 @@ std::vector<Token> Lexer::tokenize()
                 skip_whitespace();
                 
                 ImportInfo import_info(module_path);
-                
+
+                // Verifica se é wildcard "import *" ou "import * as ALIAS"
+                if (!is_eof() && peek() == '*') {
+                    advance(); // consome '*'
+                    skip_whitespace();
+                    import_info.is_wildcard = true;
+
+                    // Verifica "as ALIAS"
+                    if (!is_eof() && std::distance(current, input.cend()) >= 2 &&
+                        input.substr(position, 2) == "as" &&
+                        (position + 2 >= input.size() || (!std::isalnum(input[position + 2]) && input[position + 2] != '_'))) {
+                        for (int i = 0; i < 2; ++i) advance();
+                        skip_whitespace();
+
+                        Token alias_token = tokenize_identifier_or_keyword(input, position, line, column, filename);
+                        current = input.cbegin() + position;
+
+                        if (alias_token.type == TokenType::IDENTIFIER) {
+                            import_info.wildcard_alias = alias_token.lexeme;
+                        }
+                    }
+
+                    skip_whitespace();
+                    if (!is_eof() && peek() == ';') advance();
+
+                    tokens.emplace_back(TokenType::IMPORT, "from " + module_path + " import *", start_line, start_col, column, start_pos, position, filename);
+                    import_infos.push_back(import_info);
+                    imported_modules.push_back(module_path);
+                    continue;
+                }
+
                 // Tokeniza os identificadores importados
                 while (!is_eof() && peek() != ';') {
                     skip_whitespace();

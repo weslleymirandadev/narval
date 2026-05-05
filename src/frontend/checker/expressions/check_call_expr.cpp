@@ -1,5 +1,6 @@
 #include "frontend/checker/expressions/check_call_expr.hpp"
 #include "frontend/ast/ast.hpp"
+#include "frontend/ast/expressions/identifier_node.hpp"
 #include "frontend/checker/checker.hpp"
 #include "frontend/checker/builtins.hpp"
 #include "frontend/checker/type.hpp"
@@ -8,11 +9,37 @@
 
 std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
     const auto* call = static_cast<CallExprNode*>(node);
-    
+
     // Tratamento especial para chamadas de método: obj.method(args)
     if (call->caller->kind == NodeType::MemberExpression) {
         auto* member_expr = static_cast<MemberExprNode*>(call->caller.get());
-        
+
+        // Verificar se o objeto é um namespace alias de wildcard import
+        if (member_expr->object->kind == NodeType::Identifier &&
+            member_expr->property->kind == NodeType::Identifier) {
+            auto* obj_id = static_cast<IdentifierNode*>(member_expr->object.get());
+            auto ns_it = ch->import_namespaces.find(obj_id->symbol);
+            if (ns_it != ch->import_namespaces.end()) {
+                auto* prop_id = static_cast<IdentifierNode*>(member_expr->property.get());
+                auto mem_it = ns_it->second.find(prop_id->symbol);
+                if (mem_it != ns_it->second.end()) {
+                    auto method_type = ch->unify_ctx.resolve(mem_it->second);
+                    if (method_type->kind == nv::Kind::DEF) {
+                        auto def = std::static_pointer_cast<nv::Def>(method_type);
+                        for (const auto& arg : call->args) {
+                            ch->infer_expr(arg.get());
+                        }
+                        return def->returntype;
+                    }
+                    // Membro não é função: retorna o tipo mesmo assim (p.ex. variável)
+                    return mem_it->second;
+                }
+                ch->error(member_expr->property.get(),
+                          "Namespace '" + obj_id->symbol + "' has no member '" + prop_id->symbol + "'");
+                return ch->gettyptr("void");
+            }
+        }
+
         // Verificar tipo do objeto
         auto object_type = ch->infer_expr(member_expr->object.get());
         object_type = ch->unify_ctx.resolve(object_type);

@@ -1,15 +1,50 @@
 #include "frontend/ast/expressions/member_expr_node.hpp"
+#include "frontend/ast/expressions/identifier_node.hpp"
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
 #include "backend/codegen/generate_ir.hpp"
 
 void MemberExprNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
-    
+
+    // Verificar se o objeto é um namespace alias de wildcard import
+    if (auto* obj_id = dynamic_cast<IdentifierNode*>(object.get())) {
+        if (ctx.is_namespace_alias(obj_id->symbol)) {
+            auto* prop_id = dynamic_cast<IdentifierNode*>(property.get());
+            if (prop_id) {
+                const std::string& member_name = prop_id->symbol;
+                auto* ValueTy = nv::ir_utils::get_value_struct(ctx);
+
+                // Tentar resolver o membro diretamente na tabela de símbolos
+                auto sym_info = ctx.get_symbol_table().lookup_symbol(member_name);
+                if (sym_info.has_value() && sym_info->value) {
+                    llvm::Value* val = sym_info->value;
+                    if (auto* gv = llvm::dyn_cast<llvm::GlobalVariable>(val)) {
+                        val = ctx.get_builder().CreateLoad(ValueTy, gv, member_name + "_load");
+                    }
+                    ctx.push_value(val);
+                    return;
+                }
+
+                // Fallback: buscar global ou função com o nome do membro
+                auto& M = ctx.get_module();
+                if (auto* gv = M.getGlobalVariable(member_name)) {
+                    llvm::Value* loaded = ctx.get_builder().CreateLoad(ValueTy, gv, member_name + "_load");
+                    ctx.push_value(loaded);
+                    return;
+                }
+                if (auto* fn = M.getFunction(member_name)) {
+                    ctx.push_value(fn);
+                    return;
+                }
+            }
+        }
+    }
+
     // Registrar features usadas
     nv::register_feature("map");
     nv::register_feature("map_operations");
-    
+
     // Gerar código para o objeto
     object->codegen(ctx);
     llvm::Value* obj = ctx.pop_value();
