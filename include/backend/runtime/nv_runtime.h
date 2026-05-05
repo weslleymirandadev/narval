@@ -203,6 +203,7 @@ NvTypeObject* type_builder_build(TypeBuilder* builder);
 // Convenção: void fn(Value* out, Value* self, const char* key)  /  void fn(Value* self, const char* key, Value* val)
 void nv_object_get_field(Value* out, Value* self, const char* key);
 void nv_object_set_field(Value* self, const char* key, Value* val);
+void nv_set_str_method(Value* self, void* fn);
 
 // Funções de debug
 void nv_type_print_info(NvTypeObject* type);

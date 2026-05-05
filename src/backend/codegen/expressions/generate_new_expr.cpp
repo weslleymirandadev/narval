@@ -67,6 +67,17 @@ void NewExprNode::codegen(nv::IRGenerationContext& ctx) {
         B.CreateCall(ctor_fn, ctor_args);
     }
 
+    // Register __str__ method if defined, so nv_str_convert can call it at runtime
+    std::string str_fn_name = "__method_" + class_name + "___str__";
+    auto* str_fn = ctx.get_module().getFunction(str_fn_name);
+    if (str_fn) {
+        auto* I8P    = nv::ir_utils::get_i8_ptr(ctx);
+        auto* VoidTy = llvm::Type::getVoidTy(ctx.get_context());
+        auto* fn_ptr = B.CreatePointerCast(str_fn, I8P, "str_fn_ptr");
+        auto* set_fn = ctx.ensure_runtime_func("nv_set_str_method", {ValuePtr, I8P}, VoidTy);
+        B.CreateCall(set_fn, {this_alloca, fn_ptr});
+    }
+
     // Push the resulting object (as Value struct)
     auto* result = B.CreateLoad(ValueTy, this_alloca, "new_result");
     ctx.push_value(result);

@@ -76,7 +76,12 @@ void nv_str_convert(Value* out, Value* input) {
         create_str(out, "<vector object>");
     }
     else if (type == NVMap_Type) {
-        create_str(out, "<map object>");
+        NVMap* map = (NVMap*)input->obj;
+        if (map->str_method) {
+            *out = map->str_method(input);
+        } else {
+            create_str(out, "<map object>");
+        }
     }
     else if (type == NVTuple_Type) {
         create_str(out, "<tuple object>");

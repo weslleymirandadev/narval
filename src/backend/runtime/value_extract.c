@@ -77,5 +77,13 @@ char* extract_string_from_value(Value* v) {
         NVStr* str_obj = (NVStr*)v->obj;
         return str_obj->value ? str_obj->value : "";
     }
+    // For non-string types (int, float, bool, class instances, etc.) convert via nv_str_convert
+    Value str_val;
+    memset(&str_val, 0, sizeof(Value));
+    nv_str_convert(&str_val, v);
+    if (str_val.obj && str_val.obj->ob_type == NVStr_Type) {
+        NVStr* str_obj = (NVStr*)str_val.obj;
+        return str_obj->value ? str_obj->value : "";
+    }
     return "";
 }

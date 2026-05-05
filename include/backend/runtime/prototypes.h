@@ -133,6 +133,7 @@ typedef struct {
     Value* values;
     int size;
     int capacity;
+    Value (*str_method)(Value* self);  // __str__ dunder, NULL if not defined
 } NVMap;
 
 typedef struct {

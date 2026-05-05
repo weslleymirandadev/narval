@@ -138,6 +138,12 @@ void nv_object_get_field(Value* out, Value* self, const char* key) {
     out->obj = NULL;
 }
 
+void nv_set_str_method(Value* self, void* fn) {
+    if (!self || !self->obj) return;
+    if (self->obj->ob_type != NVMap_Type) return;
+    ((NVMap*)self->obj)->str_method = (Value (*)(Value*))fn;
+}
+
 void nv_object_set_field(Value* self, const char* key, Value* val) {
     if (!self || !self->obj || !key || !val) return;
 
