@@ -60,49 +60,72 @@ void map_set_method(Map* m, const char* key, Value val) {
 }
 
 // Métodos de Vector
-void vector_push_method(Vector* v, Value val) {
-    if (!v) return;
-    
-    // Expandir capacidade se necessário
+void vector_push_method(Value* out, Value* self_vec, Value* elem) {
+    (void)out;
+    if (!self_vec || !self_vec->obj || !elem) return;
+
+    NVVector* v = (NVVector*)self_vec->obj;
+
     if (v->size >= v->capacity) {
         int new_capacity = v->capacity == 0 ? 4 : v->capacity * 2;
-        v->elements = (Value*)realloc(v->elements, new_capacity * sizeof(Value));
+        Value* new_elements = (Value*)realloc(v->elements, new_capacity * sizeof(Value));
+        if (!new_elements) return;
+        v->elements = new_elements;
         v->capacity = new_capacity;
     }
-    
-    v->elements[v->size] = val;
+
+    v->elements[v->size] = *elem;
     v->size++;
 }
 
-Value vector_pop_method(Vector* v) {
-    Value result = {0};
-    
-    if (!v || v->size == 0) {
-        result.obj = NULL;
-        return result;
-    }
-    
-    result = v->elements[v->size - 1];
+void vector_pop_method(Value* out, Value* self_vec) {
+    if (out) memset(out, 0, sizeof(Value));
+    if (!self_vec || !self_vec->obj) return;
+
+    NVVector* v = (NVVector*)self_vec->obj;
+    if (v->size == 0) return;
+
     v->size--;
-    
-    return result;
+    if (out) *out = v->elements[v->size];
 }
 
-Value vector_get_method(Vector* v, int index) {
-    Value result = {0};
-    
-    if (!v || index < 0 || index >= v->size) {
-        result.obj = NULL;
-        return result;
-    }
-    
-    return v->elements[index];
+void vector_get_method(Value* out, Value* self_vec, int32_t index) {
+    if (out) memset(out, 0, sizeof(Value));
+    if (!self_vec || !self_vec->obj) return;
+
+    NVVector* v = (NVVector*)self_vec->obj;
+    if (index < 0 || index >= v->size) return;
+
+    if (out) *out = v->elements[index];
 }
 
-void vector_set_method(Vector* v, int index, Value val) {
-    if (!v || index < 0 || index >= v->size) return;
-    
-    v->elements[index] = val;
+void vector_set_method(Value* self_vec, int32_t index, Value* elem) {
+    if (!self_vec || !self_vec->obj || !elem) return;
+
+    NVVector* v = (NVVector*)self_vec->obj;
+    if (index < 0 || index >= v->size) return;
+
+    v->elements[index] = *elem;
+}
+
+// Indexing helpers used by codegen
+void array_get_index_v(Value* out, Value* self_arr, int32_t index) {
+    if (out) memset(out, 0, sizeof(Value));
+    if (!self_arr || !self_arr->obj) return;
+
+    NVArray* a = (NVArray*)self_arr->obj;
+    if (index < 0 || index >= a->size) return;
+
+    if (out) *out = a->elements[index];
+}
+
+void array_set_index_v(Value* self_arr, int32_t index, Value* elem) {
+    if (!self_arr || !self_arr->obj || !elem) return;
+
+    NVArray* a = (NVArray*)self_arr->obj;
+    if (index < 0 || index >= a->size) return;
+
+    a->elements[index] = *elem;
 }
 
 // Métodos de Array (similar a Vector)

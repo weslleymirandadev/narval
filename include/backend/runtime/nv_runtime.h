@@ -16,10 +16,10 @@ void create_int(Value* out, int32_t value);
 void create_float(Value* out, double value);
 void create_bool(Value* out, int32_t value);
 void create_str(Value* out, const char* value);
-void create_array(Value* out);
-void create_vector(Value* out);
+void create_array(Value* out, int32_t size);
+void create_vector(Value* out, int32_t capacity);
 void create_map(Value* out);
-void create_tuple(Value* out);
+void create_tuple(Value* out, int32_t field_count);
 void create_any(Value* out);
 
 // Option / Result
@@ -157,12 +157,14 @@ Value map_get_method(Map* m, const char* key);
 void map_set_method(Map* m, const char* key, Value val);
 
 // Métodos de Vector
-void vector_push_method(Vector* v, Value val);
-Value vector_pop_method(Vector* v);
-Value vector_get_method(Vector* v, int index);
-void vector_set_method(Vector* v, int index, Value val);
+void vector_push_method(Value* out, Value* self_vec, Value* elem);
+void vector_pop_method(Value* out, Value* self_vec);
+void vector_get_method(Value* out, Value* self_vec, int32_t index);
+void vector_set_method(Value* self_vec, int32_t index, Value* elem);
 
 // Métodos de Array
+void array_get_index_v(Value* out, Value* self_arr, int32_t index);
+void array_set_index_v(Value* self_arr, int32_t index, Value* elem);
 void array_push_method(Array* a, Value val);
 Value array_pop_method(Array* a);
 

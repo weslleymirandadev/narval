@@ -70,10 +70,62 @@ void nv_str_convert(Value* out, Value* input) {
         create_str(out, str_obj->value ? str_obj->value : "");
     }
     else if (type == NVArray_Type) {
-        create_str(out, "<array object>");
+        NVArray* arr = (NVArray*)input->obj;
+        size_t buf_size = 64;
+        char* buf = (char*)malloc(buf_size);
+        if (!buf) { create_str(out, "[]"); return; }
+        size_t pos = 0;
+        buf[pos++] = '{';
+        for (int i = 0; i < arr->size; i++) {
+            Value elem_str = {0};
+            nv_str_convert(&elem_str, &arr->elements[i]);
+            NVStr* s = (NVStr*)elem_str.obj;
+            const char* sv = (s && s->value) ? s->value : "";
+            size_t sv_len = strlen(sv);
+            size_t need = pos + sv_len + 4;
+            if (need > buf_size) {
+                buf_size = need * 2;
+                char* nb = (char*)realloc(buf, buf_size);
+                if (!nb) { free(buf); create_str(out, "{...}"); return; }
+                buf = nb;
+            }
+            memcpy(buf + pos, sv, sv_len);
+            pos += sv_len;
+            if (i < arr->size - 1) { buf[pos++] = ','; buf[pos++] = ' '; }
+        }
+        buf[pos++] = '}';
+        buf[pos] = '\0';
+        create_str(out, buf);
+        free(buf);
     }
     else if (type == NVVector_Type) {
-        create_str(out, "<vector object>");
+        NVVector* vec = (NVVector*)input->obj;
+        size_t buf_size = 64;
+        char* buf = (char*)malloc(buf_size);
+        if (!buf) { create_str(out, "[]"); return; }
+        size_t pos = 0;
+        buf[pos++] = '[';
+        for (int i = 0; i < vec->size; i++) {
+            Value elem_str = {0};
+            nv_str_convert(&elem_str, &vec->elements[i]);
+            NVStr* s = (NVStr*)elem_str.obj;
+            const char* sv = (s && s->value) ? s->value : "";
+            size_t sv_len = strlen(sv);
+            size_t need = pos + sv_len + 4;
+            if (need > buf_size) {
+                buf_size = need * 2;
+                char* nb = (char*)realloc(buf, buf_size);
+                if (!nb) { free(buf); create_str(out, "[...]"); return; }
+                buf = nb;
+            }
+            memcpy(buf + pos, sv, sv_len);
+            pos += sv_len;
+            if (i < vec->size - 1) { buf[pos++] = ','; buf[pos++] = ' '; }
+        }
+        buf[pos++] = ']';
+        buf[pos] = '\0';
+        create_str(out, buf);
+        free(buf);
     }
     else if (type == NVMap_Type) {
         NVMap* map = (NVMap*)input->obj;

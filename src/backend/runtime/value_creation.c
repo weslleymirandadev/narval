@@ -265,77 +265,94 @@ void create_str(Value* out, const char* value) {
     out->obj = (NvObject*)str_obj;
 }
 
-void create_array(Value* out) {
+void create_array(Value* out, int32_t size) {
     if (!out) return;
-    
+
     memset(out, 0, sizeof(Value));
-    
+
     if (!NVArray_Type) {
-        // Fallback
         NVArray* array_obj = (NVArray*)calloc(1, sizeof(NVArray));
         if (!array_obj) {
             out->obj = NULL;
             return;
         }
-        
+
         array_obj->ob_base.ob_type = NULL;
         array_obj->ob_base.ref_count = 1;
         array_obj->ob_base.flags = 0;
-        array_obj->elements = NULL;
         array_obj->size = 0;
         array_obj->capacity = 0;
-        
+
+        if (size > 0) {
+            array_obj->elements = (Value*)calloc(size, sizeof(Value));
+            if (array_obj->elements) { array_obj->capacity = size; array_obj->size = size; }
+        } else {
+            array_obj->elements = NULL;
+        }
+
         out->obj = (NvObject*)array_obj;
         return;
     }
-    
-    // Criar NVArray usando o novo sistema
+
     NVArray* array_obj = (NVArray*)nv_object_new(NVArray_Type, NULL, NULL);
     if (!array_obj) {
         out->obj = NULL;
         return;
     }
-    
-    array_obj->elements = NULL;
+
     array_obj->size = 0;
     array_obj->capacity = 0;
+    if (size > 0) {
+        array_obj->elements = (Value*)calloc(size, sizeof(Value));
+        if (array_obj->elements) { array_obj->capacity = size; array_obj->size = size; }
+    } else {
+        array_obj->elements = NULL;
+    }
     out->obj = (NvObject*)array_obj;
 }
 
-void create_vector(Value* out) {
+void create_vector(Value* out, int32_t capacity) {
     if (!out) return;
-    
+
     memset(out, 0, sizeof(Value));
-    
+
     if (!NVVector_Type) {
-        // Fallback
         NVVector* vector_obj = (NVVector*)calloc(1, sizeof(NVVector));
         if (!vector_obj) {
             out->obj = NULL;
             return;
         }
-        
+
         vector_obj->ob_base.ob_type = NULL;
         vector_obj->ob_base.ref_count = 1;
         vector_obj->ob_base.flags = 0;
         vector_obj->elements = NULL;
         vector_obj->size = 0;
         vector_obj->capacity = 0;
-        
+
+        if (capacity > 0) {
+            vector_obj->elements = (Value*)malloc(capacity * sizeof(Value));
+            if (vector_obj->elements) vector_obj->capacity = capacity;
+        }
+
         out->obj = (NvObject*)vector_obj;
         return;
     }
-    
-    // Criar NVVector usando o novo sistema
+
     NVVector* vector_obj = (NVVector*)nv_object_new(NVVector_Type, NULL, NULL);
     if (!vector_obj) {
         out->obj = NULL;
         return;
     }
-    
-    vector_obj->elements = NULL;
+
     vector_obj->size = 0;
-    vector_obj->capacity = 0;
+    if (capacity > 0) {
+        vector_obj->elements = (Value*)malloc(capacity * sizeof(Value));
+        vector_obj->capacity = vector_obj->elements ? capacity : 0;
+    } else {
+        vector_obj->elements = NULL;
+        vector_obj->capacity = 0;
+    }
     out->obj = (NvObject*)vector_obj;
 }
 
@@ -378,38 +395,47 @@ void create_map(Value* out) {
     out->obj = (NvObject*)map_obj;
 }
 
-void create_tuple(Value* out) {
+void create_tuple(Value* out, int32_t field_count) {
     if (!out) return;
-    
+
     memset(out, 0, sizeof(Value));
-    
+
     if (!NVTuple_Type) {
-        // Fallback
         NVTuple* tuple_obj = (NVTuple*)calloc(1, sizeof(NVTuple));
         if (!tuple_obj) {
             out->obj = NULL;
             return;
         }
-        
+
         tuple_obj->ob_base.ob_type = NULL;
         tuple_obj->ob_base.ref_count = 1;
         tuple_obj->ob_base.flags = 0;
-        tuple_obj->fields = NULL;
         tuple_obj->field_count = 0;
-        
+
+        if (field_count > 0) {
+            tuple_obj->fields = (Value*)calloc(field_count, sizeof(Value));
+            if (tuple_obj->fields) tuple_obj->field_count = field_count;
+        } else {
+            tuple_obj->fields = NULL;
+        }
+
         out->obj = (NvObject*)tuple_obj;
         return;
     }
-    
-    // Criar NVTuple usando o novo sistema
+
     NVTuple* tuple_obj = (NVTuple*)nv_object_new(NVTuple_Type, NULL, NULL);
     if (!tuple_obj) {
         out->obj = NULL;
         return;
     }
-    
-    tuple_obj->fields = NULL;
+
     tuple_obj->field_count = 0;
+    if (field_count > 0) {
+        tuple_obj->fields = (Value*)calloc(field_count, sizeof(Value));
+        if (tuple_obj->fields) tuple_obj->field_count = field_count;
+    } else {
+        tuple_obj->fields = NULL;
+    }
     out->obj = (NvObject*)tuple_obj;
 }
 
