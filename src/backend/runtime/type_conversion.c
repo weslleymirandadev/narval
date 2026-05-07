@@ -57,7 +57,7 @@ void nv_str_convert(Value* out, Value* input) {
     else if (type == NVFloat_Type) {
         NVFloat* float_obj = (NVFloat*)input->obj;
         char buffer[64];
-        snprintf(buffer, sizeof(buffer), "%g", float_obj->value);
+        snprintf(buffer, sizeof(buffer), "%.15g", float_obj->value);
         create_str(out, buffer);
     }
     else if (type == NVBool_Type) {
@@ -129,7 +129,15 @@ void nv_str_convert(Value* out, Value* input) {
     }
     else if (type == NVMap_Type) {
         NVMap* map = (NVMap*)input->obj;
-        if (map->str_method) {
+        // Prefer instance class name if present
+        Value clsname = {0};
+        nv_object_get_field(&clsname, input, "__class_name__");
+        if (clsname.obj && clsname.obj->ob_type == NVStr_Type) {
+            NVStr* s = (NVStr*)clsname.obj;
+            char buf[256];
+            snprintf(buf, sizeof(buf), "<object:%s>", s->value ? s->value : "object");
+            create_str(out, buf);
+        } else if (map->str_method) {
             *out = map->str_method(input);
         } else {
             create_str(out, "<map object>");
@@ -151,7 +159,10 @@ void nv_str_convert(Value* out, Value* input) {
         nv_str_convert(out, &((NVResultErr*)input->obj)->inner);
     }
     else {
-        create_str(out, "<object>");
+        const char* tname = type->tp_name ? type->tp_name : "object";
+        char buf[256];
+        snprintf(buf, sizeof(buf), "<object:%s>", tname);
+        create_str(out, buf);
     }
 }
 
