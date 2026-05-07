@@ -60,19 +60,19 @@ void print_type_info(const Value* v) {
         printf("  value: %s\n", bool_obj->value ? "true" : "false");
     } else if (type == NVStr_Type) {
         NVStr* str_obj = (NVStr*)v->obj;
-        printf("  value: \"%s\" (len: %u)\n", str_obj->value ? str_obj->value : "", str_obj->len);
+        printf("  value: \"%s\" (len: %zu)\n", str_obj->value ? str_obj->value : "", str_obj->len);
     } else if (type == NVArray_Type) {
         NVArray* array_obj = (NVArray*)v->obj;
-        printf("  size: %u, capacity: %u\n", array_obj->size, array_obj->capacity);
+        printf("  size: %d, capacity: %d\n", array_obj->size, array_obj->capacity);
     } else if (type == NVVector_Type) {
         NVVector* vector_obj = (NVVector*)v->obj;
-        printf("  size: %u, capacity: %u\n", vector_obj->size, vector_obj->capacity);
+        printf("  size: %d, capacity: %d\n", vector_obj->size, vector_obj->capacity);
     } else if (type == NVMap_Type) {
         NVMap* map_obj = (NVMap*)v->obj;
-        printf("  size: %u, capacity: %u\n", map_obj->size, map_obj->capacity);
+        printf("  size: %d, capacity: %d\n", map_obj->size, map_obj->capacity);
     } else if (type == NVTuple_Type) {
         NVTuple* tuple_obj = (NVTuple*)v->obj;
-        printf("  field_count: %u\n", tuple_obj->field_count);
+        printf("  field_count: %d\n", tuple_obj->field_count);
     }
 }
 
