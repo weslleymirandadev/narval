@@ -3,10 +3,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
-
-/* ============================================================= */
-/*                    SISTEMA DE TIPOS DO NARVAL                 */
-/* ============================================================= */
+#include <stdlib.h>
 
 // Estrutura base NvObject - tudo em Narval é um objeto
 typedef struct NvObject {
@@ -445,9 +442,6 @@ void free_type_info(TypeInfo* info);
 /*                    FUNÇÕES DE CRIAÇÃO DE VALORES            */
 /* ============================================================= */
 
-// Obter tipo de um valor
-int32_t get_value_type(const Value* v);
-
 // Obter informações de tipo (legado)
 TypeInfo* get_value_type_info_legacy(const Value* v);
 
@@ -471,12 +465,6 @@ int is_null_value(const Value* v);
 
 // Criar valor nulo (legado)
 void create_null(Value* out);
-
-// Criar valores básicos
-void create_int(Value* out, int32_t value);
-void create_float(Value* out, double value);
-void create_bool(Value* out, int32_t value);
-void create_str(Value* out, const char* value);
 
 /* ============================================================= */
 /*                    FUNÇÕES DE GERENCIAMENTO DE MEMÓRIA       */
