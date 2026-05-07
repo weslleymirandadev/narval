@@ -14,7 +14,7 @@ void PostIncrementExprNode::codegen(nv::IRGenerationContext& ctx) {
     auto* I32 = llvm::Type::getInt32Ty(c);
     auto* F64 = llvm::Type::getDoubleTy(c);
 
-    if (auto* id = dynamic_cast<IdentifierNode*>(operand.get())) {
+    if (operand->kind == NodeType::Identifier) { auto* id = static_cast<IdentifierNode*>(operand.get());
         // Identificador simples - usar código original
         auto info_opt = ctx.get_symbol_table().lookup_symbol(id->symbol);
         if (!info_opt.has_value()) {
@@ -37,7 +37,7 @@ void PostIncrementExprNode::codegen(nv::IRGenerationContext& ctx) {
     }
 
     // Access expression (array/vector)
-    if (auto* acc = dynamic_cast<AccessExprNode*>(operand.get())) {
+    if (operand->kind == NodeType::AccessExpression) { auto* acc = static_cast<AccessExprNode*>(operand.get());
         // Gerar código para o self (array/vector)
         acc->expr->codegen(ctx);
         llvm::Value* base = ctx.pop_value();

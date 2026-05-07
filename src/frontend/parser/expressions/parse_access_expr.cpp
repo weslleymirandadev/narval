@@ -1,6 +1,7 @@
 #include "frontend/parser/expressions/parse_access_expr.hpp"
 #include "frontend/parser/expressions/parse_call_member_expr.hpp"
 #include "frontend/parser/expressions/parse_expr.hpp"
+#include "frontend/parser/expressions/parse_logical_expr.hpp"
 #include "frontend/parser/expressions/parse_power_expr.hpp"
 #include "frontend/parser/expressions/parse_multiplicative_expr.hpp"
 #include "frontend/parser/expressions/parse_additive_expr.hpp"
@@ -9,6 +10,7 @@
 #include "frontend/parser/expressions/parse_equality_expr.hpp"
 #include "frontend/parser/expressions/parse_postfix_expr.hpp"
 #include "frontend/ast/expressions/binary_expr_node.hpp"
+#include "frontend/ast/expressions/slice_expr_node.hpp"
 
 std::unique_ptr<Node> parse_access_expr(Parser* parser, std::unique_ptr<Node> expr) {
     size_t line = parser->current_token().line;
@@ -22,14 +24,71 @@ std::unique_ptr<Node> parse_access_expr(Parser* parser, std::unique_ptr<Node> ex
     std::unique_ptr<PositionData> pos_array = std::make_unique<PositionData>(line_array, column_array[0], column_array[1], position_array[0], position_array[1]);
 
    if (parser->current_token().type == TokenType::OBRACKET) {
-        parser->consume_token(); 
+        parser->consume_token();
 
         if (parser->current_token().type == TokenType::CBRACKET) {
             parser->error("Expected array index.");
             return nullptr;
         }
 
-        auto index = parse_expr(parser);
+        // Detectar slice: [start:stop:step] onde qualquer componente é opcional
+        // Se começa com ':', é [:...] — start omitido
+        std::unique_ptr<Node> first_expr = nullptr;
+        bool is_slice = false;
+
+        if (parser->current_token().type == TokenType::COLON) {
+            is_slice = true; // [:...] — start omitido
+        } else {
+            // Usar parse_logical_expr: não confunde ':' com type annotation
+            first_expr = parse_logical_expr(parser);
+            if (parser->current_token().type == TokenType::COLON) {
+                is_slice = true; // [expr:...] — start = first_expr
+            }
+        }
+
+        if (is_slice) {
+            // first_expr = start (pode ser nullptr se omitido)
+            std::unique_ptr<Node> slice_stop = nullptr;
+            std::unique_ptr<Node> slice_step = nullptr;
+
+            parser->consume_token(); // consome ':'
+
+            // Parsear stop (opcional) — idem, sem ambiguidade com ':'
+            if (parser->current_token().type != TokenType::CBRACKET &&
+                parser->current_token().type != TokenType::COLON) {
+                slice_stop = parse_logical_expr(parser);
+            }
+
+            // Parsear step opcional: [start:stop:step]
+            if (parser->current_token().type == TokenType::COLON) {
+                parser->consume_token(); // consome segundo ':'
+                if (parser->current_token().type != TokenType::CBRACKET) {
+                    slice_step = parse_logical_expr(parser);
+                }
+            }
+
+            parser->expect(TokenType::CBRACKET, "Expected ']' after slice.");
+
+            auto slice_node = std::make_unique<SliceExprNode>(
+                std::unique_ptr<Expr>(static_cast<Expr*>(expr.release())),
+                first_expr ? std::unique_ptr<Expr>(static_cast<Expr*>(first_expr.release())) : nullptr,
+                slice_stop ? std::unique_ptr<Expr>(static_cast<Expr*>(slice_stop.release())) : nullptr,
+                slice_step ? std::unique_ptr<Expr>(static_cast<Expr*>(slice_step.release())) : nullptr
+            );
+            slice_node->position = std::move(pos);
+
+            // Permitir encadeamento: lista[1:3][0]
+            if (parser->current_token().type == TokenType::OBRACKET ||
+                parser->current_token().type == TokenType::DOT ||
+                parser->current_token().type == TokenType::OPAREN) {
+                return parse_call_member_expr(parser, std::move(slice_node));
+            }
+
+            return slice_node;
+        }
+
+        // Índice normal (não slice)
+        auto index = std::move(first_expr);
 
         parser->expect(TokenType::CBRACKET, "Expected ']'.");
         

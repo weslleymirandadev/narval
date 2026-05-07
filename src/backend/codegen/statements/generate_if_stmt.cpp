@@ -66,7 +66,7 @@ void IfStatementNode::codegen(nv::IRGenerationContext& ctx) {
         }
 
         // If the next alternate is an IfStatementNode, treat as elif
-        if (auto* elif_node = dynamic_cast<IfStatementNode*>(alternate[idx].get())) {
+        if (alternate[idx]->kind == NodeType::IfStatement) { auto* elif_node = static_cast<IfStatementNode*>(alternate[idx].get());
             // Generate condition for elif
             elif_node->condition->codegen(ctx);
             auto* elif_cond = ctx.pop_value();

@@ -59,6 +59,8 @@ std::shared_ptr<nv::Type>& nv::Checker::check_node(Node* node) {
           return check_unary_expr(this, node);
         case NodeType::AccessExpression:
           return check_access_expr(this, node);
+        case NodeType::SliceExpression:
+          return gettyptr("vector");
         case NodeType::MemberExpression:
           return check_member_expr(this, node);
         case NodeType::Map:

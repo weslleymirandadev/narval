@@ -94,6 +94,13 @@ void REPLState::register_runtime_functions() {
         }
     }
 
+    // If the runtime provides `nv_read` (C symbol), also expose it to JIT
+    // under the LLVM-intrinsic name `llvm.nv_read` so IR modules that call
+    // the intrinsic can link to the same implementation.
+    if (symbols.find("nv_read") != symbols.end() && symbols.find("llvm.nv_read") == symbols.end()) {
+        symbols["llvm.nv_read"] = symbols["nv_read"];
+    }
+
     llvm::orc::SymbolMap sym_map;
     auto& es = jit->getExecutionSession();
     for (const auto& [name, addr] : symbols) {

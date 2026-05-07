@@ -15,7 +15,7 @@ std::unique_ptr<Node> parse_forever_stmt(Parser* parser) {
     while (parser->not_eof() && parser->current_token().type != TokenType::CBRACE) {
         auto stmt_node = parse_stmt(parser);
 
-        auto* stmt_ptr = dynamic_cast<Stmt*>(stmt_node.get());
+        auto* stmt_ptr = static_cast<Stmt*>(stmt_node.get());
 
         body.push_back(std::unique_ptr<Stmt>(stmt_ptr));
         stmt_node.release();

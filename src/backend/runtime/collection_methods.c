@@ -161,6 +161,18 @@ Value array_pop_method(Array* a) {
     return result;
 }
 
+int32_t nv_get_iterable_length(Value* self) {
+    if (!self || !self->obj) return 0;
+    NvObject* obj = self->obj;
+    if (obj->ob_type == NVVector_Type || obj->ob_type == NVArray_Type) {
+        return ((NVArray*)obj)->size;
+    }
+    if (obj->ob_type == NVStr_Type) {
+        return (int32_t)((NVStr*)obj)->len;
+    }
+    return 0;
+}
+
 /* ============================================================= */
 /*                    SLICE DE COLEÇÕES                          */
 /* ============================================================= */

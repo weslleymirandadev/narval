@@ -53,14 +53,18 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
         llvm::Value* val_array_val_alloca = nullptr;
 
         auto* ty = iter_val->getType();
-        // If we got a pointer to runtime Value, load it
-        if (ty->isPointerTy()) {
-            auto* valuePrphy = nv::ir_utils::get_value_ptr(ctx);
-            if (ty == valuePrphy) {
-                iter_val = b.CreateLoad(nv::ir_utils::get_value_struct(ctx), iter_val);
-                ty = iter_val->getType();
-            }
-        }
+        auto* valuePrphy = nv::ir_utils::get_value_ptr(ctx);
+        if (ty->isPointerTy() && ty == valuePrphy) {
+            // Value* iterable — use runtime functions to avoid struct field assumptions
+            kind = IterKind::RTArray;
+            auto* lenFty = llvm::FunctionType::get(i32, { valuePrphy }, false);
+            auto lenCallee = ctx.get_module().getOrInsertFunction("nv_get_iterable_length", lenFty);
+            len = b.CreateCall(lenCallee, { iter_val });
+            elemTy = nv::ir_utils::get_value_struct(ctx);
+            data_ptr_val = iter_val;
+            val_kind_count_alloca = nullptr;
+            val_array_val_alloca = nullptr;
+        } else
         // Integer iterable: for i : 10 => i in [0,10)
         if (ty->isIntegerTy()) {
             kind = IterKind::Count;
@@ -119,59 +123,17 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
             auto* i64 = llvm::Type::getInt64Ty(llctx);
             auto* vptr = nv::ir_utils::get_value_ptr(ctx);
             if ((s == valueStruct) || (s->hasName() && s->getName() == "nv.rt.Value")) {
-                // Value can be TAG_INT (count 0..n-1) or TAG_ARRAY. Branch at runtime.
+                // Value = { NvObject* } — dispatch via runtime, no struct field introspection
+                kind = IterKind::RTArray;
                 auto* valAlloca = ctx.create_alloca(s, "iter.val");
                 b.CreateStore(iter_val, valAlloca);
-                auto* len_alloca = ctx.create_alloca(i32, "iter.len");
-                auto* kind_count_alloca = ctx.create_alloca(llvm::Type::getInt1Ty(llctx), "iter.is_count");
-                auto* array_val_alloca = ctx.create_alloca(vptr, "iter.array_val");
-                auto* tagPtr = b.CreateStructGEP(s, valAlloca, 0);
-                auto* tag = b.CreateLoad(i32, tagPtr);
-                const int TAG_INT = 1;
-                auto* is_int = b.CreateICmpEQ(tag, llvm::ConstantInt::get(i32, TAG_INT), "is_int_iter");
-                auto* count_setup_bb = llvm::BasicBlock::Create(llctx, "for.val_count_setup", func);
-                auto* array_setup_bb = llvm::BasicBlock::Create(llctx, "for.val_array_setup", func);
-                auto* merge_val_bb = llvm::BasicBlock::Create(llctx, "for.val_merge", func);
-                b.CreateCondBr(is_int, count_setup_bb, array_setup_bb);
-
-                // Count path: len = (i32)value field
-                b.SetInsertPoint(count_setup_bb);
-                auto* valueFieldPtr = b.CreateStructGEP(s, valAlloca, 1);
-                auto* value64 = b.CreateLoad(i64, valueFieldPtr);
-                auto* len_count = b.CreateTrunc(value64, i32, "len.count");
-                b.CreateStore(len_count, len_alloca);
-                b.CreateStore(llvm::ConstantInt::getTrue(llctx), kind_count_alloca);
-                b.CreateStore(llvm::Constant::getNullValue(vptr), array_val_alloca);
-                b.CreateBr(merge_val_bb);
-
-                // Array path: same RTArray setup as below, store len and valAlloca
-                b.SetInsertPoint(array_setup_bb);
-                auto* valAllocaUntyped = ctx.create_alloca(s, "iter.rtarray");
-                b.CreateStore(iter_val, valAllocaUntyped);
-                auto* valAllocaCast = b.CreateBitCast(valAllocaUntyped, vptr);
-                auto* f1Ptr = b.CreateStructGEP(s, valAllocaUntyped, 1);
-                auto* f1Ty = s->getElementType(1);
-                auto* rawInt = b.CreateLoad(f1Ty, f1Ptr);
-                llvm::Value* raw64 = rawInt;
-                if (f1Ty != i64) raw64 = b.CreateZExt(rawInt, i64);
-                auto* arrStruct = llvm::StructType::get(llctx, { vptr, i32, i32 });
-                auto* arrPrphy = llvm::PointerType::getUnqual(llctx);
-                auto* arrPtr = b.CreateIntToPtr(raw64, arrPrphy);
-                auto* sizePtr = b.CreateStructGEP(arrStruct, arrPtr, 1);
-                auto* len_array = b.CreateLoad(i32, sizePtr);
-                b.CreateStore(len_array, len_alloca);
-                b.CreateStore(llvm::ConstantInt::getFalse(llctx), kind_count_alloca);
-                b.CreateStore(valAllocaCast, array_val_alloca);
-                b.CreateBr(merge_val_bb);
-
-                // Merge: len from alloca, use shared loop; in body we branch on kind
-                b.SetInsertPoint(merge_val_bb);
-                len = b.CreateLoad(i32, len_alloca);
-                kind = IterKind::RTArray;  // placeholder; body will branch on kind_count_alloca
+                auto* lenFty = llvm::FunctionType::get(i32, { vptr }, false);
+                auto lenCallee = ctx.get_module().getOrInsertFunction("nv_get_iterable_length", lenFty);
+                len = b.CreateCall(lenCallee, { valAlloca });
                 elemTy = valueStruct;
-                data_ptr_val = nullptr;  // we use array_val_alloca when kind is array
-                val_kind_count_alloca = kind_count_alloca;
-                val_array_val_alloca = array_val_alloca;
+                data_ptr_val = valAlloca;
+                val_kind_count_alloca = nullptr;
+                val_array_val_alloca = nullptr;
             } else if ((s->hasName() && s->getName() == "nv.array.view") || ((s->getNumElements() >= 2) && s->getElementType(1)->isPointerTy())) {
                 kind = IterKind::View;
                 auto* viewAlloca = ctx.create_alloca(s, "iter.view");
@@ -282,7 +244,7 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
         if (!elemBindings.empty()) {
             // Verificar se é uma tupla runtime (Value com TAG_TUPLE)
             auto* valueStruct = nv::ir_utils::get_value_struct(ctx);
-            bool is_runtime_tuple = (elemTy == valueStruct);
+            bool is_runtime_tuple = (elemTy == valueStruct) && elemBindings.size() > 1;
             
             if (is_runtime_tuple) {
                 // É uma tupla runtime - usar tuple_get_impl para extrair campos

@@ -57,27 +57,28 @@ namespace {
         // Validar ranges numéricos
         if (start_is_int && end_is_int) {
             // Ambos são numéricos - verificar valores
-            if (auto* start_num = dynamic_cast<NumericLiteralNode*>(range->start.get())) {
-                if (auto* end_num = dynamic_cast<NumericLiteralNode*>(range->end.get())) {
+            if (range->start->kind == NodeType::NumericLiteral && range->end->kind == NodeType::NumericLiteral) {
+                auto* start_num = static_cast<NumericLiteralNode*>(range->start.get());
+                auto* end_num   = static_cast<NumericLiteralNode*>(range->end.get());
                     int start_val = std::stoi(start_num->value);
                     int end_val = std::stoi(end_num->value);
-                    
+
                     if (start_val > end_val) {
                         checker->error(range, "Range start must be less than or equal to end");
                         return false;
                     }
-                    
+
                     return true;
-                }
             }
             // Se não são literais, assumir válido (será verificado em runtime)
             return true;
         }
-        
+
         // Validar ranges de caracteres
         if (start_is_string && end_is_string) {
-            if (auto* start_str = dynamic_cast<StringLiteralNode*>(range->start.get())) {
-                if (auto* end_str = dynamic_cast<StringLiteralNode*>(range->end.get())) {
+            if (range->start->kind == NodeType::StringLiteral && range->end->kind == NodeType::StringLiteral) {
+                auto* start_str = static_cast<StringLiteralNode*>(range->start.get());
+                auto* end_str   = static_cast<StringLiteralNode*>(range->end.get()); {
                     // Verificar se são strings de caractere único
                     if (!is_single_char_string(start_str->value)) {
                         checker->error(range->start.get(), "Range start must be a single character string");
@@ -130,14 +131,16 @@ std::shared_ptr<nv::Type>& check_match_stmt(nv::Checker* checker, Node* node) {
         auto& case_expr = match_stmt->cases[i];
         
         // Verificar se é um identifier padrão (default ou _)
-        if (auto* id = dynamic_cast<IdentifierNode*>(case_expr.get())) {
+        if (case_expr->kind == NodeType::Identifier) {
+            auto* id = static_cast<IdentifierNode*>(case_expr.get());
             if (id->symbol == "default" || id->symbol == "_") {
                 continue; // Default case é sempre válido
             }
         }
-        
+
         // Verificar se é um range
-        if (auto* range = dynamic_cast<RangeExprNode*>(case_expr.get())) {
+        if (case_expr->kind == NodeType::RangeExpression) {
+            auto* range = static_cast<RangeExprNode*>(case_expr.get());
             if (!is_valid_range(checker, range, target_type)) {
                 // Erro já foi reportado
                 continue;

@@ -51,6 +51,7 @@
 #include "statements/propagate_stmt_node.hpp"
 #include "expressions/or_expr_node.hpp"
 #include "expressions/none_literal_node.hpp"
+#include "expressions/slice_expr_node.hpp"
 
 // Program
 #include "program.hpp"

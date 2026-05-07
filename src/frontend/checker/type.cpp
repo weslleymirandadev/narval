@@ -23,8 +23,7 @@ bool nv::Def::equals(const nv::Type &other) const {
     if (this->kind != other.kind) return false;
     if (other.kind != Kind::DEF) return false;
 
-    auto other_def = dynamic_cast<const Def*>(&other);
-    if (!other_def) return false;
+    auto other_def = static_cast<const Def*>(&other);
     
     if (this->paramstype.size() != other_def->paramstype.size()) return false;
     if (!this->returntype->equals(*other_def->returntype)) return false;
@@ -40,15 +39,13 @@ bool nv::Def::equals(const nv::Type &other) const {
 
 bool nv::Array::equals(const nv::Type& other) const {
     if (other.kind != nv::Kind::ARRAY) return false;
-    auto other_array = dynamic_cast<const Array*>(&other);
-    if (!other_array) return false;
+    auto other_array = static_cast<const Array*>(&other);
     return size == other_array->size && element_type->equals(*other_array->element_type);
 }
 
 bool nv::Tuple::equals(const nv::Type& other) const {
     if (other.kind != nv::Kind::TUPLE) return false;
-    auto other_tuple = dynamic_cast<const Tuple*>(&other);
-    if (!other_tuple) return false;
+    auto other_tuple = static_cast<const Tuple*>(&other);
     if (size != other_tuple->size) return false;
     for (size_t i = 0; i < size; i++) {
         if (!(element_type[i]->equals(*other_tuple->element_type[i]))) return false;

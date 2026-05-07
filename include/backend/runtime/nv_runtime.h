@@ -168,12 +168,25 @@ void array_set_index_v(Value* self_arr, int32_t index, Value* elem);
 void array_push_method(Array* a, Value val);
 Value array_pop_method(Array* a);
 
+// Slice unificado para array e vector
+// Usa INT32_MIN (-2147483648) como sentinela para "não especificado"
+void nv_collection_slice(Value* out, Value* self, int32_t start, int32_t stop, int32_t step);
+
+// Retorna o número de elementos de um iterable (array, vector, string)
+int32_t nv_get_iterable_length(Value* self);
+
 /* ============================================================= */
 /*                    FUNÇÕES DE I/O                             */
 /* ============================================================= */
 
 // Função de escrita principal
 void nv_write(Value* v);
+
+/* Leia uma linha do stdin, imprimindo `prompt` se não-nulo. Retorna
+ * um ponteiro alocado com `malloc` contendo a linha (sem '\n'), ou
+ * NULL em caso de EOF/erro. O chamador é responsável por `free`.
+ */
+char* nv_read(const char* prompt);
 
 /* ============================================================= */
 /*                    TIPOS DINÂMICOS DO NARVAL                */
