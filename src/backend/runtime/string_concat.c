@@ -1,9 +1,9 @@
 #include "backend/runtime/prototypes.h"
+#include "backend/runtime/string_concat.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 
-// Função de concatenação de strings - aloca memória e retorna resultado
 char* string_concat(const char* str1, const char* str2) {
     if (!str1) str1 = "";
     if (!str2) str2 = "";
