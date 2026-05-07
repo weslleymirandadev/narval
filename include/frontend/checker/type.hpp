@@ -197,34 +197,35 @@ namespace nv {
 
     struct String : public Type {
         String() : Type(Kind::STRING) {}
-        void init_prototype();
+        void init_prototype() override;
 
         std::string toString() override { return "str"; }
     };
 
     struct Int : public Type {
         Int() : Type(Kind::INT) {}
-        void init_prototype();
+        void init_prototype() override;
 
         std::string toString() override { return "int"; };
     };
 
     struct Float : public Type {
         Float() : Type(Kind::FLOAT) {}
-        void init_prototype();
+        void init_prototype() override;
 
         std::string toString() override { return "float"; };
     };
 
     struct Boolean : public Type {
         Boolean() : Type(Kind::BOOL) {}
-        void init_prototype();
+        void init_prototype() override;
 
         std::string toString() override { return "boolean"; };
     };
 
     struct Void : public Type {
         Void() : Type(Kind::VOID) {}
+        void init_prototype() override;
         std::string toString() override { return "None"; }
     };
 
@@ -457,10 +458,10 @@ namespace nv {
 
         Array(const std::shared_ptr<Type>& elem, size_t sz)
             : Type(Kind::ARRAY), element_type(elem), size(sz) {}
-        void init_prototype();
+        void init_prototype() override;
 
         std::string toString() override {
-            return "array<" + element_type->toString() + ">";
+            return element_type->toString() + "[" + std::to_string(size) + "]";
         }
         bool equals(const Type& other) const override;
         std::shared_ptr<Type> get_length() const override {
@@ -480,7 +481,7 @@ namespace nv {
         // Vector heterogêneo ou de tamanho variável
         // Não tem tipo de elemento específico (pode conter qualquer tipo)
         Vector() : Type(Kind::VECTOR) {}
-        void init_prototype();
+        void init_prototype() override;
 
         std::string toString() override {
             return "vector";
@@ -507,7 +508,7 @@ namespace nv {
 
         Tuple(const std::vector<std::shared_ptr<Type>>& typ)
             : Type(Kind::TUPLE), element_type(typ), size(typ.size()) {};
-        void init_prototype();
+        void init_prototype() override;
         bool equals(const Type& other) const override;
         
         std::string toString() override {
@@ -543,7 +544,7 @@ namespace nv {
 
         Map(const std::shared_ptr<Type>& key, const std::shared_ptr<Type>& val)
             : Type(Kind::MAP), key_type(key), value_type(val) {}
-        void init_prototype();
+        void init_prototype() override;
         
         std::string toString() override {
             return "map<" + key_type->toString() + ", " + value_type->toString() + ">";
