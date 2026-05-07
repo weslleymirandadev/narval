@@ -1,5 +1,6 @@
 #include "backend/runtime/prototypes.h"
 #include "backend/runtime/nv_runtime.h"
+#include "backend/runtime/value_extract.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
