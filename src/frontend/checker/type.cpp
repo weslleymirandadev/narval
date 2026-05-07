@@ -65,7 +65,7 @@ namespace nv {
         return std::make_shared<Def>(params, ret);
     }
 
-    void String::init_prototype() {
+    void nv::String::init_prototype() {
         prototype = std::make_shared<nv::Namespace>();
 
         // Registrar métodos de string para o checker
@@ -80,23 +80,23 @@ namespace nv {
         prototype->put_key("includes", make_native_def({ self_type }, std::make_shared<nv::Boolean>()), true);
     }
     
-    void Int::init_prototype() {
+    void nv::Int::init_prototype() {
         prototype = std::make_shared<nv::Namespace>();
     } 
     
-    void Float::init_prototype() {
+    void nv::Float::init_prototype() {
         prototype = std::make_shared<nv::Namespace>();
     }
 
-    void Boolean::init_prototype() {
+    void nv::Boolean::init_prototype() {
         prototype = std::make_shared<nv::Namespace>();
     }
 
-    void Array::init_prototype() {
+    void nv::Array::init_prototype() {
         prototype = std::make_shared<nv::Namespace>();
     }
 
-    void Vector::init_prototype() {
+    void nv::Vector::init_prototype() {
         prototype = std::make_shared<nv::Namespace>();
         
         // Registrar métodos builtin para Vector: push e pop
@@ -119,11 +119,15 @@ namespace nv {
         prototype->put_key("pop", pop_type, true);
     }
 
-    void Tuple::init_prototype() {
+    void nv::Tuple::init_prototype() {
         prototype = std::make_shared<nv::Namespace>();
     }
 
-    void Map::init_prototype() {
+    void nv::Map::init_prototype() {
+        prototype = std::make_shared<nv::Namespace>();
+    }
+
+    void nv::Void::init_prototype() {
         prototype = std::make_shared<nv::Namespace>();
     }
 }
