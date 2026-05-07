@@ -11,6 +11,7 @@ llvm::Function* IRGenerationContext::ensure_runtime_func(const std::string& name
                                                         llvm::ArrayRef<llvm::Type*> paramTypes,
                                                         llvm::Type* retTy) {
     auto* FT = llvm::FunctionType::get(retTy ? retTy : llvm::Type::getVoidTy(llvm_context), paramTypes, false);
+
     auto decl = module.getOrInsertFunction(name, FT);
     return llvm::cast<llvm::Function>(decl.getCallee());
 }
@@ -126,7 +127,7 @@ llvm::Type* IRGenerationContext::nv_type_to_llvm(std::shared_ptr<Type> nv_type) 
             return llvm::Type::getVoidTy(llvm_context);
         
         case Kind::STRING:
-            return llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(llvm_context));
+            return llvm::PointerType::getUnqual(llvm_context);
         
         case Kind::ARRAY: {
             auto array_type = std::static_pointer_cast<Array>(nv_type);
@@ -134,7 +135,7 @@ llvm::Type* IRGenerationContext::nv_type_to_llvm(std::shared_ptr<Type> nv_type) 
                 auto elem_type = nv_type_to_llvm(array_type->element_type);
                 // Array como estrutura ou ponteiro para o primeiro elemento
                 // Por enquanto, retornamos ponteiro para o elemento
-                return llvm::PointerType::get(elem_type, 0);
+                return llvm::PointerType::getUnqual(llvm_context);
             }
             return llvm::Type::getInt8Ty(llvm_context); // fallback
         }
@@ -175,7 +176,7 @@ llvm::Type* IRGenerationContext::nv_type_to_llvm(std::shared_ptr<Type> nv_type) 
                     param_types.push_back(nv_type_to_llvm(param));
                 }
                 auto ret_type = nv_type_to_llvm(def_type->returntype);
-                return llvm::FunctionType::get(ret_type, param_types, false)->getPointerTo();
+                return llvm::PointerType::getUnqual(llvm_context);
             }
             return llvm::Type::getVoidTy(llvm_context); // fallback
         }
@@ -377,13 +378,13 @@ void IRGenerationContext::finalize_global_inits(int priority) {
     // Isso permite que múltiplos módulos registrem inicializações
     // O linker vai combinar todas automaticamente
     auto* I32Ty = llvm::Type::getInt32Ty(llvm_context);
-    auto* FuncPtrTy = llvm::PointerType::getUnqual(InitFuncTy);
-    auto* I8PtrTy = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(llvm_context));
+    auto* FuncPtrTy = llvm::PointerType::getUnqual(llvm_context);
+    auto* I8PtrTy = llvm::PointerType::getUnqual(llvm_context);
     auto* CtorStructTy = llvm::StructType::get(llvm_context, {I32Ty, FuncPtrTy, I8PtrTy});
     auto* CtorArrayTy = llvm::ArrayType::get(CtorStructTy, 1);
     
     auto* PriorityConst = llvm::ConstantInt::get(I32Ty, priority);
-    auto* FuncConst = llvm::ConstantExpr::getBitCast(InitFunc, FuncPtrTy);
+    auto* FuncConst = InitFunc;
     auto* NullConst = llvm::Constant::getNullValue(I8PtrTy);
     auto* CtorStruct = llvm::ConstantStruct::get(CtorStructTy, {PriorityConst, FuncConst, NullConst});
     auto* CtorArray = llvm::ConstantArray::get(CtorArrayTy, {CtorStruct});

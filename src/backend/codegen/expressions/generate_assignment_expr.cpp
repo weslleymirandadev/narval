@@ -11,7 +11,8 @@ void AssignmentExprNode::codegen(nv::IRGenerationContext& ctx) {
     if (!target) { ctx.push_value(nullptr); return; }
     
     // Suporte a atribuição para access expressions: base[index] = value
-    if (auto* acc = dynamic_cast<AccessExprNode*>(target.get())) {
+    if (target->kind == NodeType::AccessExpression) {
+        auto* acc = static_cast<AccessExprNode*>(target.get());
         // Gera RHS primeiro (preservaremos para retorno)
         if (value) value->codegen(ctx);
         llvm::Value* rhs = ctx.pop_value();
@@ -127,9 +128,10 @@ void AssignmentExprNode::codegen(nv::IRGenerationContext& ctx) {
     }
 
     // Suporte a atribuição para member expressions: obj.field = value
-    if (auto* mem = dynamic_cast<MemberExprNode*>(target.get())) {
-        auto* prop_id = dynamic_cast<IdentifierNode*>(mem->property.get());
-        if (!prop_id) { ctx.push_value(nullptr); return; }
+    if (target->kind == NodeType::MemberExpression) {
+        auto* mem = static_cast<MemberExprNode*>(target.get());
+        if (mem->property->kind != NodeType::Identifier) { ctx.push_value(nullptr); return; }
+        auto* prop_id = static_cast<IdentifierNode*>(mem->property.get());
 
         if (value) value->codegen(ctx);
         llvm::Value* rhs = ctx.pop_value();
@@ -145,7 +147,7 @@ void AssignmentExprNode::codegen(nv::IRGenerationContext& ctx) {
         auto* I8P      = nv::ir_utils::get_i8_ptr(ctx);
 
         // Key string constant
-        auto* key = B.CreateGlobalStringPtr(prop_id->symbol.c_str());
+        auto* key = B.CreateGlobalString(prop_id->symbol.c_str());
 
         // Box RHS into a Value alloca
         auto* rhs_alloca = ctx.create_alloca(ValueTy, "mset_rhs");
@@ -181,14 +183,14 @@ void AssignmentExprNode::codegen(nv::IRGenerationContext& ctx) {
 
         // Call nv_object_set_field(Value* self, const char* key, Value* val)
         auto* set_fn = ctx.ensure_runtime_func("nv_object_set_field", {ValuePtr, I8P, ValuePtr});
-        B.CreateCall(set_fn, {self_alloca, key, rhs_alloca});
+        B.CreateCall(set_fn->getFunctionType(), set_fn, {self_alloca, key, rhs_alloca});
 
         ctx.push_value(rhs);
         return;
     }
 
-    auto* id = dynamic_cast<IdentifierNode*>(target.get());
-    if (!id) { ctx.push_value(nullptr); return; } // por enquanto só suportamos atribuição a identificadores
+    if (target->kind != NodeType::Identifier) { ctx.push_value(nullptr); return; }
+    auto* id = static_cast<IdentifierNode*>(target.get());
 
     if (value) value->codegen(ctx);
     llvm::Value* rhs = ctx.pop_value();
@@ -310,21 +312,21 @@ void AssignmentExprNode::codegen(nv::IRGenerationContext& ctx) {
             rhs = B.CreateLoad(ValueTy, global);  // Para retornar o valor
         } else if (rhs->getType()->isIntegerTy(1)) {
             auto* f = ctx.ensure_runtime_func("create_bool", {ValuePtr, I32});
-            B.CreateCall(f, {global_ptr, B.CreateZExt(rhs, I32)});
+            B.CreateCall(f->getFunctionType(), f, {global_ptr, B.CreateZExt(rhs, I32)});
             rhs = B.CreateLoad(ValueTy, global);  // Para retornar o valor embrulhado
         } else if (rhs->getType()->isIntegerTy()) {
             auto* f = ctx.ensure_runtime_func("create_int", {ValuePtr, I32});
             llvm::Value* iv = rhs->getType()->isIntegerTy(32) ? rhs : B.CreateSExtOrTrunc(rhs, I32);
-            B.CreateCall(f, {global_ptr, iv});
+            B.CreateCall(f->getFunctionType(), f, {global_ptr, iv});
             rhs = B.CreateLoad(ValueTy, global);  // Para retornar o valor embrulhado
         } else if (rhs->getType()->isFloatingPointTy()) {
             auto* f = ctx.ensure_runtime_func("create_float", {ValuePtr, F64});
             llvm::Value* fp = rhs->getType() == F64 ? rhs : B.CreateFPExt(rhs, F64);
-            B.CreateCall(f, {global_ptr, fp});
+            B.CreateCall(f->getFunctionType(), f, {global_ptr, fp});
             rhs = B.CreateLoad(ValueTy, global);  // Para retornar o valor embrulhado
         } else if (rhs->getType() == nv::ir_utils::get_i8_ptr(ctx)) {
             auto* f = ctx.ensure_runtime_func("create_str", {ValuePtr, nv::ir_utils::get_i8_ptr(ctx)});
-            B.CreateCall(f, {global_ptr, rhs});
+            B.CreateCall(f->getFunctionType(), f, {global_ptr, rhs});
             rhs = B.CreateLoad(ValueTy, global);  // Para retornar o valor embrulhado
         } else if (rhs->getType()->isPointerTy()) {
             // É um ponteiro para Value (retornado por função), precisamos copiar o conteúdo

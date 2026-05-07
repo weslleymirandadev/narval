@@ -43,7 +43,7 @@ static void declare_runtime(IRGenerationContext& context) {
     auto* I32     = llvm::Type::getInt32Ty(C);
     auto* I64     = llvm::Type::getInt64Ty(C);
     auto* I8      = llvm::Type::getInt8Ty(C);
-    auto* I8Ptr   = llvm::PointerType::getUnqual(I8);
+    auto* I8Ptr   = llvm::PointerType::getUnqual(C);
 
     // Object and Array opaque pointers
     auto* ObjPtr  = I8Ptr;
@@ -115,7 +115,9 @@ static void declare_runtime(IRGenerationContext& context) {
     // nv_write_no_nl(Value*) - função builtin para escrita sem nova linha
     M.getOrInsertFunction("nv_write_no_nl", llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
 
-    M.getOrInsertFunction("nv_read", llvm::FunctionType::get(I8Ptr, {}, false));
+    // Declare the backend intrinsic implementation symbol. Codegen will
+    // lower calls to `nv_read` to this LLVM-level intrinsic `llvm.nv_read(prompt: i8*) -> i8*`.
+    M.getOrInsertFunction("nv_read", llvm::FunctionType::get(I8Ptr, {I8Ptr}, false));
     M.getOrInsertFunction("atoi", llvm::FunctionType::get(I32, {I8Ptr}, false));
     M.getOrInsertFunction("_exit", llvm::FunctionType::get(VoidTy, {I32}, false));
 
@@ -136,15 +138,15 @@ static void declare_runtime(IRGenerationContext& context) {
     
     // String functions
     if (tracker.has_strings || tracker.has_string_operations) {
-        auto decl = M.getOrInsertFunction("string_to_upper_case", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::PointerType::getUnqual(ValueTy)}, false));
+        auto decl = M.getOrInsertFunction("string_to_upper_case", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::PointerType::getUnqual(C)}, false));
     }
     
     if (tracker.has_strings || tracker.has_string_operations) {
-        auto decl = M.getOrInsertFunction("string_replace", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::PointerType::getUnqual(ValueTy), llvm::PointerType::getUnqual(ValueTy), llvm::PointerType::getUnqual(ValueTy)}, false));
+        auto decl = M.getOrInsertFunction("string_replace", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::PointerType::getUnqual(C), llvm::PointerType::getUnqual(C), llvm::PointerType::getUnqual(C)}, false));
     }
     
     if (tracker.has_strings || tracker.has_string_operations) {
-        auto decl = M.getOrInsertFunction("string_includes", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::PointerType::getUnqual(ValueTy), ValueTy}, false));
+        auto decl = M.getOrInsertFunction("string_includes", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::PointerType::getUnqual(C), ValueTy}, false));
     }
     
     // Vector functions
@@ -163,8 +165,8 @@ static void declare_runtime(IRGenerationContext& context) {
     }
     
     // REPL helper functions (sempre necessárias para modo interativo)
-    M.getOrInsertFunction("nv_register_write_value", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy)}, false));
-    M.getOrInsertFunction("nv_register_function_return", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(ValueTy), I8Ptr}, false));
+    M.getOrInsertFunction("nv_register_write_value", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(C)}, false));
+    M.getOrInsertFunction("nv_register_function_return", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(C), I8Ptr}, false));
     M.getOrInsertFunction("ensure_value_type", llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
 
     // Traceback / shadow call stack
@@ -204,7 +206,7 @@ void generate_ir(
 ) {
     // Safely handle Node that may be a Program or a single statement.
     Node* raw = node.release();
-    Program* p = dynamic_cast<Program*>(raw);
+    Program* p = (raw && raw->kind == NodeType::Program) ? static_cast<Program*>(raw) : nullptr;
     std::unique_ptr<Program> program;
     if (p) {
         // take ownership of the Program
@@ -213,12 +215,8 @@ void generate_ir(
         // wrap a single statement into a Program to avoid null deref
         program = std::make_unique<Program>();
         if (raw) {
-            if (auto* stmt = dynamic_cast<Stmt*>(raw)) {
-                program->add_statement(std::unique_ptr<Stmt>(stmt));
-            } else {
-                // unknown node type: delete to avoid leak
-                delete raw;
-            }
+            // All non-Program nodes are Stmt (or subclass)
+            program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(raw)));
         }
     }
 

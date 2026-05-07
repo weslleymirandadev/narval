@@ -42,7 +42,7 @@ void EnumDefNode::codegen(nv::IRGenerationContext& ctx) {
         auto* slot = ctx.create_alloca(ValueTy, "enum_v_" + variant.name);
         B.CreateCall(int_fn, {slot, llvm::ConstantInt::get(I32, val)});
 
-        auto* key = B.CreateGlobalStringPtr(variant.name.c_str(), "enum_k_" + variant.name);
+        auto* key = B.CreateGlobalString(variant.name.c_str(), "enum_k_" + variant.name);
         B.CreateCall(set_fn, {global_ptr, key, slot});
     }
 

@@ -23,18 +23,18 @@ void ThrowStatementNode::codegen(nv::IRGenerationContext& ctx) {
     auto& B     = ctx.get_builder();
     auto* ValueTy  = nv::ir_utils::get_value_struct(ctx);
     auto* ValuePtr = nv::ir_utils::get_value_ptr(ctx);
-    auto* I8Ptr    = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(ctx.get_context()));
+    auto* I8Ptr    = llvm::PointerType::getUnqual(ctx.get_context());
 
     auto* exc_alloca = ctx.create_alloca(ValueTy, "throw_exc");
     bool created = false;
 
     /* ── Caso 1: throw ExceptionType("msg") ── */
-    if (auto* call = dynamic_cast<CallExprNode*>(exception.get())) {
-        if (auto* id = dynamic_cast<IdentifierNode*>(call->caller.get())) {
+    if (exception->kind == NodeType::CallExpression) { auto* call = static_cast<CallExprNode*>(exception.get());
+        if (call->caller->kind == NodeType::Identifier) { auto* id = static_cast<IdentifierNode*>(call->caller.get());
             const char* create_name = exc_create_fn(id->symbol);
             if (create_name) {
                 /* Avaliar mensagem (primeiro argumento) */
-                llvm::Value* msg_ptr = B.CreateGlobalStringPtr("", "default_msg");
+                llvm::Value* msg_ptr = B.CreateGlobalString("", "default_msg");
                 if (!call->args.empty()) {
                     call->args[0]->codegen(ctx);
                     if (ctx.has_value()) {
@@ -81,7 +81,7 @@ void ThrowStatementNode::codegen(nv::IRGenerationContext& ctx) {
     /* ── Fallback: criar Error genérico ── */
     if (!created) {
         auto* create_fn = ctx.ensure_runtime_func("create_error", {ValuePtr, I8Ptr});
-        auto* msg = B.CreateGlobalStringPtr("runtime exception", "default_exc_msg");
+        auto* msg = B.CreateGlobalString("runtime exception", "default_exc_msg");
         B.CreateCall(create_fn, {exc_alloca, msg});
     }
 

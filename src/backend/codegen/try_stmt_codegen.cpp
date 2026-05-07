@@ -11,7 +11,7 @@ void TryStatementNode::codegen(nv::IRGenerationContext& ctx) {
     auto& M   = ctx.get_module();
     auto& C   = ctx.get_context();
 
-    auto* I8Ptr  = PointerType::getUnqual(Type::getInt8Ty(C));
+    auto* I8Ptr  = PointerType::getUnqual(C);
     auto* I32    = Type::getInt32Ty(C);
     auto* VoidTy = Type::getVoidTy(C);
     auto* ValueTy  = nv::ir_utils::get_value_struct(ctx);
@@ -77,7 +77,7 @@ void TryStatementNode::codegen(nv::IRGenerationContext& ctx) {
                                : unhandled_bb;
 
             /* Testar se o tipo bate */
-            auto* type_str  = B.CreateGlobalStringPtr(clause->exception_type, "exc_type_" + idx);
+            auto* type_str  = B.CreateGlobalString(clause->exception_type, "exc_type_" + idx);
             auto* matches   = B.CreateCall(matches_fn, {type_str}, "matches_" + idx);
             auto* matched   = B.CreateICmpNE(matches, ConstantInt::get(I32, 0));
             B.CreateCondBr(matched, body_bb, next_bb);

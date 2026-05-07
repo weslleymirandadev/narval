@@ -19,7 +19,7 @@ static llvm::StructType* get_vec_struct(IRGenerationContext& ctx, llvm::Type* el
     auto* s = llvm::StructType::getTypeByName(ctx.get_context(), name);
     if (!s) {
         s = llvm::StructType::create(ctx.get_context(), {
-            llvm::PointerType::getUnqual(elem),
+            llvm::PointerType::getUnqual(ctx.get_context()),
             get_i32(ctx), get_i32(ctx)
         }, name);
     }
@@ -49,14 +49,7 @@ llvm::Value* create_string_constant(IRGenerationContext& context, const std::str
         llvm::GlobalValue::PrivateLinkage,
         llvm::ConstantDataArray::getString(llvm_context, value, true), ".str"
     );
-    auto* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(llvm_context), 0);
-    llvm::Constant* indices[] = { zero, zero };
-    return llvm::ConstantExpr::getGetElementPtr(
-        str_type,
-        global_str,
-        indices,
-        /*InBounds=*/true
-    );
+    return global_str;
 }
 
 llvm::Value* create_int_constant(IRGenerationContext& context, int32_t value) {
@@ -226,7 +219,7 @@ llvm::Value* create_binary_op(IRGenerationContext& context, llvm::Value* lhs, ll
     
     // Sistema de sobrecarga de operadores para "+"
     if (op == "+") {
-        auto* i8p = llvm::PointerType::getUnqual(get_i8(context));
+        auto* i8p = llvm::PointerType::getUnqual(context.get_context());
         auto* i32 = get_i32(context);
         auto* f64 = get_f64(context);
         auto* valuePtr = get_value_ptr(context);
@@ -472,7 +465,7 @@ llvm::Type* get_i8_ptr(IRGenerationContext& ctx) {
     // Para strings, queremos um tipo específico que possa ser identificado
     static llvm::Type* string_type = nullptr;
     if (!string_type) {
-        string_type = llvm::PointerType::getUnqual(get_i8(ctx));
+        string_type = llvm::PointerType::getUnqual(ctx.get_context());
         // Dar um nome ao tipo para facilitar debug
         if (auto* ptr = llvm::dyn_cast<llvm::PointerType>(string_type)) {
             // Não podemos nomear ponteiros diretamente, mas podemos usar um tipo identificado
@@ -493,7 +486,7 @@ llvm::StructType* get_value_struct(IRGenerationContext& ctx) {
     }
     return t;
 }
-llvm::PointerType* get_value_ptr(IRGenerationContext& ctx) { return llvm::PointerType::getUnqual(get_value_struct(ctx)); }
+llvm::PointerType* get_value_ptr(IRGenerationContext& ctx) { return llvm::PointerType::getUnqual(ctx.get_context()); }
 
 // Cria uma constante Value com a tag de tipo correta para inicialização de GlobalVariables
 // Isso permite que a tag "viaje" entre arquivos através de constantes LLVM
@@ -690,11 +683,11 @@ static llvm::Type* parse_type_recursive(const std::string& s, size_t& p, IRGener
 
 void emit_push_frame(IRGenerationContext& ctx, const std::string& file, const std::string& func) {
     auto& B   = ctx.get_builder();
-    auto* I8P = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(ctx.get_context()));
+    auto* I8P = llvm::PointerType::getUnqual(ctx.get_context());
     auto* VoidTy = llvm::Type::getVoidTy(ctx.get_context());
     auto* fn  = ctx.ensure_runtime_func("nv_push_frame", {I8P, I8P}, VoidTy);
-    auto* fs  = B.CreateGlobalStringPtr(file, "frame.file");
-    auto* fn2 = B.CreateGlobalStringPtr(func, "frame.func");
+    auto* fs  = B.CreateGlobalString(file, "frame.file");
+    auto* fn2 = B.CreateGlobalString(func, "frame.func");
     B.CreateCall(fn, {fs, fn2});
 }
 

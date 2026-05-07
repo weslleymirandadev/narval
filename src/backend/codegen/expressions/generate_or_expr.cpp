@@ -19,7 +19,7 @@ void PropagateStmtNode::codegen(nv::IRGenerationContext& ctx) {
     } else {
         // No err in scope — create a generic error
         auto* slot = ctx.create_alloca(ValueTy, "propagate_err");
-        auto* msg  = B.CreateGlobalStringPtr("propagation error");
+        auto* msg  = B.CreateGlobalString("propagation error");
         auto* fn   = ctx.ensure_runtime_func("create_error",
             {ValuePtr, nv::ir_utils::get_i8_ptr(ctx)});
         B.CreateCall(fn, {slot, msg});

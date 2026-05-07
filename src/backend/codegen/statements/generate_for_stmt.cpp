@@ -77,16 +77,16 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
             auto* lenPtr  = b.CreateStructGEP(s, viewAlloca, 0);
             auto* dataPtr = b.CreateStructGEP(s, viewAlloca, 1);
             len = b.CreateLoad(i32, lenPtr);
-            auto* i32ptr = llvm::PointerType::getUnqual(i32);
+            auto* i32ptr = llvm::PointerType::getUnqual(llctx);
             data_ptr_val = b.CreateLoad(i32ptr, dataPtr);
             elemTy = i32;
         } else if (ty->isPointerTy()) {
             auto* pty = llvm::cast<llvm::PointerType>(ty);
             // Opaque-vs-non-opaque pointer handling
             // First, handle i8* (string)
-            if (ty == llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(llctx))) {
+            if (ty == llvm::PointerType::getUnqual(llctx)) {
                 kind = IterKind::String;
-                auto* strlenTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(llctx), { llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(llctx)) }, false);
+                auto* strlenTy = llvm::FunctionType::get(llvm::Type::getInt64Ty(llctx), { llvm::PointerType::getUnqual(llctx) }, false);
                 auto* strlenFn = llvm::cast<llvm::Function>(ctx.get_module().getOrInsertFunction("strlen", strlenTy).getCallee());
                 auto* l64 = b.CreateCall(strlenFn, { iter_val });
                 len = b.CreateTrunc(l64, i32);
@@ -107,9 +107,8 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
             std::vector<llvm::Value*> idx = { zero, zero };
             auto* firstElPtr = b.CreateGEP(ty, arrAlloca, idx);
             // Assume array of strings: cast to i8** and iterate
-            auto* i8  = llvm::Type::getInt8Ty(llctx);
-            auto* i8p = llvm::PointerType::getUnqual(i8);
-            auto* i8pp= llvm::PointerType::getUnqual(i8p);
+            auto* i8p = llvm::PointerType::getUnqual(llctx);
+            auto* i8pp= llvm::PointerType::getUnqual(llctx);
             data_ptr_val = b.CreateBitCast(firstElPtr, i8pp);
             elemTy = i8p;
         } else if (ty->isStructTy()) {
@@ -156,7 +155,7 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
                 llvm::Value* raw64 = rawInt;
                 if (f1Ty != i64) raw64 = b.CreateZExt(rawInt, i64);
                 auto* arrStruct = llvm::StructType::get(llctx, { vptr, i32, i32 });
-                auto* arrPrphy = llvm::PointerType::getUnqual(arrStruct);
+                auto* arrPrphy = llvm::PointerType::getUnqual(llctx);
                 auto* arrPtr = b.CreateIntToPtr(raw64, arrPrphy);
                 auto* sizePtr = b.CreateStructGEP(arrStruct, arrPtr, 1);
                 auto* len_array = b.CreateLoad(i32, sizePtr);
@@ -192,9 +191,8 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
                 // Load data pointer as declared then bitcast to i8** (string arrays/views)
                 auto* dataFieldTy = s->getElementType(1);
                 auto* rawData = b.CreateLoad(dataFieldTy, dataPtr);
-                auto* i8  = llvm::Type::getInt8Ty(llctx);
-                auto* i8p = llvm::PointerType::getUnqual(i8);
-                auto* i8pp= llvm::PointerType::getUnqual(i8p);
+                auto* i8p = llvm::PointerType::getUnqual(llctx);
+                auto* i8pp= llvm::PointerType::getUnqual(llctx);
                 data_ptr_val = b.CreateBitCast(rawData, i8pp);
                 elemTy = i8p;
             } else {
@@ -213,8 +211,8 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
             // Se há 2+ bindings, todos são campos para desempacotar (como Python)
             // Não tratamos o primeiro como índice explícito - o índice é sempre implícito
             for (size_t k = 0; k < bindings.size(); ++k) {
-                auto* id = dynamic_cast<IdentifierNode*>(bindings[k].get());
-                if (!id) throw std::runtime_error("for iterable element binding must be identifier");
+                if (bindings[k]->kind != NodeType::Identifier) throw std::runtime_error("for iterable element binding must be identifier");
+                auto* id = static_cast<IdentifierNode*>(bindings[k].get());
                 elemBindings.push_back(id);
             }
         }
@@ -266,7 +264,7 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
             auto* tmp = ctx.create_alloca(valueStruct, "el.val");
             // declare void @array_get_index_v(ptr, ptr, i32)
             auto* voidTy = llvm::Type::getVoidTy(llctx);
-            auto* vptr   = llvm::PointerType::getUnqual(valueStruct);
+            auto* vptr   = llvm::PointerType::getUnqual(llctx);
             auto* fty = llvm::FunctionType::get(voidTy, { vptr, vptr, i32 }, false);
             auto calleeFc = ctx.get_module().getOrInsertFunction("array_get_index_v", fty);
             b.CreateCall(calleeFc, { tmp, data_ptr_val, i_val });
@@ -302,10 +300,10 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
                 
                 // Definir estrutura Tuple: { Value* fields, i32 field_count }
                 auto* tupleStructTy = llvm::StructType::get(llctx, {
-                    llvm::PointerType::getUnqual(valueStruct), // fields
+                    llvm::PointerType::getUnqual(llctx), // fields
                     i32  // field_count
                 });
-                auto* tuplePtr = b.CreateIntToPtr(tuplePtrInt, llvm::PointerType::getUnqual(tupleStructTy));
+                auto* tuplePtr = b.CreateIntToPtr(tuplePtrInt, llvm::PointerType::getUnqual(llctx));
                 
                 // Para cada binding, extrair o campo correspondente da tupla
                 // Em Python: for i, j in [(1,2), (3,4)] → i recebe fields[0], j recebe fields[1]
@@ -313,7 +311,7 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
                 
                 // Primeiro, obter o ponteiro para fields (fazer uma vez, reutilizar)
                 auto* fieldsPtr = b.CreateStructGEP(tupleStructTy, tuplePtr, 0); // campo fields (índice 0)
-                auto* fieldsArray = b.CreateLoad(llvm::PointerType::getUnqual(valueStruct), fieldsPtr);
+                auto* fieldsArray = b.CreateLoad(llvm::PointerType::getUnqual(llctx), fieldsPtr);
                 
                 for (size_t fi = 0; fi < num_bindings; ++fi) {
                     // Acessar fields[fi] da tupla
@@ -434,16 +432,16 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
     if (bindings.empty() || bindings.size() > 2) {
         throw std::runtime_error("for statement supports 1 or 2 bindings (index[, value])");
     }
-    auto* id0 = dynamic_cast<IdentifierNode*>(bindings[0].get());
-    if (!id0) throw std::runtime_error("for statement first binding must be identifier");
+    if (bindings[0]->kind != NodeType::Identifier) throw std::runtime_error("for statement first binding must be identifier");
+    auto* id0 = static_cast<IdentifierNode*>(bindings[0].get());
     IdentifierNode* id1 = nullptr;
     if (bindings.size() == 2) {
-        id1 = dynamic_cast<IdentifierNode*>(bindings[1].get());
-        if (!id1) throw std::runtime_error("for statement second binding must be identifier");
+        if (bindings[1]->kind != NodeType::Identifier) throw std::runtime_error("for statement second binding must be identifier");
+        id1 = static_cast<IdentifierNode*>(bindings[1].get());
     }
 
     auto* i32 = llvm::Type::getInt32Ty(ctx.get_context());
-    auto* i8p = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(ctx.get_context()));
+    auto* i8p = llvm::PointerType::getUnqual(ctx.get_context());
     auto* i8 = llvm::Type::getInt8Ty(ctx.get_context());
     
     range_start->codegen(ctx);

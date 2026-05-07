@@ -8,11 +8,12 @@ void MemberExprNode::codegen(nv::IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
 
     // Verificar se o objeto é um namespace alias de wildcard import
-    if (auto* obj_id = dynamic_cast<IdentifierNode*>(object.get())) {
+    if (object->kind == NodeType::Identifier) { auto* obj_id = static_cast<IdentifierNode*>(object.get());
         if (ctx.is_namespace_alias(obj_id->symbol)) {
-            auto* prop_id = dynamic_cast<IdentifierNode*>(property.get());
-            if (prop_id) {
-                const std::string& member_name = prop_id->symbol;
+            std::string member_name;
+            if (property->kind == NodeType::Identifier)
+                member_name = static_cast<IdentifierNode*>(property.get())->symbol;
+            if (!member_name.empty()) {
                 auto* ValueTy = nv::ir_utils::get_value_struct(ctx);
 
                 // Tentar resolver o membro diretamente na tabela de símbolos
@@ -51,10 +52,11 @@ void MemberExprNode::codegen(nv::IRGenerationContext& ctx) {
     
     // Gerar código para a propriedade (identificador)
     llvm::Value* prop = nullptr;
-    if (auto* id = dynamic_cast<IdentifierNode*>(property.get())) {
+    if (property->kind == NodeType::Identifier) {
+        auto* id = static_cast<IdentifierNode*>(property.get());
         // Criar string para a propriedade
         nv::register_feature("str");
-        prop = ctx.get_builder().CreateGlobalStringPtr(id->symbol.c_str());
+        prop = ctx.get_builder().CreateGlobalString(id->symbol.c_str());
     } else {
         property->codegen(ctx);
         prop = ctx.pop_value();

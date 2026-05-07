@@ -18,7 +18,7 @@ public:
             
             // TEMP: Testar printf com string literal fixa primeiro
             auto& ctx_module = ctx.get_context();
-            auto* I8Ptr = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(ctx_module));
+            auto* I8Ptr = llvm::PointerType::getUnqual(ctx_module);
             auto* printf_ty = llvm::FunctionType::get(llvm::Type::getInt32Ty(ctx_module), {I8Ptr}, true);
             auto* printf_fn = ctx.get_module().getFunction("printf");
             if (!printf_fn) {
@@ -28,13 +28,7 @@ public:
             // Testar com string literal fixa para confirmar que printf funciona
             auto* test_str = llvm::ConstantDataArray::getString(ctx_module, "WORKING!\n", true);
             auto* test_global = new llvm::GlobalVariable(ctx.get_module(), test_str->getType(), true, llvm::GlobalValue::PrivateLinkage, test_str, "test.str");
-            llvm::Constant* indices[] = {
-                llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx_module), 0),
-                llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx_module), 0)
-            };
-            auto* test_ptr = llvm::ConstantExpr::getGetElementPtr(test_str->getType(), test_global, indices);
-            
-            std::vector<llvm::Value*> args = {test_ptr};
+            std::vector<llvm::Value*> args = {test_global};
             ctx.get_builder().CreateCall(printf_fn, args);
             
             return nullptr; // write retorna void

@@ -14,7 +14,7 @@ static llvm::Value* build_match_condition(nv::IRGenerationContext& ctx, Expr* pa
     if (!pattern) return nullptr;
 
     // OR pattern: compose recursively
-    if (auto* bin = dynamic_cast<BinaryExprNode*>(pattern)) {
+    if (pattern->kind == NodeType::BinaryExpression) { auto* bin = static_cast<BinaryExprNode*>(pattern);
         if (bin->op == "||") {
             auto* lhs_clone = static_cast<Expr*>(bin->left->clone());
             auto* rhs_clone = static_cast<Expr*>(bin->right->clone());
@@ -28,7 +28,7 @@ static llvm::Value* build_match_condition(nv::IRGenerationContext& ctx, Expr* pa
     }
 
     // Range pattern: start..end or start..=end (numeric int32 or single-char strings)
-    if (auto* rng = dynamic_cast<RangeExprNode*>(pattern)) {
+    if (pattern->kind == NodeType::RangeExpression) { auto* rng = static_cast<RangeExprNode*>(pattern);
         // Evaluate bounds
         if (rng->start) rng->start->codegen(ctx); else return nullptr;
         llvm::Value* s = ctx.pop_value();
@@ -37,7 +37,7 @@ static llvm::Value* build_match_condition(nv::IRGenerationContext& ctx, Expr* pa
         if (!s || !e || !target_val) return nullptr;
 
         auto* I32 = llvm::Type::getInt32Ty(c);
-        auto* I8P = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(c));
+        auto* I8P = llvm::PointerType::getUnqual(c);
         auto* I8 = llvm::Type::getInt8Ty(c);
 
         // Verificar se é range numérico ou de caracteres
@@ -180,7 +180,8 @@ static llvm::Value* build_match_condition(nv::IRGenerationContext& ctx, Expr* pa
     }
 
     // Identifier 'default' or '_' is handled at a higher level (no condition)
-    if (auto* id = dynamic_cast<IdentifierNode*>(pattern)) {
+    if (pattern->kind == NodeType::Identifier) {
+        auto* id = static_cast<IdentifierNode*>(pattern);
         if (id->symbol == "default" || id->symbol == "_") {
             return nullptr; // no-op here, handled at match level
         }
@@ -192,7 +193,7 @@ static llvm::Value* build_match_condition(nv::IRGenerationContext& ctx, Expr* pa
     if (!v || !target_val) return nullptr;
     
     // Verificar se há incompatibilidade de tipos (string vs int)
-    auto* i8p = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(c));
+    auto* i8p = llvm::PointerType::getUnqual(c);
     auto* i32 = llvm::Type::getInt32Ty(c);
     
     // Se target é string (i8*) e pattern é int, converter string para int
@@ -258,7 +259,8 @@ void MatchStmtNode::codegen(nv::IRGenerationContext& ctx) {
     for (size_t i = 0; i < cases.size(); ++i) {
         // Determine if this is a default case: Identifier("default") or Identifier("_")
         bool is_default = false;
-        if (auto* id = dynamic_cast<IdentifierNode*>(cases[i].get())) {
+        if (cases[i]->kind == NodeType::Identifier) {
+            auto* id = static_cast<IdentifierNode*>(cases[i].get());
             if (id->symbol == "default" || id->symbol == "_") is_default = true;
         }
 

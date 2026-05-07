@@ -214,8 +214,8 @@ void IdentifierNode::codegen(nv::IRGenerationContext& context) {
             B.CreateStore(loaded_value, alloca);
             
             // Create string literals for the variable name and source
-            auto* symbol_str = B.CreateGlobalStringPtr(symbol);
-            auto* source_str = B.CreateGlobalStringPtr("repl");
+            auto* symbol_str = B.CreateGlobalString(symbol);
+            auto* source_str = B.CreateGlobalString("repl");
             
             B.CreateCall(register_fn, {alloca, symbol_str, source_str});
         }

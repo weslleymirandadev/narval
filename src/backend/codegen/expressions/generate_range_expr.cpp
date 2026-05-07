@@ -11,7 +11,7 @@ void RangeExprNode::codegen(nv::IRGenerationContext& ctx) {
 
     // Evaluate bounds
     llvm::Type* I32 = llvm::Type::getInt32Ty(c);
-    auto* I8P = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(c));
+    auto* I8P = llvm::PointerType::getUnqual(c);
     auto* I8 = llvm::Type::getInt8Ty(c);
     
     if (start) start->codegen(ctx);

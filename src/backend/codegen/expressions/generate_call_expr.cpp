@@ -146,12 +146,12 @@ static llvm::Value* value_to_i32(IRGenerationContext& ctx, llvm::Value* v) {
 llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name, const std::vector<std::unique_ptr<Expr>>& args) {
     auto& B = ctx.get_builder();
     auto* ValueTy = ir_utils::get_value_struct(ctx);
-    auto* I8P = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(ctx.get_context()));
+    auto* I8P = llvm::PointerType::getUnqual(ctx.get_context());
 
     // Implementar write diretamente
     if (name == "write") {
         if (args.empty()) {
-            auto* empty = B.CreateGlobalStringPtr("");
+            auto* empty = B.CreateGlobalString("");
             emit_write(ctx, empty, true);
             return llvm::UndefValue::get(ValueTy);
         }
@@ -203,7 +203,7 @@ llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name
 
     if (name == "write") {
         if (args.empty()) {
-            auto* empty = B.CreateGlobalStringPtr("");
+            auto* empty = B.CreateGlobalString("");
             emit_write(ctx, empty);
             // Return an undef Value for empty write
             return llvm::UndefValue::get(ir_utils::get_value_struct(ctx));
@@ -215,7 +215,7 @@ llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name
             
             // If value generation failed, treat as null/undef and emit write with empty string
             if (!val) {
-                auto* empty = B.CreateGlobalStringPtr("");
+                auto* empty = B.CreateGlobalString("");
                 emit_write(ctx, empty);
                 return llvm::UndefValue::get(ir_utils::get_value_struct(ctx));
             }
@@ -261,12 +261,33 @@ llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name
     }
 
     if (name == "read") {
+        auto* I8P = llvm::PointerType::getUnqual(ctx.get_context());
+        auto* ValueTy = ir_utils::get_value_struct(ctx);
+        auto* ValuePtr = ir_utils::get_value_ptr(ctx);
+
+        llvm::Value* prompt_ptr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(I8P));
         if (!args.empty()) {
             args[0]->codegen(ctx);
-            emit_write(ctx, ctx.pop_value(), false);
+            if (ctx.has_value()) {
+                llvm::Value* v = ctx.pop_value();
+                if (v->getType() == I8P) {
+                    prompt_ptr = v;
+                } else if (v->getType() == ValueTy) {
+                    auto* tmp = ctx.create_alloca(ValueTy, "read_prompt_val");
+                    B.CreateStore(v, tmp);
+                    auto* extractFn = ctx.ensure_runtime_func("extract_string_from_value", {ValuePtr}, I8P);
+                    prompt_ptr = B.CreateCall(extractFn, {tmp}, "prompt_str");
+                } else {
+                    // Box arbitrary value and extract string representation
+                    llvm::Value* boxed = box_value(ctx, v); // returns Value* (alloca)
+                    auto* extractFn = ctx.ensure_runtime_func("extract_string_from_value", {ValuePtr}, I8P);
+                    prompt_ptr = B.CreateCall(extractFn, {boxed}, "prompt_str");
+                }
+            }
         }
-        auto* fn = ctx.ensure_runtime_func("nv_read", {}, I8P);
-        return B.CreateCall(fn, {});
+
+        auto* fn = ctx.ensure_runtime_func("nv_read", {I8P}, I8P);
+        return B.CreateCall(fn, {prompt_ptr});
     }
     
     // Option / Result constructors
@@ -391,23 +412,26 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
     auto& B = ctx.get_builder();
 
     // === 1. BUILTIN CALLS (write, read, json.load) ===
-    if (auto* id = dynamic_cast<IdentifierNode*>(caller.get())) {
+    if (caller->kind == NodeType::Identifier) {
+        auto* id = static_cast<IdentifierNode*>(caller.get());
         std::string name = id->symbol;
         if (auto* result = try_lower_builtin(ctx, name, args)) {
             ctx.push_value(result);
             return;
         }
     }
-    
+
     // === 2. METHOD CALL: obj.method(...) ===
-    if (auto* mem = dynamic_cast<MemberExprNode*>(caller.get())) {
+    if (caller->kind == NodeType::MemberExpression) {
+        auto* mem = static_cast<MemberExprNode*>(caller.get());
 
         // === NAMESPACE ALIAS: import * as ALIAS → ALIAS.func(...) ===
-        if (auto* obj_id = dynamic_cast<IdentifierNode*>(mem->object.get())) {
+        if (mem->object->kind == NodeType::Identifier) {
+            auto* obj_id = static_cast<IdentifierNode*>(mem->object.get());
             if (ctx.is_namespace_alias(obj_id->symbol)) {
                 std::string member_name;
-                if (auto* prop_id = dynamic_cast<IdentifierNode*>(mem->property.get())) {
-                    member_name = prop_id->symbol;
+                if (mem->property->kind == NodeType::Identifier) {
+                    member_name = static_cast<IdentifierNode*>(mem->property.get())->symbol;
                 }
                 if (!member_name.empty()) {
                     auto* fn = ctx.get_module().getFunction(member_name);
@@ -518,8 +542,8 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
 
         // Extrai o nome do método (ex: "load")
         std::string method;
-        if (auto* id = dynamic_cast<IdentifierNode*>(mem->property.get())) {
-            method = id->symbol;
+        if (mem->property->kind == NodeType::Identifier) {
+            method = static_cast<IdentifierNode*>(mem->property.get())->symbol;
         } else {
             ctx.push_value(nullptr);
             return;
@@ -532,7 +556,7 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
             nv::register_feature("str");
             
             // Verifica se o objeto é o identifier "json"
-            if (auto* objId = dynamic_cast<IdentifierNode*>(mem->object.get())) {
+            if (mem->object->kind == NodeType::Identifier) { auto* objId = static_cast<IdentifierNode*>(mem->object.get());
                 if (objId->symbol == "json") {
                     if (args.empty()) {
                         ctx.push_value(nullptr);
@@ -556,7 +580,7 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
                     auto* I8P = ir_utils::get_i8_ptr(ctx);
 
                     if (!json_string->getType()->isPointerTy()) {
-                        json_string = ctx.get_builder().CreateGlobalStringPtr(""); // fallback
+                        json_string = ctx.get_builder().CreateGlobalString(""); // fallback
                     } else if (json_string->getType() != I8P) {
                         json_string = ctx.get_builder().CreateBitCast(json_string, I8P);
                     }
@@ -577,7 +601,7 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
         }
         if (method == "parse") {
             // Verifica se o objeto é o identifier "json"
-            if (auto* objId = dynamic_cast<IdentifierNode*>(mem->object.get())) {
+            if (mem->object->kind == NodeType::Identifier) { auto* objId = static_cast<IdentifierNode*>(mem->object.get());
                 if (objId->symbol == "json") {
                     if (args.empty()) {
                         ctx.push_value(nullptr);
@@ -590,7 +614,7 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
                     auto* I8P = ir_utils::get_i8_ptr(ctx);
 
                     if (!filename->getType()->isPointerTy()) {
-                        filename = ctx.get_builder().CreateGlobalStringPtr(""); // fallback
+                        filename = ctx.get_builder().CreateGlobalString(""); // fallback
                     } else if (filename->getType() != I8P) {
                         filename = ctx.get_builder().CreateBitCast(filename, I8P);
                     }
@@ -615,7 +639,7 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
         // === ESPECIAL: json.dump(value, "file.json") ===
         if (method == "dump") {
             // Verifica se o objeto é o identifier "json"
-            if (auto* objId = dynamic_cast<IdentifierNode*>(mem->object.get())) {
+            if (mem->object->kind == NodeType::Identifier) { auto* objId = static_cast<IdentifierNode*>(mem->object.get());
                 if (objId->symbol == "json") {
                     if (args.size() < 2) {
                         ctx.push_value(nullptr);
@@ -631,7 +655,7 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
                     auto* I8P = ir_utils::get_i8_ptr(ctx);
 
                     if (!filename->getType()->isPointerTy()) {
-                        filename = ctx.get_builder().CreateGlobalStringPtr(""); // fallback
+                        filename = ctx.get_builder().CreateGlobalString(""); // fallback
                     } else if (filename->getType() != I8P) {
                         filename = ctx.get_builder().CreateBitCast(filename, I8P);
                     }
@@ -662,7 +686,7 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
         // === ESPECIAL: json.stringify(value) ===
         if (method == "stringify") {
             // Verifica se o objeto é o identifier "json"
-            if (auto* objId = dynamic_cast<IdentifierNode*>(mem->object.get())) {
+            if (mem->object->kind == NodeType::Identifier) { auto* objId = static_cast<IdentifierNode*>(mem->object.get());
                 if (objId->symbol == "json") {
                     if (args.empty()) {
                         ctx.push_value(nullptr);

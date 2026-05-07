@@ -114,14 +114,14 @@ bool CompilationEngine::compile_and_execute(const std::string& input) {
             auto* i32 = llvm::Type::getInt32Ty(C);
             auto* i64 = llvm::Type::getInt64Ty(C);
             auto* i8  = llvm::Type::getInt8Ty(C);
-            auto* i8p = llvm::PointerType::getUnqual(i8);
+            auto* i8p = llvm::PointerType::getUnqual(C);
             ValueTy = llvm::StructType::create(C, {i32, i64, i8p, i8p, i32}, "nv.rt.Value");
         }
         auto* VoidTy  = llvm::Type::getVoidTy(C);
-        auto* ValuePtr= llvm::PointerType::getUnqual(ValueTy);
+        auto* ValuePtr= llvm::PointerType::getUnqual(C);
 
         temp_module->getOrInsertFunction("nv_write", llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
-        temp_module->getOrInsertFunction("create_str", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(C))}, false));
+        temp_module->getOrInsertFunction("create_str", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::PointerType::getUnqual(C)}, false));
         temp_module->getOrInsertFunction("create_int", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::Type::getInt32Ty(C)}, false));
         temp_module->getOrInsertFunction("create_float", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::Type::getDoubleTy(C)}, false));
         temp_module->getOrInsertFunction("create_bool", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::Type::getInt32Ty(C)}, false));
@@ -278,14 +278,14 @@ bool CompilationEngine::compile_expression(std::unique_ptr<Node>& ast,
         auto* i32 = llvm::Type::getInt32Ty(C);
         auto* i64 = llvm::Type::getInt64Ty(C);
         auto* i8  = llvm::Type::getInt8Ty(C);
-        auto* i8p = llvm::PointerType::getUnqual(i8);
+        auto* i8p = llvm::PointerType::getUnqual(C);
         ValueTy = llvm::StructType::create(C, {i32, i64, i8p, i8p, i32}, "nv.rt.Value");
     }
     auto* VoidTy = llvm::Type::getVoidTy(C);
-    auto* ValuePtr = llvm::PointerType::getUnqual(ValueTy);
-    
+    auto* ValuePtr = llvm::PointerType::getUnqual(C);
+
     temp_module->getOrInsertFunction("nv_write", llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
-    temp_module->getOrInsertFunction("create_str", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(C))}, false));
+    temp_module->getOrInsertFunction("create_str", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::PointerType::getUnqual(C)}, false));
     temp_module->getOrInsertFunction("create_int", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::Type::getInt32Ty(C)}, false));
     temp_module->getOrInsertFunction("create_float", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::Type::getDoubleTy(C)}, false));
     temp_module->getOrInsertFunction("create_bool", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::Type::getInt32Ty(C)}, false));
@@ -332,7 +332,7 @@ bool CompilationEngine::compile_expression(std::unique_ptr<Node>& ast,
     
     std::vector<llvm::Type*> param_tys = { ValuePtr };
     if (!slot_names.empty()) {
-        param_tys.push_back(llvm::PointerType::getUnqual(ValuePtr));
+        param_tys.push_back(llvm::PointerType::getUnqual(C));
     }
     auto* func_type = llvm::FunctionType::get(VoidTy, param_tys, false);
     auto* func = llvm::Function::Create(func_type, llvm::Function::ExternalLinkage, func_name, temp_module.get());
