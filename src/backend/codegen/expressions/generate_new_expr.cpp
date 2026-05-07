@@ -78,6 +78,19 @@ void NewExprNode::codegen(nv::IRGenerationContext& ctx) {
         B.CreateCall(set_fn, {this_alloca, fn_ptr});
     }
 
+    // Store class name on the instance so runtime can display <object:ClassName>
+    {
+        auto* I8P = nv::ir_utils::get_i8_ptr(ctx);
+        auto* class_name_cstr = B.CreateGlobalStringPtr(class_name);
+        auto* class_name_val = ctx.create_alloca(ValueTy, "class_name_val");
+        auto* create_str_fn = ctx.ensure_runtime_func("create_str", {ValuePtr, I8P});
+        B.CreateCall(create_str_fn, { class_name_val, class_name_cstr });
+
+        auto* set_field_fn = ctx.ensure_runtime_func("nv_object_set_field", {ValuePtr, I8P, ValuePtr});
+        auto* key_ptr = B.CreateGlobalStringPtr("__class_name__");
+        B.CreateCall(set_field_fn, { this_alloca, key_ptr, class_name_val });
+    }
+
     // Push the resulting object (as Value struct)
     auto* result = B.CreateLoad(ValueTy, this_alloca, "new_result");
     ctx.push_value(result);
