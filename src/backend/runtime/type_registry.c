@@ -59,12 +59,6 @@ NvTypeObject* nv_create_simple_class(const char* name) {
     return nv_type_new(name, NULL, 0);
 }
 
-void nv_incref(NvObject* obj) {
-    if (obj) {
-        obj->ref_count++;
-    }
-}
-
 /* ============================================================= */
 /*                    REGISTRO DE TIPOS - NOVO SISTEMA       */
 /* ============================================================= */
