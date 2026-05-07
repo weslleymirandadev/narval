@@ -114,6 +114,23 @@ static llvm::Value* extract_int_from_value(IRGenerationContext& context, llvm::V
     return builder.CreateCall(extractFn, {tmp}, "int.val");
 }
 
+// Helper: extrai valor float (double) de um Value via runtime
+static llvm::Value* extract_float_from_value(IRGenerationContext& context, llvm::Value* val) {
+    if (!val) return nullptr;
+    auto* valueStruct = get_value_struct(context);
+    if (val->getType() != valueStruct) return val; // Não é Value, retornar como está
+
+    auto& builder = context.get_builder();
+    auto* f64 = get_f64(context);
+    auto* valPtr = get_value_ptr(context);
+
+    auto* tmp = context.create_alloca(valueStruct, "val.tmp");
+    builder.CreateStore(val, tmp);
+
+    auto* extractFn = context.ensure_runtime_func("extract_float_from_value", {valPtr}, f64);
+    return builder.CreateCall(extractFn, {tmp}, "float.val");
+}
+
 llvm::Value* create_comparison(IRGenerationContext& context, llvm::Value* lhs, llvm::Value* rhs, const std::string& op) {
     if (!lhs || !rhs) return nullptr;
     auto& builder = context.get_builder();
@@ -148,9 +165,13 @@ llvm::Value* create_comparison(IRGenerationContext& context, llvm::Value* lhs, l
         else if (op == ">=") out = builder.CreateICmpSGE(cmp_result, zero, "cmpge");
         return out;
     } else if (lhs->getType() == valueStruct) {
-        lhs = extract_int_from_value(context, lhs);
+        // Se o outro for numérico (int ou float), extrair float por segurança;
+        // caso contrário, extrair int
+        if (rhs->getType()->isFloatingPointTy() || rhs->getType()->isIntegerTy()) lhs = extract_float_from_value(context, lhs);
+        else lhs = extract_int_from_value(context, lhs);
     } else if (rhs->getType() == valueStruct) {
-        rhs = extract_int_from_value(context, rhs);
+        if (lhs->getType()->isFloatingPointTy() || lhs->getType()->isIntegerTy()) rhs = extract_float_from_value(context, rhs);
+        else rhs = extract_int_from_value(context, rhs);
     }
 
     auto* lhs_type = lhs->getType();
@@ -320,17 +341,48 @@ llvm::Value* create_binary_op(IRGenerationContext& context, llvm::Value* lhs, ll
             builder.CreateCall(fn, {out_alloca, lhs_alloca, rhs_alloca});
             return builder.CreateLoad(valueStruct, out_alloca, "arith_val");
         }
+        // Tratamento para potência: extrair floats e aplicar llvm.pow.f64, depois empacotar
+        if (op == "**") {
+            auto* lf = extract_float_from_value(context, lhs);
+            auto* rf = extract_float_from_value(context, rhs);
+            auto* f64 = get_f64(context);
+            auto* powDecl = llvm::cast<llvm::Function>(context.get_module().getOrInsertFunction(
+                "llvm.pow.f64", llvm::FunctionType::get(f64, { f64, f64 }, false)
+            ).getCallee());
+            std::vector<llvm::Value*> powArgs = { lf, rf };
+            auto* outf = builder.CreateCall(powDecl, powArgs, "powf");
+            auto* out_alloca = context.create_alloca(valueStruct, "pow_out");
+            auto* cf = context.ensure_runtime_func("create_float", {ValuePtr, f64});
+            std::vector<llvm::Value*> createArgs = { out_alloca, outf };
+            builder.CreateCall(cf, createArgs);
+            return builder.CreateLoad(valueStruct, out_alloca, "pow_val");
+        }
         return nullptr;
     }
     if (lhs_type == valueStruct) {
-        lhs = extract_int_from_value(context, lhs);
+        // Se o outro operando é numérico (int ou float), extrair float por segurança;
+        // caso contrário, extrair int
+        if (rhs_type->isFloatingPointTy() || rhs_type->isIntegerTy()) lhs = extract_float_from_value(context, lhs);
+        else lhs = extract_int_from_value(context, lhs);
     } else if (rhs_type == valueStruct) {
-        rhs = extract_int_from_value(context, rhs);
+        if (lhs_type->isFloatingPointTy() || lhs_type->isIntegerTy()) rhs = extract_float_from_value(context, rhs);
+        else rhs = extract_int_from_value(context, rhs);
     }
     
     // Atualizar tipos após extração
     lhs_type = lhs->getType();
     rhs_type = rhs->getType();
+
+    // Converter tipos diferentes antes das operações
+    if (lhs_type != rhs_type) {
+        if (lhs_type->isIntegerTy() && rhs_type->isFloatingPointTy()) {
+            lhs = builder.CreateSIToFP(lhs, rhs_type);
+            lhs_type = rhs_type;
+        } else if (lhs_type->isFloatingPointTy() && rhs_type->isIntegerTy()) {
+            rhs = builder.CreateSIToFP(rhs, lhs_type);
+            rhs_type = lhs_type;
+        }
+    }
 
     // Verificar se algum operando é string após extração (não deveria acontecer para operações aritméticas)
     if (op == "+" && (lhs_type->isPointerTy() || rhs_type->isPointerTy())) {
@@ -344,6 +396,17 @@ llvm::Value* create_binary_op(IRGenerationContext& context, llvm::Value* lhs, ll
     if (op == "-") return lhs_type->isFloatingPointTy() ? builder.CreateFSub(lhs, rhs, "sub") : builder.CreateSub(lhs, rhs, "sub");
     if (op == "*") return lhs_type->isFloatingPointTy() ? builder.CreateFMul(lhs, rhs, "mul") : builder.CreateMul(lhs, rhs, "mul");
     if (op == "/") return lhs_type->isFloatingPointTy() ? builder.CreateFDiv(lhs, rhs, "div") : builder.CreateSDiv(lhs, rhs, "div");
+    if (op == "**") {
+        auto* f64 = get_f64(context);
+        // Garantir que ambos são f64
+        if (!lhs->getType()->isFloatingPointTy()) lhs = builder.CreateSIToFP(lhs, f64);
+        if (!rhs->getType()->isFloatingPointTy()) rhs = builder.CreateSIToFP(rhs, f64);
+        auto* powDecl = llvm::cast<llvm::Function>(context.get_module().getOrInsertFunction(
+            "llvm.pow.f64", llvm::FunctionType::get(f64, { f64, f64 }, false)
+        ).getCallee());
+        std::vector<llvm::Value*> powArgs2 = { lhs, rhs };
+        return builder.CreateCall(powDecl, powArgs2, "pow");
+    }
     if (op == "//") {
         if (lhs_type->isFloatingPointTy()) {
             auto* f64 = get_f64(context);
