@@ -94,6 +94,7 @@ void vector_get_method(Value* out, Value* self_vec, int32_t index) {
     if (!self_vec || !self_vec->obj) return;
 
     NVVector* v = (NVVector*)self_vec->obj;
+    if (index < 0) index += v->size;
     if (index < 0 || index >= v->size) return;
 
     if (out) *out = v->elements[index];
@@ -103,6 +104,7 @@ void vector_set_method(Value* self_vec, int32_t index, Value* elem) {
     if (!self_vec || !self_vec->obj || !elem) return;
 
     NVVector* v = (NVVector*)self_vec->obj;
+    if (index < 0) index += v->size;
     if (index < 0 || index >= v->size) return;
 
     v->elements[index] = *elem;
@@ -114,6 +116,7 @@ void array_get_index_v(Value* out, Value* self_arr, int32_t index) {
     if (!self_arr || !self_arr->obj) return;
 
     NVArray* a = (NVArray*)self_arr->obj;
+    if (index < 0) index += a->size;
     if (index < 0 || index >= a->size) return;
 
     if (out) *out = a->elements[index];
@@ -123,6 +126,7 @@ void array_set_index_v(Value* self_arr, int32_t index, Value* elem) {
     if (!self_arr || !self_arr->obj || !elem) return;
 
     NVArray* a = (NVArray*)self_arr->obj;
+    if (index < 0) index += a->size;
     if (index < 0 || index >= a->size) return;
 
     a->elements[index] = *elem;
@@ -155,6 +159,87 @@ Value array_pop_method(Array* a) {
     a->size--;
     
     return result;
+}
+
+/* ============================================================= */
+/*                    SLICE DE COLEÇÕES                          */
+/* ============================================================= */
+
+/* Sentinela para "não especificado": INT32_MIN */
+#define NV_SLICE_NONE (-2147483648)
+
+static void slice_push(NVVector* v, Value elem) {
+    if (v->size >= v->capacity) {
+        int new_cap = v->capacity == 0 ? 4 : v->capacity * 2;
+        v->elements = (Value*)realloc(v->elements, new_cap * sizeof(Value));
+        v->capacity = new_cap;
+    }
+    v->elements[v->size++] = elem;
+}
+
+void nv_collection_slice(Value* out, Value* self, int32_t start, int32_t stop, int32_t step) {
+    if (out) memset(out, 0, sizeof(Value));
+    if (!self || !self->obj) { create_vector(out, 0); return; }
+
+    NvObject* obj = self->obj;
+    Value* elems = NULL;
+    int size = 0;
+
+    if (obj->ob_type == NVVector_Type) {
+        NVVector* v = (NVVector*)obj;
+        elems = v->elements;
+        size  = v->size;
+    } else if (obj->ob_type == NVArray_Type) {
+        NVArray* a = (NVArray*)obj;
+        elems = a->elements;
+        size  = a->size;
+    } else {
+        create_vector(out, 0);
+        return;
+    }
+
+    /* Normalizar step */
+    if (step == NV_SLICE_NONE) step = 1;
+    if (step == 0) { create_vector(out, 0); return; }
+
+    /* Normalizar start */
+    if (start == NV_SLICE_NONE) {
+        start = (step > 0) ? 0 : size - 1;
+    } else {
+        if (start < 0) start += size;
+        if (step > 0) {
+            if (start < 0) start = 0;
+            if (start > size) start = size;
+        } else {
+            if (start < 0) start = -1;
+            if (start >= size) start = size - 1;
+        }
+    }
+
+    /* Normalizar stop */
+    if (stop == NV_SLICE_NONE) {
+        stop = (step > 0) ? size : -1;
+    } else {
+        if (stop < 0) stop += size;
+        if (step > 0) {
+            if (stop < 0) stop = 0;
+            if (stop > size) stop = size;
+        } else {
+            if (stop < 0) stop = -1;
+            if (stop >= size) stop = size - 1;
+        }
+    }
+
+    create_vector(out, 4);
+    NVVector* result = (NVVector*)out->obj;
+
+    if (step > 0) {
+        for (int i = start; i < stop; i += step)
+            slice_push(result, elems[i]);
+    } else {
+        for (int i = start; i > stop; i += step)
+            slice_push(result, elems[i]);
+    }
 }
 
 /* ============================================================= */
@@ -242,4 +327,39 @@ void nv_write_no_nl(Value* v) {
         printf("<%s>", type->tp_name ? type->tp_name : "object");
     }
     fflush(stdout);
+}
+
+char* nv_read(const char* prompt) {
+    if (prompt) {
+        printf("%s", prompt);
+        fflush(stdout);
+    }
+
+    size_t bufsize = 128;
+    char* buf = (char*)malloc(bufsize);
+    if (!buf) return NULL;
+
+    size_t idx = 0;
+    int ch;
+    while ((ch = getchar()) != EOF && ch != '\n') {
+        if (idx + 1 >= bufsize) {
+            size_t new_size = bufsize * 2;
+            char* n = (char*)realloc(buf, new_size);
+            if (!n) {
+                free(buf);
+                return NULL;
+            }
+            buf = n;
+            bufsize = new_size;
+        }
+        buf[idx++] = (char)ch;
+    }
+
+    if (ch == EOF && idx == 0) {
+        free(buf);
+        return NULL;
+    }
+
+    buf[idx] = '\0';
+    return buf;
 }
