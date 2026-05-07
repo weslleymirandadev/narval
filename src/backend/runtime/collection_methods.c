@@ -285,26 +285,21 @@ void nv_write(Value* v) {
     }
     
     NvTypeObject* type = obj->ob_type;
-    
+
     if (!type) {
-        printf("<unknown>");
+        printf("<unknown>\n");
         return;
     }
-    
-    // Verificar se type é válido
+
     if ((uintptr_t)type < 0x1000) {
-        printf("<unknown>");
+        printf("<unknown>\n");
         return;
     }
-        
-    // Verificar se os ponteiros são válidos antes de comparar
+
     if (type == NVStr_Type) {
         NVStr* str_obj = (NVStr*)obj;
-        if (str_obj && str_obj->value) {
-            printf("%s\n", str_obj->value);
-        } else {
-            printf("\n");
-        }
+        if (str_obj && str_obj->value) printf("%s\n", str_obj->value);
+        else printf("\n");
     } else if (type == NVInt_Type) {
         NVInt* int_obj = (NVInt*)obj;
         printf("%d\n", int_obj->value);
@@ -314,8 +309,34 @@ void nv_write(Value* v) {
     } else if (type == NVBool_Type) {
         NVBool* bool_obj = (NVBool*)obj;
         printf("%s\n", bool_obj->value ? "true" : "false");
+    } else if (type == NVArray_Type) {
+        NVArray* arr = (NVArray*)obj;
+        const char* elem_type_name = "?";
+        if (arr->size > 0 && arr->elements[0].obj && arr->elements[0].obj->ob_type && arr->elements[0].obj->ob_type->tp_name) {
+            elem_type_name = arr->elements[0].obj->ob_type->tp_name;
+        }
+        printf("<%s[%d]>\n", elem_type_name, arr->size);
+    } else if (type == NVMap_Type) {
+        NVMap* map = (NVMap*)obj;
+        // If instance has __class_name__, print that
+        Value cls = {0};
+        nv_object_get_field(&cls, v, "__class_name__");
+        if (cls.obj && cls.obj->ob_type == NVStr_Type) {
+            NVStr* s = (NVStr*)cls.obj;
+            printf("<object:%s>\n", s->value ? s->value : "object");
+        } else if (map->str_method) {
+            Value tmp = map->str_method(v);
+            if (tmp.obj && tmp.obj->ob_type == NVStr_Type) {
+                NVStr* s = (NVStr*)tmp.obj;
+                printf("%s\n", s->value ? s->value : "");
+            } else {
+                printf("<map object>\n");
+            }
+        } else {
+            printf("<map object>\n");
+        }
     } else {
-        printf("<%s>\n", type->tp_name ? type->tp_name : "object");
+        printf("<object:%s>\n", type->tp_name ? type->tp_name : "object");
     }
 
     fflush(stdout);
@@ -335,8 +356,15 @@ void nv_write_no_nl(Value* v) {
         printf("%f", ((NVFloat*)v->obj)->value);
     } else if (type == NVBool_Type) {
         printf("%s", ((NVBool*)v->obj)->value ? "true" : "false");
+    } else if (type == NVArray_Type) {
+        NVArray* arr = (NVArray*)v->obj;
+        const char* elem_type_name = "?";
+        if (arr->size > 0 && arr->elements[0].obj && arr->elements[0].obj->ob_type && arr->elements[0].obj->ob_type->tp_name) {
+            elem_type_name = arr->elements[0].obj->ob_type->tp_name;
+        }
+        printf("<%s[%d]>", elem_type_name, arr->size);
     } else {
-        printf("<%s>", type->tp_name ? type->tp_name : "object");
+        printf("<object:%s>", type->tp_name ? type->tp_name : "object");
     }
     fflush(stdout);
 }
