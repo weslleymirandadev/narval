@@ -225,11 +225,11 @@ int run_batch_mode(const std::string& filename, bool build_only = false) {
         llvm::InitializeNativeTargetAsmPrinter();
         llvm::InitializeNativeTargetAsmParser();
 
-        auto target_triple = llvm::sys::getDefaultTargetTriple();
+        llvm::Triple target_triple(llvm::sys::getDefaultTargetTriple());
         Mod.setTargetTriple(target_triple);
 
         std::string error;
-        const llvm::Target* target = llvm::TargetRegistry::lookupTarget(target_triple, error);
+        const llvm::Target* target = llvm::TargetRegistry::lookupTarget("", target_triple, error);
         if (!target) {
             llvm::errs() << "Erro de target: " << error << "\n";
             return 1;
@@ -292,7 +292,6 @@ int run_batch_mode(const std::string& filename, bool build_only = false) {
 
         std::string link_cmd =
             std::string("gcc -g ") + runtime_path + " " +
-            NARVAL_SOURCE_DIR + "/build/lib/std.o " +
             "narval_module.o -pthread -ldl -lm -o " + output_name + " " +
             "-Wl,-e,main.start " +
             "-nostartfiles " +

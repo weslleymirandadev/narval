@@ -26,7 +26,7 @@ constexpr const char* ANSI_RESET = "\x1b[0m";
 constexpr const char* ANSI_RED = "\x1b[31m";
 constexpr const char* ANSI_WHITE = "\x1b[37m";
 
-extern "C" const char* nv_base_dir = nullptr; // visible to C runtime
+extern "C" { const char* nv_base_dir = nullptr; } // visible to C runtime
 static std::string nv_base_dir_storage;
 
 int main(int argc, char* argv[]) {
@@ -58,9 +58,9 @@ int main(int argc, char* argv[]) {
         llvm::InitializeNativeTargetAsmPrinter();
         llvm::InitializeNativeTargetAsmParser();
 
-        auto target_triple = llvm::sys::getDefaultTargetTriple();
+        llvm::Triple target_triple(llvm::sys::getDefaultTargetTriple());
         std::string error;
-        const llvm::Target* target = llvm::TargetRegistry::lookupTarget(target_triple, error);
+        const llvm::Target* target = llvm::TargetRegistry::lookupTarget("", target_triple, error);
         if (!target) {
             std::cerr << "Target error: " << error << "\n";
             return 1;
@@ -191,7 +191,6 @@ int main(int argc, char* argv[]) {
 
         std::string link_cmd =
             std::string("gcc -g ") + NARVAL_SOURCE_DIR + "/build/lib/runtime.o " +
-            NARVAL_SOURCE_DIR + "/build/lib/std.o " +
             "narval_module.o -lgc -pthread -ldl -lm -o narval_program " +
             "-Wl,-e,main.start " +     // entry point
             "-nostartfiles " +         // sem crt0, _start
