@@ -438,4 +438,67 @@ int is_valid_type(int32_t type);
 // Obter nome do tipo como string (legado)
 const char* get_type_name(int32_t type);
 
+// Liberar TypeInfo (legado)
+void free_type_info(TypeInfo* info);
+
+/* ============================================================= */
+/*                    FUNÇÕES DE CRIAÇÃO DE VALORES            */
+/* ============================================================= */
+
+// Obter tipo de um valor
+int32_t get_value_type(const Value* v);
+
+// Obter informações de tipo (legado)
+TypeInfo* get_value_type_info_legacy(const Value* v);
+
+// Imprimir informações de tipo (para debug)
+void print_type_info(const Value* v);
+
+// Converter tipo (se possível)
+int convert_type(Value* out, const Value* in, int32_t target_type);
+
+// Validar valor (legado)
+int validate_value(const Value* v);
+
+// Copiar valor (legado)
+void copy_value(Value* dest, const Value* src);
+
+// Comparar valores (legado)
+int compare_values(const Value* a, const Value* b);
+
+// Verificar se valor é nulo (legado)
+int is_null_value(const Value* v);
+
+// Criar valor nulo (legado)
+void create_null(Value* out);
+
+// Criar valores básicos
+void create_int(Value* out, int32_t value);
+void create_float(Value* out, double value);
+void create_bool(Value* out, int32_t value);
+void create_str(Value* out, const char* value);
+
+/* ============================================================= */
+/*                    FUNÇÕES DE GERENCIAMENTO DE MEMÓRIA       */
+/* ============================================================= */
+
+// Incrementar contador de referências
+static inline void nv_incref(NvObject* obj) {
+    if (obj) {
+        obj->ref_count++;
+    }
+}
+
+// Decrementar contador de referências
+static inline void nv_decref(NvObject* obj) {
+    if (obj && --obj->ref_count == 0) {
+        // Liberar objeto
+        if (obj->ob_type && obj->ob_type->tp_dealloc) {
+            obj->ob_type->tp_dealloc(obj);
+        } else {
+            free(obj);
+        }
+    }
+}
+
 #endif /* PROTOTYPES_H */
