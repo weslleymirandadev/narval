@@ -10,24 +10,6 @@ extern void register_global_init(void);
 /*                    FUNÇÕES DE ACESSO E MANIPULAÇÃO        */
 /* ============================================================= */
 
-// Incrementar contador de referências (compatibilidade)
-static inline void nv_incref(NvObject* obj) {
-    if (obj) {
-        obj->ref_count++;
-    }
-}
-
-// Decrementar contador de referências (compatibilidade)
-static inline void nv_decref(NvObject* obj) {
-    if (obj && --obj->ref_count == 0) {
-        // Liberar objeto
-        if (obj->ob_type && obj->ob_type->tp_dealloc) {
-            obj->ob_type->tp_dealloc(obj);
-        } else {
-            free(obj);
-        }
-    }
-}
 
 // Obter tipo de um valor (para compatibilidade com legado)
 int32_t get_value_type(const Value* v) {
