@@ -13,20 +13,9 @@ set(LIB_DIR ${LIB_DIR} CACHE INTERNAL "Pasta de arquivos gerados")
 
 include_directories(${PROJECT_SOURCE_DIR}/include)
 
-# Flag para modo desenvolvimento vs produção
-option(NARVAL_DEV_MODE "Development mode (use local runtime)" ON)
-if(NARVAL_DEV_MODE)
-    set(NARVAL_RUNTIME_PATH "${PROJECT_SOURCE_DIR}/build/lib")
-    message(STATUS "Narval: Development mode enabled, using runtime from ${NARVAL_RUNTIME_PATH}")
-else()
-    set(NARVAL_RUNTIME_PATH "/usr/lib/narval")
-    message(STATUS "Narval: Production mode enabled, using runtime from ${NARVAL_RUNTIME_PATH}")
-endif()
-
 add_library(narval_project_includes INTERFACE)
 target_include_directories(narval_project_includes INTERFACE ${PROJECT_SOURCE_DIR}/include)
 
-find_package(LLVM REQUIRED CONFIG)
 execute_process(COMMAND llvm-config --cxxflags OUTPUT_VARIABLE LLVM_CXX_FLAGS)
 execute_process(COMMAND llvm-config --libs OUTPUT_VARIABLE LLVM_LIBS)
 execute_process(COMMAND llvm-config --system-libs OUTPUT_VARIABLE LLVM_SYS_LIBS)
@@ -41,7 +30,7 @@ string(STRIP "${LLVM_LDFLAGS}" LLVM_LDFLAGS)
 set(LLVM_ENABLE_ZSTD OFF)
 set(LLVM_ENABLE_TERMINFO OFF)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLVM_CXX_FLAGS} -fexceptions")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${LLVM_CXX_FLAGS} -fexceptions -frtti")
 
 include_directories(${LLVM_INCLUDE_DIRS})
 link_directories(${LLVM_LIBRARY_DIRS})
@@ -59,7 +48,7 @@ target_link_libraries(narval_all_common INTERFACE narval_project_includes narval
 
 function(narval_add_test target_name)
     add_executable(${target_name} ${ARGN})
-    target_link_libraries(${target_name} PRIVATE narval_all_common lexer parser checker generator runtime_objs ${STD_LL_OBJECT})
+    target_link_libraries(${target_name} PRIVATE narval_all_common lexer parser checker generator runtime_objs)
     target_include_directories(${target_name} PRIVATE ${PROJECT_SOURCE_DIR}/include)
     target_link_options(${target_name} PRIVATE -Wl,-no-pie)
 endfunction()
@@ -70,13 +59,12 @@ add_subdirectory(src/frontend/checker)
 add_subdirectory(src/frontend/interactive)
 add_subdirectory(src/backend/runtime)
 add_subdirectory(src/backend/codegen)
-add_subdirectory(lib)
 
 add_executable(narval src/main.cpp src/frontend/module_manager.cpp)
 target_link_options(narval PRIVATE -Wl,-no-pie)
 target_include_directories(narval PRIVATE ${PROJECT_SOURCE_DIR}/include)
-target_link_libraries(narval PRIVATE narval_all_common lexer parser checker generator interactive runtime_objs runtime_shared ${STD_LL_OBJECT})
-add_dependencies(narval std_o runtime_o)
+target_link_libraries(narval PRIVATE narval_all_common lexer parser checker generator interactive runtime_objs runtime_shared)
+add_dependencies(narval runtime_o)
 
 if(TARGET narval)
     target_compile_definitions(narval PRIVATE
