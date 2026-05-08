@@ -125,8 +125,9 @@ int run_batch_mode(const std::string& filename, bool build_only = false, bool ob
         context.set_current_function(main_start);
         context.set_program_function(main_start);
 
-        // Alinhar RSP a 16 bytes: sem _start wrapper, o OS não garante alinhamento.
-        // movaps/movaps dentro de variadic fns (printf) exige RSP alinhado a 16.
+        // Alinhar SP a 16 bytes: sem _start wrapper, o OS não garante alinhamento.
+        // movaps dentro de variadic fns (printf) exige RSP alinhado a 16 em x86-64.
+#if defined(__x86_64__) || defined(_M_X64)
         {
             auto* AsmTy = llvm::FunctionType::get(llvm::Type::getVoidTy(Context), false);
             auto* Asm   = llvm::InlineAsm::get(
@@ -137,6 +138,18 @@ int run_batch_mode(const std::string& filename, bool build_only = false, bool ob
             );
             context.get_builder().CreateCall(Asm, {});
         }
+#elif defined(__aarch64__) || defined(_M_ARM64)
+        {
+            auto* AsmTy = llvm::FunctionType::get(llvm::Type::getVoidTy(Context), false);
+            auto* Asm   = llvm::InlineAsm::get(
+                AsmTy,
+                "and sp, sp, #-16",
+                "~{sp}",
+                /*hasSideEffects=*/true
+            );
+            context.get_builder().CreateCall(Asm, {});
+        }
+#endif
 
         // Chamar register_global_init primeiro para inicializar os tipos
         auto* register_init_fn = Mod.getFunction("register_global_init");
