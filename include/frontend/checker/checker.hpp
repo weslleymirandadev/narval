@@ -21,6 +21,12 @@ namespace nv {
             std::vector<std::shared_ptr<nv::Namespace>> namespaces;
             std::shared_ptr<nv::Namespace> scope;
             std::unordered_map<std::string, std::shared_ptr<Type>> types;
+            // Map from function name to ordered list of parameter names (for keyword args)
+            std::unordered_map<std::string, std::vector<std::string>> function_param_names;
+            // Map from function name to ordered list of parameter default flags (for default values)
+            std::unordered_map<std::string, std::vector<bool>> function_param_defaults;
+            // Map from function name to ordered list of default value expressions (for codegen)
+            std::unordered_map<std::string, std::vector<std::unique_ptr<Expr>>> function_default_values;
             UnificationContext unify_ctx;
             bool err;
             std::string current_filename;  // Nome do arquivo fonte atual (para erros e resolução de imports)
