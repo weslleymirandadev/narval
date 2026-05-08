@@ -19,6 +19,9 @@ int32_t extract_int_from_value(Value* v) {
     } else if (type == NVBool_Type) {
         NVBool* bool_obj = (NVBool*)v->obj;
         return bool_obj->value ? 1 : 0;
+    } else if (type == NVFloat_Type) {
+        NVFloat* float_obj = (NVFloat*)v->obj;
+        return (int32_t)float_obj->value;
     }
     
     return 0;
