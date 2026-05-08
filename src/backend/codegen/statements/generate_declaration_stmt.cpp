@@ -21,9 +21,10 @@ void DeclarationStmtNode::codegen(nv::IRGenerationContext& context) {
                 // Para tipo automático, usar inferência
                 nv_type = checker->infer_expr(value.get());
             } else {
-                // Para tipo explícito, verificar com o checker
-                auto& checked_type = checker->check_node(this);
-                nv_type = checked_type;
+                // Para tipo explícito, obter o tipo a partir do checker sem re-executar
+                // check_decl_stmt (que causaria double-check e falso positivo de redeclaração).
+                // O checker já validou o tipo durante a passagem de verificação.
+                nv_type = checker->gettyptr(typ);
             }
             
             // Resolver tipo (resolve variáveis de tipo e instancia polimórficos)
