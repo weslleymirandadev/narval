@@ -290,12 +290,19 @@ int run_batch_mode(const std::string& filename, bool build_only = false, bool ob
         // Nome do binário: o stem do fonte em --build, temporário em modo run
         std::string bin_path = build_only ? stem : ("narval_tmp_" + stem);
 
+        // aarch64 (Termux/Android) exige PIE; x86-64 usa -no-pie para evitar
+        // conflito com entry point customizado main.start sem CRT.
+#if defined(__aarch64__) || defined(_M_ARM64)
+        const char* pie_flag = "-pie";
+#else
+        const char* pie_flag = "-no-pie";
+#endif
         std::string link_cmd =
             std::string("gcc -g ") + runtime_path + " " +
             obj_path + " -pthread -ldl -lm -o " + bin_path + " " +
             "-Wl,-e,main.start " +
             "-nostartfiles " +
-            "-no-pie " +
+            std::string(pie_flag) + " " +
             "-lc -w";
 
         if (system(link_cmd.c_str()) != 0) {
