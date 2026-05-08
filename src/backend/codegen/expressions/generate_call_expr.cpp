@@ -143,7 +143,7 @@ static llvm::Value* value_to_i32(IRGenerationContext& ctx, llvm::Value* v) {
 }
 
 // === BUILTIN: write, read, exit, json.load ===
-llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name, const std::vector<std::unique_ptr<Expr>>& args) {
+llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name, const std::vector<std::unique_ptr<ArgNode>>& args) {
     auto& B = ctx.get_builder();
     auto* ValueTy = ir_utils::get_value_struct(ctx);
     auto* I8P = llvm::PointerType::getUnqual(ctx.get_context());
@@ -157,7 +157,7 @@ llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name
         }
 
         // Gerar código para o argumento
-        args[0]->codegen(ctx);
+        if (args[0]->value) args[0]->value->codegen(ctx);
         if (!ctx.has_value()) return nullptr;
 
         llvm::Value* arg = ctx.pop_value();
@@ -172,7 +172,7 @@ llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name
     // str/int/float/bool conversions
     auto try_convert = [&](const char* fn_name, const char* alloca_name) -> llvm::Value* {
         if (args.empty()) return llvm::UndefValue::get(ValueTy);
-        args[0]->codegen(ctx);
+        if (args[0]->value) args[0]->value->codegen(ctx);
         if (!ctx.has_value()) return llvm::UndefValue::get(ValueTy);
         llvm::Value* arg = ctx.pop_value();
         auto* out = ctx.create_alloca(ValueTy, alloca_name);
@@ -190,7 +190,7 @@ llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name
 
     if (name == "exit") {
         if (args.size() != 1) return nullptr;
-        args[0]->codegen(ctx);
+        if (args[0]->value) args[0]->value->codegen(ctx);
         llvm::Value* code_val = ctx.pop_value();
         llvm::Value* i32_code = value_to_i32(ctx, code_val);
         auto* I32 = llvm::Type::getInt32Ty(ctx.get_context());
@@ -209,7 +209,7 @@ llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name
             return llvm::UndefValue::get(ir_utils::get_value_struct(ctx));
         } else {
             // Generate code for the argument
-            args[0]->codegen(ctx);
+            if (args[0]->value) args[0]->value->codegen(ctx);
             // Get the value but keep it on the stack conceptually
             llvm::Value* val = ctx.pop_value();
             
@@ -267,7 +267,7 @@ llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name
 
         llvm::Value* prompt_ptr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(I8P));
         if (!args.empty()) {
-            args[0]->codegen(ctx);
+            if (args[0]->value) args[0]->value->codegen(ctx);
             if (ctx.has_value()) {
                 llvm::Value* v = ctx.pop_value();
                 if (v->getType() == I8P) {
@@ -294,7 +294,7 @@ llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name
     auto* ValuePtr = ir_utils::get_value_ptr(ctx);
     auto box_arg = [&]() -> llvm::Value* {
         if (args.empty()) return nullptr;
-        args[0]->codegen(ctx);
+        if (args[0]->value) args[0]->value->codegen(ctx);
         if (!ctx.has_value()) return nullptr;
         llvm::Value* v = ctx.pop_value();
         auto* slot = ctx.create_alloca(ValueTy, "wrap_arg");
@@ -448,7 +448,7 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
 
                         std::vector<llvm::Value*> call_args;
                         for (size_t i = 0; i < args.size(); ++i) {
-                            args[i]->codegen(ctx);
+                            if (args[i]->value) args[i]->value->codegen(ctx);
                             auto* av = ctx.pop_value();
 
                             if (i < param_types.size()) {
@@ -575,7 +575,7 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
                     );
 
                     // Avalia o argumento (json_string)
-                    args[0]->codegen(ctx);
+                    if (args[0]->value) args[0]->value->codegen(ctx);
                     llvm::Value* json_string = ctx.pop_value();
                     auto* I8P = ir_utils::get_i8_ptr(ctx);
 
@@ -609,7 +609,7 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
                     }
 
                     // Avalia o argumento (filename)
-                    args[0]->codegen(ctx);
+                    if (args[0]->value) args[0]->value->codegen(ctx);
                     llvm::Value* filename = ctx.pop_value();
                     auto* I8P = ir_utils::get_i8_ptr(ctx);
 
@@ -647,10 +647,10 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
                     }
 
                     // Avalia os argumentos (value, filename)
-                    args[0]->codegen(ctx);
+                    if (args[0]->value) args[0]->value->codegen(ctx);
                     llvm::Value* value = ctx.pop_value();
                     
-                    args[1]->codegen(ctx);
+                    if (args[1]->value) args[1]->value->codegen(ctx);
                     llvm::Value* filename = ctx.pop_value();
                     auto* I8P = ir_utils::get_i8_ptr(ctx);
 
@@ -694,7 +694,7 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
                     }
 
                     // Avalia o argumento (value)
-                    args[0]->codegen(ctx);
+                    if (args[0]->value) args[0]->value->codegen(ctx);
                     llvm::Value* value = ctx.pop_value();
 
                     // Chama void json_stringify(Value* out, const Value*)
@@ -758,7 +758,7 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
                         // Box each argument as Value*
                         std::vector<llvm::Value*> call_args = {self_alloca};
                         for (auto& a : args) {
-                            a->codegen(ctx);
+                            if (a->value) a->value->codegen(ctx);
                             auto* av = ctx.pop_value();
                             call_args.push_back(box_value(ctx, av));
                         }
@@ -780,7 +780,7 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
 
         std::vector<llvm::Value*> argv;
         for (auto& a : args) {
-            a->codegen(ctx);
+            if (a->value) a->value->codegen(ctx);
             argv.push_back(ctx.pop_value());
         }
 
@@ -815,33 +815,177 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
         auto* I64 = llvm::Type::getInt64Ty(ctx.get_context());
         auto* F64 = llvm::Type::getDoubleTy(ctx.get_context());
         
-        for (size_t i = 0; i < args.size() && i < param_types.size(); ++i) {
-            args[i]->codegen(ctx);
-            llvm::Value* arg_val = ctx.pop_value();
-            
-            // Se o argumento é Value struct mas a função espera tipo primitivo, extrair o valor
-            if (arg_val && arg_val->getType() == ValueTy && param_types[i] != ValueTy) {
-                // Extrair valor primitivo do Value struct
-                auto* tmp_alloca = ctx.create_alloca(ValueTy, "arg_tmp");
-                B.CreateStore(arg_val, tmp_alloca);
-                
-                // Garantir que o Value tenha o tipo correto em runtime
-                auto* ensure_fn = ctx.ensure_runtime_func("ensure_value_type", {ValuePtr});
-                B.CreateCall(ensure_fn, {tmp_alloca});
+        // Detect keyword args
+        bool has_keywords = false;
+        for (const auto& a : args) if (!a->name.empty()) { has_keywords = true; break; }
 
-                // Para a nova estrutura, precisamos extrair o valor usando funções runtime
-                if (param_types[i]->isIntegerTy()) {
-                    // Usar função runtime para extrair int
-                    auto* extract_int_func = ctx.ensure_runtime_func("extract_int_from_value", {I32, ValuePtr});
-                    arg_val = B.CreateCall(extract_int_func, {tmp_alloca}, "arg_int_val");
-                } else if (param_types[i]->isFloatingPointTy()) {
-                    // Usar função runtime para extrair float
-                    auto* extract_float_func = ctx.ensure_runtime_func("extract_float_from_value", {F64, ValuePtr});
-                    arg_val = B.CreateCall(extract_float_func, {tmp_alloca}, "arg_float_val");
+        if (!has_keywords) {
+            // First, evaluate all provided arguments
+            std::vector<llvm::Value*> provided_args;
+            for (size_t i = 0; i < args.size() && i < param_types.size(); ++i) {
+                if (args[i]->value) args[i]->value->codegen(ctx);
+                provided_args.push_back(ctx.pop_value());
+            }
+            
+            // Fill missing arguments with default values if available
+            if (ctx.get_type_checker()) {
+                auto* checker = static_cast<nv::Checker*>(ctx.get_type_checker());
+                if (caller->kind == NodeType::Identifier) {
+                    auto* id = static_cast<IdentifierNode*>(caller.get());
+                    auto defaults_it = checker->function_default_values.find(id->symbol);
+                    if (defaults_it != checker->function_default_values.end()) {
+                        const auto& default_values = defaults_it->second;
+                        
+                        // Ensure we have arguments for all parameters
+                        while (provided_args.size() < param_types.size()) {
+                            size_t param_idx = provided_args.size();
+                            if (param_idx < default_values.size() && default_values[param_idx]) {
+                                // Generate code for default value
+                                default_values[param_idx]->codegen(ctx);
+                                provided_args.push_back(ctx.pop_value());
+                            } else {
+                                // No default value available, this should have been caught by type checker
+                                provided_args.push_back(nullptr);
+                            }
+                        }
+                    }
                 }
             }
             
-            argv.push_back(arg_val);
+            // Now process all arguments
+            for (size_t i = 0; i < provided_args.size() && i < param_types.size(); ++i) {
+                llvm::Value* arg_val = provided_args[i];
+
+                // Se o argumento é Value struct mas a função espera tipo primitivo, extrair o valor
+                if (arg_val && arg_val->getType() == ValueTy && param_types[i] != ValueTy) {
+                    // Extrair valor primitivo do Value struct
+                    auto* tmp_alloca = ctx.create_alloca(ValueTy, "arg_tmp");
+                    B.CreateStore(arg_val, tmp_alloca);
+
+                    // Garantir que o Value tenha o tipo correto em runtime
+                    auto* ensure_fn = ctx.ensure_runtime_func("ensure_value_type", {ValuePtr});
+                    B.CreateCall(ensure_fn, {tmp_alloca});
+
+                    // Para a nova estrutura, precisamos extrair o valor usando funções runtime
+                    if (param_types[i]->isIntegerTy()) {
+                        // Usar função runtime para extrair int
+                        auto* extract_int_func = ctx.ensure_runtime_func("extract_int_from_value", {I32, ValuePtr});
+                        arg_val = B.CreateCall(extract_int_func, {tmp_alloca}, "arg_int_val");
+                    } else if (param_types[i]->isFloatingPointTy()) {
+                        // Usar função runtime para extrair float
+                        auto* extract_float_func = ctx.ensure_runtime_func("extract_float_from_value", {F64, ValuePtr});
+                        arg_val = B.CreateCall(extract_float_func, {tmp_alloca}, "arg_float_val");
+                    }
+                }
+
+                argv.push_back(arg_val);
+            }
+        } else {
+            // Keyword args: require direct identifier caller and parameter name map from Checker
+            if (caller->kind != NodeType::Identifier) {
+                ctx.push_value(nullptr);
+                return;
+            }
+            if (!ctx.get_type_checker()) {
+                ctx.push_value(nullptr);
+                return;
+            }
+            auto* checker = static_cast<nv::Checker*>(ctx.get_type_checker());
+            auto* id = static_cast<IdentifierNode*>(caller.get());
+            auto it = checker->function_param_names.find(id->symbol);
+            if (it == checker->function_param_names.end()) {
+                ctx.push_value(nullptr);
+                return;
+            }
+            const auto& pname_list = it->second;
+            if (pname_list.size() != param_types.size()) {
+                ctx.push_value(nullptr);
+                return;
+            }
+
+            // Evaluate all args left-to-right and collect their values
+            std::vector<llvm::Value*> eval_vals;
+            eval_vals.reserve(args.size());
+            for (auto& a : args) {
+                if (a->value) a->value->codegen(ctx);
+                eval_vals.push_back(ctx.pop_value());
+            }
+
+            // Map to parameter order
+            std::vector<llvm::Value*> ordered_args(param_types.size(), nullptr);
+            size_t pos_index = 0;
+            for (size_t ai = 0; ai < args.size(); ++ai) {
+                if (args[ai]->name.empty()) {
+                    if (pos_index >= ordered_args.size()) { ctx.push_value(nullptr); return; }
+                    ordered_args[pos_index++] = eval_vals[ai];
+                } else {
+                    auto found = std::find(pname_list.begin(), pname_list.end(), args[ai]->name);
+                    if (found == pname_list.end()) { ctx.push_value(nullptr); return; }
+                    size_t idx = std::distance(pname_list.begin(), found);
+                    if (ordered_args[idx]) { ctx.push_value(nullptr); return; }
+                    ordered_args[idx] = eval_vals[ai];
+                }
+            }
+
+            // Fill missing arguments with default values
+            auto defaults_it = checker->function_default_values.find(id->symbol);
+            if (defaults_it != checker->function_default_values.end()) {
+                const auto& default_values = defaults_it->second;
+                for (size_t i = 0; i < ordered_args.size(); ++i) {
+                    if (!ordered_args[i] && i < default_values.size() && default_values[i]) {
+                        // Generate code for default value
+                        default_values[i]->codegen(ctx);
+                        ordered_args[i] = ctx.pop_value();
+                    }
+                }
+            }
+
+            // Ensure all assigned (after filling defaults)
+            for (size_t i = 0; i < ordered_args.size(); ++i) {
+                if (!ordered_args[i]) { ctx.push_value(nullptr); return; }
+            }
+
+            // Now adapt each ordered arg to expected param type
+            for (size_t i = 0; i < ordered_args.size() && i < param_types.size(); ++i) {
+                llvm::Value* arg_val = ordered_args[i];
+                if (arg_val && arg_val->getType() == ValueTy && param_types[i] != ValueTy) {
+                    auto* tmp_alloca = ctx.create_alloca(ValueTy, "arg_tmp_kw");
+                    B.CreateStore(arg_val, tmp_alloca);
+                    auto* ensure_fn = ctx.ensure_runtime_func("ensure_value_type", {ValuePtr});
+                    B.CreateCall(ensure_fn, {tmp_alloca});
+                    if (param_types[i]->isIntegerTy()) {
+                        auto* extract_int_func = ctx.ensure_runtime_func("extract_int_from_value", {I32, ValuePtr});
+                        arg_val = B.CreateCall(extract_int_func, {tmp_alloca}, "arg_int_val");
+                    } else if (param_types[i]->isFloatingPointTy()) {
+                        auto* extract_float_func = ctx.ensure_runtime_func("extract_float_from_value", {F64, ValuePtr});
+                        arg_val = B.CreateCall(extract_float_func, {tmp_alloca}, "arg_float_val");
+                    }
+                } else if (arg_val && arg_val->getType() != ValueTy && param_types[i] == ValueTy) {
+                    // box primitive into Value
+                    auto* slot = ctx.create_alloca(ValueTy, "kw_ns_arg");
+                    if (arg_val->getType()->isIntegerTy(1)) {
+                        auto* f = ctx.ensure_runtime_func("create_bool", {ValuePtr, I32});
+                        B.CreateCall(f, {slot, B.CreateZExt(arg_val, I32)});
+                    } else if (arg_val->getType()->isIntegerTy()) {
+                        auto* iv = arg_val->getType()->isIntegerTy(32) ? arg_val : B.CreateSExtOrTrunc(arg_val, I32);
+                        auto* f = ctx.ensure_runtime_func("create_int", {ValuePtr, I32});
+                        B.CreateCall(f, {slot, iv});
+                    } else if (arg_val->getType()->isFloatingPointTy()) {
+                        auto* fv = arg_val->getType() == F64 ? arg_val : B.CreateFPExt(arg_val, F64);
+                        auto* f = ctx.ensure_runtime_func("create_float", {ValuePtr, F64});
+                        B.CreateCall(f, {slot, fv});
+                    } else if (arg_val->getType()->isPointerTy()) {
+                        auto* f = ctx.ensure_runtime_func("create_str", {ValuePtr, arg_val->getType()});
+                        B.CreateCall(f, {slot, arg_val});
+                    } else {
+                        B.CreateStore(llvm::UndefValue::get(ValueTy), slot);
+                    }
+                    arg_val = B.CreateLoad(ValueTy, slot);
+                } else if (arg_val && arg_val->getType()->isPointerTy() && param_types[i] == ValueTy) {
+                    arg_val = B.CreateLoad(ValueTy, arg_val);
+                }
+                argv.push_back(arg_val);
+            }
         }
         
         auto* call = B.CreateCall(F, argv);
