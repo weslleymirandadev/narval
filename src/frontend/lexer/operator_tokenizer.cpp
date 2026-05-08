@@ -28,6 +28,16 @@ Token tokenize_operator(const std::string& input, size_t& pos, size_t& line, siz
             pos += 3;
             column += 3;
             return Token(TokenType::INTEGER_DIV_ASSIGN, value, line, start_column, column, start_position, pos, filename);
+        } else if (candidate == "<<=") {
+            value = candidate;
+            pos += 3;
+            column += 3;
+            return Token(TokenType::LEFT_SHIFT_ASSIGN, value, line, start_column, column, start_position, pos, filename);
+        } else if (candidate == ">>=") {
+            value = candidate;
+            pos += 3;
+            column += 3;
+            return Token(TokenType::RIGHT_SHIFT_ASSIGN, value, line, start_column, column, start_position, pos, filename);
         }
     }
 
@@ -118,6 +128,36 @@ Token tokenize_operator(const std::string& input, size_t& pos, size_t& line, siz
             pos += 2;
             column += 2;
             return Token(TokenType::MOD_ASSIGN, value, line, start_column, column, start_position, pos, filename);
+        } else if (candidate == "<<") {
+            value = candidate;
+            pos += 2;
+            column += 2;
+            return Token(TokenType::LEFT_SHIFT, value, line, start_column, column, start_position, pos, filename);
+        } else if (candidate == ">>") {
+            value = candidate;
+            pos += 2;
+            column += 2;
+            return Token(TokenType::RIGHT_SHIFT, value, line, start_column, column, start_position, pos, filename);
+        } else if (candidate == "&=") {
+            value = candidate;
+            pos += 2;
+            column += 2;
+            return Token(TokenType::BITWISE_AND_ASSIGN, value, line, start_column, column, start_position, pos, filename);
+        } else if (candidate == "|=") {
+            value = candidate;
+            pos += 2;
+            column += 2;
+            return Token(TokenType::BITWISE_OR_ASSIGN, value, line, start_column, column, start_position, pos, filename);
+        } else if (candidate == "^=") {
+            value = candidate;
+            pos += 2;
+            column += 2;
+            return Token(TokenType::BITWISE_XOR_ASSIGN, value, line, start_column, column, start_position, pos, filename);
+        } else if (candidate == "@=") {
+            value = candidate;
+            pos += 2;
+            column += 2;
+            return Token(TokenType::AT_ASSIGN, value, line, start_column, column, start_position, pos, filename);
         }
     }
 
@@ -217,6 +257,31 @@ Token tokenize_operator(const std::string& input, size_t& pos, size_t& line, siz
         pos += 1;
         column += 1; //voltaste
         return Token(TokenType::COLON, value, line, start_column, column, start_position, pos, filename);
+    } else if (c == '&') {
+        value = std::string(1, c);
+        pos += 1;
+        column += 1;
+        return Token(TokenType::BITWISE_AND, value, line, start_column, column, start_position, pos, filename);
+    } else if (c == '|') {
+        value = std::string(1, c);
+        pos += 1;
+        column += 1;
+        return Token(TokenType::BITWISE_OR, value, line, start_column, column, start_position, pos, filename);
+    } else if (c == '^') {
+        value = std::string(1, c);
+        pos += 1;
+        column += 1;
+        return Token(TokenType::BITWISE_XOR, value, line, start_column, column, start_position, pos, filename);
+    } else if (c == '~') {
+        value = std::string(1, c);
+        pos += 1;
+        column += 1;
+        return Token(TokenType::BITWISE_NOT, value, line, start_column, column, start_position, pos, filename);
+    } else if (c == '@') {
+        value = std::string(1, c);
+        pos += 1;
+        column += 1;
+        return Token(TokenType::AT, value, line, start_column, column, start_position, pos, filename);
     } else {
         throw std::runtime_error("Invalid operator at line " + std::to_string(line) + ", column " + std::to_string(start_column));
     }

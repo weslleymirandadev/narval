@@ -63,6 +63,19 @@ enum class TokenType {
     INTEGER_DIV_ASSIGN,
     POWER_ASSIGN, //that's kinda poetic
     MOD_ASSIGN,
+    BITWISE_AND,
+    BITWISE_OR,
+    BITWISE_XOR,
+    BITWISE_NOT,
+    LEFT_SHIFT,
+    RIGHT_SHIFT,
+    BITWISE_AND_ASSIGN,
+    BITWISE_OR_ASSIGN,
+    BITWISE_XOR_ASSIGN,
+    LEFT_SHIFT_ASSIGN,
+    RIGHT_SHIFT_ASSIGN,
+    AT,
+    AT_ASSIGN,
     CLASS,
     PUBLIC,
     PRIVATE,
@@ -148,6 +161,19 @@ inline const char* get_token_name(TokenType type) {
         case TokenType::INTEGER_DIV_ASSIGN: return "INTEGER_DIV_ASSIGN";
         case TokenType::POWER_ASSIGN: return "POWER_ASSIGN";
         case TokenType::MOD_ASSIGN: return "MOD_ASSIGN";
+        case TokenType::BITWISE_AND: return "BITWISE_AND";
+        case TokenType::BITWISE_OR: return "BITWISE_OR";
+        case TokenType::BITWISE_XOR: return "BITWISE_XOR";
+        case TokenType::BITWISE_NOT: return "BITWISE_NOT";
+        case TokenType::LEFT_SHIFT: return "LEFT_SHIFT";
+        case TokenType::RIGHT_SHIFT: return "RIGHT_SHIFT";
+        case TokenType::BITWISE_AND_ASSIGN: return "BITWISE_AND_ASSIGN";
+        case TokenType::BITWISE_OR_ASSIGN: return "BITWISE_OR_ASSIGN";
+        case TokenType::BITWISE_XOR_ASSIGN: return "BITWISE_XOR_ASSIGN";
+        case TokenType::LEFT_SHIFT_ASSIGN: return "LEFT_SHIFT_ASSIGN";
+        case TokenType::RIGHT_SHIFT_ASSIGN: return "RIGHT_SHIFT_ASSIGN";
+        case TokenType::AT: return "AT";
+        case TokenType::AT_ASSIGN: return "AT_ASSIGN";
         case TokenType::CLASS: return "CLASS";
         case TokenType::PUBLIC: return "PUBLIC";
         case TokenType::PRIVATE: return "PRIVATE";

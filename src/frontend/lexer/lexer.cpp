@@ -109,6 +109,9 @@ bool Lexer::is_operator_start(char c)
            c == ':' ||
            c == '|' ||
            c == '&' ||
+           c == '^' ||
+           c == '~' ||
+           c == '@' ||
            c == '%' ||
            c == '+' ||
            c == '-';
