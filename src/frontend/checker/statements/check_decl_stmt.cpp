@@ -91,11 +91,11 @@ std::shared_ptr<nv::Type>& check_decl_stmt(nv::Checker* ch, Node* node) {
                 actual_elements = vec_node->elements.size();
             }
             
-            if (actual_elements > declared_size) {
-                ch->error(decl->value.get(), "Array size mismatch: declared size is " + 
-                                       std::to_string(declared_size) + 
-                                       ", but " + std::to_string(actual_elements) + 
-                                       " elements were provided.");
+            if (actual_elements != declared_size) {
+                ch->error(decl->value.get(),
+                          "Array size mismatch: type requires exactly " +
+                          std::to_string(declared_size) + " element(s), but " +
+                          std::to_string(actual_elements) + " were provided.");
                 return ch->gettyptr("void");
             }
         }
