@@ -36,7 +36,7 @@ void ThrowStatementNode::codegen(nv::IRGenerationContext& ctx) {
                 /* Avaliar mensagem (primeiro argumento) */
                 llvm::Value* msg_ptr = B.CreateGlobalString("", "default_msg");
                 if (!call->args.empty()) {
-                    call->args[0]->codegen(ctx);
+                    if (call->args[0]->value) call->args[0]->value->codegen(ctx);
                     if (ctx.has_value()) {
                         auto* msg_val = ctx.pop_value();
                         if (msg_val) {
