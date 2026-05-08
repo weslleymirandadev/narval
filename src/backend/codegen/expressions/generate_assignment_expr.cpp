@@ -356,17 +356,54 @@ void AssignmentExprNode::codegen(nv::IRGenerationContext& ctx) {
             ctx.get_symbol_table().define_symbol(id->symbol, info);
         }
     } else {
-        // Variável local: comportamento original
-        if (rhs->getType() == ValueTy) {
-            chosenTy = ValueTy;
-        } else {
-            chosenTy = llvm::Type::getInt32Ty(ctx.get_context());
-            rhs = nv::ir_utils::promote_type(ctx, rhs, chosenTy);
-        }
+        // Variável local: por simplicidade, armazenar como Value (boxar primitivos)
+        chosenTy = ValueTy;
         storage = ctx.create_and_register_variable(id->symbol, chosenTy, nullptr, false);
-        ctx.get_builder().CreateStore(rhs, storage);
-        
-        // Para variáveis locais, o registro já foi feito por create_and_register_variable
+
+        // Se RHS já é Value, armazenar diretamente
+        if (rhs->getType() == ValueTy) {
+            ctx.get_builder().CreateStore(rhs, storage);
+            ctx.push_value(rhs);
+            return;
+        }
+
+        // Caso contrário, boxar primitivo em Value temporário e armazenar
+        auto& B = ctx.get_builder();
+        auto& M = ctx.get_module();
+        auto& C = ctx.get_context();
+        auto* ValuePtr = nv::ir_utils::get_value_ptr(ctx);
+        auto* I32 = llvm::Type::getInt32Ty(C);
+        auto* F64 = llvm::Type::getDoubleTy(C);
+
+        auto* tmp_alloca = ctx.create_alloca(ValueTy, id->symbol + "_assign_local");
+        if (rhs->getType()->isIntegerTy(1)) {
+            auto decl = M.getOrInsertFunction("create_bool", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, I32}, false));
+            B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp_alloca, B.CreateZExt(rhs, I32)});
+        } else if (rhs->getType()->isIntegerTy()) {
+            auto decl = M.getOrInsertFunction("create_int", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, I32}, false));
+            llvm::Value* iv = rhs->getType()->isIntegerTy(32) ? rhs : B.CreateSExtOrTrunc(rhs, I32);
+            B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp_alloca, iv});
+        } else if (rhs->getType()->isFloatingPointTy()) {
+            auto decl = M.getOrInsertFunction("create_float", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, F64}, false));
+            llvm::Value* fp = rhs->getType() == F64 ? rhs : B.CreateFPExt(rhs, F64);
+            B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp_alloca, fp});
+        } else if (rhs->getType() == nv::ir_utils::get_i8_ptr(ctx)) {
+            auto decl = M.getOrInsertFunction("create_str", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, nv::ir_utils::get_i8_ptr(ctx)}, false));
+            B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {tmp_alloca, rhs});
+        } else if (rhs->getType()->isPointerTy()) {
+            // ponteiro para Value
+            auto* loaded_val = B.CreateLoad(ValueTy, rhs);
+            B.CreateStore(loaded_val, storage);
+            ctx.push_value(loaded_val);
+            return;
+        } else {
+            B.CreateStore(llvm::UndefValue::get(ValueTy), tmp_alloca);
+        }
+
+        auto* boxed = B.CreateLoad(ValueTy, tmp_alloca);
+        B.CreateStore(boxed, storage);
+        ctx.push_value(boxed);
+        return;
     }
     
     // Para variáveis globais, o registro já foi feito acima quando verificamos se já existia
