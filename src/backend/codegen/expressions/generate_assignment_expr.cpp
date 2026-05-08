@@ -206,7 +206,12 @@ void AssignmentExprNode::codegen(nv::IRGenerationContext& ctx) {
         else if (op == "//=") bin_op = "//";
         else if (op == "**=") bin_op = "**";
         else if (op == "%=") bin_op = "%";
-        else is_simple_assign = true; 
+        else if (op == "&=") bin_op = "&";
+        else if (op == "|=") bin_op = "|";
+        else if (op == "^=") bin_op = "^";
+        else if (op == "<<=") bin_op = "<<";
+        else if (op == ">>=") bin_op = ">>";
+        else is_simple_assign = true;
     }
 
     auto info_opt = ctx.get_symbol_table().lookup_symbol(id->symbol);
@@ -220,10 +225,14 @@ void AssignmentExprNode::codegen(nv::IRGenerationContext& ctx) {
         auto* I32 = llvm::Type::getInt32Ty(C);
         auto* F64 = llvm::Type::getDoubleTy(C);
 
+        // GlobalVariables always store as ValueTy regardless of info.llvm_type
+        bool is_global_var = llvm::isa<llvm::GlobalVariable>(info.value);
+        llvm::Type* actual_ty = is_global_var ? ValueTy : info.llvm_type;
+
         // Atribuição simples: se a variável é ValueTy, embrulhar o valor primitivo
         if (is_simple_assign) {
             // Se a variável é do tipo Value, embrulhar o valor primitivo antes de armazenar
-            if (info.llvm_type == ValueTy && rhs->getType() != ValueTy) {
+            if (actual_ty == ValueTy && rhs->getType() != ValueTy) {
                 auto* tmp_alloca = ctx.create_alloca(ValueTy, id->symbol + "_assign");
                 
                 // Embrulhar valor primitivo em Value struct
@@ -250,21 +259,69 @@ void AssignmentExprNode::codegen(nv::IRGenerationContext& ctx) {
                 ctx.push_value(boxed);
             } else {
                 // Comportamento original para tipos não-Value
-                rhs = nv::ir_utils::promote_type(ctx, rhs, info.llvm_type);
+                rhs = nv::ir_utils::promote_type(ctx, rhs, actual_ty);
                 B.CreateStore(rhs, info.value);
                 ctx.push_value(rhs);
             }
             return;
         }
 
-        // Atribuições compostas: carrega o valor atual e aplica o operador binário
-        llvm::Value* current = B.CreateLoad(info.llvm_type, info.value);
-        rhs = nv::ir_utils::promote_type(ctx, rhs, info.llvm_type);
+        // Atribuições compostas
+        llvm::Value* current = B.CreateLoad(actual_ty, info.value);
+
+        if (actual_ty == ValueTy) {
+            // Embrulhar RHS em Value se necessário
+            auto* rhs_alloca = ctx.create_alloca(ValueTy, "compound_rhs");
+            if (rhs->getType() == ValueTy) {
+                B.CreateStore(rhs, rhs_alloca);
+            } else if (rhs->getType()->isIntegerTy(1)) {
+                auto decl = M.getOrInsertFunction("create_bool", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, I32}, false));
+                B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {rhs_alloca, B.CreateZExt(rhs, I32)});
+            } else if (rhs->getType()->isIntegerTy()) {
+                auto decl = M.getOrInsertFunction("create_int", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, I32}, false));
+                llvm::Value* iv = rhs->getType()->isIntegerTy(32) ? rhs : B.CreateSExtOrTrunc(rhs, I32);
+                B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {rhs_alloca, iv});
+            } else if (rhs->getType()->isFloatingPointTy()) {
+                auto decl = M.getOrInsertFunction("create_float", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, F64}, false));
+                llvm::Value* fp = rhs->getType() == F64 ? rhs : B.CreateFPExt(rhs, F64);
+                B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {rhs_alloca, fp});
+            } else {
+                B.CreateStore(llvm::UndefValue::get(ValueTy), rhs_alloca);
+            }
+            auto* rhs_boxed = B.CreateLoad(ValueTy, rhs_alloca);
+            // Ambos são Value — create_binary_op usa nv_value_add/sub/etc ou extrai ints para bitwise
+            llvm::Value* result = nv::ir_utils::create_binary_op(ctx, current, rhs_boxed, bin_op);
+            if (!result) { ctx.push_value(nullptr); return; }
+            // Se o resultado for Value, armazenar direto; senão, re-embrulhar
+            if (result->getType() == ValueTy) {
+                B.CreateStore(result, info.value);
+                ctx.push_value(result);
+            } else {
+                auto* out_alloca = ctx.create_alloca(ValueTy, "compound_out");
+                if (result->getType()->isFloatingPointTy()) {
+                    auto decl = M.getOrInsertFunction("create_float", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, F64}, false));
+                    llvm::Value* fp = result->getType() == F64 ? result : B.CreateFPExt(result, F64);
+                    B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {out_alloca, fp});
+                } else if (result->getType()->isIntegerTy()) {
+                    auto decl = M.getOrInsertFunction("create_int", llvm::FunctionType::get(llvm::Type::getVoidTy(C), {ValuePtr, I32}, false));
+                    llvm::Value* iv = result->getType()->isIntegerTy(32) ? result : B.CreateSExtOrTrunc(result, I32);
+                    B.CreateCall(llvm::cast<llvm::Function>(decl.getCallee()), {out_alloca, iv});
+                } else {
+                    B.CreateStore(llvm::UndefValue::get(ValueTy), out_alloca);
+                }
+                auto* boxed = B.CreateLoad(ValueTy, out_alloca);
+                B.CreateStore(boxed, info.value);
+                ctx.push_value(boxed);
+            }
+            return;
+        }
+
+        // Tipos primitivos: operar diretamente
+        rhs = nv::ir_utils::promote_type(ctx, rhs, actual_ty);
         llvm::Value* result = nv::ir_utils::create_binary_op(ctx, current, rhs, bin_op);
         if (!result) { ctx.push_value(nullptr); return; }
 
-        // Garantir que o resultado tenha o tipo da variável
-        result = nv::ir_utils::promote_type(ctx, result, info.llvm_type);
+        result = nv::ir_utils::promote_type(ctx, result, actual_ty);
         B.CreateStore(result, info.value);
         ctx.push_value(result);
         return;

@@ -341,6 +341,39 @@ llvm::Value* create_binary_op(IRGenerationContext& context, llvm::Value* lhs, ll
             builder.CreateCall(fn, {out_alloca, lhs_alloca, rhs_alloca});
             return builder.CreateLoad(valueStruct, out_alloca, "arith_val");
         }
+        // Divisão inteira: extrair ints, SDiv, empacotar como int
+        if (op == "//") {
+            auto* li = extract_int_from_value(context, lhs);
+            auto* ri = extract_int_from_value(context, rhs);
+            auto* qv = builder.CreateSDiv(li, ri, "idiv");
+            auto* out_alloca = context.create_alloca(valueStruct, "idiv_out");
+            auto* ValuePtr = get_value_ptr(context);
+            auto* I32 = get_i32(context);
+            auto* VoidTy = llvm::Type::getVoidTy(context.get_context());
+            auto* ci = context.ensure_runtime_func("create_int", {ValuePtr, I32}, VoidTy);
+            auto* iv = qv->getType()->isIntegerTy(32) ? qv : builder.CreateSExtOrTrunc(qv, I32);
+            builder.CreateCall(ci, {out_alloca, iv});
+            return builder.CreateLoad(valueStruct, out_alloca, "idiv_val");
+        }
+        // Operações bitwise: extrair ints, operar, empacotar de volta em Value
+        if (op == "&" || op == "|" || op == "^" || op == "<<" || op == ">>") {
+            auto* li = extract_int_from_value(context, lhs);
+            auto* ri = extract_int_from_value(context, rhs);
+            llvm::Value* bitres = nullptr;
+            if (op == "&")  bitres = builder.CreateAnd(li, ri, "band");
+            else if (op == "|")  bitres = builder.CreateOr(li, ri, "bor");
+            else if (op == "^")  bitres = builder.CreateXor(li, ri, "bxor");
+            else if (op == "<<") bitres = builder.CreateShl(li, builder.CreateZExtOrTrunc(ri, li->getType()), "shl");
+            else if (op == ">>") bitres = builder.CreateAShr(li, builder.CreateZExtOrTrunc(ri, li->getType()), "shr");
+            auto* out_alloca = context.create_alloca(valueStruct, "bitop_out");
+            auto* ValuePtr = get_value_ptr(context);
+            auto* I32 = get_i32(context);
+            auto* VoidTy = llvm::Type::getVoidTy(context.get_context());
+            auto* ci = context.ensure_runtime_func("create_int", {ValuePtr, I32}, VoidTy);
+            auto* iv = bitres->getType()->isIntegerTy(32) ? bitres : builder.CreateSExtOrTrunc(bitres, I32);
+            builder.CreateCall(ci, {out_alloca, iv});
+            return builder.CreateLoad(valueStruct, out_alloca, "bitop_val");
+        }
         // Tratamento para potência: extrair floats e aplicar llvm.pow.f64, depois empacotar
         if (op == "**") {
             auto* lf = extract_float_from_value(context, lhs);
@@ -421,6 +454,15 @@ llvm::Value* create_binary_op(IRGenerationContext& context, llvm::Value* lhs, ll
         }
     }
     if (op == "%") return lhs_type->isFloatingPointTy() ? builder.CreateFRem(lhs, rhs, "mod") : builder.CreateSRem(lhs, rhs, "mod");
+
+    if (lhs_type->isIntegerTy() && rhs_type->isIntegerTy()) {
+        auto* rhs_cast = rhs->getType() == lhs_type ? rhs : builder.CreateZExtOrTrunc(rhs, lhs_type);
+        if (op == "&")  return builder.CreateAnd(lhs, rhs_cast, "band");
+        if (op == "|")  return builder.CreateOr(lhs, rhs_cast, "bor");
+        if (op == "^")  return builder.CreateXor(lhs, rhs_cast, "bxor");
+        if (op == "<<") return builder.CreateShl(lhs, rhs_cast, "shl");
+        if (op == ">>") return builder.CreateAShr(lhs, rhs_cast, "shr");
+    }
 
     return nullptr;
 }
