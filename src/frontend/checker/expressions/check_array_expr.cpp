@@ -42,21 +42,18 @@ std::shared_ptr<nv::Type> check_array_expr(nv::Checker* ch, Node* node) {
         }
         
         if (!types_compatible) {
-            // Tipos incompatíveis → Vector
-            all_same_type = false;
-            break;
-        }
-    }
-    
-    // Se todos têm mesmo tipo (ou coerção válida), criar Array com tamanho fixo
-    if (all_same_type) {
-        first_type = ch->unify_ctx.resolve(first_type);
-        // Verificar se não é variável de tipo não resolvida
-        if (first_type->kind != nv::Kind::TYPE_VAR) {
+            ch->error(arr->elements[i].get(),
+                      "Array elements must have the same type: expected '" +
+                      first_type->toString() + "', but element " + std::to_string(i) +
+                      " has type '" + elem_type->toString() + "'. Use [] for heterogeneous collections.");
             return std::make_shared<nv::Array>(first_type, arr->elements.size());
         }
     }
-    
-    // Caso contrário, criar Vector (heterogêneo ou tamanho variável)
+
+    first_type = ch->unify_ctx.resolve(first_type);
+    if (first_type->kind != nv::Kind::TYPE_VAR) {
+        return std::make_shared<nv::Array>(first_type, arr->elements.size());
+    }
+
     return std::make_shared<nv::Vector>();
 }
