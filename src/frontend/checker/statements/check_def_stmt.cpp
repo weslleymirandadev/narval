@@ -90,6 +90,45 @@ std::shared_ptr<nv::Type>& check_def_stmt(nv::Checker* ch, Node* node) {
     
     // Registrar função no escopo
     ch->scope->put_key(def_stmt->name, generalized_func, false);
+    // Also record parameter names order for keyword-arg binding
+    std::vector<std::string> pname_list;
+    std::vector<bool> param_has_default;
+    size_t param_idx = 0;
+    for (const auto& param : def_stmt->parameters) {
+        if (!param.parameter.empty()) {
+            for (const auto& kv : param.parameter) {
+                pname_list.push_back(kv.first);
+            }
+        }
+        param_has_default.push_back(param.default_value != nullptr);
+
+        // Check default value type if present
+        if (param.default_value && param_idx < param_types.size()) {
+            auto default_type = ch->infer_expr(param.default_value.get());
+            try {
+                ch->unify_ctx.unify(default_type, param_types[param_idx]);
+            } catch (std::runtime_error& e) {
+                ch->error(param.default_value.get(),
+                         "Default value type does not match parameter type: " + std::string(e.what()));
+            }
+        }
+        param_idx++;
+    }
+    if (!pname_list.empty()) {
+        ch->function_param_names[def_stmt->name] = pname_list;
+        ch->function_param_defaults[def_stmt->name] = param_has_default;
+        
+        // Store default value expressions for codegen
+        std::vector<std::unique_ptr<Expr>> default_values;
+        for (const auto& param : def_stmt->parameters) {
+            if (param.default_value) {
+                default_values.push_back(std::unique_ptr<Expr>(static_cast<Expr*>(param.default_value->clone())));
+            } else {
+                default_values.push_back(nullptr);
+            }
+        }
+        ch->function_default_values[def_stmt->name] = std::move(default_values);
+    }
     
     return ch->scope->get_key(def_stmt->name);
 }
