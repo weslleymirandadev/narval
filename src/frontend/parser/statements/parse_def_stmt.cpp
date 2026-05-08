@@ -2,6 +2,7 @@
 #include "frontend/parser/statements/parse_stmt.hpp"
 #include "frontend/parser/expressions/parse_args.hpp"
 #include "frontend/parser/expressions/parse_type.hpp"
+#include "frontend/parser/expressions/parse_assignment_expr.hpp"
 
 std::unique_ptr<Node> parse_def_stmt(Parser* parser) {
     size_t line = parser->current_token().line;
@@ -35,7 +36,15 @@ std::unique_ptr<Node> parse_def_stmt(Parser* parser) {
         std::unordered_map<std::string, std::string> param;
         param[arg_name_token.lexeme] = arg_type;
 
-        ParamNode param_node(param);
+        // Check for default value: name: type = expression
+        std::unique_ptr<Expr> default_val = nullptr;
+        if (parser->current_token().type == TokenType::ASSIGNMENT) {
+            parser->consume_token(); // consume '='
+            // Parse default value expression
+            default_val = std::unique_ptr<Expr>(static_cast<Expr*>(parse_assignment_expr(parser).release()));
+        }
+
+        ParamNode param_node(param, std::move(default_val));
         param_node.position = std::move(pos_param);
 
         def_node->parameters.push_back(param_node);
