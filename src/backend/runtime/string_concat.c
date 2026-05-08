@@ -4,7 +4,7 @@
 #include <string.h>
 #include <stdio.h>
 
-char* string_concat(const char* str1, const char* str2) {
+char* string_concat(char* str1, char* str2) {
     if (!str1) str1 = "";
     if (!str2) str2 = "";
     size_t len1 = strlen(str1);
