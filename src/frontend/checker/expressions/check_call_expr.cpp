@@ -94,7 +94,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
         // Verificar cada argumento
         std::vector<std::shared_ptr<nv::Type>> arg_types;
         for (const auto& arg : call->args) {
-            auto arg_type = ch->infer_expr(arg.get());
+            auto arg_type = ch->infer_expr(arg->value.get());
             arg_types.push_back(arg_type);
         }
         
@@ -141,14 +141,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
     // resetar err - apenas continuar verificando mesmo com err=true
     std::vector<std::shared_ptr<nv::Type>> arg_types;
     for (const auto& arg : call->args) {
-        // Usar infer_expr para verificar recursivamente cada argumento
-        // Isso vai garantir que identificadores dentro de expressões sejam verificados
-        // e que os tipos sejam inferidos corretamente
-        // O método error() já previne duplicação usando reported_errors
-        auto arg_type = ch->infer_expr(arg.get());
-        
-        // Continuar verificando outros argumentos mesmo se houver erro
-        // para reportar todos os erros possíveis
+        auto arg_type = ch->infer_expr(arg->value.get());
         arg_types.push_back(arg_type);
     }
     
@@ -205,22 +198,128 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
         }
         
         // Verificar número de argumentos
-        if (!is_builtin_varargs && call->args.size() != def->paramstype.size()) {
-            std::ostringstream oss;
-            oss << "Function call argument count mismatch: expected " 
-                << def->paramstype.size() 
-                << ", got " << call->args.size();
-            ch->error(const_cast<Node*>(node), oss.str());
-            return ch->gettyptr("void");
+        // Support keyword arguments for regular functions
+        bool has_keywords = false;
+        for (const auto& a : call->args) if (!a->name.empty()) { has_keywords = true; break; }
+
+        if (!is_builtin_varargs && !has_keywords) {
+            // Check argument count considering default values
+            std::string func_name;
+            if (call->caller->kind == NodeType::Identifier) {
+                func_name = static_cast<IdentifierNode*>(call->caller.get())->symbol;
+            }
+            auto defaults_it = ch->function_param_defaults.find(func_name);
+            size_t min_args = def->paramstype.size();
+            if (defaults_it != ch->function_param_defaults.end()) {
+                const auto& param_defaults = defaults_it->second;
+                // Count how many parameters from the end have defaults
+                while (min_args > 0 && min_args - 1 < param_defaults.size() && param_defaults[min_args - 1]) {
+                    min_args--;
+                }
+            }
+            
+            if (call->args.size() > def->paramstype.size() || call->args.size() < min_args) {
+                std::ostringstream oss;
+                if (call->args.size() < min_args) {
+                    oss << "Function call argument count mismatch: expected at least " << min_args;
+                } else {
+                    oss << "Function call argument count mismatch: expected at most " << def->paramstype.size();
+                }
+                oss << ", got " << call->args.size();
+                ch->error(const_cast<Node*>(node), oss.str());
+                return ch->gettyptr("void");
+            }
         }
         
         // Unificar tipos dos argumentos com tipos dos parâmetros
         // Para funções com varargs, unificar apenas os argumentos fornecidos
-        if (call->args.size() > 0) {
-            size_t max_args = std::min(call->args.size(), def->paramstype.size());
-            for (size_t i = 0; i < max_args; i++) {
+        if (!has_keywords) {
+            if (call->args.size() > 0) {
+                size_t max_args = std::min(call->args.size(), def->paramstype.size());
+                for (size_t i = 0; i < max_args; i++) {
+                    try {
+                        ch->unify_ctx.unify(arg_types[i], def->paramstype[i]);
+                    } catch (std::runtime_error& e) {
+                        std::ostringstream oss;
+                        oss << "Function call argument type error: " << e.what();
+                        ch->error(const_cast<Node*>(node), oss.str());
+                        return ch->gettyptr("void");
+                    }
+                }
+            }
+        } else {
+            // Map keyword args to parameter order using recorded parameter names
+            if (call->caller->kind != NodeType::Identifier) {
+                ch->error(const_cast<Node*>(node), "Keyword arguments only supported for direct function identifiers");
+                return ch->gettyptr("void");
+            }
+            auto* id = static_cast<IdentifierNode*>(call->caller.get());
+            auto it = ch->function_param_names.find(id->symbol);
+            if (it == ch->function_param_names.end()) {
+                ch->error(const_cast<Node*>(node), "Cannot bind keyword arguments: unknown function parameter names");
+                return ch->gettyptr("void");
+            }
+            const auto& pname_list = it->second;
+            if (pname_list.size() != def->paramstype.size()) {
+                ch->error(const_cast<Node*>(node), "Internal error: parameter name list size mismatch");
+                return ch->gettyptr("void");
+            }
+
+            std::vector<std::shared_ptr<nv::Type>> ordered_args(def->paramstype.size());
+            std::vector<bool> assigned(def->paramstype.size(), false);
+            size_t pos_index = 0;
+            bool seen_keyword = false;
+            for (const auto& a : call->args) {
+                if (a->name.empty()) {
+                    if (seen_keyword) {
+                        ch->error(const_cast<Node*>(node), "Positional argument after keyword argument is not allowed");
+                        return ch->gettyptr("void");
+                    }
+                    if (pos_index >= ordered_args.size()) {
+                        ch->error(const_cast<Node*>(node), "Too many positional arguments");
+                        return ch->gettyptr("void");
+                    }
+                    ordered_args[pos_index++] = ch->infer_expr(a->value.get());
+                    assigned[pos_index-1] = true;
+                } else {
+                    seen_keyword = true;
+                    auto found = std::find(pname_list.begin(), pname_list.end(), a->name);
+                    if (found == pname_list.end()) {
+                        ch->error(const_cast<Node*>(node), "Unknown parameter name '" + a->name + "'");
+                        return ch->gettyptr("void");
+                    }
+                    size_t idx = std::distance(pname_list.begin(), found);
+                    if (assigned[idx]) {
+                        ch->error(const_cast<Node*>(node), "Duplicate argument for parameter '" + a->name + "'");
+                        return ch->gettyptr("void");
+                    }
+                    ordered_args[idx] = ch->infer_expr(a->value.get());
+                    assigned[idx] = true;
+                }
+            }
+
+            // Ensure all required parameters were provided (check defaults)
+            auto defaults_it = ch->function_param_defaults.find(id->symbol);
+            const auto& param_defaults = (defaults_it != ch->function_param_defaults.end()) ? 
+                                        defaults_it->second : std::vector<bool>(assigned.size(), false);
+            
+            for (size_t i = 0; i < assigned.size(); ++i) {
+                if (!assigned[i]) {
+                    // Check if this parameter has a default value
+                    if (i < param_defaults.size() && param_defaults[i]) {
+                        // Parameter has default value, it's optional
+                        continue;
+                    }
+                    ch->error(const_cast<Node*>(node), "Missing argument for parameter '" + pname_list[i] + "'");
+                    return ch->gettyptr("void");
+                }
+            }
+
+            // Unify types in order (skip positions that were not provided and have defaults)
+            for (size_t i = 0; i < ordered_args.size(); ++i) {
+                if (!ordered_args[i]) continue; // omitted param with default — skip unification
                 try {
-                    ch->unify_ctx.unify(arg_types[i], def->paramstype[i]);
+                    ch->unify_ctx.unify(ordered_args[i], def->paramstype[i]);
                 } catch (std::runtime_error& e) {
                     std::ostringstream oss;
                     oss << "Function call argument type error: " << e.what();
