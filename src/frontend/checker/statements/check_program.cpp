@@ -31,6 +31,11 @@ namespace {
         AssignmentExprNode* assign_node,
         nv::Checker* checker
     ) {
+        // Operadores compostos (+=, -=, etc.) nunca são declarações
+        if (assign_node->op != "=") {
+            return nullptr;
+        }
+
         // Verificar se o target é um Identifier
         if (assign_node->target->kind != NodeType::Identifier) {
             // Não é um identifier simples, não converter
@@ -103,6 +108,14 @@ namespace {
                 auto converted = convert_assignment_to_declaration(assign_node, checker);
                 
                 if (converted) {
+                    // Registrar o símbolo no scope do checker para que assignemnts
+                    // subsequentes (x += 5) reconheçam que x já existe
+                    auto* id_node = static_cast<IdentifierNode*>(assign_node->target.get());
+                    checker->scope->put_key(
+                        id_node->symbol,
+                        std::make_shared<nv::TypeVar>(checker->unify_ctx.get_next_var_id()),
+                        false
+                    );
                     // Substituir o assignment pela declaração
                     stmt = std::move(converted);
                 }

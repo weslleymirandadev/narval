@@ -18,6 +18,7 @@
 #include "frontend/checker/expressions/check_conditional_expr.hpp"
 #include "frontend/checker/expressions/check_list_comp_expr.hpp"
 #include "frontend/checker/expressions/check_range_expr.hpp"
+#include "frontend/checker/expressions/check_assignment_expr.hpp"
 #include <memory>
 
 std::shared_ptr<nv::Type>& nv::Checker::check_node(Node* node) {
@@ -79,6 +80,8 @@ std::shared_ptr<nv::Type>& nv::Checker::check_node(Node* node) {
           return gettyptr("void");
         case NodeType::InterfaceDef:
           return gettyptr("void");
+        case NodeType::AssignmentExpression:
+          return check_assignment_expr(this, node);
         case NodeType::OrExpression:
           return check_or_expr(this, node);
         case NodeType::NoneLiteral:
