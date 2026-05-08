@@ -51,7 +51,13 @@ std::unique_ptr<Node> parse_expr(Parser* parser) {
             parser->current_token().type == TokenType::DIV_ASSIGN ||
             parser->current_token().type == TokenType::INTEGER_DIV_ASSIGN ||
             parser->current_token().type == TokenType::POWER_ASSIGN ||
-            parser->current_token().type == TokenType::MOD_ASSIGN) {
+            parser->current_token().type == TokenType::MOD_ASSIGN ||
+            parser->current_token().type == TokenType::BITWISE_AND_ASSIGN ||
+            parser->current_token().type == TokenType::BITWISE_OR_ASSIGN ||
+            parser->current_token().type == TokenType::BITWISE_XOR_ASSIGN ||
+            parser->current_token().type == TokenType::LEFT_SHIFT_ASSIGN ||
+            parser->current_token().type == TokenType::RIGHT_SHIFT_ASSIGN ||
+            parser->current_token().type == TokenType::AT_ASSIGN) {
 
             std::string assign_op = parser->consume_token().lexeme;
             auto value = parse_logical_expr(parser);
