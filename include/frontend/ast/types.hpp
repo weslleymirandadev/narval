@@ -19,6 +19,7 @@ enum class NodeType {
     DeclarationStatement,
     DefStatement,
     Parameter,
+    Argument,
     IfStatement,
     LogicalNotExpression,
     UnaryMinusExpression,
