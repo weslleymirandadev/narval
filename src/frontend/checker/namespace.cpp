@@ -48,6 +48,15 @@ void nv::Namespace::set_key(const std::string& k, const std::shared_ptr<nv::Type
     names[k] = v;
 }
 
+void nv::Namespace::record_decl_pos(const std::string& k, const DeclPos& pos) {
+    decl_positions[k] = pos;
+}
+
+const nv::Namespace::DeclPos* nv::Namespace::get_decl_pos(const std::string& k) const {
+    auto it = decl_positions.find(k);
+    return (it != decl_positions.end()) ? &it->second : nullptr;
+}
+
 void nv::Namespace::collect_free_vars(std::unordered_set<int>& free_vars) const {
     // Coletar variáveis livres de todas as variáveis neste namespace
     for (const auto& pair : names) {
