@@ -22,9 +22,10 @@
 #include <sstream>
 
 constexpr size_t MAX_LINE_LENGTH = 1024;
-constexpr const char* ANSI_BOLD = "\x1b[1m";
+constexpr const char* ANSI_BOLD  = "\x1b[1m";
 constexpr const char* ANSI_RESET = "\x1b[0m";
-constexpr const char* ANSI_RED = "\x1b[31m";
+constexpr const char* ANSI_RED   = "\x1b[31m";
+constexpr const char* ANSI_BLUE  = "\x1b[34m";
 
 // Conjunto estático para rastrear erros de identificador já reportados (evitar duplicação entre checkers/ASTs clonados)
 // Usa chave composta: filename:line:col:symbol
@@ -276,6 +277,44 @@ void nv::Checker::error(Node* node, const std::string& message) {
     print_error_context(pos);
     err = true;
     std::cerr.flush();  // Garantir que a mensagem foi exibida antes de continuar
+}
+
+void nv::Checker::note_at(const std::string& filename, size_t line,
+                           size_t col_start, size_t col_end,
+                           const std::string& message) {
+    std::string abs_filename = to_absolute_path(filename);
+    std::cerr << ANSI_BOLD
+              << abs_filename << ":" << line << ":" << col_start << ": "
+              << ANSI_BLUE << "NOTE" << ANSI_RESET << ANSI_BOLD << ": "
+              << message << ANSI_RESET << "\n";
+
+    // Obter linhas do arquivo-fonte (pode ser diferente do arquivo atual)
+    std::vector<std::string>* src_lines = nullptr;
+    std::vector<std::string> file_lines;
+    if (filename == current_filename) {
+        src_lines = &lines;
+    } else {
+        std::ifstream f(filename);
+        if (f.is_open()) {
+            std::string ln;
+            while (std::getline(f, ln)) file_lines.push_back(ln);
+            src_lines = &file_lines;
+        }
+    }
+
+    if (src_lines && line > 0 && line - 1 < src_lines->size()) {
+        std::string line_content = (*src_lines)[line - 1];
+        std::replace(line_content.begin(), line_content.end(), '\n', ' ');
+        std::cerr << " " << line << " |   " << line_content << "\n";
+        int line_width = line > 0 ? static_cast<int>(std::log10(static_cast<double>(line)) + 1) : 1;
+        std::cerr << std::string(line_width, ' ') << "  |";
+        if (col_start > 0)
+            std::cerr << std::string(col_start - 1 + 3, ' ');
+        std::cerr << ANSI_BLUE;
+        for (size_t i = col_start; i < col_end; ++i) std::cerr << "^";
+        std::cerr << ANSI_RESET << "\n\n";
+    }
+    std::cerr.flush();
 }
 
 std::shared_ptr<nv::Type> nv::Checker::infer_type(Node* node) {

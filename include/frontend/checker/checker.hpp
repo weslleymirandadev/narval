@@ -55,5 +55,8 @@ namespace nv {
             // Gerenciamento de arquivo fonte para erros
             void set_source_file(const std::string& filename);
             void error(Node* node, const std::string& message);
+            void note_at(const std::string& filename, size_t line,
+                         size_t col_start, size_t col_end,
+                         const std::string& message);
     };
 } 
