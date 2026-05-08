@@ -310,8 +310,10 @@ std::set<std::string> ImportProcessor::extract_identifiers(const Node* node) {
             }
             // Analisa os argumentos
             for (const auto& arg : call_expr->args) {
-                auto arg_ids = extract_identifiers(arg.get());
-                ids.insert(arg_ids.begin(), arg_ids.end());
+                if (arg->value) {
+                    auto arg_ids = extract_identifiers(arg->value.get());
+                    ids.insert(arg_ids.begin(), arg_ids.end());
+                }
             }
             break;
         }

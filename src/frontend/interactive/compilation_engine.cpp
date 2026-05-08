@@ -224,7 +224,7 @@ void CompilationEngine::collect_repl_names(Node* node,
     if (auto* call = dynamic_cast<CallExprNode*>(node)) {
         if (call->caller) collect_repl_names(call->caller.get(), defined, used);
         for (auto& a : call->args)
-            if (a) collect_repl_names(a.get(), defined, used);
+            if (a && a->value) collect_repl_names(a->value.get(), defined, used);
         return;
     }
     if (auto* bin = dynamic_cast<BinaryExprNode*>(node)) {
