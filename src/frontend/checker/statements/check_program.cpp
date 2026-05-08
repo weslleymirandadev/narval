@@ -111,10 +111,12 @@ namespace {
                     // Registrar o símbolo no scope do checker para que assignemnts
                     // subsequentes (x += 5) reconheçam que x já existe
                     auto* id_node = static_cast<IdentifierNode*>(assign_node->target.get());
+                    // Registrar como mutable (true) para que check_decl_stmt possa
+                    // sobrescrever com o tipo real inferido na passagem final
                     checker->scope->put_key(
                         id_node->symbol,
                         std::make_shared<nv::TypeVar>(checker->unify_ctx.get_next_var_id()),
-                        false
+                        true
                     );
                     // Substituir o assignment pela declaração
                     stmt = std::move(converted);
