@@ -50,22 +50,14 @@ static void record_and_check_redecl(nv::Checker* ch, Node* node,
 
     const auto* existing = ch->scope->get_decl_pos(name->symbol);
     if (existing) {
-        // Só reportar redeclaração se ambas as declarações vierem do mesmo arquivo
-        if (existing->filename == src_file) {
-            Node* err_target = (name->position) ? static_cast<Node*>(name) : node;
-            ch->error(err_target, "'" + name->symbol + "' has already been declared.");
-            ch->note_at(existing->filename, existing->line,
-                        existing->col_start, existing->col_end,
-                        "identifier already declared here:");
-        } else {
-            // Declaração de arquivo diferente (ex: import): a declaração local sobrepõe
-            nv::Namespace::DeclPos dp;
-            dp.filename  = src_file;
-            dp.line      = id_pos ? id_pos->line : 0;
-            dp.col_start = id_pos ? id_pos->col[0] : 0;
-            dp.col_end   = id_pos ? id_pos->col[0] + name->symbol.size() : 0;
-            ch->scope->record_decl_pos(name->symbol, dp);
-        }
+        // Reportar redeclaração independente do arquivo de origem — o NOTE usa
+        // existing->filename (que pode ser um arquivo importado) para apontar
+        // ao local correto, mesmo em cross-file.
+        Node* err_target = (name->position) ? static_cast<Node*>(name) : node;
+        ch->error(err_target, "'" + name->symbol + "' has already been declared.");
+        ch->note_at(existing->filename, existing->line,
+                    existing->col_start, existing->col_end,
+                    "identifier already declared here:");
         return;
     }
     // Registrar posição desta declaração
