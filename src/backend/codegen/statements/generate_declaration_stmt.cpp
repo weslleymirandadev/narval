@@ -37,22 +37,36 @@ void DeclarationStmtNode::codegen(nv::IRGenerationContext& context) {
         }
     }
 
-    // Se não conseguiu obter tipo do checker, usar método tradicional
-    if (!decl_ty) {
-        decl_ty = nv::ir_utils::llvm_type_from_string(context, typ);
-        if (!decl_ty) return;
-    }
-
-    // Detectar se estamos no nível superior (variável global): sem função atual ou na função do programa (main.start)
-    bool is_global = (context.get_current_function() == nullptr)
-        || (context.get_program_function() != nullptr && context.get_current_function() == context.get_program_function());
-    
     llvm::Value* init_val = nullptr;
     if (value) {
         value->codegen(context);
         init_val = context.pop_value();
         if (!init_val) return;
     }
+
+    // Se não conseguiu obter tipo do checker, usar método tradicional
+    if (!decl_ty) {
+        // Para tipo "automatic", tentar inferir a partir do valor inicial
+        if (typ == "automatic" && init_val) {
+            if (init_val->getType()->isFloatingPointTy()) {
+                decl_ty = nv::ir_utils::get_f64(context);
+            } else if (init_val->getType()->isIntegerTy()) {
+                decl_ty = nv::ir_utils::get_i32(context);
+            } else if (init_val->getType()->isIntegerTy(1)) {
+                decl_ty = nv::ir_utils::get_i1(context);
+            } else {
+                // Default para i32 se não conseguir inferir
+                decl_ty = nv::ir_utils::get_i32(context);
+            }
+        } else {
+            decl_ty = nv::ir_utils::llvm_type_from_string(context, typ);
+            if (!decl_ty) return;
+        }
+    }
+
+    // Detectar se estamos no nível superior (variável global): sem função atual ou na função do programa (main.start)
+    bool is_global = (context.get_current_function() == nullptr)
+        || (context.get_program_function() != nullptr && context.get_current_function() == context.get_program_function());
 
     auto* ValueTy = nv::ir_utils::get_value_struct(context);
     auto* ValuePtr = nv::ir_utils::get_value_ptr(context);
