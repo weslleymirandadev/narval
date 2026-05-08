@@ -192,7 +192,7 @@ int main(int argc, char* argv[]) {
         std::string link_cmd =
             std::string("gcc -g ") + NARVAL_SOURCE_DIR + "/build/lib/runtime.o " +
             "narval_module.o -lgc -pthread -ldl -lm -o narval_program " +
-            "-Wl,-e,main.start " +     // entry point
+            "-W,-e,main.start " +     // entry point
             "-nostartfiles " +         // sem crt0, _start
             "-no-pie " +               // opcional
             "-lc -w";                // libc + sem warnings

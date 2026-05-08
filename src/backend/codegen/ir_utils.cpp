@@ -165,33 +165,51 @@ llvm::Value* create_comparison(IRGenerationContext& context, llvm::Value* lhs, l
         else if (op == ">=") out = builder.CreateICmpSGE(cmp_result, zero, "cmpge");
         return out;
     } else if (lhs->getType() == valueStruct) {
-        // Se o outro for numérico (int ou float), extrair float por segurança;
-        // caso contrário, extrair int
-        if (rhs->getType()->isFloatingPointTy() || rhs->getType()->isIntegerTy()) lhs = extract_float_from_value(context, lhs);
-        else lhs = extract_int_from_value(context, lhs);
+        auto* i8p = get_i8_ptr(context);
+        if (rhs->getType() == i8p) {
+            // Value struct vs string literal: extrair string do Value e usar strcmp
+            auto* lhs_alloca = context.create_alloca(valueStruct, "cmp_lhs_str");
+            builder.CreateStore(lhs, lhs_alloca);
+            auto* extract_fn = context.ensure_runtime_func("extract_string_from_value",
+                                                            {get_value_ptr(context)}, i8p);
+            lhs = builder.CreateCall(extract_fn, {lhs_alloca}, "lhs_str");
+        } else if (rhs->getType()->isFloatingPointTy() || rhs->getType()->isIntegerTy()) {
+            lhs = extract_float_from_value(context, lhs);
+        } else {
+            lhs = extract_int_from_value(context, lhs);
+        }
     } else if (rhs->getType() == valueStruct) {
-        if (lhs->getType()->isFloatingPointTy() || lhs->getType()->isIntegerTy()) rhs = extract_float_from_value(context, rhs);
-        else rhs = extract_int_from_value(context, rhs);
+        auto* i8p = get_i8_ptr(context);
+        if (lhs->getType() == i8p) {
+            auto* rhs_alloca = context.create_alloca(valueStruct, "cmp_rhs_str");
+            builder.CreateStore(rhs, rhs_alloca);
+            auto* extract_fn = context.ensure_runtime_func("extract_string_from_value",
+                                                            {get_value_ptr(context)}, i8p);
+            rhs = builder.CreateCall(extract_fn, {rhs_alloca}, "rhs_str");
+        } else if (lhs->getType()->isFloatingPointTy() || lhs->getType()->isIntegerTy()) {
+            rhs = extract_float_from_value(context, rhs);
+        } else {
+            rhs = extract_int_from_value(context, rhs);
+        }
     }
 
     auto* lhs_type = lhs->getType();
 
     // String (i8*) content comparison via strcmp
-    {
+    if (lhs_type == get_i8_ptr(context) && rhs->getType() == get_i8_ptr(context)) {
+        auto* i32 = get_i32(context);
         auto* i8p = get_i8_ptr(context);
-        if (lhs_type == i8p && rhs->getType() == i8p) {
-            auto* i32 = get_i32(context);
-            auto* strcmpTy = llvm::FunctionType::get(i32, { i8p, i8p }, false);
-            auto* strcmpFn = llvm::cast<llvm::Function>(context.get_module().getOrInsertFunction("strcmp", strcmpTy).getCallee());
-            auto* cmpRes = builder.CreateCall(strcmpFn, { lhs, rhs }, "strcmp");
-            auto* zero = llvm::ConstantInt::get(i32, 0);
-            if (op == "==") out = builder.CreateICmpEQ(cmpRes, zero, "cmpeq");
-            else if (op == "!=") out = builder.CreateICmpNE(cmpRes, zero, "cmpne");
-            else if (op == "<")  out = builder.CreateICmpSLT(cmpRes, zero, "cmplt");
-            else if (op == ">")  out = builder.CreateICmpSGT(cmpRes, zero, "cmpgt");
-            else if (op == "<=") out = builder.CreateICmpSLE(cmpRes, zero, "cmple");
-            else if (op == ">=") out = builder.CreateICmpSGE(cmpRes, zero, "cmpge");
-        }
+        auto* strcmpTy = llvm::FunctionType::get(i32, { i8p, i8p }, false);
+        auto* strcmpFn = llvm::cast<llvm::Function>(context.get_module().getOrInsertFunction("strcmp", strcmpTy).getCallee());
+        auto* cmpRes = builder.CreateCall(strcmpFn, { lhs, rhs }, "strcmp");
+        auto* zero = llvm::ConstantInt::get(i32, 0);
+        if (op == "==")      out = builder.CreateICmpEQ(cmpRes,  zero, "cmpeq");
+        else if (op == "!=") out = builder.CreateICmpNE(cmpRes,  zero, "cmpne");
+        else if (op == "<")  out = builder.CreateICmpSLT(cmpRes, zero, "cmplt");
+        else if (op == ">")  out = builder.CreateICmpSGT(cmpRes, zero, "cmpgt");
+        else if (op == "<=") out = builder.CreateICmpSLE(cmpRes, zero, "cmple");
+        else if (op == ">=") out = builder.CreateICmpSGE(cmpRes, zero, "cmpge");
+        return out;
     }
 
     // Converter tipos diferentes (int <-> float, i1 <-> i32)
