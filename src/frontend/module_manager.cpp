@@ -214,6 +214,12 @@ std::unique_ptr<Node> ModuleManager::get_combined_ast(const std::string& main_mo
                 } else if (stmt->kind == NodeType::DefStatement) {
                     // Incluir todas as funções (defs) do módulo (prover contexto)
                     combined_program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
+                } else if (stmt->kind == NodeType::ClassDef ||
+                           stmt->kind == NodeType::EnumDef ||
+                           stmt->kind == NodeType::InterfaceDef) {
+                    // Incluir definições de tipos (classes, enums, interfaces) para que o checker
+                    // possa resolver tipos e retornos de métodos usados no módulo principal
+                    combined_program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
                 }
                 // Não incluir outros tipos de statements (CallExpression, IfStatement, etc.)
             }
