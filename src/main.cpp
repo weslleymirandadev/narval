@@ -38,8 +38,9 @@ extern "C" const char* nv_base_dir = nullptr; // visible to C runtime
 static std::string nv_base_dir_storage;
 
 // Função para executar modo batch (compilação normal)
-// build_only=true → apenas compila e linka, não executa
-int run_batch_mode(const std::string& filename, bool build_only = false) {
+// build_only=true  → compila e linka para binário nomeado; não executa
+// object_only=true → compila apenas para .o nomeado; não linka nem executa
+int run_batch_mode(const std::string& filename, bool build_only = false, bool object_only = false) {
     // Use the file stem as the initial module name (consistent with Lexer)
     std::string module_name = std::filesystem::path(filename).stem().string();
 
@@ -242,26 +243,22 @@ int run_batch_mode(const std::string& filename, bool build_only = false) {
 
         Mod.setDataLayout(target_machine->createDataLayout());
 
+        std::string stem = std::filesystem::path(filename).stem().string();
+        // Arquivo .o: nomeado definitivamente em --object, temporário nos outros modos
+        std::string obj_path = object_only ? (stem + ".o") : ("narval_tmp_" + stem + ".o");
+
         std::error_code EC;
-        llvm::raw_fd_ostream dest("narval_module.o", EC, llvm::sys::fs::OF_None);
+        llvm::raw_fd_ostream dest(obj_path, EC, llvm::sys::fs::OF_None);
         if (EC) {
             llvm::errs() << "Falha ao abrir .o: " << EC.message() << "\n";
             return 1;
-        }
-
-        // Salvar LLVM IR para debug - ANTES da verificação
-        std::string ll_path = "/home/bacal/projects/cpp/narval/build/narval_module.ll";
-        std::error_code ec;
-        llvm::raw_fd_ostream ll_file(ll_path, ec);
-        if (!ec) {
-            Mod.print(ll_file, nullptr);
         }
 
         if (llvm::verifyModule(Mod, &llvm::errs())) {
             llvm::errs() << "IR verification failed\n";
             return 1;
         }
-        
+
         llvm::legacy::PassManager pass;
         if (target_machine->addPassesToEmitFile(pass, dest, nullptr, llvm::CodeGenFileType::ObjectFile)) {
             llvm::errs() << "TargetMachine não suporta emissão de objeto\n";
@@ -270,14 +267,15 @@ int run_batch_mode(const std::string& filename, bool build_only = false) {
         pass.run(Mod);
         dest.flush();
 
-        
+        // Modo --object: apenas gera o .o, sem linkar
+        if (object_only) return 0;
+
+        // Resolver caminho do runtime
         std::string runtime_path;
-        // Verificar variável de ambiente NARVAL_HOME primeiro.
         const char* narval_home = std::getenv("NARVAL_HOME");
         if (narval_home) {
             runtime_path = std::string(narval_home) + "/runtime.o";
         } else {
-            // Prefer local runtime in source tree if available, then fallback to system install.
             const std::string local_runtime = std::string(NARVAL_SOURCE_DIR) + "/build/lib/runtime.o";
             if (std::filesystem::exists(local_runtime)) {
                 runtime_path = local_runtime;
@@ -285,30 +283,40 @@ int run_batch_mode(const std::string& filename, bool build_only = false) {
                 runtime_path = "/usr/lib/narval/runtime.o";
             }
         }
-        
-        std::string output_name = build_only
-            ? std::filesystem::path(filename).stem().string()
-            : "narval_program";
+
+        // Nome do binário: o stem do fonte em --build, temporário em modo run
+        std::string bin_path = build_only ? stem : ("narval_tmp_" + stem);
 
         std::string link_cmd =
             std::string("gcc -g ") + runtime_path + " " +
-            "narval_module.o -pthread -ldl -lm -o " + output_name + " " +
+            obj_path + " -pthread -ldl -lm -o " + bin_path + " " +
             "-Wl,-e,main.start " +
             "-nostartfiles " +
             "-no-pie " +
             "-lc -w";
 
         if (system(link_cmd.c_str()) != 0) {
+            std::filesystem::remove(obj_path);
             llvm::errs() << "Falha na linkedição\n";
             return 1;
         }
+
+        // Remover o .o temporário (não é necessário após a linkagem)
+        std::filesystem::remove(obj_path);
+
+        // Modo --build: apenas gera o binário, não executa
+        if (build_only) return 0;
+
     } catch (const std::exception& e) {
         std::cerr << "Erro durante compilação: " << e.what() << "\n";
         return 1;
     }
 
-    if (build_only) return 0;
-    return system("./narval_program");
+    std::string stem = std::filesystem::path(filename).stem().string();
+    std::string bin_path = "narval_tmp_" + stem;
+    int exit_code = system(("./" + bin_path).c_str());
+    std::filesystem::remove(bin_path);
+    return exit_code;
 }
 
 // Função para executar modo REPL usando novo sistema JIT
@@ -370,6 +378,7 @@ int main(int argc, char* argv[]) {
     bool repl_mode = false;
     bool notebook_mode = false;
     bool build_only = false;
+    bool object_only = false;
     std::string filename;
 
     for (int i = 1; i < argc; i++) {
@@ -381,17 +390,21 @@ int main(int argc, char* argv[]) {
             notebook_mode = true;
         } else if (arg == "--build" || arg == "-b") {
             build_only = true;
+        } else if (arg == "--object" || arg == "-c") {
+            object_only = true;
         } else if (arg == "--help" || arg == "-h") {
             std::cout << "Uso: narval [opções] [arquivo.nv]\n";
             std::cout << "\nOpções:\n";
             std::cout << "  --repl, -i, -r     Iniciar REPL interativo\n";
             std::cout << "  --notebook, -n     Iniciar Notebook interativo\n";
             std::cout << "  --build, -b        Compilar para binário sem executar\n";
+            std::cout << "  --object, -c       Compilar para .o sem linkar\n";
             std::cout << "  --help, -h         Mostrar esta ajuda\n";
             std::cout << "\nExemplos:\n";
             std::cout << "  narval              # abre o REPL\n";
             std::cout << "  narval prog.nv      # compila e executa\n";
-            std::cout << "  narval --build prog.nv  # gera binário ./prog\n";
+            std::cout << "  narval --build prog.nv   # gera binário ./prog\n";
+            std::cout << "  narval --object prog.nv  # gera prog.o\n";
             return 0;
         } else if (arg[0] != '-') {
             filename = arg;
@@ -404,7 +417,7 @@ int main(int argc, char* argv[]) {
     } else if (repl_mode) {
         return run_repl_mode();
     } else if (!filename.empty()) {
-        return run_batch_mode(filename, build_only);
+        return run_batch_mode(filename, build_only, object_only);
     } else {
         // Sem argumentos: entrar no REPL
         return run_repl_mode();
