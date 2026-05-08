@@ -4,7 +4,7 @@
 #include "frontend/ast/expressions/array_expr_node.hpp"
 #include "frontend/ast/expressions/vector_expr_node.hpp"
 #include <stdexcept>
-#include <cstdio> // Adicionado para usar printf
+#include <cstdio>
 
 namespace {
     // Converte ArrayExpression para VectorExpression
@@ -37,25 +37,41 @@ namespace {
 static void record_and_check_redecl(nv::Checker* ch, Node* node,
                                      IdentifierNode* name,
                                      const std::string& typ) {
-    // Declarações automáticas (convertidas de AssignmentExpression por process_codeblock,
-    // inclusive nós injetados de módulos importados via ModuleManager) não reservam o nome
-    // para fins de redeclaração. Apenas declarações explícitas com tipo anotado participam.
+    // Declarações automáticas não participam do rastreamento de redeclaração
     if (typ == "automatic") return;
+
+    // Determinar o arquivo de origem real: preferir o filename do PositionData do nó
+    // (preenchido pelo parser a partir do token), pois em combined programs o
+    // ch->current_filename pode ser o arquivo principal mesmo para nós importados.
+    const PositionData* id_pos = name->position ? name->position.get() : node->position.get();
+    const std::string& src_file = (id_pos && !id_pos->filename.empty())
+                                  ? id_pos->filename
+                                  : ch->current_filename;
 
     const auto* existing = ch->scope->get_decl_pos(name->symbol);
     if (existing) {
-        Node* err_target = (name->position) ? static_cast<Node*>(name) : node;
-        ch->error(err_target, "'" + name->symbol + "' has already been declared.");
-        ch->note_at(existing->filename, existing->line,
-                    existing->col_start, existing->col_end,
-                    "identifier already declared here:");
+        // Só reportar redeclaração se ambas as declarações vierem do mesmo arquivo
+        if (existing->filename == src_file) {
+            Node* err_target = (name->position) ? static_cast<Node*>(name) : node;
+            ch->error(err_target, "'" + name->symbol + "' has already been declared.");
+            ch->note_at(existing->filename, existing->line,
+                        existing->col_start, existing->col_end,
+                        "identifier already declared here:");
+        } else {
+            // Declaração de arquivo diferente (ex: import): a declaração local sobrepõe
+            nv::Namespace::DeclPos dp;
+            dp.filename  = src_file;
+            dp.line      = id_pos ? id_pos->line : 0;
+            dp.col_start = id_pos ? id_pos->col[0] : 0;
+            dp.col_end   = id_pos ? id_pos->col[0] + name->symbol.size() : 0;
+            ch->scope->record_decl_pos(name->symbol, dp);
+        }
         return;
     }
-    // Registrar posição do identificador para detectar futuras redeclarações
-    const PositionData* id_pos = name->position ? name->position.get() : node->position.get();
+    // Registrar posição desta declaração
     if (id_pos) {
         nv::Namespace::DeclPos dp;
-        dp.filename  = ch->current_filename;
+        dp.filename  = src_file;
         dp.line      = id_pos->line;
         dp.col_start = id_pos->col[0];
         dp.col_end   = id_pos->col[0] + static_cast<size_t>(name->symbol.size());
