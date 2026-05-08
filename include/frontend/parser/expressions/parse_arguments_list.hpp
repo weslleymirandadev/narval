@@ -2,6 +2,7 @@
 #include <memory>
 #include <vector>
 #include "frontend/ast/ast.hpp"
+#include "frontend/ast/expressions/arg_node.hpp"
 #include "frontend/parser/parser.hpp"
 
-std::vector<std::unique_ptr<Expr>> parse_arguments_list(Parser* parser);
+std::vector<std::unique_ptr<ArgNode>> parse_arguments_list(Parser* parser);
