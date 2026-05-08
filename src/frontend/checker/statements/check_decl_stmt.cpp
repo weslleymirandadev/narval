@@ -35,11 +35,15 @@ namespace {
 }
 
 static void record_and_check_redecl(nv::Checker* ch, Node* node,
-                                     IdentifierNode* name) {
+                                     IdentifierNode* name,
+                                     const std::string& typ) {
+    // Declarações automáticas (convertidas de AssignmentExpression por process_codeblock,
+    // inclusive nós injetados de módulos importados via ModuleManager) não reservam o nome
+    // para fins de redeclaração. Apenas declarações explícitas com tipo anotado participam.
+    if (typ == "automatic") return;
+
     const auto* existing = ch->scope->get_decl_pos(name->symbol);
     if (existing) {
-        // Outro DeclarationStmtNode já declarou este símbolo neste scope
-        // Emitir erro apontando para o identificador na redeclaração
         Node* err_target = (name->position) ? static_cast<Node*>(name) : node;
         ch->error(err_target, "'" + name->symbol + "' has already been declared.");
         ch->note_at(existing->filename, existing->line,
@@ -47,7 +51,7 @@ static void record_and_check_redecl(nv::Checker* ch, Node* node,
                     "identifier already declared here:");
         return;
     }
-    // Registrar a posição do identificador para detectar futuras redeclarações
+    // Registrar posição do identificador para detectar futuras redeclarações
     const PositionData* id_pos = name->position ? name->position.get() : node->position.get();
     if (id_pos) {
         nv::Namespace::DeclPos dp;
@@ -63,7 +67,7 @@ std::shared_ptr<nv::Type>& check_decl_stmt(nv::Checker* ch, Node* node) {
     auto* decl = static_cast<DeclarationStmtNode*>(node);
     auto* name = static_cast<IdentifierNode*>(decl->target.get());
 
-    record_and_check_redecl(ch, node, name);
+    record_and_check_redecl(ch, node, name, decl->typ);
 
     if (decl->typ == "automatic") {
         // Usar inferência de tipos
