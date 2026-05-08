@@ -1,5 +1,6 @@
 #pragma once
 #include <memory>
+#include <string>
 #include <vector>
 
 // Forward declarations to avoid circular dependencies
@@ -69,9 +70,12 @@ public:
     size_t line;
     size_t col[2];
     size_t pos[2];
+    std::string filename;
 
-    PositionData(size_t line, size_t col_start, size_t col_end, size_t pos_start, size_t pos_end)
-        : line(line), col{col_start, col_end}, pos{pos_start, pos_end} {}
+    PositionData(size_t line, size_t col_start, size_t col_end, size_t pos_start, size_t pos_end,
+                 std::string filename = "")
+        : line(line), col{col_start, col_end}, pos{pos_start, pos_end},
+          filename(std::move(filename)) {}
 };
 
 class Node {

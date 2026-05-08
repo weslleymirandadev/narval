@@ -38,9 +38,9 @@ std::unique_ptr<Node> parse_declaration_stmt(Parser* parser, bool is_mutable) {
             is_mutable  // Passar is_mutable diretamente
         );
     if (value && value->position) {
-        node->position = std::make_unique<PositionData>(value->position->line, col[0], value->position->col[1], pos[0], value->position->pos[1]);
+        node->position = std::make_unique<PositionData>(value->position->line, col[0], value->position->col[1], pos[0], value->position->pos[1], nametoken.filename);
     } else {
-        node->position = std::make_unique<PositionData>(line, col[0], col[1], pos[0], pos[1]);
+        node->position = std::make_unique<PositionData>(line, col[0], col[1], pos[0], pos[1], nametoken.filename);
     }
     return node; 
 }

@@ -12,7 +12,7 @@ std::unique_ptr<Node> parse_assignment_expr(Parser* parser) {
     size_t line = parser->current_token().line;
     size_t column[2] = { parser->current_token().column_start, parser->current_token().column_end };
     size_t position[2] = { parser->current_token().position_start, parser->current_token().position_end };
-    std::unique_ptr<PositionData> pos = std::make_unique<PositionData>(line, column[0], column[1], position[0], position[1]);
+    std::unique_ptr<PositionData> pos = std::make_unique<PositionData>(line, column[0], column[1], position[0], position[1], parser->current_token().filename);
     
     if (parser->current_token().type == TokenType::MUT) {
         parser->consume_token();
