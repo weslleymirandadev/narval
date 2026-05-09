@@ -1,6 +1,6 @@
-#include "frontend/parser/statements/parse_enum_def.hpp"
+#include "frontend/parser/statements/parse_enum_stmt.hpp"
 
-std::unique_ptr<Node> parse_enum_def(Parser* parser) {
+std::unique_ptr<Node> parse_enum_stmt(Parser* parser) {
     parser->consume_token(); // consume ENUM
 
     std::string enum_name = parser->current_token().lexeme;

@@ -1,10 +1,10 @@
-#include "frontend/parser/statements/parse_def_stmt.hpp"
+#include "frontend/parser/statements/parse_function_stmt.hpp"
 #include "frontend/parser/statements/parse_stmt.hpp"
 #include "frontend/parser/expressions/parse_args.hpp"
 #include "frontend/parser/expressions/parse_type.hpp"
 #include "frontend/parser/expressions/parse_assignment_expr.hpp"
 
-std::unique_ptr<Node> parse_def_stmt(Parser* parser) {
+std::unique_ptr<Node> parse_function_stmt(Parser* parser) {
     size_t line = parser->current_token().line;
     size_t column[2] = { parser->current_token().column_start, parser->current_token().column_end };
     size_t position[2] = { parser->current_token().position_start, parser->current_token().position_end };

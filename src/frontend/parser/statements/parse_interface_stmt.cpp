@@ -1,7 +1,7 @@
-#include "frontend/parser/statements/parse_interface_def.hpp"
+#include "frontend/parser/statements/parse_interface_stmt.hpp"
 #include "frontend/parser/expressions/parse_type.hpp"
 
-std::unique_ptr<Node> parse_interface_def(Parser* parser) {
+std::unique_ptr<Node> parse_interface_stmt(Parser* parser) {
     parser->consume_token(); // consume INTERFACE
 
     std::string iface_name = parser->current_token().lexeme;

@@ -3,4 +3,4 @@
 #include "frontend/ast/ast.hpp"
 #include "frontend/parser/parser.hpp"
 
-std::unique_ptr<Node> parse_class_def(Parser* parser);
+std::unique_ptr<Node> parse_function_stmt(Parser* parser);

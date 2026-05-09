@@ -1,9 +1,9 @@
-#include "frontend/parser/statements/parse_class_def.hpp"
+#include "frontend/parser/statements/parse_class_stmt.hpp"
 #include "frontend/parser/expressions/parse_primary_expr.hpp"
 #include "frontend/parser/expressions/parse_type.hpp"
 #include "frontend/parser/statements/parse_stmt.hpp"
 
-std::unique_ptr<Node> parse_class_def(Parser* parser) {
+std::unique_ptr<Node> parse_class_stmt(Parser* parser) {
     parser->consume_token(); // consumir CLASS
     
     std::string class_name = parser->current_token().lexeme;
