@@ -36,18 +36,26 @@ std::shared_ptr<nv::Type>& check_list_comp_expr(nv::Checker* ch, Node* node) {
                           source_type->kind == nv::Kind::VECTOR ||
                           source_type->kind == nv::Kind::STRING ||
                           source_type->kind == nv::Kind::MAP ||
-                          source_type->kind == nv::Kind::TUPLE;
-        
+                          source_type->kind == nv::Kind::TUPLE ||
+                          source_type->kind == nv::Kind::INT ||      // [x for x in N] → range 0..N
+                          source_type->kind == nv::Kind::TYPE_VAR;  // tipo ainda não resolvido
+
         if (!is_iterable) {
-            ch->error(source.get(), 
-                      "List comprehension source must be iterable (array, vector, string, map, or tuple)");
+            ch->error(source.get(),
+                      "List comprehension source must be iterable (array, vector, string, map, tuple, or int)");
             ch->pop_scope();
             return ch->gettyptr("void");
         }
         
         // Inferir tipo dos elementos
         std::shared_ptr<nv::Type> element_type;
-        if (source_type->kind == nv::Kind::ARRAY) {
+        if (source_type->kind == nv::Kind::INT) {
+            // Range inteiro: elementos são int
+            element_type = ch->gettyptr("int");
+        } else if (source_type->kind == nv::Kind::TYPE_VAR) {
+            int next_id = ch->unify_ctx.get_next_var_id();
+            element_type = std::make_shared<nv::TypeVar>(next_id);
+        } else if (source_type->kind == nv::Kind::ARRAY) {
             auto* arr = static_cast<nv::Array*>(source_type.get());
             element_type = arr->element_type;
         } else if (source_type->kind == nv::Kind::VECTOR) {
@@ -77,19 +85,9 @@ std::shared_ptr<nv::Type>& check_list_comp_expr(nv::Checker* ch, Node* node) {
         }
     }
     
-    // Verificar condição (se houver)
+    // Verificar condição (se houver) — aceita qualquer tipo (truthy check em runtime)
     if (list_comp->if_cond) {
-        auto cond_type = ch->infer_expr(list_comp->if_cond.get());
-        cond_type = ch->unify_ctx.resolve(cond_type);
-        
-        try {
-            ch->unify_ctx.unify(cond_type, ch->gettyptr("bool"));
-        } catch (std::runtime_error& e) {
-            ch->error(list_comp->if_cond.get(), 
-                      "List comprehension condition must be of type 'bool'");
-            ch->pop_scope();
-            return ch->gettyptr("void");
-        }
+        ch->infer_expr(list_comp->if_cond.get());
     }
     
     // Verificar expressão do elemento
