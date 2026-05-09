@@ -119,5 +119,10 @@ std::unique_ptr<Node> parse_assignment_expr(Parser* parser) {
     if (target && !target->position) {
         target->position = std::move(pos);
     }
+
+    if (parser->current_token().type == TokenType::IF) {
+        target = parse_conditional_expr(parser, std::move(target));
+    }
+
     return try_parse_or(parser, std::move(target));
 }
