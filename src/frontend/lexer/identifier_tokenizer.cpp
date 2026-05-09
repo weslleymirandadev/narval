@@ -50,6 +50,7 @@ Token tokenize_identifier_or_keyword(const std::string& input, size_t& pos, size
     else if (value == "propagate") type = TokenType::PROPAGATE;
     else if (value == "err") type = TokenType::ERR_KW;
     else if (value == "None") type = TokenType::NONE_KW;
+    else if (value == "in") type = TokenType::IN;
 
     return Token(type, value, line, start_column, column, start_position, pos, filename);
 }

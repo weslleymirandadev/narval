@@ -76,6 +76,7 @@ enum class TokenType {
     RIGHT_SHIFT_ASSIGN,
     AT,
     AT_ASSIGN,
+    IN,
     CLASS,
     PUBLIC,
     PRIVATE,
@@ -174,6 +175,7 @@ inline const char* get_token_name(TokenType type) {
         case TokenType::RIGHT_SHIFT_ASSIGN: return "RIGHT_SHIFT_ASSIGN";
         case TokenType::AT: return "AT";
         case TokenType::AT_ASSIGN: return "AT_ASSIGN";
+        case TokenType::IN: return "IN";
         case TokenType::CLASS: return "CLASS";
         case TokenType::PUBLIC: return "PUBLIC";
         case TokenType::PRIVATE: return "PRIVATE";
