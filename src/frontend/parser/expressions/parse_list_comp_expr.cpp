@@ -83,12 +83,7 @@ std::unique_ptr<Node> parse_list_comp_expr(Parser* parser, std::unique_ptr<Expr>
             }
         }
         
-        if (parser->current_token().type == TokenType::COLON ||
-            parser->current_token().type == TokenType::IN) {
-            parser->consume_token();
-        } else {
-            parser->expect(TokenType::COLON, "Expected ':' or 'in'.");
-        }
+        parser->expect(TokenType::IN, "Expected 'in'.");
         
         // Usar parse_logical_expr em vez de parse_expr para evitar que o `if` do
         // filter seja consumido como ternário pelo parse_assignment_expr

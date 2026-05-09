@@ -45,17 +45,14 @@ std::unique_ptr<Node> parse_for_stmt(Parser* parser) {
 
     bool has_bindings = false;
     if (parser->current_token().type == TokenType::IDENTIFIER) {
-        if (parser->next_token().type == TokenType::COLON || parser->next_token().type == TokenType::IN || parser->next_token().type == TokenType::COMMA) {
+        if (parser->next_token().type == TokenType::IN || parser->next_token().type == TokenType::COMMA) {
             has_bindings = true;
         }
     }
 
     if (has_bindings) {
         bindings = parse_binding_list(parser);  // retorna vector<unique_ptr<Expr>>
-        if (parser->current_token().type == TokenType::IN)
-            parser->consume_token();
-        else
-            parser->expect(TokenType::COLON, "Expected ':' or 'in' after for bindings.");
+        parser->expect(TokenType::IN, "Expected 'in' after for bindings.");
 
         auto expr = parse_range_expr(parser);
         if (expr && expr->kind == NodeType::RangeExpression) {
