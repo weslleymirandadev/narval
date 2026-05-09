@@ -11,17 +11,17 @@ struct InterfaceMethodSig {
 };
 
 // Interface — puramente compile-time, sem código gerado
-class InterfaceDefNode : public Stmt {
+class InterfaceStmtNode : public Stmt {
 public:
     std::string name;
     std::vector<std::string> parent_interfaces; // extends A, B
     std::vector<InterfaceMethodSig> methods;
 
-    InterfaceDefNode(const std::string& iname)
-        : Stmt(NodeType::InterfaceDef), name(iname) {}
+    InterfaceStmtNode(const std::string& iname)
+        : Stmt(NodeType::InterfaceStatement), name(iname) {}
 
     Node* clone() const override {
-        auto* node = new InterfaceDefNode(name);
+        auto* node = new InterfaceStmtNode(name);
         node->parent_interfaces = parent_interfaces;
         node->methods = methods;
         if (position) node->position = std::make_unique<PositionData>(*position);

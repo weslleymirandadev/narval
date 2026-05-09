@@ -12,16 +12,16 @@ struct EnumVariant {
         : name(n), has_explicit_value(has_val), explicit_value(val) {}
 };
 
-class EnumDefNode : public Stmt {
+class EnumStmtNode : public Stmt {
 public:
     std::string name;
     std::vector<EnumVariant> variants;
 
-    EnumDefNode(const std::string& enum_name)
-        : Stmt(NodeType::EnumDef), name(enum_name) {}
+    EnumStmtNode(const std::string& enum_name)
+        : Stmt(NodeType::EnumStatement), name(enum_name) {}
 
     Node* clone() const override {
-        auto* node = new EnumDefNode(name);
+        auto* node = new EnumStmtNode(name);
         node->variants = variants;
         if (position) {
             node->position = std::make_unique<PositionData>(*position);

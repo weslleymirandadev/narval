@@ -1,11 +1,11 @@
-#include "frontend/ast/statements/def_stmt_node.hpp"
+#include "frontend/ast/statements/function_stmt_node.hpp"
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
 #include "frontend/checker/checker.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/IR/DIBuilder.h>
 
-void DefStmtNode::codegen(nv::IRGenerationContext& ctx) {
+void FunctionStmtNode::codegen(nv::IRGenerationContext& ctx) {
     // Preserve current codegen state (incl. debug scope – set before any use)
     llvm::Function* prev_func = ctx.get_current_function();
     llvm::BasicBlock* prev_insert_block = ctx.get_builder().GetInsertBlock();
@@ -61,19 +61,19 @@ void DefStmtNode::codegen(nv::IRGenerationContext& ctx) {
     }
 
     llvm::DISubprogram* subp = nullptr;
-    unsigned def_line = 0u;
+    unsigned function_line = 0u;
     if (auto* dib = ctx.get_debug_builder()) {
         llvm::DIFile* file = ctx.get_debug_file();
-        def_line = position ? static_cast<unsigned>(position->line) : 0u;
+        function_line = position ? static_cast<unsigned>(position->line) : 0u;
         auto* sub_ty = dib->createSubroutineType(dib->getOrCreateTypeArray({}));
         subp = dib->createFunction(
             file,
             name,
             llvm::StringRef(),
             file,
-            def_line,
+            function_line,
             sub_ty,
-            def_line,
+            function_line,
             llvm::DINode::FlagZero,
             llvm::DISubprogram::SPFlagDefinition
         );
@@ -100,7 +100,7 @@ void DefStmtNode::codegen(nv::IRGenerationContext& ctx) {
     // Garantir que parâmetros e corpo usem o DISubprogram desta função (evitar wrong subprogram)
     if (subp) {
         ctx.get_builder().SetCurrentDebugLocation(
-            llvm::DILocation::get(ctx.get_context(), def_line, 1, subp));
+            llvm::DILocation::get(ctx.get_context(), function_line, 1, subp));
     }
     if (idx) {
         idx = 0;

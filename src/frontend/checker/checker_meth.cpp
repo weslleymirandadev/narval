@@ -1,9 +1,9 @@
 #include "frontend/checker/checker_meth.hpp"
 #include "frontend/checker/statements/check_import_stmt.hpp"
-#include "frontend/checker/statements/check_enum_def.hpp"
-#include "frontend/checker/statements/check_interface_def.hpp"
+#include "frontend/checker/statements/check_enum_stmt.hpp"
+#include "frontend/checker/statements/check_interface_stmt.hpp"
 #include "frontend/checker/expressions/check_or_expr.hpp"
-#include "frontend/checker/statements/check_def_stmt.hpp"
+#include "frontend/checker/statements/check_function_stmt.hpp"
 #include "frontend/checker/statements/check_if_stmt.hpp"
 #include "frontend/checker/statements/check_for_stmt.hpp"
 #include "frontend/checker/statements/check_while_stmt.hpp"
@@ -21,7 +21,7 @@
 #include "frontend/checker/expressions/check_assignment_expr.hpp"
 #include <memory>
 
-std::shared_ptr<nv::Type>& nv::Checker::check_node(Node* node) {
+std::shared_ptr<nv::Type> nv::Checker::check_node(Node* node) {
   try {
     switch (node->kind) {
         case NodeType::NumericLiteral:
@@ -33,8 +33,8 @@ std::shared_ptr<nv::Type>& nv::Checker::check_node(Node* node) {
           return check_program_stmt(this, node);
         case NodeType::DeclarationStatement:
           return check_decl_stmt(this, node);
-        case NodeType::DefStatement:
-          return check_def_stmt(this, node);
+        case NodeType::FunctionStatement:
+          return check_function_stmt(this, node);
         case NodeType::IfStatement:
           return check_if_stmt(this, node);
         case NodeType::ForStatement:
@@ -74,12 +74,12 @@ std::shared_ptr<nv::Type>& nv::Checker::check_node(Node* node) {
           return check_range_expr(this, node);
         case NodeType::NewExpression:
           return check_primary_expr(this, node);
-        case NodeType::ClassDef:
+        case NodeType::ClassStatement:
           return gettyptr("void");
-        case NodeType::EnumDef:
-          return gettyptr("void");
-        case NodeType::InterfaceDef:
-          return gettyptr("void");
+        case NodeType::EnumStatement:
+          return check_enum_stmt(this, node);
+        case NodeType::InterfaceStatement:
+          return check_interface_stmt(this, node);
         case NodeType::AssignmentExpression:
           return check_assignment_expr(this, node);
         case NodeType::OrExpression:

@@ -6,7 +6,7 @@ std::unique_ptr<Node> parse_enum_stmt(Parser* parser) {
     std::string enum_name = parser->current_token().lexeme;
     parser->consume_token(); // consume enum name
 
-    auto enum_node = std::make_unique<EnumDefNode>(enum_name);
+    auto enum_node = std::make_unique<EnumStmtNode>(enum_name);
 
     parser->expect(TokenType::OBRACE, "Expected '{' after enum name");
 

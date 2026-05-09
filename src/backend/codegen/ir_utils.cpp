@@ -513,12 +513,12 @@ llvm::BasicBlock* create_and_set_block(IRGenerationContext& context, const std::
     return block;
 }
 
-llvm::Function* create_function(IRGenerationContext& context, const std::string& name, std::unique_ptr<Def>& def_type) {
-    if (!def_type) return nullptr;
+llvm::Function* create_function(IRGenerationContext& context, const std::string& name, std::unique_ptr<Function>& function_type) {
+    if (!function_type) return nullptr;
     std::vector<llvm::Type*> param_types;
-    for (const auto& p : def_type->paramstype)
+    for (const auto& p : function_type->paramstype)
         param_types.push_back(context.nv_type_to_llvm(p));
-    auto* ret_type = context.nv_type_to_llvm(def_type->returntype);
+    auto* ret_type = context.nv_type_to_llvm(function_type->returntype);
     auto* ft = llvm::FunctionType::get(ret_type, param_types, false);
     auto* func = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, name, context.get_module());
     context.set_current_function(func);

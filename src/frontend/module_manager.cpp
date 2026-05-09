@@ -4,7 +4,7 @@
 #include "frontend/checker/checker.hpp"
 #include "frontend/checker/checker_meth.hpp"
 #include "frontend/ast/statements/declaration_stmt_node.hpp"
-#include "frontend/ast/statements/def_stmt_node.hpp"
+#include "frontend/ast/statements/function_stmt_node.hpp"
 #include "frontend/ast/statements/import_stmt_node.hpp"
 #include "frontend/ast/expressions/assignment_expr_node.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
@@ -211,12 +211,12 @@ std::unique_ptr<Node> ModuleManager::get_combined_ast(const std::string& main_mo
                     if (assign->target && assign->target->kind == NodeType::Identifier) {
                         combined_program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
                     }
-                } else if (stmt->kind == NodeType::DefStatement) {
+                } else if (stmt->kind == NodeType::FunctionStatement) {
                     // Incluir todas as funções (defs) do módulo (prover contexto)
                     combined_program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
-                } else if (stmt->kind == NodeType::ClassDef ||
-                           stmt->kind == NodeType::EnumDef ||
-                           stmt->kind == NodeType::InterfaceDef) {
+                } else if (stmt->kind == NodeType::ClassStatement ||
+                           stmt->kind == NodeType::EnumStatement ||
+                           stmt->kind == NodeType::InterfaceStatement) {
                     // Incluir definições de tipos (classes, enums, interfaces) para que o checker
                     // possa resolver tipos e retornos de métodos usados no módulo principal
                     combined_program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));

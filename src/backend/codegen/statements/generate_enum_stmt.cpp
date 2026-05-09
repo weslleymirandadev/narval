@@ -1,10 +1,10 @@
-#include "frontend/ast/statements/enum_def_node.hpp"
+#include "frontend/ast/statements/enum_stmt_node.hpp"
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/GlobalVariable.h>
 
-void EnumDefNode::codegen(nv::IRGenerationContext& ctx) {
+void EnumStmtNode::codegen(nv::IRGenerationContext& ctx) {
     auto& C = ctx.get_context();
     auto& M = ctx.get_module();
     auto& B = ctx.get_builder();

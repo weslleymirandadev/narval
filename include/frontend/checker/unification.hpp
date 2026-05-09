@@ -101,9 +101,9 @@ namespace nv {
                         }
                         return;
                     }
-                    case Kind::DEF: {
-                        auto l1 = std::static_pointer_cast<Def>(t1);
-                        auto l2 = std::static_pointer_cast<Def>(t2);
+                    case Kind::FUNCTION: {
+                        auto l1 = std::static_pointer_cast<Function>(t1);
+                        auto l2 = std::static_pointer_cast<Function>(t2);
                         if (l1->paramstype.size() != l2->paramstype.size()) {
                             throw std::runtime_error("Type error: function parameter count mismatch");
                         }
@@ -167,8 +167,8 @@ namespace nv {
                     }
                     return false;
                 }
-                case Kind::DEF: {
-                    auto l = std::static_pointer_cast<Def>(t);
+                case Kind::FUNCTION: {
+                    auto l = std::static_pointer_cast<Function>(t);
                     for (const auto& param : l->paramstype) {
                         if (occurs_in(var, param)) return true;
                     }

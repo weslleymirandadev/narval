@@ -24,12 +24,12 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
                 auto mem_it = ns_it->second.find(prop_id->symbol);
                 if (mem_it != ns_it->second.end()) {
                     auto method_type = ch->unify_ctx.resolve(mem_it->second);
-                    if (method_type->kind == nv::Kind::DEF) {
-                        auto def = std::static_pointer_cast<nv::Def>(method_type);
+                    if (method_type->kind == nv::Kind::FUNCTION) {
+                        auto function = std::static_pointer_cast<nv::Function>(method_type);
                         for (const auto& arg : call->args) {
                             ch->infer_expr(arg.get());
                         }
-                        return def->returntype;
+                        return function->returntype;
                     }
                     // Membro não é função: retorna o tipo mesmo assim (p.ex. variável)
                     return mem_it->second;
@@ -83,13 +83,13 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
         }
         
         // Verificar se é uma função
-        if (method_type->kind != nv::Kind::DEF) {
+        if (method_type->kind != nv::Kind::FUNCTION) {
             ch->error(member_expr->property.get(), 
                       "'" + method_name + "' is not a method");
             return ch->gettyptr("void");
         }
         
-        auto def = std::static_pointer_cast<nv::Def>(method_type);
+        auto function = std::static_pointer_cast<nv::Function>(method_type);
         
         // Verificar cada argumento
         std::vector<std::shared_ptr<nv::Type>> arg_types;
@@ -103,10 +103,10 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
         }
         
         // Verificar número de argumentos
-        if (call->args.size() != def->paramstype.size()) {
+        if (call->args.size() != function->paramstype.size()) {
             std::ostringstream oss;
             oss << "Method call argument count mismatch: expected " 
-                << def->paramstype.size() 
+                << function->paramstype.size() 
                 << ", got " << call->args.size();
             ch->error(const_cast<Node*>(node), oss.str());
             return ch->gettyptr("void");
@@ -115,7 +115,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
         // Unificar tipos dos argumentos
         for (size_t i = 0; i < call->args.size(); i++) {
             try {
-                ch->unify_ctx.unify(arg_types[i], def->paramstype[i]);
+                ch->unify_ctx.unify(arg_types[i], function->paramstype[i]);
             } catch (std::runtime_error& e) {
                 std::ostringstream oss;
                 oss << "Method call argument type error: " << e.what();
@@ -124,7 +124,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
             }
         }
         
-        return def->returntype;
+        return function->returntype;
     }
     
     // Verificar o caller (função sendo chamada) usando infer_expr
@@ -154,10 +154,10 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
     func_type = ch->unify_ctx.resolve(func_type);
     
     // Se não for função, criar tipo de função com variáveis de tipo
-    if (func_type->kind != nv::Kind::DEF) {
+    if (func_type->kind != nv::Kind::FUNCTION) {
         // Tentar unificar com tipo de função
         auto ret_type = ch->unify_ctx.new_type_var();
-        auto expected_func = std::make_shared<nv::Def>(arg_types, ret_type);
+        auto expected_func = std::make_shared<nv::Function>(arg_types, ret_type);
         try {
             ch->unify_ctx.unify(func_type, expected_func);
         } catch (std::runtime_error& e) {
@@ -167,12 +167,12 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
             return ch->gettyptr("void");
         }
         func_type = ch->unify_ctx.resolve(func_type);
-        if (func_type->kind == nv::Kind::DEF) {
-            auto def = std::static_pointer_cast<nv::Def>(func_type);
-            return def->returntype;
+        if (func_type->kind == nv::Kind::FUNCTION) {
+            auto function = std::static_pointer_cast<nv::Function>(func_type);
+            return function->returntype;
         }
     } else {
-        auto def = std::static_pointer_cast<nv::Def>(func_type);
+        auto function = std::static_pointer_cast<nv::Function>(func_type);
         
         // Verificar se é uma função builtin com argumentos opcionais
         bool is_builtin_varargs = false;
@@ -209,7 +209,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
                 func_name = static_cast<IdentifierNode*>(call->caller.get())->symbol;
             }
             auto defaults_it = ch->function_param_defaults.find(func_name);
-            size_t min_args = def->paramstype.size();
+            size_t min_args = function->paramstype.size();
             if (defaults_it != ch->function_param_defaults.end()) {
                 const auto& param_defaults = defaults_it->second;
                 // Count how many parameters from the end have defaults
@@ -218,12 +218,12 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
                 }
             }
             
-            if (call->args.size() > def->paramstype.size() || call->args.size() < min_args) {
+            if (call->args.size() > function->paramstype.size() || call->args.size() < min_args) {
                 std::ostringstream oss;
                 if (call->args.size() < min_args) {
                     oss << "Function call argument count mismatch: expected at least " << min_args;
                 } else {
-                    oss << "Function call argument count mismatch: expected at most " << def->paramstype.size();
+                    oss << "Function call argument count mismatch: expected at most " << function->paramstype.size();
                 }
                 oss << ", got " << call->args.size();
                 ch->error(const_cast<Node*>(node), oss.str());
@@ -235,10 +235,10 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
         // Para funções com varargs, unificar apenas os argumentos fornecidos
         if (!has_keywords) {
             if (call->args.size() > 0) {
-                size_t max_args = std::min(call->args.size(), def->paramstype.size());
+                size_t max_args = std::min(call->args.size(), function->paramstype.size());
                 for (size_t i = 0; i < max_args; i++) {
                     try {
-                        ch->unify_ctx.unify(arg_types[i], def->paramstype[i]);
+                        ch->unify_ctx.unify(arg_types[i], function->paramstype[i]);
                     } catch (std::runtime_error& e) {
                         std::ostringstream oss;
                         oss << "Function call argument type error: " << e.what();
@@ -260,13 +260,13 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
                 return ch->gettyptr("void");
             }
             const auto& pname_list = it->second;
-            if (pname_list.size() != def->paramstype.size()) {
+            if (pname_list.size() != function->paramstype.size()) {
                 ch->error(const_cast<Node*>(node), "Internal error: parameter name list size mismatch");
                 return ch->gettyptr("void");
             }
 
-            std::vector<std::shared_ptr<nv::Type>> ordered_args(def->paramstype.size());
-            std::vector<bool> assigned(def->paramstype.size(), false);
+            std::vector<std::shared_ptr<nv::Type>> ordered_args(function->paramstype.size());
+            std::vector<bool> assigned(function->paramstype.size(), false);
             size_t pos_index = 0;
             bool seen_keyword = false;
             for (const auto& a : call->args) {
@@ -319,7 +319,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
             for (size_t i = 0; i < ordered_args.size(); ++i) {
                 if (!ordered_args[i]) continue; // omitted param with default — skip unification
                 try {
-                    ch->unify_ctx.unify(ordered_args[i], def->paramstype[i]);
+                    ch->unify_ctx.unify(ordered_args[i], function->paramstype[i]);
                 } catch (std::runtime_error& e) {
                     std::ostringstream oss;
                     oss << "Function call argument type error: " << e.what();
@@ -328,7 +328,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
                 }
             }
         }
-        return def->returntype;
+        return function->returntype;
     }
     
     // Fallback: se não conseguimos determinar o tipo da função, retornar void

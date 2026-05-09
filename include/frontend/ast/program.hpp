@@ -32,13 +32,13 @@
 #include "expressions/instanceof_expr_node.hpp"
 #include "statements/return_stmt_node.hpp"
 #include "statements/declaration_stmt_node.hpp"
-#include "statements/def_stmt_node.hpp"
+#include "statements/function_stmt_node.hpp"
 #include "statements/if_statement_node.hpp"
 #include "statements/for_stmt_node.hpp"
 #include "statements/forever_stmt_node.hpp"
 #include "statements/while_stmt_node.hpp"
 #include "statements/match_stmt_node.hpp"
-#include "statements/class_def_node.hpp"
+#include "statements/class_stmt_node.hpp"
 
 class Program : public Stmt {
 public:
@@ -121,17 +121,17 @@ public:
                 print_statement(assignExpr->value.get(), indentNum + 2);
                 break;
             }
-            case NodeType::ClassDef: {
-                const auto* classDef = static_cast<const ClassDefNode*>(stmt);
-                std::cout << indent << "ClassDef: " << classDef->name;
-                if (!classDef->parent_class.empty()) {
-                    std::cout << " extends " << classDef->parent_class;
+            case NodeType::ClassStatement: {
+                const auto* classStmt = static_cast<const ClassStmtNode*>(stmt);
+                std::cout << indent << "ClassStmt: " << classStmt->name;
+                if (!classStmt->parent_class.empty()) {
+                    std::cout << " extends " << classStmt->parent_class;
                 }
                 std::cout << "\n";
                 
-                if (!classDef->fields.empty()) {
+                if (!classStmt->fields.empty()) {
                     std::cout << indent << "  Fields:\n";
-                    for (const auto& field : classDef->fields) {
+                    for (const auto& field : classStmt->fields) {
                         std::cout << indent << "    " << field->name << ": " << field->type;
                         if (field->is_mutable) {
                             std::cout << " (mut)";
@@ -140,9 +140,9 @@ public:
                     }
                 }
                 
-                if (!classDef->methods.empty()) {
+                if (!classStmt->methods.empty()) {
                     std::cout << indent << "  Methods:\n";
-                    for (const auto& method : classDef->methods) {
+                    for (const auto& method : classStmt->methods) {
                         std::cout << indent << "    " << method->access_modifier << " " << method->name << "()\n";
                     }
                 }
@@ -164,21 +164,21 @@ public:
                 std::cout << indent << "  Mutable: " << (declStmt->mutable_ ? "yes" : "no") << std::endl;
                 break;
             }
-            case NodeType::DefStatement: {
-                const auto* defStmt = static_cast<const DefStmtNode*>(stmt);
-                std::cout << indent << "DefStatement: " << defStmt->name << "\n";
+            case NodeType::FunctionStatement: {
+                const auto* functionStmt = static_cast<const FunctionStmtNode*>(stmt);
+                std::cout << indent << "FunctionStmt: " << functionStmt->name << "\n";
                 std::cout << indent << "  Args:\n";
 
-                for (const auto& param : defStmt->parameters) {
+                for (const auto& param : functionStmt->parameters) {
                     for (const auto& [arg_name, arg_type] : param.parameter) {
                         std::cout << indent << "    " << arg_name << ": " << arg_type << "\n";
                     }
                 }
 
-                std::cout << indent << "  Return Type: " << defStmt->return_type << "\n";
+                std::cout << indent << "  Return Type: " << functionStmt->return_type << "\n";
                 std::cout << indent << "  Body:\n";
 
-                for (const auto& bodyStmt : defStmt->body) {
+                for (const auto& bodyStmt : functionStmt->body) {
                     print_statement(bodyStmt.get(), indentNum + 2);
                 }
 

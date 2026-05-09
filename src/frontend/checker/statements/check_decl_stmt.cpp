@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <cstdio>
 
-namespace {
+namespace nv {
     // Converte ArrayExpression para VectorExpression
     std::unique_ptr<Expr> convert_array_to_vector(ArrayExprNode* arr_node) {
         std::vector<std::unique_ptr<Expr>> elements;
@@ -100,12 +100,12 @@ std::shared_ptr<nv::Type>& check_decl_stmt(nv::Checker* ch, Node* node) {
         // Se tipo é array (int[10]), converter VectorExpression para ArrayExpression
         if (decl->typ == "vector" && decl->value && decl->value->kind == NodeType::ArrayExpression) {
             auto* arr_node = static_cast<ArrayExprNode*>(decl->value.get());
-            decl->value = convert_array_to_vector(arr_node);
+            decl->value = nv::convert_array_to_vector(arr_node);
         } else if (decl->typ.find('[') != std::string::npos && decl->typ.find(']') != std::string::npos) {
             // Tipo é array (int[10], string[5], etc.)
             if (decl->value && decl->value->kind == NodeType::VectorExpression) {
                 auto* vec_node = static_cast<VectorExprNode*>(decl->value.get());
-                decl->value = convert_vector_to_array(vec_node);
+                decl->value = nv::convert_vector_to_array(vec_node);
             }
         }
         

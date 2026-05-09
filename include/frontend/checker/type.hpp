@@ -15,7 +15,7 @@ namespace nv {
         FLOAT,
         BOOL,
         VOID,
-        DEF,
+        FUNCTION,
         ARRAY,
         TUPLE,
         VECTOR,
@@ -426,12 +426,12 @@ namespace nv {
         }
     };
 
-    struct Def : public Type {
+    struct Function : public Type {
         std::vector<std::shared_ptr<Type>> paramstype;
         std::shared_ptr<Type> returntype;
-        Def(const std::vector<std::shared_ptr<Type>>& params,
-              const std::shared_ptr<Type>& returns)
-            : Type(Kind::DEF), paramstype(params), returntype(returns) {}
+        Function(const std::vector<std::shared_ptr<Type>>& params,
+                  const std::shared_ptr<Type>& returns)
+            : Type(Kind::FUNCTION), paramstype(params), returntype(returns) {}
         std::string toString() override;
         bool equals(const Type &other) const override;
         
@@ -448,7 +448,7 @@ namespace nv {
                 new_params.push_back(param->substitute(subst));
             }
             auto new_ret = returntype->substitute(subst);
-            return std::make_shared<Def>(new_params, new_ret);
+            return std::make_shared<Function>(new_params, new_ret);
         }
     };
 

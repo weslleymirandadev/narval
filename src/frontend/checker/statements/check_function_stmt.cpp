@@ -1,19 +1,19 @@
-#include "frontend/checker/statements/check_def_stmt.hpp"
-#include "frontend/ast/statements/def_stmt_node.hpp"
+#include "frontend/checker/statements/check_function_stmt.hpp"
+#include "frontend/ast/statements/function_stmt_node.hpp"
 #include "frontend/ast/expressions/param_node.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
 #include "frontend/checker/unification.hpp"
 #include <stdexcept>
 
-std::shared_ptr<nv::Type>& check_def_stmt(nv::Checker* ch, Node* node) {
-    auto* def_stmt = static_cast<DefStmtNode*>(node);
+std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
+    auto* function_stmt = static_cast<FunctionStmtNode*>(node);
     
     // Criar novo escopo para a função
     ch->push_scope();
     
     // Processar parâmetros e adicionar ao escopo
     std::vector<std::shared_ptr<nv::Type>> param_types;
-    for (const auto& param : def_stmt->parameters) {
+    for (const auto& param : function_stmt->parameters) {
         // ParamNode contém um unordered_map onde a chave é o nome do parâmetro e o valor é o tipo
         // O parser cria: param[nome] = tipo
         std::string param_name;
@@ -55,12 +55,12 @@ std::shared_ptr<nv::Type>& check_def_stmt(nv::Checker* ch, Node* node) {
     
     // Verificar tipo de retorno
     std::shared_ptr<nv::Type> return_type;
-    if (def_stmt->return_type.empty() || def_stmt->return_type == "automatic") {
+    if (function_stmt->return_type.empty() || function_stmt->return_type == "automatic") {
         // Inferir tipo de retorno do corpo da função
         // Por enquanto, usar void como padrão se não houver return
         return_type = ch->gettyptr("void");
     } else {
-        return_type = ch->gettyptr(def_stmt->return_type);
+        return_type = ch->gettyptr(function_stmt->return_type);
     }
     
     // Salvar tipo de retorno atual e restaurar após verificar corpo
@@ -68,7 +68,7 @@ std::shared_ptr<nv::Type>& check_def_stmt(nv::Checker* ch, Node* node) {
     ch->current_return_type = return_type;
     
     // Verificar corpo da função
-    for (auto& stmt : def_stmt->body) {
+    for (auto& stmt : function_stmt->body) {
         ch->check_node(stmt.get());
     }
     
@@ -82,19 +82,18 @@ std::shared_ptr<nv::Type>& check_def_stmt(nv::Checker* ch, Node* node) {
     auto free_vars = ch->get_free_vars_in_env();
     auto generalized_return = ch->unify_ctx.generalize(return_type, free_vars);
     
-    // Criar tipo de função (usar Def ao invés de Function)
-    auto func_type = std::make_shared<nv::Def>(param_types, generalized_return);
+    auto func_type = std::make_shared<nv::Function>(param_types, generalized_return);
     
     // Generalizar tipo de função
     auto generalized_func = ch->unify_ctx.generalize(func_type, free_vars);
     
     // Registrar função no escopo
-    ch->scope->put_key(def_stmt->name, generalized_func, false);
+    ch->scope->put_key(function_stmt->name, generalized_func, false);
     // Also record parameter names order for keyword-arg binding
     std::vector<std::string> pname_list;
     std::vector<bool> param_has_default;
     size_t param_idx = 0;
-    for (const auto& param : def_stmt->parameters) {
+    for (const auto& param : function_stmt->parameters) {
         if (!param.parameter.empty()) {
             for (const auto& kv : param.parameter) {
                 pname_list.push_back(kv.first);
@@ -115,20 +114,20 @@ std::shared_ptr<nv::Type>& check_def_stmt(nv::Checker* ch, Node* node) {
         param_idx++;
     }
     if (!pname_list.empty()) {
-        ch->function_param_names[def_stmt->name] = pname_list;
-        ch->function_param_defaults[def_stmt->name] = param_has_default;
+        ch->function_param_names[function_stmt->name] = pname_list;
+        ch->function_param_defaults[function_stmt->name] = param_has_default;
         
         // Store default value expressions for codegen
         std::vector<std::unique_ptr<Expr>> default_values;
-        for (const auto& param : def_stmt->parameters) {
+        for (const auto& param : function_stmt->parameters) {
             if (param.default_value) {
                 default_values.push_back(std::unique_ptr<Expr>(static_cast<Expr*>(param.default_value->clone())));
             } else {
                 default_values.push_back(nullptr);
             }
         }
-        ch->function_default_values[def_stmt->name] = std::move(default_values);
+        ch->function_default_values[function_stmt->name] = std::move(default_values);
     }
     
-    return ch->scope->get_key(def_stmt->name);
+    return ch->scope->get_key(function_stmt->name);
 }

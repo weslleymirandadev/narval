@@ -18,7 +18,7 @@ enum class NodeType {
     BinaryExpression,
     AssignmentExpression,
     DeclarationStatement,
-    DefStatement,
+    FunctionStatement,
     Parameter,
     Argument,
     IfStatement,
@@ -48,7 +48,7 @@ enum class NodeType {
     VectorExpression,
     RangeExpression,
     ImportStatement,
-    ClassDef,
+    ClassStatement,
     ClassField,
     ClassMethod,
     NewExpression,
@@ -57,11 +57,11 @@ enum class NodeType {
     InstanceofExpression,
     TryStatement,
     ThrowStatement,
-    EnumDef,
+    EnumStatement,
     OrExpression,
     PropagateStatement,
     NoneLiteral,
-    InterfaceDef,
+    InterfaceStatement,
     SliceExpression
 };
 

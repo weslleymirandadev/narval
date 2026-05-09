@@ -9,8 +9,8 @@ std::shared_ptr<nv::Type> nv::Type::get_method(const std::string& name) const {
     return prototype->get_key(name);
 }
 
-std::string nv::Def::toString() {
-    std::string s = "def(";
+std::string nv::Function::toString() {
+    std::string s = "Function(";
     for (size_t i = 0; i < paramstype.size(); ++i) {
         s += paramstype[i]->toString();
         if (i < paramstype.size() - 1) s += ", "; 
@@ -19,17 +19,17 @@ std::string nv::Def::toString() {
     return s;
 }
 
-bool nv::Def::equals(const nv::Type &other) const {
+bool nv::Function::equals(const nv::Type &other) const {
     if (this->kind != other.kind) return false;
-    if (other.kind != Kind::DEF) return false;
+    if (other.kind != Kind::FUNCTION) return false;
 
-    auto other_def = static_cast<const Def*>(&other);
+    auto other_function = static_cast<const Function*>(&other);
     
-    if (this->paramstype.size() != other_def->paramstype.size()) return false;
-    if (!this->returntype->equals(*other_def->returntype)) return false;
+    if (this->paramstype.size() != other_function->paramstype.size()) return false;
+    if (!this->returntype->equals(*other_function->returntype)) return false;
 
     for (size_t i = 0; i < this->paramstype.size(); ++i) {
-        if (!this->paramstype[i]->equals(*other_def->paramstype[i])) {
+        if (!this->paramstype[i]->equals(*other_function->paramstype[i])) {
             return false;
         }
     }
@@ -62,7 +62,7 @@ namespace nv {
         const std::vector<std::shared_ptr<Type>>& params,
         const std::shared_ptr<Type>& ret
     ) {
-        return std::make_shared<Def>(params, ret);
+        return std::make_shared<Function>(params, ret);
     }
 
     void nv::String::init_prototype() {
@@ -108,14 +108,14 @@ namespace nv {
         // O tipo real será inferido durante a verificação de tipos
         auto push_param_type = std::make_shared<nv::TypeVar>(-1); // ID temporário, será resolvido durante inferência
         std::vector<std::shared_ptr<nv::Type>> push_params = {push_param_type};
-        auto push_type = std::make_shared<nv::Def>(push_params, std::make_shared<nv::Void>());
+        auto push_type = std::make_shared<nv::Function>(push_params, std::make_shared<nv::Void>());
         prototype->put_key("push", push_type, true);
         
         // pop: não aceita argumentos, retorna o elemento removido (tipo genérico)
         // O tipo de retorno será inferido durante a verificação de tipos
         auto pop_return_type = std::make_shared<nv::TypeVar>(-2); // ID temporário, será resolvido durante inferência
         std::vector<std::shared_ptr<nv::Type>> pop_params = {};
-        auto pop_type = std::make_shared<nv::Def>(pop_params, pop_return_type);
+        auto pop_type = std::make_shared<nv::Function>(pop_params, pop_return_type);
         prototype->put_key("pop", pop_type, true);
     }
 

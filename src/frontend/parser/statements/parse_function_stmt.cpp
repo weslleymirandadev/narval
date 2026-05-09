@@ -12,12 +12,12 @@ std::unique_ptr<Node> parse_function_stmt(Parser* parser) {
 
     parser->consume_token();
 
-    auto def_name = parser->expect(TokenType::IDENTIFIER, "Expected def identifier");
+    auto function_name = parser->expect(TokenType::IDENTIFIER, "Expected function name");
 
     parser->expect(TokenType::OPAREN, "Expected '(' .");
 
-    auto def_node = std::make_unique<DefStmtNode>(
-        def_name.lexeme,
+    auto function_node = std::make_unique<FunctionStmtNode>(
+        function_name.lexeme,
         std::vector<ParamNode>{},
         "void",
         std::vector<std::unique_ptr<Stmt>>{}
@@ -47,7 +47,7 @@ std::unique_ptr<Node> parse_function_stmt(Parser* parser) {
         ParamNode param_node(param, std::move(default_val));
         param_node.position = std::move(pos_param);
 
-        def_node->parameters.push_back(param_node);
+        function_node->parameters.push_back(param_node);
 
         if (parser->current_token().type == TokenType::COMMA) {
             parser->consume_token();
@@ -60,7 +60,7 @@ std::unique_ptr<Node> parse_function_stmt(Parser* parser) {
 
     if (parser->current_token().type == TokenType::COLON) {
         parser->consume_token();
-        def_node->return_type = parse_type(parser);
+        function_node->return_type = parse_type(parser);
     }
 
     parser->expect(TokenType::OBRACE, "Expected '{'.");
@@ -68,16 +68,16 @@ std::unique_ptr<Node> parse_function_stmt(Parser* parser) {
     while (parser->not_eof() && parser->current_token().type != TokenType::CBRACE) {
         auto stmt = parse_stmt(parser);
         if (stmt) {
-            def_node->body.push_back(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt.release())));
+            function_node->body.push_back(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt.release())));
         }
     }
 
     parser->expect(TokenType::CBRACE, "Expected '}'.");
 
-    if (def_node && def_node->position) {
-        pos->col[1] = def_node->position->col[1];
-        pos->pos[1] = def_node->position->pos[1];
+    if (function_node && function_node->position) {
+        pos->col[1] = function_node->position->col[1];
+        pos->pos[1] = function_node->position->pos[1];
     }
 
-    return def_node;
+    return function_node;
 }

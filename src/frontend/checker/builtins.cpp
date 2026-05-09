@@ -46,28 +46,28 @@ namespace nv {
         // Adicionar métodos manualmente ao prototype do json
         if (json_type->prototype) {
             // Método parse: (string) -> Map (para arquivo)
-            auto parse_func_type = std::make_shared<Def>(
+            auto parse_func_type = std::make_shared<Function>(
                 std::vector<std::shared_ptr<Type>>{checker.gettyptr("str")},
                 json_type
             );
             json_type->prototype->put_key("parse", parse_func_type, true);
             
             // Método parseString: (string) -> Map (para string JSON)
-            auto parse_string_func_type = std::make_shared<Def>(
+            auto parse_string_func_type = std::make_shared<Function>(
                 std::vector<std::shared_ptr<Type>>{checker.gettyptr("str")},
                 json_type
             );
             json_type->prototype->put_key("parseString", parse_string_func_type, true);
             
             // Método dump: (Map, string) -> void
-            auto dump_func_type = std::make_shared<Def>(
+            auto dump_func_type = std::make_shared<Function>(
                 std::vector<std::shared_ptr<Type>>{json_type, checker.gettyptr("str")},
                 checker.gettyptr("void")
             );
             json_type->prototype->put_key("dump", dump_func_type, true);
             
             // Método stringify: (Map) -> string
-            auto stringify_func_type = std::make_shared<Def>(
+            auto stringify_func_type = std::make_shared<Function>(
                 std::vector<std::shared_ptr<Type>>{json_type},
                 checker.gettyptr("str")
             );
@@ -98,7 +98,7 @@ namespace nv {
                 auto param_type = checker.unify_ctx.new_type_var();
                 std::vector<std::shared_ptr<Type>> param_types = {param_type};
                 
-                func_type = std::make_shared<Def>(param_types, builtin.return_type);
+                func_type = std::make_shared<Function>(param_types, builtin.return_type);
                 
                 // Generalizar tipo (criar tipo polimórfico)
                 // Coletar variáveis livres (apenas a variável do parâmetro)
@@ -107,7 +107,7 @@ namespace nv {
                 func_type = checker.unify_ctx.generalize(func_type, free_vars);
             } else {
                 // Tipo não polimórfico - usar tipos especificados
-                func_type = std::make_shared<Def>(builtin.param_types, builtin.return_type);
+                func_type = std::make_shared<Function>(builtin.param_types, builtin.return_type);
             }
             
             // Registrar no escopo global como constante

@@ -53,8 +53,8 @@ std::shared_ptr<nv::Type> check_binary_expr(nv::Checker* ch, Node* node) {
                 mut_bin->overload_dunder = dunder;
 
                 auto resolved = ch->unify_ctx.resolve(method_type);
-                if (resolved && resolved->kind == nv::Kind::DEF) {
-                    return static_cast<nv::Def*>(resolved.get())->returntype;
+                if (resolved && resolved->kind == nv::Kind::FUNCTION) {
+                    return static_cast<nv::Function*>(resolved.get())->returntype;
                 }
                 return resolved ? resolved : ch->gettyptr("void");
             }

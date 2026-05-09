@@ -227,8 +227,8 @@ void generate_ir(
 
     // Passagem 1: Declarar todas as funções (para suportar referências futuras e recursão mútua)
     for (size_t i = 0; i < program->body.size(); ++i) {
-        if (program->body[i]->kind == NodeType::DefStatement) {
-            auto* def_stmt = static_cast<DefStmtNode*>(program->body[i].get());
+        if (program->body[i]->kind == NodeType::FunctionStatement) {
+            auto* def_stmt = static_cast<FunctionStmtNode*>(program->body[i].get());
             auto* checker = static_cast<nv::Checker*>(context.get_type_checker());
             
             std::vector<llvm::Type*> param_types;

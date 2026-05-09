@@ -152,18 +152,18 @@ bool ImportProcessor::process_single_import(
                 
                 // Primeira passagem: identifica as funções importadas e suas dependências
                 for (const auto& stmt : module_program->get_statements()) {
-                    if (stmt->kind == NodeType::DefStatement) {
-                        auto* def_stmt = static_cast<const DefStmtNode*>(stmt.get());
-                        if (imported_set.find(def_stmt->name) != imported_set.end()) {
+                    if (stmt->kind == NodeType::FunctionStatement) {
+                        auto* function_stmt = static_cast<const FunctionStmtNode*>(stmt.get());
+                        if (imported_set.find(function_stmt->name) != imported_set.end()) {
                             function_stmts.push_back(stmt.get());
                             
                             // Analisa o corpo da função para encontrar identifiers usados
-                            for (const auto& body_stmt : def_stmt->body) {
+                            for (const auto& body_stmt : function_stmt->body) {
                                 auto ids = extract_identifiers(body_stmt.get());
                                 for (const auto& id : ids) {
                                     // Ignora parâmetros da função
                                     bool is_param = false;
-                                    for (const auto& param : def_stmt->parameters) {
+                                    for (const auto& param : function_stmt->parameters) {
                                         for (const auto& [param_name, param_type] : param.parameter) {
                                             if (param_name == id) {
                                                 is_param = true;
@@ -183,8 +183,8 @@ bool ImportProcessor::process_single_import(
                                                         break;
                                                     }
                                                 }
-                                            } else if (check_stmt->kind == NodeType::DefStatement) {
-                                                auto* check_def = static_cast<const DefStmtNode*>(check_stmt.get());
+                                            } else if (check_stmt->kind == NodeType::FunctionStatement) {
+                                                auto* check_def = static_cast<const FunctionStmtNode*>(check_stmt.get());
                                                 if (check_def->name == id) {
                                                     required_functions.insert(id);
                                                     break;
@@ -210,11 +210,11 @@ bool ImportProcessor::process_single_import(
                                 variable_stmts.push_back(stmt.get());
                             }
                         }
-                    } else if (stmt->kind == NodeType::DefStatement) {
-                        auto* def_stmt = static_cast<const DefStmtNode*>(stmt.get());
+                    } else if (stmt->kind == NodeType::FunctionStatement) {
+                        auto* function_stmt = static_cast<const FunctionStmtNode*>(stmt.get());
                         // Adiciona função se for requerida por alguma função importada OU se foi originalmente importada
-                        if (required_functions.find(def_stmt->name) != required_functions.end() || 
-                            imported_set.find(def_stmt->name) != imported_set.end()) {
+                        if (required_functions.find(function_stmt->name) != required_functions.end() || 
+                            imported_set.find(function_stmt->name) != imported_set.end()) {
                             function_stmts.push_back(stmt.get());
                         }
                     }
@@ -240,14 +240,14 @@ bool ImportProcessor::process_single_import(
                 
                 // Adiciona funções depois
                 for (const auto* stmt : function_stmts) {
-                    if (stmt->kind == NodeType::DefStatement) {
-                        auto* def_stmt = static_cast<const DefStmtNode*>(stmt);
-                        state->repl_global_names.insert(def_stmt->name);
+                    if (stmt->kind == NodeType::FunctionStatement) {
+                        auto* function_stmt = static_cast<const FunctionStmtNode*>(stmt);
+                        state->repl_global_names.insert(function_stmt->name);
                         
                         // Adiciona ao scope do checker também!
-                        // Para funções, criamos um tipo Def básico
+                        // Para funções, criamos um tipo Function básico
                         std::vector<std::shared_ptr<Type>> param_types;
-                        for (const auto& param : def_stmt->parameters) {
+                        for (const auto& param : function_stmt->parameters) {
                             for (const auto& [param_name, param_type] : param.parameter) {
                                 // Criar tipo básico para o parâmetro
                                 if (param_type == "int") {
@@ -266,22 +266,22 @@ bool ImportProcessor::process_single_import(
                         
                         // Tipo de retorno
                         std::shared_ptr<Type> return_type;
-                        if (def_stmt->return_type == "int") {
+                        if (function_stmt->return_type == "int") {
                             return_type = std::make_shared<Int>();
-                        } else if (def_stmt->return_type == "str") {
+                        } else if (function_stmt->return_type == "str") {
                             return_type = std::make_shared<String>();
-                        } else if (def_stmt->return_type == "float") {
+                        } else if (function_stmt->return_type == "float") {
                             return_type = std::make_shared<Float>();
-                        } else if (def_stmt->return_type == "bool") {
+                        } else if (function_stmt->return_type == "bool") {
                             return_type = std::make_shared<Boolean>();
                         } else {
                             return_type = std::make_shared<Void>();
                         }
                         
-                        auto func_type = std::make_shared<Def>(param_types, return_type);
+                        auto func_type = std::make_shared<Function>(param_types, return_type);
                         
                         // Adiciona ao scope
-                        state->checker->scope->put_key(def_stmt->name, func_type, false);
+                        state->checker->scope->put_key(function_stmt->name, func_type, false);
                         
                         // Adiciona ao vetor de importações
                         import_statements.push_back(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));

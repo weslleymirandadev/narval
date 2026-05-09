@@ -5,26 +5,26 @@
 #include <vector>
 #include <memory>
 
-class DefStmtNode : public Stmt {
+class FunctionStmtNode : public Stmt {
 public:
     std::string name;
     std::vector<ParamNode> parameters;
     std::string return_type;
     CodeBlock body;
 
-    DefStmtNode(
-        std::string def_name,
+    FunctionStmtNode(
+        std::string function_name,
         std::vector<ParamNode> parameters,
         std::string ret_type,
         std::vector<std::unique_ptr<Stmt>> body_stmts
     )
-        : Stmt(NodeType::DefStatement),
-          name(std::move(def_name)),
+        : Stmt(NodeType::FunctionStatement),
+          name(std::move(function_name)),
           parameters(std::move(parameters)),
           return_type(std::move(ret_type)),
           body(std::move(body_stmts)) {}
 
-    ~DefStmtNode() override = default;
+    ~FunctionStmtNode() override = default;
 
     Node* clone() const override {
         std::vector<std::unique_ptr<Stmt>> cloned_body;
@@ -32,7 +32,7 @@ public:
             cloned_body.push_back(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
         }
 
-        auto* node = new DefStmtNode(name, parameters, return_type, std::move(cloned_body));
+        auto* node = new FunctionStmtNode(name, parameters, return_type, std::move(cloned_body));
         if (position) {
             node->position = std::make_unique<PositionData>(*position);
         }

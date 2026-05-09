@@ -7,7 +7,7 @@ std::unique_ptr<Node> parse_interface_stmt(Parser* parser) {
     std::string iface_name = parser->current_token().lexeme;
     parser->consume_token(); // consume name
 
-    auto iface_node = std::make_unique<InterfaceDefNode>(iface_name);
+    auto iface_node = std::make_unique<InterfaceStmtNode>(iface_name);
 
     // extends Interface1, Interface2
     if (parser->current_token().type == TokenType::EXTENDS) {

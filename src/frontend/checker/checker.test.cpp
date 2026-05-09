@@ -96,7 +96,7 @@ int main(int argc, char* argv[]) {
                                 std::cout << "tipo inferido = " << inferred_type->toString();
                             } else {
                                 // Verificar tipo tradicional
-                                auto& type = checker.check_node(stmt.get());
+                                auto type = checker.check_node(stmt.get());
                                 std::cout << "tipo verificado = " << type->toString();
                             }
                             std::cout << "\n";

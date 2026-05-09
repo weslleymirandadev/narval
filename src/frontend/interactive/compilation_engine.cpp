@@ -7,7 +7,7 @@
 #include "frontend/ast/expressions/identifier_node.hpp"
 #include "frontend/ast/expressions/assignment_expr_node.hpp"
 #include "frontend/ast/statements/declaration_stmt_node.hpp"
-#include "frontend/ast/statements/def_stmt_node.hpp"
+#include "frontend/ast/statements/function_stmt_node.hpp"
 #include "frontend/ast/statements/for_stmt_node.hpp"
 #include "frontend/ast/statements/while_stmt_node.hpp"
 #include "frontend/ast/statements/forever_stmt_node.hpp"
@@ -67,7 +67,7 @@ bool CompilationEngine::compile_and_execute(const std::string& input) {
             const auto& stmts = prog->get_statements();
             if (stmts.size() == 1) {
                 Node* first = stmts[0].get();
-                if (dynamic_cast<DefStmtNode*>(first)) single_declaration_no_print = true;
+                if (dynamic_cast<FunctionStmtNode*>(first)) single_declaration_no_print = true;
                 else if (dynamic_cast<DeclarationStmtNode*>(first)) single_declaration_no_print = true;
                 else if (auto* assign = dynamic_cast<AssignmentExprNode*>(first)) {
                     if (assign->target && dynamic_cast<IdentifierNode*>(assign->target.get()))
@@ -92,7 +92,7 @@ bool CompilationEngine::compile_and_execute(const std::string& input) {
         }
 
         state->checker->set_source_file("repl_line_001");
-        auto& type = state->checker->check_node(ast.get());
+        auto type = state->checker->check_node(ast.get());
         if (state->checker->err) { 
             if (state->config && state->config->show_errors) {
                 std::cerr << "Type error in input" << std::endl;
@@ -132,7 +132,7 @@ bool CompilationEngine::compile_and_execute(const std::string& input) {
             try { nv_type = state->checker->scope->get_key(name); } catch (...) { continue; }
             if (!nv_type) continue;
             nv_type = context.resolve_type(nv_type);
-            if (nv_type->kind == nv::Kind::DEF) continue;
+            if (nv_type->kind == nv::Kind::FUNCTION) continue;
             slot_names.push_back(name);
             state->repl_var_values[name] = Value{};
         }
@@ -143,13 +143,13 @@ bool CompilationEngine::compile_and_execute(const std::string& input) {
             try { nv_type = state->checker->scope->get_key(name); } catch (...) { continue; }
             if (!nv_type) continue;
             nv_type = context.resolve_type(nv_type);
-            if (nv_type->kind == nv::Kind::DEF) {
-                auto* def = std::static_pointer_cast<nv::Def>(nv_type).get();
-                if (!def) continue;
+            if (nv_type->kind == nv::Kind::FUNCTION) {
+                auto* function = std::static_pointer_cast<nv::Function>(nv_type).get();
+                if (!function) continue;
                 std::vector<llvm::Type*> param_tys;
-                for (const auto& p : def->paramstype)
+                for (const auto& p : function->paramstype)
                     param_tys.push_back(context.nv_type_to_llvm(p));
-                llvm::Type* ret_ty = context.nv_type_to_llvm(def->returntype);
+                llvm::Type* ret_ty = context.nv_type_to_llvm(function->returntype);
                 auto* ft = llvm::FunctionType::get(ret_ty, param_tys, false);
                 auto ext_fn = temp_module->getOrInsertFunction(name, ft);
                 llvm::Function* fn = llvm::cast<llvm::Function>(ext_fn.getCallee());
@@ -207,12 +207,12 @@ void CompilationEngine::collect_repl_names(Node* node,
         if (decl->value) collect_repl_names(decl->value.get(), defined, used);
         return;
     }
-    if (auto* def = dynamic_cast<DefStmtNode*>(node)) {
-        defined.insert(def->name);
-        for (auto& p : def->parameters)
+    if (auto* function = dynamic_cast<FunctionStmtNode*>(node)) {
+        defined.insert(function->name);
+        for (auto& p : function->parameters)
             for (auto& kv : p.parameter)
                 collect_repl_names(nullptr, defined, used);
-        for (auto& s : def->body)
+        for (auto& s : function->body)
             if (s) collect_repl_names(s.get(), defined, used);
         return;
     }
@@ -298,13 +298,13 @@ bool CompilationEngine::compile_expression(std::unique_ptr<Node>& ast,
         try { nv_type = state->checker->scope->get_key(name); } catch (...) { continue; }
         if (!nv_type) continue;
         nv_type = context.resolve_type(nv_type);
-        if (nv_type->kind != nv::Kind::DEF) continue;
-        auto* def = std::static_pointer_cast<nv::Def>(nv_type).get();
-        if (!def) continue;
+        if (nv_type->kind != nv::Kind::FUNCTION) continue;
+        auto* function = std::static_pointer_cast<nv::Function>(nv_type).get();
+        if (!function) continue;
         std::vector<llvm::Type*> param_tys;
-        for (const auto& p : def->paramstype)
+        for (const auto& p : function->paramstype)
             param_tys.push_back(context.nv_type_to_llvm(p));
-        llvm::Type* ret_ty = context.nv_type_to_llvm(def->returntype);
+        llvm::Type* ret_ty = context.nv_type_to_llvm(function->returntype);
         auto* ft = llvm::FunctionType::get(ret_ty, param_tys, false);
         auto ext_fn = temp_module->getOrInsertFunction(name, ft);
         llvm::Function* fn = llvm::cast<llvm::Function>(ext_fn.getCallee());

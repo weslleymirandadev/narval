@@ -1,7 +1,7 @@
 #include "frontend/checker/statements/check_program.hpp"
-#include "frontend/checker/statements/check_class_def.hpp"
-#include "frontend/checker/statements/check_enum_def.hpp"
-#include "frontend/checker/statements/check_interface_def.hpp"
+#include "frontend/checker/statements/check_class_stmt.hpp"
+#include "frontend/checker/statements/check_enum_stmt.hpp"
+#include "frontend/checker/statements/check_interface_stmt.hpp"
 #include "frontend/ast/ast.hpp"
 #include "frontend/ast/expressions/assignment_expr_node.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
@@ -10,7 +10,7 @@
 #include "frontend/ast/statements/for_stmt_node.hpp"
 #include "frontend/ast/statements/while_stmt_node.hpp"
 #include "frontend/ast/statements/forever_stmt_node.hpp"
-#include "frontend/ast/statements/def_stmt_node.hpp"
+#include "frontend/ast/statements/function_stmt_node.hpp"
 #include "frontend/ast/statements/match_stmt_node.hpp"
 #include "frontend/ast/expressions/or_expr_node.hpp"
 #include <stdexcept>
@@ -147,9 +147,9 @@ namespace {
                     process_codeblock(forever_stmt->body, checker);
                     break;
                 }
-                case NodeType::DefStatement: {
-                    auto* def_stmt = static_cast<DefStmtNode*>(stmt.get());
-                    process_codeblock(def_stmt->body, checker);
+                case NodeType::FunctionStatement: {
+                    auto* function_stmt = static_cast<FunctionStmtNode*>(stmt.get());
+                    process_codeblock(function_stmt->body, checker);
                     break;
                 }
                 case NodeType::MatchStatement: {
@@ -187,8 +187,8 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
 
     // TERCEIRA PASSAGEM [NOVA]: Registrar interfaces primeiro (antes das classes).
     for (auto& el : program->body) {
-        if (el->kind == NodeType::InterfaceDef) {
-            check_interface_def(ch, el.get());
+        if (el->kind == NodeType::InterfaceStatement) {
+            check_interface_stmt(ch, el.get());
         }
     }
 
@@ -196,21 +196,21 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
     // Isso permite usar classes/enums como tipos em parâmetros/retornos de funções
     // e em declarações mesmo quando aparecem depois no arquivo.
     for (auto& el : program->body) {
-        if (el->kind == NodeType::ClassDef) {
-            check_class_def(ch, el.get());
-        } else if (el->kind == NodeType::EnumDef) {
-            check_enum_def(ch, el.get());
+        if (el->kind == NodeType::ClassStatement) {
+            check_class_stmt(ch, el.get());
+        } else if (el->kind == NodeType::EnumStatement) {
+            check_enum_stmt(ch, el.get());
         }
     }
 
     // QUARTA PASSAGEM [NOVA]: Registrar assinaturas de todas as funções (defs) antes de checar corpos
     for (auto& el : program->body) {
-        if (el->kind == NodeType::DefStatement) {
-            auto* def_stmt = static_cast<DefStmtNode*>(el.get());
+        if (el->kind == NodeType::FunctionStatement) {
+            auto* function_stmt = static_cast<FunctionStmtNode*>(el.get());
             
             // Processar parâmetros para obter o tipo da função
             std::vector<std::shared_ptr<nv::Type>> param_types;
-            for (const auto& param : def_stmt->parameters) {
+            for (const auto& param : function_stmt->parameters) {
                 std::string param_name;
                 std::string param_type_str;
                 for (const auto& [key, value] : param.parameter) {
@@ -228,17 +228,17 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
             }
             
             std::shared_ptr<nv::Type> return_type;
-            if (def_stmt->return_type.empty() || def_stmt->return_type == "automatic") {
+            if (function_stmt->return_type.empty() || function_stmt->return_type == "automatic") {
                 return_type = std::make_shared<nv::TypeVar>(ch->unify_ctx.get_next_var_id());
             } else {
-                return_type = ch->gettyptr(def_stmt->return_type);
+                return_type = ch->gettyptr(function_stmt->return_type);
             }
             
-            auto func_type = std::make_shared<nv::Def>(param_types, return_type);
+            auto func_type = std::make_shared<nv::Function>(param_types, return_type);
             
             // Registrar função no escopo SEM checar o corpo ainda
             // Passamos false para não travar o símbolo
-            ch->scope->put_key(def_stmt->name, func_type, false);
+            ch->scope->put_key(function_stmt->name, func_type, false);
         }
     }
 

@@ -45,7 +45,7 @@ namespace nv {
             std::shared_ptr<nv::Type>& gettyptr(std::string ty);
             void push_scope();
             void pop_scope();
-            std::shared_ptr<nv::Type>& check_node(Node* node);
+            std::shared_ptr<nv::Type> check_node(Node* node);
             
             // Inferência de tipos
             std::shared_ptr<Type> infer_type(Node* node);

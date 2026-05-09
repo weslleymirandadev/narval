@@ -1,5 +1,5 @@
-#include "frontend/ast/statements/class_def_node.hpp"
-#include "frontend/ast/statements/def_stmt_node.hpp"
+#include "frontend/ast/statements/class_stmt_node.hpp"
+#include "frontend/ast/statements/function_stmt_node.hpp"
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
 #include <llvm/IR/Verifier.h>
@@ -11,7 +11,7 @@ static void compile_class_method(
     nv::IRGenerationContext& ctx,
     const std::string& class_name,
     const std::string& method_name,
-    DefStmtNode* def)
+    FunctionStmtNode* function)
 {
     auto& C  = ctx.get_context();
     auto& M  = ctx.get_module();
@@ -30,7 +30,7 @@ static void compile_class_method(
     // All params are Value*: first is __this, rest are declared params
     std::vector<llvm::Type*>  param_types = {ValuePtr};
     std::vector<std::string>  param_names = {"__this"};
-    for (const auto& pn : def->parameters) {
+    for (const auto& pn : function->parameters) {
         for (const auto& kv : pn.parameter) {
             param_types.push_back(ValuePtr);
             param_names.push_back(kv.first);
@@ -79,7 +79,7 @@ static void compile_class_method(
         nv::ir_utils::emit_push_frame(ctx, src_file, display_name);
 
     // Compile body statements
-    for (const auto& stmt : def->body) {
+    for (const auto& stmt : function->body) {
         if (stmt) {
             if (stmt->position && !src_file.empty())
                 nv::ir_utils::emit_set_line(ctx, static_cast<int>(stmt->position->line));
@@ -114,10 +114,10 @@ static void compile_class_method(
     if (prev_bb) B.SetInsertPoint(prev_bb);
 }
 
-void ClassDefNode::codegen(nv::IRGenerationContext& ctx) {
+void ClassStmtNode::codegen(nv::IRGenerationContext& ctx) {
     for (const auto& method : methods) {
         if (!method->method_def) continue;
-        auto* def = static_cast<DefStmtNode*>(method->method_def.get());
-        compile_class_method(ctx, name, method->name, def);
+        auto* function = static_cast<FunctionStmtNode*>(method->method_def.get());
+        compile_class_method(ctx, name, method->name, function);
     }
 }

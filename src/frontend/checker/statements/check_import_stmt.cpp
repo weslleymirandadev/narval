@@ -2,9 +2,9 @@
 #include "frontend/ast/ast.hpp"
 #include "frontend/ast/statements/import_stmt_node.hpp"
 #include "frontend/ast/statements/declaration_stmt_node.hpp"
-#include "frontend/ast/statements/def_stmt_node.hpp"
-#include "frontend/ast/statements/class_def_node.hpp"
-#include "frontend/ast/statements/enum_def_node.hpp"
+#include "frontend/ast/statements/function_stmt_node.hpp"
+#include "frontend/ast/statements/class_stmt_node.hpp"
+#include "frontend/ast/statements/enum_stmt_node.hpp"
 #include "frontend/ast/expressions/assignment_expr_node.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
 #include "frontend/lexer/lexer.hpp"
@@ -217,19 +217,20 @@ namespace {
                     symbols.insert(id->symbol);
                 }
             }
-            // Funções (def)
-            else if (stmt->kind == NodeType::DefStatement) {
-                auto* def = static_cast<DefStmtNode*>(stmt.get());
-                symbols.insert(def->name);
+
+            // Funções 
+            else if (stmt->kind == NodeType::FunctionStatement) {
+                auto* function = static_cast<FunctionStmtNode*>(stmt.get());
+                symbols.insert(function->name);
             }
             // Classes
-            else if (stmt->kind == NodeType::ClassDef) {
-                auto* cls = static_cast<ClassDefNode*>(stmt.get());
+            else if (stmt->kind == NodeType::ClassStatement) {
+                auto* cls = static_cast<ClassStmtNode*>(stmt.get());
                 symbols.insert(cls->name);
             }
             // Enums
-            else if (stmt->kind == NodeType::EnumDef) {
-                auto* en = static_cast<EnumDefNode*>(stmt.get());
+            else if (stmt->kind == NodeType::EnumStatement) {
+                auto* en = static_cast<EnumStmtNode*>(stmt.get());
                 symbols.insert(en->name);
             }
             // Assignments que criam variáveis (serão convertidos em declarações pelo checker)
@@ -395,7 +396,7 @@ std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
                 try {
                     auto& st = module_checker.scope->get_key(sym_name);
                     sym_type = st;
-                    sym_constant = (st->kind == nv::Kind::DEF || st->kind == nv::Kind::CLASS || st->kind == nv::Kind::ENUM);
+                    sym_constant = (st->kind == nv::Kind::FUNCTION || st->kind == nv::Kind::CLASS || st->kind == nv::Kind::ENUM);
                 } catch (std::runtime_error&) {
                     // se não estiver no scope, verificar no map de tipos (classes)
                     auto ty_it = module_checker.types.find(sym_name);
@@ -447,9 +448,9 @@ std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
                 // Verificar se é função (constante) ou variável
                 if (scope_type->kind == nv::Kind::POLY_TYPE) {
                     auto poly = std::static_pointer_cast<nv::PolyType>(scope_type);
-                    is_constant = (poly->body->kind == nv::Kind::DEF);
+                    is_constant = (poly->body->kind == nv::Kind::FUNCTION);
                 } else {
-                    is_constant = (scope_type->kind == nv::Kind::DEF);
+                    is_constant = (scope_type->kind == nv::Kind::FUNCTION);
                 }
                 symbol_found = true;
             } catch (std::runtime_error&) {
@@ -470,10 +471,10 @@ std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
                         }
                     }
                     // Funções (def)
-                    else if (stmt->kind == NodeType::DefStatement) {
-                        auto* def = static_cast<DefStmtNode*>(stmt.get());
+                    else if (stmt->kind == NodeType::FunctionStatement) {
+                        auto* def = static_cast<FunctionStmtNode*>(stmt.get());
                         if (def->name == item.name) {
-                            // Construir o tipo da função diretamente do DefStmtNode
+                            // Construir o tipo da função diretamente do FunctionStmtNode
                             // Obter tipos dos parâmetros
                             std::vector<std::shared_ptr<nv::Type>> param_types;
                             for (const auto& param : def->parameters) {
@@ -490,7 +491,7 @@ std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
                             auto return_type = module_checker.gettyptr(def->return_type);
                             
                             // Criar tipo de função
-                            symbol_type = std::make_shared<nv::Def>(param_types, return_type);
+                            symbol_type = std::make_shared<nv::Function>(param_types, return_type);
                             
                             is_constant = true;  // Funções são constantes
                             symbol_found = true;

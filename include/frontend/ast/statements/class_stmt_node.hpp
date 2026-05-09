@@ -1,6 +1,6 @@
 #pragma once
 #include "frontend/ast/types.hpp"
-#include "frontend/ast/statements/def_stmt_node.hpp"
+#include "frontend/ast/statements/function_stmt_node.hpp"
 #include <vector>
 #include <memory>
 #include <string>
@@ -37,7 +37,7 @@ public:
 };
 
 // Nó para definição de classe
-class ClassDefNode : public Stmt {
+class ClassStmtNode : public Stmt {
 public:
     std::string name;
     std::string parent_class;
@@ -45,11 +45,11 @@ public:
     std::vector<std::unique_ptr<ClassFieldNode>> fields;
     std::vector<std::unique_ptr<ClassMethodNode>> methods;
     
-    ClassDefNode(const std::string& name)
-        : Stmt(NodeType::ClassDef), name(name) {}
+    ClassStmtNode(const std::string& name)
+        : Stmt(NodeType::ClassStatement), name(name) {}
     
     Node* clone() const override {
-        auto* node = new ClassDefNode(name);
+        auto* node = new ClassStmtNode(name);
         node->parent_class = parent_class;
         node->implements_interfaces = implements_interfaces;
         for (const auto& field : fields) {

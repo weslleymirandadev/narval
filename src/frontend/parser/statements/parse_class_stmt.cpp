@@ -9,7 +9,7 @@ std::unique_ptr<Node> parse_class_stmt(Parser* parser) {
     std::string class_name = parser->current_token().lexeme;
     parser->consume_token(); // consumir nome da classe
     
-    auto class_node = std::make_unique<ClassDefNode>(class_name);
+    auto class_node = std::make_unique<ClassStmtNode>(class_name);
     
     // Verificar herança
     if (parser->current_token().type == TokenType::EXTENDS) {
@@ -131,15 +131,13 @@ std::unique_ptr<Node> parse_class_stmt(Parser* parser) {
                     param_nodes.emplace_back(std::move(pm));
                 }
 
-                // Criar DefStmtNode para armazenar o método com corpo
-                auto def_node = std::make_unique<DefStmtNode>(
+                auto def_node = std::make_unique<FunctionStmtNode>(
                     member_name,
                     std::move(param_nodes),
                     return_type,
                     std::vector<std::unique_ptr<Stmt>>{}
                 );
 
-                // Parsear corpo do método
                 while (parser->not_eof() && parser->current_token().type != TokenType::CBRACE) {
                     auto stmt = parse_stmt(parser);
                     if (stmt) {
