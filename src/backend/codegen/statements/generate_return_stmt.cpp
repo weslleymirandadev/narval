@@ -56,6 +56,41 @@ void ReturnStmtNode::codegen(nv::IRGenerationContext& ctx) {
     if (value) {
         value->codegen(ctx);
         auto* v = ctx.pop_value();
+
+        // Função falível: embalar o valor em Result::Ok antes de retornar
+        if (v && ctx.is_current_function_fallible() && !ctx.in_or_block()) {
+            auto& B        = ctx.get_builder();
+            auto* ValueTy  = nv::ir_utils::get_value_struct(ctx);
+            auto* ValuePtr = nv::ir_utils::get_value_ptr(ctx);
+            auto* val_slot = ctx.create_alloca(ValueTy, "ok_inner");
+            if (v->getType() == ValueTy) {
+                B.CreateStore(v, val_slot);
+            } else {
+                // Alocação temporária para primitivos
+                auto* tmp = ctx.create_alloca(ValueTy, "ok_prim");
+                auto* I32 = llvm::Type::getInt32Ty(ctx.get_context());
+                auto* F64 = llvm::Type::getDoubleTy(ctx.get_context());
+                auto* I8P = nv::ir_utils::get_i8_ptr(ctx);
+                if (v->getType()->isIntegerTy(1)) {
+                    B.CreateCall(ctx.ensure_runtime_func("create_bool", {ValuePtr, I32}),
+                                 {tmp, B.CreateZExt(v, I32)});
+                } else if (v->getType()->isIntegerTy()) {
+                    auto* iv = v->getType()->isIntegerTy(32) ? v : B.CreateSExtOrTrunc(v, I32);
+                    B.CreateCall(ctx.ensure_runtime_func("create_int", {ValuePtr, I32}), {tmp, iv});
+                } else if (v->getType()->isFloatingPointTy()) {
+                    auto* fv = v->getType() == F64 ? v : B.CreateFPExt(v, F64);
+                    B.CreateCall(ctx.ensure_runtime_func("create_float", {ValuePtr, F64}), {tmp, fv});
+                } else if (v->getType() == I8P) {
+                    B.CreateCall(ctx.ensure_runtime_func("create_str", {ValuePtr, I8P}), {tmp, v});
+                }
+                B.CreateStore(B.CreateLoad(ValueTy, tmp, "ok_prim_val"), val_slot);
+            }
+            auto* ok_slot = ctx.create_alloca(ValueTy, "ok_result");
+            B.CreateCall(ctx.ensure_runtime_func("create_result_ok", {ValuePtr, ValuePtr}),
+                         {ok_slot, val_slot});
+            v = B.CreateLoad(ValueTy, ok_slot, "ok_val");
+        }
+
         if (v) {
             auto* current_func = ctx.get_current_function();
             if (current_func) {
