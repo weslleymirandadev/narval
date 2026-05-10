@@ -19,6 +19,15 @@ std::shared_ptr<nv::Type>& check_member_expr(nv::Checker* ch, Node* node) {
         return ch->gettyptr("void");
     }
     
+    // Namespace Python dinâmico: qualquer member access é válido sem verificação de tipo.
+    // O codegen usa o dispatcher genérico _nv_py_ns_call_ALIAS em runtime.
+    if (member_expr->object->kind == NodeType::Identifier) {
+        auto* obj_id = static_cast<IdentifierNode*>(member_expr->object.get());
+        if (ch->python_namespaces.count(obj_id->symbol)) {
+            return ch->gettyptr("void");
+        }
+    }
+
     // Verificar se o objeto é um namespace alias de wildcard import
     if (member_expr->object->kind == NodeType::Identifier) {
         auto* obj_id = static_cast<IdentifierNode*>(member_expr->object.get());
