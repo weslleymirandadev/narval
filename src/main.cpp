@@ -325,8 +325,17 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
             return 1;
         }
 
-        // Remover o .o temporário (não é necessário após a linkagem)
+        // Limpar o .o do programa principal
         std::filesystem::remove(obj_path);
+
+        // Limpar .o temporários gerados pelo codegen (bridges Python, etc.)
+        for (const auto& item : context.get_extra_link_items()) {
+            // Remover apenas arquivos .o gerados por nós (nome começa com narval_py_bridge_)
+            if (item.size() > 2 && item.substr(item.size() - 2) == ".o" &&
+                item.find("narval_py_bridge_") != std::string::npos) {
+                std::filesystem::remove(item);
+            }
+        }
 
         // Modo --build: apenas gera o binário, não executa
         if (build_only) return 0;
