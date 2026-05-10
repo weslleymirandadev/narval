@@ -5,19 +5,20 @@
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Instructions.h>
 
-// PropagateStmtNode codegen: re-throw the current `err` variable as a Narval exception.
+// PropagateStmtNode codegen: re-lança ou retorna Err dependendo do contexto.
+// - Função falível (is_fallible=true): cria Result::Err e retorna da função.
+// - Função normal: lança exceção via nv_throw_exception (mecanismo setjmp/longjmp).
 void PropagateStmtNode::codegen(nv::IRGenerationContext& ctx) {
-    auto& B       = ctx.get_builder();
-    auto* ValueTy = nv::ir_utils::get_value_struct(ctx);
+    auto& B        = ctx.get_builder();
+    auto* ValueTy  = nv::ir_utils::get_value_struct(ctx);
     auto* ValuePtr = nv::ir_utils::get_value_ptr(ctx);
 
-    // Look up the `err` slot in scope
+    // Localizar o slot `err` no escopo atual
     auto err_sym = ctx.get_symbol_table().lookup_symbol("err");
     llvm::Value* err_ptr = nullptr;
     if (err_sym.has_value() && err_sym->value) {
         err_ptr = err_sym->value;
     } else {
-        // No err in scope — create a generic error
         auto* slot = ctx.create_alloca(ValueTy, "propagate_err");
         auto* msg  = B.CreateGlobalString("propagation error");
         auto* fn   = ctx.ensure_runtime_func("create_error",
@@ -26,11 +27,22 @@ void PropagateStmtNode::codegen(nv::IRGenerationContext& ctx) {
         err_ptr = slot;
     }
 
-    // Throw via the Narval exception mechanism
-    auto* throw_fn = ctx.ensure_runtime_func("nv_throw_exception", {ValuePtr});
-    B.CreateCall(throw_fn, {err_ptr});
-    // Unreachable after throw, but we need a terminator
-    B.CreateUnreachable();
+    if (ctx.is_current_function_fallible()) {
+        // Criar Result::Err e retornar da função (propagação via Result)
+        auto* err_result = ctx.create_alloca(ValueTy, "propagate_err_result");
+        B.CreateCall(ctx.ensure_runtime_func("create_result_err", {ValuePtr, ValuePtr}),
+                     {err_result, err_ptr});
+        auto* ret_val = B.CreateLoad(ValueTy, err_result, "propagate_ret");
+        if (!ctx.get_source_file().empty())
+            nv::ir_utils::emit_pop_frame(ctx);
+        nv::ir_utils::create_return(ctx, ret_val);
+        // create_return já emite o terminador ret; não adicionar unreachable
+    } else {
+        // Comportamento original: lançar exceção
+        auto* throw_fn = ctx.ensure_runtime_func("nv_throw_exception", {ValuePtr});
+        B.CreateCall(throw_fn, {err_ptr});
+        B.CreateUnreachable();
+    }
 }
 
 // Helper: box a raw LLVM value into a narval Value struct
