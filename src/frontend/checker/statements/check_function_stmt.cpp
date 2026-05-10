@@ -2,8 +2,41 @@
 #include "frontend/ast/statements/function_stmt_node.hpp"
 #include "frontend/ast/expressions/param_node.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
+#include "frontend/ast/expressions/or_expr_node.hpp"
+#include "frontend/ast/expressions/assignment_expr_node.hpp"
+#include "frontend/ast/statements/declaration_stmt_node.hpp"
 #include "frontend/checker/unification.hpp"
 #include <stdexcept>
+
+// Verifica se um node (expr ou stmt) contém `propagate` em qualquer profundidade.
+static bool node_has_propagate(const Node* node) {
+    if (!node) return false;
+    if (node->kind == NodeType::PropagateStatement) return true;
+    if (node->kind == NodeType::OrExpression) {
+        auto* or_node = static_cast<const OrExprNode*>(node);
+        if (or_node->is_block_handler) {
+            for (auto& s : or_node->block_stmts)
+                if (node_has_propagate(s.get())) return true;
+        }
+        return node_has_propagate(or_node->expr.get());
+    }
+    if (node->kind == NodeType::AssignmentExpression) {
+        auto* assign = static_cast<const AssignmentExprNode*>(node);
+        return node_has_propagate(assign->value.get());
+    }
+    if (node->kind == NodeType::DeclarationStatement) {
+        auto* decl = static_cast<const DeclarationStmtNode*>(node);
+        return node_has_propagate(decl->value.get());
+    }
+    return false;
+}
+
+// Verifica se um bloco de statements contém `propagate` em qualquer profundidade.
+static bool stmts_have_propagate(const std::vector<std::unique_ptr<Stmt>>& stmts) {
+    for (auto& stmt : stmts)
+        if (node_has_propagate(stmt.get())) return true;
+    return false;
+}
 
 std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
     auto* function_stmt = static_cast<FunctionStmtNode*>(node);
@@ -63,17 +96,26 @@ std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
         return_type = ch->gettyptr(function_stmt->return_type);
     }
     
+    // Inferência de fallibilidade: detectar propagate antes de checar o corpo.
+    // Quando falível, o checker não força correspondência do tipo de retorno declarado
+    // (o codegen emite Ok(value) automaticamente, tornando o tipo real Result<T>).
+    bool is_fallible = stmts_have_propagate(function_stmt->body);
+    if (is_fallible) function_stmt->is_fallible = true;
+
     // Salvar tipo de retorno atual e restaurar após verificar corpo
     auto saved_return_type = ch->current_return_type;
+    bool saved_fallible = ch->in_fallible_function;
     ch->current_return_type = return_type;
-    
+    ch->in_fallible_function = is_fallible;
+
     // Verificar corpo da função
     for (auto& stmt : function_stmt->body) {
         ch->check_node(stmt.get());
     }
-    
+
     // Restaurar tipo de retorno anterior
     ch->current_return_type = saved_return_type;
+    ch->in_fallible_function = saved_fallible;
     
     // Criar tipo de função e registrar no escopo pai
     ch->pop_scope();
