@@ -473,6 +473,12 @@ public:
     void add_extra_link_item(const std::string& item) { extra_link_items.push_back(item); }
     const std::vector<std::string>& get_extra_link_items() const { return extra_link_items; }
 
+    // Namespaces Python (from extern "Python:mod" import * as alias / import name).
+    std::unordered_set<std::string> py_namespaces;
+    void register_py_namespace(const std::string& alias) { py_namespaces.insert(alias); }
+    bool is_py_namespace(const std::string& name) const { return py_namespaces.count(name) > 0; }
+
+
     // Or-block context management
     void push_or_block(llvm::AllocaInst* result_slot, llvm::BasicBlock* merge_bb) {
         or_block_stack.push_back({result_slot, merge_bb});
