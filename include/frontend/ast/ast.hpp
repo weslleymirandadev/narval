@@ -32,6 +32,7 @@
 #include "expressions/instanceof_expr_node.hpp"
 
 // Statements
+#include "statements/module_attr_node.hpp"
 #include "statements/defer_error_stmt_node.hpp"
 #include "statements/extern_stmt_node.hpp"
 #include "statements/extern_from_import_stmt_node.hpp"

@@ -65,7 +65,8 @@ enum class NodeType {
     SliceExpression,
     DeferErrorStatement,
     ExternStatement,
-    ExternFromImportStatement
+    ExternFromImportStatement,
+    ModuleAttrStatement
 };
 
 class PositionData {
