@@ -14,6 +14,17 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
     if (call->caller->kind == NodeType::MemberExpression) {
         auto* member_expr = static_cast<MemberExprNode*>(call->caller.get());
 
+        // Namespace Python dinâmico — aceitar qualquer method call sem verificação de tipo.
+        // O dispatch real acontece em runtime via _nv_py_ns_call_ALIAS.
+        if (member_expr->object->kind == NodeType::Identifier) {
+            auto* obj_id = static_cast<IdentifierNode*>(member_expr->object.get());
+            if (ch->python_namespaces.count(obj_id->symbol)) {
+                for (const auto& arg : call->args)
+                    ch->infer_expr(arg.get());
+                return ch->gettyptr("void");
+            }
+        }
+
         // Verificar se o objeto é um namespace alias de wildcard import
         if (member_expr->object->kind == NodeType::Identifier &&
             member_expr->property->kind == NodeType::Identifier) {
@@ -127,8 +138,18 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
         return function->returntype;
     }
     
+    // Callable dinâmico (from extern "C:lib" import / from extern "Python" import):
+    // registrado em python_namespaces do checker — skip all type checking.
+    if (call->caller->kind == NodeType::Identifier) {
+        auto* cid = static_cast<IdentifierNode*>(call->caller.get());
+        if (ch->python_namespaces.count(cid->symbol)) {
+            for (const auto& arg : call->args)
+                ch->infer_expr(arg->value.get());
+            return ch->gettyptr("void");
+        }
+    }
+
     // Verificar o caller (função sendo chamada) usando infer_expr
-    // Isso já verifica identificadores corretamente
     auto func_type = ch->infer_expr(call->caller.get());
     bool caller_has_error = ch->err;
     
