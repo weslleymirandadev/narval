@@ -1,6 +1,7 @@
 #include "frontend/parser/parser.hpp"
 #include "frontend/parser/expressions/parse_expr.hpp"
 #include "frontend/parser/statements/parse_stmt.hpp"
+#include "frontend/parser/statements/parse_block_util.hpp"
 #include "frontend/ast/statements/try_stmt_node.hpp"
 #include <memory>
 
@@ -11,12 +12,10 @@ static std::vector<std::unique_ptr<Node>> parse_block_body(Parser* parser, const
     }
     parser->consume_token();
 
+    auto stmts_typed = parse_body(parser);
     std::vector<std::unique_ptr<Node>> stmts;
-    while (parser->current_token().type != TokenType::CBRACE &&
-           parser->current_token().type != TokenType::EOF_TOKEN) {
-        auto stmt = parse_stmt(parser);
-        if (stmt) stmts.push_back(std::move(stmt));
-    }
+    for (auto& s : stmts_typed)
+        if (s) stmts.push_back(std::unique_ptr<Node>(s.release()));
 
     if (parser->current_token().type != TokenType::CBRACE) {
         parser->error(std::string("Expected '}' ") + context);
