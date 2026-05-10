@@ -101,7 +101,8 @@ enum class TokenType {
     NONE_KW,
     DEFER,
     EXTERN,
-    FROM
+    FROM,
+    AS,
 };
 
 inline const char* get_token_name(TokenType type) {
@@ -127,6 +128,7 @@ inline const char* get_token_name(TokenType type) {
         case TokenType::MATCH: return "MATCH";
         case TokenType::AND: return "AND";
         case TokenType::OR: return "OR";
+        case TokenType::AS: return "AS";
         case TokenType::INCREMENT: return "INCREMENT";
         case TokenType::DECREMENT: return "DECREMENT";
         case TokenType::INTEGER_DIV: return "INTEGER DIV";
