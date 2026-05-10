@@ -215,9 +215,11 @@ std::vector<Token> Lexer::tokenize()
                 skip_whitespace();
                 
                 // Verifica se há "import"
-                if (is_eof() || std::distance(current, input.cend()) < 6 || 
+                if (is_eof() || std::distance(current, input.cend()) < 6 ||
                     input.substr(position, 6) != "import") {
-                    tokens.emplace_back(TokenType::UNKNOWN, "from " + module_path, start_line, start_col, column, start_pos, position, filename);
+                    // Não é import — emitir FROM + STRING separados para uso em extern etc.
+                    tokens.emplace_back(TokenType::FROM, "from", start_line, start_col, start_col + 4, start_pos, start_pos + 4, filename);
+                    tokens.push_back(module_token);
                     continue;
                 }
                 
