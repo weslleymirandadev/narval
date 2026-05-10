@@ -156,10 +156,10 @@ std::unique_ptr<Node> Parser::produce_ast(const std::vector<Token>& tokens, cons
     this->import_infos = imports;
     token_count = tokens.size();
     index = 0;
+    import_index = 0;
     has_errors = false;
     lines.clear();
     line_count = 0;
-    size_t import_index = 0;
 
     if (!tokens.empty()) {
         // Avoid attempting to read REPL or notebook virtual filenames
@@ -178,49 +178,6 @@ std::unique_ptr<Node> Parser::produce_ast(const std::vector<Token>& tokens, cons
 
     while (not_eof()) {
         Token current = current_token();
-        if (current.type == TokenType::IMPORT) {
-            // Cria nó ImportStatement usando as informações do lexer
-            if (import_index < import_infos.size()) {
-                const auto& import_info = import_infos[import_index];
-                std::vector<ImportItem> items;
-                // Usar import_items se disponível (com posições), senão usar imports (compatibilidade)
-                if (!import_info.import_items.empty()) {
-                    for (const auto& item_info : import_info.import_items) {
-                        items.emplace_back(item_info.name, item_info.alias, item_info.line, item_info.col_start, item_info.col_end);
-                    }
-                } else {
-                    for (const auto& [name, alias] : import_info.imports) {
-                        items.emplace_back(name, alias);
-                    }
-                }
-                
-                // Procurar o token STRING correspondente ao module_path
-                // O token STRING vem antes do token IMPORT na lista de tokens
-                Token string_token = current;
-                // Procurar para trás pelo token STRING que corresponde ao module_path
-                for (int i = static_cast<int>(index) - 1; i >= 0; --i) {
-                    if (tokens[i].type == TokenType::STRING && 
-                        tokens[i].lexeme == import_info.module_path &&
-                        tokens[i].filename == current.filename) {
-                        string_token = tokens[i];
-                        break;
-                    }
-                }
-                
-                auto import_stmt = std::make_unique<ImportStmtNode>(import_info.module_path, items, current.filename);
-                import_stmt->is_wildcard = import_info.is_wildcard;
-                import_stmt->wildcard_alias = import_info.wildcard_alias;
-                // Usar a posição do token STRING (que contém o caminho do módulo)
-                import_stmt->position = std::make_unique<PositionData>(
-                    string_token.line, string_token.column_start, string_token.column_end,
-                    string_token.position_start, string_token.position_end
-                );
-                program->add_statement(std::move(import_stmt));
-                import_index++;
-            }
-            consume_token();
-            continue;
-        }
         try {
             std::unique_ptr<Node> stmt = parse_stmt(this);
             if (stmt) {
