@@ -2,6 +2,7 @@
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
 #include "frontend/checker/checker.hpp"
+#include "frontend/ast/statements/module_attr_node.hpp"
 #include <unordered_set>
 #include <string>
 #include "llvm/IR/LLVMContext.h"
@@ -22,7 +23,6 @@ void register_feature(const std::string& feature) {
     if (feature == "vector") g_feature_tracker.has_vectors = true;
     else if (feature == "str") g_feature_tracker.has_strings = true;
     else if (feature == "map") g_feature_tracker.has_maps = true;
-    else if (feature == "json") g_feature_tracker.has_json = true;
     else if (feature == "read") g_feature_tracker.has_read = true;
     else if (feature == "write") g_feature_tracker.has_write = true;
     else if (feature == "map_operations") g_feature_tracker.has_map_operations = true;
@@ -32,6 +32,10 @@ void register_feature(const std::string& feature) {
 
 // Função para obter o tracker atual
 const FeatureTracker& get_feature_tracker() {
+    return g_feature_tracker;
+}
+
+FeatureTracker& get_mutable_feature_tracker() {
     return g_feature_tracker;
 }
 
@@ -50,6 +54,9 @@ static void declare_runtime(IRGenerationContext& context) {
     // Object and Array opaque pointers
     auto* ObjPtr  = I8Ptr;
     auto* ArrPtr  = I8Ptr;
+
+    // Tracker disponível em toda a função (disable flags + feature flags)
+    const auto& tracker = get_feature_tracker();
 
     // Prototypes for runtime functions (subset sufficient for stdlib usage)
     // Value helpers (plain Value* out parameters, no sret)
@@ -74,27 +81,15 @@ static void declare_runtime(IRGenerationContext& context) {
     {
         auto decl = M.getOrInsertFunction("create_vector", llvm::FunctionType::get(VoidTy, {ValuePtr, I32}, false));
     }
-    // Option / Result
-    {
-        auto decl = M.getOrInsertFunction("create_option_some", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
-    }
-    {
-        auto decl = M.getOrInsertFunction("create_option_none", llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
-    }
-    {
-        auto decl = M.getOrInsertFunction("create_result_ok", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
-    }
-    {
-        auto decl = M.getOrInsertFunction("create_result_err", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
-    }
-    {
-        auto decl = M.getOrInsertFunction("nv_is_failure", llvm::FunctionType::get(I32, {ValuePtr}, false));
-    }
-    {
-        auto decl = M.getOrInsertFunction("nv_unwrap_inner", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
-    }
-    {
-        auto decl = M.getOrInsertFunction("nv_get_failure_err", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
+    // Option / Result (pulável via @[no_option_result] ou @[minimal])
+    if (!tracker.no_option_result) {
+        M.getOrInsertFunction("create_option_some", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
+        M.getOrInsertFunction("create_option_none", llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
+        M.getOrInsertFunction("create_result_ok",   llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
+        M.getOrInsertFunction("create_result_err",  llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
+        M.getOrInsertFunction("nv_is_failure",      llvm::FunctionType::get(I32, {ValuePtr}, false));
+        M.getOrInsertFunction("nv_unwrap_inner",    llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
+        M.getOrInsertFunction("nv_get_failure_err", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
     }
 
     // Funções de conversão de tipo (estilo Python)
@@ -112,58 +107,34 @@ static void declare_runtime(IRGenerationContext& context) {
         auto decl = M.getOrInsertFunction("nv_bool_convert", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
     }
 
-    // nv_write(Value*) - função builtin para escrita com nova linha
-    M.getOrInsertFunction("nv_write", llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
-    // nv_write_no_nl(Value*) - função builtin para escrita sem nova linha
-    M.getOrInsertFunction("nv_write_no_nl", llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
-
-    // Declare the backend intrinsic implementation symbol. Codegen will
-    // lower calls to `nv_read` to this LLVM-level intrinsic `llvm.nv_read(prompt: i8*) -> i8*`.
-    M.getOrInsertFunction("nv_read", llvm::FunctionType::get(I8Ptr, {I8Ptr}, false));
+    // I/O — pulável via @[no_write] / @[no_read] / @[minimal]
+    if (!tracker.no_write) {
+        M.getOrInsertFunction("nv_write",       llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
+        M.getOrInsertFunction("nv_write_no_nl", llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
+    }
+    if (!tracker.no_read) {
+        M.getOrInsertFunction("nv_read", llvm::FunctionType::get(I8Ptr, {I8Ptr}, false));
+    }
     M.getOrInsertFunction("atoi", llvm::FunctionType::get(I32, {I8Ptr}, false));
     M.getOrInsertFunction("_exit", llvm::FunctionType::get(VoidTy, {I32}, false));
-
-    // Funções condicionais baseadas no tracker
-    const auto& tracker = get_feature_tracker();
-    
-    // JSON functions
-    if (tracker.has_json) {
-        M.getOrInsertFunction("json_parse", llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
-        M.getOrInsertFunction("json_parse_string", llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
-    }
     
     // Map functions
-    if (tracker.has_maps || tracker.has_map_operations) {
+    if (!tracker.no_maps && (tracker.has_maps || tracker.has_map_operations)) {
         M.getOrInsertFunction("map_get_method", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr, I8Ptr}, false));
         M.getOrInsertFunction("map_set_method", llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr, ValuePtr}, false));
     }
-    
-    // String functions
-    if (tracker.has_strings || tracker.has_string_operations) {
-        auto decl = M.getOrInsertFunction("string_to_upper_case", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::PointerType::getUnqual(C)}, false));
+
+    // String methods
+    if (!tracker.no_strings && (tracker.has_strings || tracker.has_string_operations)) {
+        M.getOrInsertFunction("string_to_upper_case", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::PointerType::getUnqual(C)}, false));
+        M.getOrInsertFunction("string_replace",       llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::PointerType::getUnqual(C), llvm::PointerType::getUnqual(C), llvm::PointerType::getUnqual(C)}, false));
+        M.getOrInsertFunction("string_includes",      llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::PointerType::getUnqual(C), ValueTy}, false));
     }
-    
-    if (tracker.has_strings || tracker.has_string_operations) {
-        auto decl = M.getOrInsertFunction("string_replace", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::PointerType::getUnqual(C), llvm::PointerType::getUnqual(C), llvm::PointerType::getUnqual(C)}, false));
-    }
-    
-    if (tracker.has_strings || tracker.has_string_operations) {
-        auto decl = M.getOrInsertFunction("string_includes", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::PointerType::getUnqual(C), ValueTy}, false));
-    }
-    
-    // Vector functions
-    if (tracker.has_vectors || tracker.has_vector_operations) {
-        M.getOrInsertFunction(
-            "vector_get_method",
-            llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr, I32}, false)
-        );
-    }
-    
-    if (tracker.has_vectors || tracker.has_vector_operations) {
-        M.getOrInsertFunction(
-            "vector_set_method",
-            llvm::FunctionType::get(VoidTy, {ValuePtr, I32, ValuePtr}, false)
-        );
+
+    // Vector methods
+    if (!tracker.no_vectors && (tracker.has_vectors || tracker.has_vector_operations)) {
+        M.getOrInsertFunction("vector_get_method", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr, I32}, false));
+        M.getOrInsertFunction("vector_set_method", llvm::FunctionType::get(VoidTy, {ValuePtr, I32, ValuePtr}, false));
     }
     
     // REPL helper functions (sempre necessárias para modo interativo)
@@ -171,34 +142,38 @@ static void declare_runtime(IRGenerationContext& context) {
     M.getOrInsertFunction("nv_register_function_return", llvm::FunctionType::get(VoidTy, {llvm::PointerType::getUnqual(C), I8Ptr}, false));
     M.getOrInsertFunction("ensure_value_type", llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
 
-    // Traceback / shadow call stack
-    M.getOrInsertFunction("nv_push_frame", llvm::FunctionType::get(VoidTy, {I8Ptr, I8Ptr}, false));
-    M.getOrInsertFunction("nv_pop_frame",  llvm::FunctionType::get(VoidTy, {}, false));
-    M.getOrInsertFunction("nv_set_line",   llvm::FunctionType::get(VoidTy, {I32}, false));
+    // Traceback / shadow call stack — pulável via @[no_traceback] / @[minimal]
+    if (!tracker.no_traceback) {
+        M.getOrInsertFunction("nv_push_frame", llvm::FunctionType::get(VoidTy, {I8Ptr, I8Ptr}, false));
+        M.getOrInsertFunction("nv_pop_frame",  llvm::FunctionType::get(VoidTy, {}, false));
+        M.getOrInsertFunction("nv_set_line",   llvm::FunctionType::get(VoidTy, {I32}, false));
+    }
     
     // Plain C helper usado por codegen para string repetition
     M.getOrInsertFunction("memset", llvm::FunctionType::get(I8Ptr, {I8Ptr, I32, I64}, false));
 
-    // Exception handling (setjmp-based)
-    M.getOrInsertFunction("nv_push_try_handler",          llvm::FunctionType::get(I8Ptr, {}, false));
-    M.getOrInsertFunction("nv_pop_try_handler",           llvm::FunctionType::get(VoidTy, {}, false));
-    M.getOrInsertFunction("nv_get_current_exception_into",  llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
-    M.getOrInsertFunction("nv_get_exception_message_into",  llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
-    M.getOrInsertFunction("nv_exception_matches",         llvm::FunctionType::get(I32, {I8Ptr}, false));
-    M.getOrInsertFunction("nv_clear_current_exception",   llvm::FunctionType::get(VoidTy, {}, false));
-    M.getOrInsertFunction("nv_rethrow_current_exception", llvm::FunctionType::get(VoidTy, {}, false));
-    M.getOrInsertFunction("nv_throw_exception",           llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
-    M.getOrInsertFunction("nv_create_exception",          llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr, I8Ptr}, false));
-    M.getOrInsertFunction("nv_extract_string_ptr",        llvm::FunctionType::get(I8Ptr, {ValuePtr}, false));
-    M.getOrInsertFunction("create_error",                 llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
-    M.getOrInsertFunction("create_value_error",           llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
-    M.getOrInsertFunction("create_type_error",            llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
-    M.getOrInsertFunction("create_runtime_error",         llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
-    M.getOrInsertFunction("create_index_error",           llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
-    M.getOrInsertFunction("create_key_error",             llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
-    M.getOrInsertFunction("create_attribute_error",       llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
-    M.getOrInsertFunction("create_name_error",            llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
-    M.getOrInsertFunction("create_assertion_error",       llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
+    // Exception handling (setjmp-based) — pulável via @[no_exceptions] / @[minimal]
+    if (!tracker.no_exceptions) {
+        M.getOrInsertFunction("nv_push_try_handler",           llvm::FunctionType::get(I8Ptr, {}, false));
+        M.getOrInsertFunction("nv_pop_try_handler",            llvm::FunctionType::get(VoidTy, {}, false));
+        M.getOrInsertFunction("nv_get_current_exception_into", llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
+        M.getOrInsertFunction("nv_get_exception_message_into", llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
+        M.getOrInsertFunction("nv_exception_matches",          llvm::FunctionType::get(I32, {I8Ptr}, false));
+        M.getOrInsertFunction("nv_clear_current_exception",    llvm::FunctionType::get(VoidTy, {}, false));
+        M.getOrInsertFunction("nv_rethrow_current_exception",  llvm::FunctionType::get(VoidTy, {}, false));
+        M.getOrInsertFunction("nv_throw_exception",            llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
+        M.getOrInsertFunction("nv_create_exception",           llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr, I8Ptr}, false));
+        M.getOrInsertFunction("nv_extract_string_ptr",         llvm::FunctionType::get(I8Ptr, {ValuePtr}, false));
+        M.getOrInsertFunction("create_error",                  llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
+        M.getOrInsertFunction("create_value_error",            llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
+        M.getOrInsertFunction("create_type_error",             llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
+        M.getOrInsertFunction("create_runtime_error",          llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
+        M.getOrInsertFunction("create_index_error",            llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
+        M.getOrInsertFunction("create_key_error",              llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
+        M.getOrInsertFunction("create_attribute_error",        llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
+        M.getOrInsertFunction("create_name_error",             llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
+        M.getOrInsertFunction("create_assertion_error",        llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
+    }
 }
 
 void generate_ir(
@@ -219,6 +194,16 @@ void generate_ir(
         if (raw) {
             // All non-Program nodes are Stmt (or subclass)
             program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(raw)));
+        }
+    }
+
+    // Pré-scan: aplicar atributos de módulo ANTES de declare_runtime
+    // para que as flags de desabilitação já estejam definidas.
+    for (const auto& stmt : program->body) {
+        if (stmt && stmt->kind == NodeType::ModuleAttrStatement) {
+            auto* attr = static_cast<ModuleAttrNode*>(stmt.get());
+            for (const auto& a : attr->attrs)
+                g_feature_tracker.apply_attribute(a);
         }
     }
 

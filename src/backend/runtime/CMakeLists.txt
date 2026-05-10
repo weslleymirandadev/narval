@@ -4,10 +4,13 @@ file(GLOB RUNTIME_SOURCES "*.c")
 
 add_library(runtime_objs OBJECT ${RUNTIME_SOURCES})
 target_include_directories(runtime_objs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/include)
+# Cada função em sua própria section: permite --gc-sections eliminar símbolos não usados
+target_compile_options(runtime_objs PRIVATE -ffunction-sections -fdata-sections)
 
 # Criar biblioteca compartilhada para uso no JIT
 add_library(runtime_shared SHARED ${RUNTIME_SOURCES})
 target_include_directories(runtime_shared PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/include)
+target_compile_options(runtime_shared PRIVATE -ffunction-sections -fdata-sections)
 set_target_properties(runtime_shared PROPERTIES OUTPUT_NAME "runtime")
 
 # Copiar runtime.so para LIB_DIR e regenerar runtime.o a cada build
