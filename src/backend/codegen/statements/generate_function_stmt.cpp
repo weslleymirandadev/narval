@@ -2,6 +2,8 @@
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
 #include "frontend/checker/checker.hpp"
+#include <unordered_set>
+#include <string>
 #include <llvm/IR/Verifier.h>
 #include <llvm/IR/DIBuilder.h>
 
@@ -32,8 +34,13 @@ void FunctionStmtNode::codegen(nv::IRGenerationContext& ctx) {
             if (!param_ty) {
                 param_ty = nv::ir_utils::llvm_type_from_string(ctx, kv.second);
             }
-            // LLVM não permite parâmetro do tipo void.
-            if (param_ty && param_ty->isVoidTy() && kv.second != "void") {
+            // Tipos compostos Narval (vector, array, map, tuple) são sempre Value structs.
+            // llvm_type_from_string devolve ptr para eles, o que causaria mismatch na chamada.
+            static const std::unordered_set<std::string> composite_types = {
+                "vector", "array", "map", "tuple"
+            };
+            if (composite_types.count(kv.second) ||
+                (param_ty && (param_ty->isVoidTy() || param_ty->isPointerTy()) && kv.second != "void")) {
                 param_ty = nv::ir_utils::get_value_struct(ctx);
             }
             param_types.push_back(param_ty);
