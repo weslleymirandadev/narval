@@ -2,6 +2,8 @@
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
 #include "frontend/checker/checker.hpp"
+#include <unordered_set>
+#include <string>
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
@@ -246,8 +248,16 @@ void generate_ir(
                     if (!param_ty) {
                         param_ty = nv::ir_utils::llvm_type_from_string(context, kv.second);
                     }
-                    if (!param_ty || param_ty->isVoidTy()) {
-                        param_ty = nv::ir_utils::get_value_struct(context);
+                    // Tipos compostos Narval: sempre usar Value struct (evitar mismatch com ptr)
+                    {
+                        static const std::unordered_set<std::string> composite = {
+                            "vector", "array", "map", "tuple"
+                        };
+                        if (composite.count(kv.second) ||
+                            !param_ty || param_ty->isVoidTy() ||
+                            (param_ty->isPointerTy() && kv.second != "str" && kv.second != "void")) {
+                            param_ty = nv::ir_utils::get_value_struct(context);
+                        }
                     }
                     param_types.push_back(param_ty);
                 }
