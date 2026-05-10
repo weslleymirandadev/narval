@@ -11,6 +11,9 @@ public:
     std::vector<ParamNode> parameters;
     std::string return_type;
     CodeBlock body;
+    // Inferido pelo checker: true quando o corpo contém `propagate`.
+    // O codegen então emite retornos como Result::Ok e propagate como Result::Err.
+    bool is_fallible = false;
 
     FunctionStmtNode(
         std::string function_name,
