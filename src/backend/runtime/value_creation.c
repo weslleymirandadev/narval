@@ -436,3 +436,20 @@ void create_any(Value* out) {
     NvObject* obj = nv_object_new(NVObject_Type, NULL, NULL);
     out->obj = obj;
 }
+
+/* ─── Tuple element access ─── */
+
+void tuple_set_impl(Value* self, int32_t index, Value* elem) {
+    if (!self || !self->obj || !elem) return;
+    NVTuple* t = (NVTuple*)self->obj;
+    if (index < 0 || index >= t->field_count) return;
+    t->fields[index] = *elem;
+}
+
+void tuple_get_impl(Value* out, Value* self, int32_t index) {
+    if (!out) return;
+    if (!self || !self->obj) { out->obj = NULL; return; }
+    NVTuple* t = (NVTuple*)self->obj;
+    if (index < 0 || index >= t->field_count) { out->obj = NULL; return; }
+    *out = t->fields[index];
+}
