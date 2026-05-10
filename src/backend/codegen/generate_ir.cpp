@@ -267,8 +267,12 @@ void generate_ir(
             if (!ret_ty) {
                 ret_ty = llvm::Type::getVoidTy(context.get_context());
             }
+            // Funções falíveis retornam Value (Result::Ok ou Result::Err)
+            if (def_stmt->is_fallible) {
+                ret_ty = nv::ir_utils::get_value_struct(context);
+            }
             auto* fn_ty = llvm::FunctionType::get(ret_ty, param_types, false);
-            
+
             // Criar a declaração da função no módulo LLVM se ainda não existir
             auto* fn = context.get_module().getFunction(def_stmt->name);
             if (!fn) {
