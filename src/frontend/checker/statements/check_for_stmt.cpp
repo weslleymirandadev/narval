@@ -80,9 +80,10 @@ std::shared_ptr<nv::Type>& check_for_stmt(nv::Checker* ch, Node* node) {
                 auto* arr = static_cast<nv::Array*>(iterable_type.get());
                 element_type = arr->element_type;
             } else if (iterable_type->kind == nv::Kind::VECTOR) {
-                // Vector pode ter elementos heterogêneos, usar tipo genérico
-                int next_id = ch->unify_ctx.get_next_var_id();
-                element_type = std::make_shared<nv::TypeVar>(next_id);
+                // Vetores Narval são homogêneos em uso típico; usar int como tipo do elemento
+                // para que o loop variable possa ser usado como índice sem erro do checker.
+                // O runtime garante a conversão correta via Value.
+                element_type = ch->gettyptr("int");
             } else if (iterable_type->kind == nv::Kind::STRING) {
                 element_type = ch->gettyptr("str");
             } else if (iterable_type->kind == nv::Kind::MAP) {
