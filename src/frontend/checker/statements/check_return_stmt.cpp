@@ -38,14 +38,16 @@ std::shared_ptr<nv::Type>& check_return_stmt(nv::Checker* ch, Node* node) {
             expected_return_type = ch->gettyptr("float");
         }
         
-        // Unificar tipos
-        try {
-            ch->unify_ctx.unify(return_value_type, expected_return_type);
-        } catch (std::runtime_error& e) {
-            ch->error(return_stmt->value.get(), 
-                      "Return type mismatch: expected '" + expected_return_type->toString() + 
-                      "', but got '" + return_value_type->toString() + "'");
-            return ch->gettyptr("void");
+        // Funções falíveis retornam Result<T> — não verificar correspondência exata do tipo.
+        if (!ch->in_fallible_function) {
+            try {
+                ch->unify_ctx.unify(return_value_type, expected_return_type);
+            } catch (std::runtime_error& e) {
+                ch->error(return_stmt->value.get(),
+                          "Return type mismatch: expected '" + expected_return_type->toString() +
+                          "', but got '" + return_value_type->toString() + "'");
+                return ch->gettyptr("void");
+            }
         }
     } else {
         // Return sem valor - verificar que o tipo de retorno é void
