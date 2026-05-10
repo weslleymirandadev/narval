@@ -100,6 +100,8 @@ std::shared_ptr<nv::Type> nv::Checker::check_node(Node* node) {
           return check_extern_stmt(this, node);
         case NodeType::ExternFromImportStatement:
           return check_extern_from_import_stmt(this, node);
+        case NodeType::ModuleAttrStatement:
+          return gettyptr("void"); // processado no codegen; checker não precisa validar
         default:
           return gettyptr("void");
     }

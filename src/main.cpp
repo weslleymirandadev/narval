@@ -310,6 +310,7 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
         for (const auto& item : context.get_extra_link_items())
             link_extra += " " + item;
 
+        const auto& ft = nv::get_feature_tracker();
         std::string link_cmd =
             std::string("gcc -g ") + runtime_path + " " +
             obj_path + " -pthread -ldl -lm -o " + bin_path + " " +
@@ -317,6 +318,9 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
             "-nostartfiles " +
             std::string(pie_flag) + " " +
             "-lc -w " +
+            "-Wl,--gc-sections " +
+            (ft.strip ? "-Wl,--strip-all " : "") +
+            (ft.lto   ? "-flto "           : "") +
             link_extra;
 
         if (system(link_cmd.c_str()) != 0) {
