@@ -4,6 +4,7 @@
 #include "frontend/checker/statements/check_interface_stmt.hpp"
 #include "frontend/checker/statements/check_defer_error_stmt.hpp"
 #include "frontend/checker/statements/check_extern_stmt.hpp"
+#include "frontend/checker/statements/check_extern_from_import_stmt.hpp"
 #include "frontend/checker/expressions/check_or_expr.hpp"
 #include "frontend/checker/statements/check_function_stmt.hpp"
 #include "frontend/checker/statements/check_if_stmt.hpp"
@@ -97,6 +98,8 @@ std::shared_ptr<nv::Type> nv::Checker::check_node(Node* node) {
           return check_defer_error_stmt(this, node);
         case NodeType::ExternStatement:
           return check_extern_stmt(this, node);
+        case NodeType::ExternFromImportStatement:
+          return check_extern_from_import_stmt(this, node);
         default:
           return gettyptr("void");
     }
