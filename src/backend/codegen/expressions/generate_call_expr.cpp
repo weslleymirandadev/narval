@@ -877,6 +877,11 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
                         arg_val = B.CreateCall(extract_float_func, {tmp_alloca}, "arg_float_val");
                     }
                 }
+                // Primitivo/ponteiro → Value struct (ex: string literal passado a wrapper extern)
+                else if (arg_val && arg_val->getType() != ValueTy && param_types[i] == ValueTy) {
+                    auto* boxed = box_value(ctx, arg_val);
+                    arg_val = B.CreateLoad(ValueTy, boxed, "arg_boxed");
+                }
 
                 argv.push_back(arg_val);
             }
