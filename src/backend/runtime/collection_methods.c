@@ -161,6 +161,17 @@ Value array_pop_method(Array* a) {
     return result;
 }
 
+void nv_set_at_index(Value* container, int32_t idx, Value* elem) {
+    if (!container || !container->obj || !elem) return;
+    NvObject* obj = container->obj;
+    if (obj->ob_type == NVVector_Type) {
+        vector_set_method(container, idx, elem);
+    } else if (obj->ob_type == NVArray_Type) {
+        array_set_index_v(container, idx, elem);
+    }
+    // Map: integer indexing not supported via this path
+}
+
 int32_t nv_get_iterable_length(Value* self) {
     if (!self || !self->obj) return 0;
     NvObject* obj = self->obj;
