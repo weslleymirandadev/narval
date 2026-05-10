@@ -1,5 +1,6 @@
 #include "frontend/parser/statements/parse_function_stmt.hpp"
 #include "frontend/parser/statements/parse_stmt.hpp"
+#include "frontend/parser/statements/parse_block_util.hpp"
 #include "frontend/parser/expressions/parse_args.hpp"
 #include "frontend/parser/expressions/parse_type.hpp"
 #include "frontend/parser/expressions/parse_assignment_expr.hpp"
@@ -64,14 +65,7 @@ std::unique_ptr<Node> parse_function_stmt(Parser* parser) {
     }
 
     parser->expect(TokenType::OBRACE, "Expected '{'.");
-
-    while (parser->not_eof() && parser->current_token().type != TokenType::CBRACE) {
-        auto stmt = parse_stmt(parser);
-        if (stmt) {
-            function_node->body.push_back(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt.release())));
-        }
-    }
-
+    function_node->body = parse_body(parser);
     parser->expect(TokenType::CBRACE, "Expected '}'.");
 
     if (function_node && function_node->position) {
