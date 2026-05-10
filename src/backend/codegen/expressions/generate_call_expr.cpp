@@ -425,6 +425,76 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
     if (caller->kind == NodeType::MemberExpression) {
         auto* mem = static_cast<MemberExprNode*>(caller.get());
 
+        // === PYTHON NAMESPACE: from extern "Python:mod" import * as alias → alias.method(...) ===
+        if (mem->object->kind == NodeType::Identifier) {
+            auto* obj_id = static_cast<IdentifierNode*>(mem->object.get());
+            if (ctx.is_py_namespace(obj_id->symbol)) {
+                const std::string& alias = obj_id->symbol;
+                std::string method_name;
+                if (mem->property->kind == NodeType::Identifier)
+                    method_name = static_cast<IdentifierNode*>(mem->property.get())->symbol;
+
+                auto* ValueTy  = ir_utils::get_value_struct(ctx);
+                auto* ValuePtr = ir_utils::get_value_ptr(ctx);
+                auto& C        = ctx.get_context();
+                auto* I32      = llvm::Type::getInt32Ty(C);
+                auto* I8P      = llvm::PointerType::getUnqual(C);
+                // Value** (opaque ptr no LLVM 15+)
+                auto* VPP      = llvm::PointerType::getUnqual(C);
+
+                int n = (int)args.size();
+
+                // Avaliar e alocar cada argumento como Value*
+                std::vector<llvm::Value*> arg_slots;
+                for (auto& a : args) {
+                    if (a->value) a->value->codegen(ctx);
+                    auto* av = ctx.pop_value();
+                    auto* slot = ctx.create_alloca(ValueTy, "py_ns_arg");
+                    if (av && av->getType() == ValueTy) {
+                        B.CreateStore(av, slot);
+                    } else if (av) {
+                        auto* boxed = box_value(ctx, av);
+                        llvm::Value* to_store = boxed
+                            ? static_cast<llvm::Value*>(B.CreateLoad(ValueTy, boxed))
+                            : static_cast<llvm::Value*>(llvm::UndefValue::get(ValueTy));
+                        B.CreateStore(to_store, slot);
+                    }
+                    arg_slots.push_back(slot);
+                }
+
+                // Construir array Value*[] na stack
+                llvm::Value* args_ptr = llvm::ConstantPointerNull::get(
+                    llvm::cast<llvm::PointerType>(VPP));
+                if (n > 0) {
+                    auto* arr_ty = llvm::ArrayType::get(ValuePtr, n);
+                    auto* arr    = ctx.create_alloca(arr_ty, "py_ns_args_arr");
+                    auto* zero   = llvm::ConstantInt::get(I32, 0);
+                    for (int i = 0; i < n; i++) {
+                        auto* idx = llvm::ConstantInt::get(I32, i);
+                        auto* gep = B.CreateGEP(arr_ty, arr, {zero, idx});
+                        B.CreateStore(arg_slots[i], gep);
+                    }
+                    args_ptr = B.CreateGEP(arr_ty, arr,
+                        {llvm::ConstantInt::get(I32, 0), llvm::ConstantInt::get(I32, 0)});
+                }
+
+                // Chamar dispatcher: Value _nv_py_ns_call_ALIAS(i8* method, Value** args, i32 n)
+                std::string disp_name = "_nv_py_ns_call_" + alias;
+                auto* disp_fn = ctx.get_module().getFunction(disp_name);
+                if (!disp_fn) {
+                    auto* fty = llvm::FunctionType::get(ValueTy, {I8P, VPP, I32}, false);
+                    disp_fn = llvm::Function::Create(
+                        fty, llvm::Function::ExternalLinkage, disp_name, ctx.get_module());
+                }
+
+                auto* method_str = B.CreateGlobalString(method_name, "py_ns_method");
+                auto* count      = llvm::ConstantInt::get(I32, n);
+                auto* result     = B.CreateCall(disp_fn, {method_str, args_ptr, count});
+                ctx.push_value(result);
+                return;
+            }
+        }
+
         // === NAMESPACE ALIAS: import * as ALIAS → ALIAS.func(...) ===
         if (mem->object->kind == NodeType::Identifier) {
             auto* obj_id = static_cast<IdentifierNode*>(mem->object.get());
