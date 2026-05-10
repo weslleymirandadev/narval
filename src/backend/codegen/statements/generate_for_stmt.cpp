@@ -196,6 +196,13 @@ void ForStmtNode::codegen(nv::IRGenerationContext& ctx) {
 
         b.SetInsertPoint(header_bb);
         auto* i_val = b.CreateLoad(i32, i_alloca);
+        // Garantir que len é i32 antes do ICmpSLT — tipos incompatíveis causam assert LLVM
+        if (len && len->getType() != i32) {
+            if (len->getType()->isIntegerTy())
+                len = b.CreateIntCast(len, i32, true, "len.i32");
+            else
+                len = llvm::ConstantInt::get(i32, 0);
+        }
         auto* cond = b.CreateICmpSLT(i_val, len, "itcond");
         b.CreateCondBr(cond, body_bb, exit_bb);
 
