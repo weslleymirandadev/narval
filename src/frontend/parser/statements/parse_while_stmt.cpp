@@ -1,5 +1,6 @@
 #include "frontend/parser/statements/parse_while_stmt.hpp"
 #include "frontend/parser/statements/parse_stmt.hpp"
+#include "frontend/parser/statements/parse_block_util.hpp"
 #include "frontend/parser/expressions/parse_logical_expr.hpp"
 
 std::unique_ptr<Node> parse_while_stmt(Parser* parser) {
@@ -13,18 +14,7 @@ std::unique_ptr<Node> parse_while_stmt(Parser* parser) {
     auto condition = parse_logical_expr(parser);
 
     parser->expect(TokenType::OBRACE, "Expected '{'.");
-
-    std::vector<std::unique_ptr<Stmt>> body;
-
-    while (parser->not_eof() && parser->current_token().type != TokenType::CBRACE) {
-        auto stmt_node = parse_stmt(parser);
-
-        auto* stmt_ptr = static_cast<Stmt*>(stmt_node.get());
-
-        body.push_back(std::unique_ptr<Stmt>(stmt_ptr));
-        stmt_node.release();
-    }
-
+    auto body = parse_body(parser);
     parser->expect(TokenType::CBRACE, "Expected '}'.");
 
     auto while_node = std::make_unique<WhileStmtNode>(
