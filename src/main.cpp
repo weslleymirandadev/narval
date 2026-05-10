@@ -40,7 +40,9 @@ static std::string nv_base_dir_storage;
 // Função para executar modo batch (compilação normal)
 // build_only=true  → compila e linka para binário nomeado; não executa
 // object_only=true → compila apenas para .o nomeado; não linka nem executa
-int run_batch_mode(const std::string& filename, bool build_only = false, bool object_only = false) {
+// extra_libs       → flags extras passadas ao linker (ex: "./libcpp.so")
+int run_batch_mode(const std::string& filename, bool build_only = false,
+                   bool object_only = false, const std::string& extra_libs = "") {
     // Use the file stem as the initial module name (consistent with Lexer)
     std::string module_name = std::filesystem::path(filename).stem().string();
 
@@ -297,13 +299,25 @@ int run_batch_mode(const std::string& filename, bool build_only = false, bool ob
 #else
         const char* pie_flag = "-no-pie";
 #endif
+        // Bibliotecas extras: itens gerados pelo codegen (bridges Python, etc.) +
+        // flag CLI (-L) + variável NARVAL_LINK_EXTRA
+        std::string link_extra = extra_libs;
+        if (link_extra.empty()) {
+            const char* env_extra = std::getenv("NARVAL_LINK_EXTRA");
+            if (env_extra) link_extra = env_extra;
+        }
+        // Adicionar itens gerados durante codegen (ex: narval_py_bridge_X.o)
+        for (const auto& item : context.get_extra_link_items())
+            link_extra += " " + item;
+
         std::string link_cmd =
             std::string("gcc -g ") + runtime_path + " " +
             obj_path + " -pthread -ldl -lm -o " + bin_path + " " +
             "-Wl,-e,main.start " +
             "-nostartfiles " +
             std::string(pie_flag) + " " +
-            "-lc -w";
+            "-lc -w " +
+            link_extra;
 
         if (system(link_cmd.c_str()) != 0) {
             std::filesystem::remove(obj_path);
@@ -390,6 +404,7 @@ int main(int argc, char* argv[]) {
     bool build_only = false;
     bool object_only = false;
     std::string filename;
+    std::string extra_libs;
 
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
@@ -402,6 +417,10 @@ int main(int argc, char* argv[]) {
             build_only = true;
         } else if (arg == "--object" || arg == "-c") {
             object_only = true;
+        } else if ((arg == "-L" || arg == "--link") && i + 1 < argc) {
+            extra_libs += std::string(argv[++i]) + " ";
+        } else if (arg.substr(0, 2) == "-L" && arg.size() > 2) {
+            extra_libs += arg.substr(2) + " ";
         } else if (arg == "--help" || arg == "-h") {
             std::cout << "Uso: narval [opções] [arquivo.nv]\n";
             std::cout << "\nOpções:\n";
@@ -409,6 +428,7 @@ int main(int argc, char* argv[]) {
             std::cout << "  --notebook, -n     Iniciar Notebook interativo\n";
             std::cout << "  --build, -b        Compilar para binário sem executar\n";
             std::cout << "  --object, -c       Compilar para .o sem linkar\n";
+            std::cout << "  -L <lib>           Linkar biblioteca extra (ex: ./libfoo.so)\n";
             std::cout << "  --help, -h         Mostrar esta ajuda\n";
             std::cout << "\nExemplos:\n";
             std::cout << "  narval              # abre o REPL\n";
@@ -427,7 +447,7 @@ int main(int argc, char* argv[]) {
     } else if (repl_mode) {
         return run_repl_mode();
     } else if (!filename.empty()) {
-        return run_batch_mode(filename, build_only, object_only);
+        return run_batch_mode(filename, build_only, object_only, extra_libs);
     } else {
         // Sem argumentos: entrar no REPL
         return run_repl_mode();
