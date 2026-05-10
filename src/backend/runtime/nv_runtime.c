@@ -128,6 +128,21 @@ void nv_object_get_field(Value* out, Value* self, const char* key) {
     if (!out) return;
     if (!self || !self->obj || !key) { out->obj = NULL; return; }
 
+    /* Caso especial: objetos Error têm `message` como campo C raw (não map-backed) */
+    if (strcmp(key, "message") == 0) {
+        NvTypeObject* t = self->obj->ob_type;
+        int is_error = 0;
+        if (t && t->tp_name) {
+            size_t len = strlen(t->tp_name);
+            is_error = (len >= 5 && strcmp(t->tp_name + len - 5, "Error") == 0);
+        }
+        if (is_error) {
+            NVError* err_obj = (NVError*)self->obj;
+            create_str(out, err_obj->message ? err_obj->message : "");
+            return;
+        }
+    }
+
     NVMap* map = (NVMap*)self->obj;
     for (int i = 0; i < map->size; i++) {
         if (map->keys[i] && strcmp(map->keys[i], key) == 0) {
