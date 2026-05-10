@@ -51,6 +51,9 @@ Token tokenize_identifier_or_keyword(const std::string& input, size_t& pos, size
     else if (value == "err") type = TokenType::ERR_KW;
     else if (value == "None") type = TokenType::NONE_KW;
     else if (value == "in") type = TokenType::IN;
+    else if (value == "defer") type = TokenType::DEFER;
+    else if (value == "extern") type = TokenType::EXTERN;
+    else if (value == "from") type = TokenType::FROM;
 
     return Token(type, value, line, start_column, column, start_position, pos, filename);
 }
