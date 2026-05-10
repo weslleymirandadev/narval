@@ -3,6 +3,7 @@
 #include "frontend/parser/expressions/parse_range_expr.hpp"
 #include "frontend/ast/expressions/range_expr_node.hpp"
 #include "frontend/parser/statements/parse_stmt.hpp"
+#include "frontend/parser/statements/parse_block_util.hpp"
 
 static std::vector<std::unique_ptr<Expr>> parse_binding_list(Parser* parser) {
     std::vector<std::unique_ptr<Expr>> bindings;
@@ -70,12 +71,7 @@ std::unique_ptr<Node> parse_for_stmt(Parser* parser) {
 
     // --- Parse body ---
     parser->expect(TokenType::OBRACE, "Expected '{'.");
-
-    std::vector<std::unique_ptr<Stmt>> body;
-    while (parser->not_eof() && parser->current_token().type != TokenType::CBRACE) {
-        auto stmt = parse_stmt(parser);
-        body.push_back(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt.release())));
-    }
+    auto body = parse_body(parser);
     parser->expect(TokenType::CBRACE, "Expected '}'.");
 
     // --- Parse else block (optional) ---
@@ -83,10 +79,7 @@ std::unique_ptr<Node> parse_for_stmt(Parser* parser) {
     if (parser->not_eof() && parser->current_token().type == TokenType::ELSE) {
         parser->consume_token();
         parser->expect(TokenType::OBRACE, "Expected '{' after 'else'.");
-        while (parser->not_eof() && parser->current_token().type != TokenType::CBRACE) {
-            auto stmt = parse_stmt(parser);
-            else_block.push_back(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt.release())));
-        }
+        else_block = parse_body(parser);
         parser->expect(TokenType::CBRACE, "Expected '}' after else block.");
     }
 
