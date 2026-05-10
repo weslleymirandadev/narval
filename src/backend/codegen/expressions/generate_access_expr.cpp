@@ -19,7 +19,15 @@ void AccessExprNode::codegen(nv::IRGenerationContext& ctx) {
     if (base && base->getType() == ValueTy) {
         // ensure index is i32
         auto* I32 = llvm::Type::getInt32Ty(c);
-        if (idx_v && idx_v->getType() != I32) idx_v = nv::ir_utils::promote_type(ctx, idx_v, I32);
+        if (idx_v && idx_v->getType() == ValueTy) {
+            // Value struct used as index — extract integer
+            auto* tmp = ctx.create_alloca(ValueTy, "idx.tmp");
+            b.CreateStore(idx_v, tmp);
+            auto* f = ctx.ensure_runtime_func("extract_int_from_value", {ValuePtr}, I32);
+            idx_v = b.CreateCall(f, {tmp}, "idx.i32");
+        } else if (idx_v && idx_v->getType() != I32) {
+            idx_v = nv::ir_utils::promote_type(ctx, idx_v, I32);
+        }
         if (!idx_v) idx_v = llvm::ConstantInt::get(I32, 0);
 
         auto decl_get = ctx.get_module().getOrInsertFunction(
