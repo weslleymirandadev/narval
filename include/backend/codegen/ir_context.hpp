@@ -271,6 +271,12 @@ private:
     };
     std::vector<OrBlockContext> or_block_stack;
 
+    // Quando true, a função atual é "falível" (inferida pelo checker via presença de `propagate`).
+    bool current_function_fallible = false;
+
+    // Itens extras para o linker gerados durante codegen (ex: bridge .o do Python).
+    std::vector<std::string> extra_link_items;
+
     // Namespace aliases de wildcard imports: alias -> conjunto de nomes de membros
     std::unordered_map<std::string, std::unordered_set<std::string>> namespace_aliases;
 
@@ -458,6 +464,14 @@ public:
      *                 Módulos importados devem ter prioridades menores que o módulo principal
      */
     void finalize_global_inits(int priority = 65535);
+
+    // Fallible function context
+    void set_current_function_fallible(bool v) { current_function_fallible = v; }
+    bool is_current_function_fallible() const { return current_function_fallible; }
+
+    // Extra link items (bridge objects generated at codegen time)
+    void add_extra_link_item(const std::string& item) { extra_link_items.push_back(item); }
+    const std::vector<std::string>& get_extra_link_items() const { return extra_link_items; }
 
     // Or-block context management
     void push_or_block(llvm::AllocaInst* result_slot, llvm::BasicBlock* merge_bb) {
