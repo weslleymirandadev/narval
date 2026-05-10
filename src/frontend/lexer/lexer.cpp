@@ -188,153 +188,139 @@ std::vector<Token> Lexer::tokenize()
             continue;
         }
 
-        // imports - nova sintaxe: from "module" import identifier [as alias] [, ...]
-        if (c == 'f' && std::distance(current, input.cend()) >= 4 && 
+        // from "module" import items — detectar cedo para resolver dependências,
+        // mas emitir tokens individuais para que o parser parseia normalmente.
+        if (c == 'f' && std::distance(current, input.cend()) >= 4 &&
             input.substr(position, 4) == "from")
         {
             size_t start_pos = position;
             size_t start_col = column;
             size_t start_line = line;
 
-            // Consome "from"
+            // Emitir token FROM
             for (int i = 0; i < 4; ++i) advance();
+            tokens.emplace_back(TokenType::FROM, "from", start_line, start_col, column, start_pos, position, filename);
             skip_whitespace();
-            
+
             if (is_eof() || peek() != '"') {
-                // Não é uma importação, volta ao estado anterior e continua normalmente
-                position = start_pos;
-                column = start_col;
-                current = input.cbegin() + position;
-            } else {
-                // Tokeniza a string do módulo
-                Token module_token = tokenize_string(input, position, line, column, filename);
-                current = input.cbegin() + position;
-                
-                std::string module_path = module_token.lexeme;
-                
-                skip_whitespace();
-                
-                // Verifica se há "import"
-                if (is_eof() || std::distance(current, input.cend()) < 6 ||
-                    input.substr(position, 6) != "import") {
-                    // Não é import — emitir FROM + STRING separados para uso em extern etc.
-                    tokens.emplace_back(TokenType::FROM, "from", start_line, start_col, start_col + 4, start_pos, start_pos + 4, filename);
-                    tokens.push_back(module_token);
-                    continue;
-                }
-                
-                // Consome "import"
-                for (int i = 0; i < 6; ++i) advance();
-                skip_whitespace();
-                
-                ImportInfo import_info(module_path);
+                // Não é importação de módulo (ex: `from extern ...`) — continuar lexando normalmente
+                continue;
+            }
 
-                // Verifica se é wildcard "import *" ou "import * as ALIAS"
-                if (!is_eof() && peek() == '*') {
-                    advance(); // consome '*'
-                    skip_whitespace();
-                    import_info.is_wildcard = true;
+            // Emitir token STRING do caminho do módulo
+            Token module_token = tokenize_string(input, position, line, column, filename);
+            current = input.cbegin() + position;
+            std::string module_path = module_token.lexeme;
+            tokens.push_back(module_token);
+            skip_whitespace();
 
-                    // Verifica "as ALIAS"
-                    if (!is_eof() && std::distance(current, input.cend()) >= 2 &&
-                        input.substr(position, 2) == "as" &&
-                        (position + 2 >= input.size() || (!std::isalnum(input[position + 2]) && input[position + 2] != '_'))) {
-                        for (int i = 0; i < 2; ++i) advance();
+            // Verificar e emitir token IMPORT
+            if (is_eof() || std::distance(current, input.cend()) < 6 ||
+                input.substr(position, 6) != "import") {
+                // Sem `import` após a string — não é um import statement válido
+                continue;
+            }
+            size_t imp_start_pos = position, imp_start_col = column;
+            for (int i = 0; i < 6; ++i) advance();
+            tokens.emplace_back(TokenType::IMPORT, "import", start_line, imp_start_col, column, imp_start_pos, position, filename);
+            skip_whitespace();
+
+            // Coletar import_info para resolução de dependências (module manager)
+            ImportInfo import_info(module_path);
+
+            if (!is_eof() && peek() == '*') {
+                // import *  [as ALIAS]
+                size_t mul_pos = position, mul_col = column;
+                advance();
+                tokens.emplace_back(TokenType::MUL, "*", start_line, mul_col, column, mul_pos, position, filename);
+                import_info.is_wildcard = true;
+                skip_whitespace();
+
+                if (!is_eof() && std::isalpha(peek())) {
+                    size_t saved_pos = position, saved_col = column, saved_line = line;
+                    Token maybe_as = tokenize_identifier_or_keyword(input, position, line, column, filename);
+                    current = input.cbegin() + position;
+                    if (maybe_as.type == TokenType::AS) {
+                        tokens.push_back(maybe_as);
                         skip_whitespace();
-
-                        Token alias_token = tokenize_identifier_or_keyword(input, position, line, column, filename);
+                        Token alias_tok = tokenize_identifier_or_keyword(input, position, line, column, filename);
                         current = input.cbegin() + position;
-
-                        if (alias_token.type == TokenType::IDENTIFIER) {
-                            import_info.wildcard_alias = alias_token.lexeme;
+                        if (alias_tok.type == TokenType::IDENTIFIER) {
+                            import_info.wildcard_alias = alias_tok.lexeme;
+                            tokens.push_back(alias_tok);
                         }
+                    } else {
+                        position = saved_pos; column = saved_col; line = saved_line;
+                        current = input.cbegin() + position;
                     }
-
-                    skip_whitespace();
-                    if (!is_eof() && peek() == ';') advance();
-
-                    tokens.emplace_back(TokenType::IMPORT, "from " + module_path + " import *", start_line, start_col, column, start_pos, position, filename);
-                    import_infos.push_back(import_info);
-                    imported_modules.push_back(module_path);
-                    continue;
                 }
-
-                // Tokeniza os identificadores importados
+            } else {
+                // import name [as alias] [, ...]
                 while (!is_eof() && peek() != ';') {
                     skip_whitespace();
                     if (peek() == ';') break;
-                    
-                    // Tokeniza identificador
-                    Token ident_token = tokenize_identifier_or_keyword(input, position, line, column, filename);
+
+                    Token ident_tok = tokenize_identifier_or_keyword(input, position, line, column, filename);
                     current = input.cbegin() + position;
-                    
-                    if (ident_token.type != TokenType::IDENTIFIER) {
-                        tokens.emplace_back(TokenType::UNKNOWN, "from " + module_path + " import ...", start_line, start_col, column, start_pos, position, filename);
-                        break;
-                    }
-                    
-                    std::string import_name = ident_token.lexeme;
+                    if (ident_tok.type != TokenType::IDENTIFIER) break;
+
+                    tokens.push_back(ident_tok);
+                    std::string import_name = ident_tok.lexeme;
                     std::string alias;
-                    size_t item_line = ident_token.line;
-                    size_t item_col_start = ident_token.column_start;
-                    size_t item_col_end = ident_token.column_end;
-                    
+                    size_t item_line = ident_tok.line;
+                    size_t item_col_start = ident_tok.column_start;
+                    size_t item_col_end   = ident_tok.column_end;
                     skip_whitespace();
-                    
-                    // Verifica se há "as" (precisa ser uma palavra completa)
-                    if (!is_eof() && std::distance(current, input.cend()) >= 2 && 
-                        input.substr(position, 2) == "as" &&
-                        (position + 2 >= input.size() || !std::isalnum(input[position + 2]))) {
-                        // Consome "as"
-                        for (int i = 0; i < 2; ++i) advance();
-                        skip_whitespace();
-                        
-                        // Tokeniza o alias
-                        Token alias_token = tokenize_identifier_or_keyword(input, position, line, column, filename);
+
+                    // [as alias]
+                    if (!is_eof() && std::isalpha(peek())) {
+                        size_t saved_pos = position, saved_col = column, saved_line = line;
+                        Token maybe_as = tokenize_identifier_or_keyword(input, position, line, column, filename);
                         current = input.cbegin() + position;
-                        
-                        if (alias_token.type != TokenType::IDENTIFIER) {
-                            tokens.emplace_back(TokenType::UNKNOWN, "from " + module_path + " import " + import_name + " as ...", start_line, start_col, column, start_pos, position, filename);
-                            break;
+                        if (maybe_as.type == TokenType::AS) {
+                            tokens.push_back(maybe_as);
+                            skip_whitespace();
+                            Token alias_tok = tokenize_identifier_or_keyword(input, position, line, column, filename);
+                            current = input.cbegin() + position;
+                            if (alias_tok.type == TokenType::IDENTIFIER) {
+                                alias = alias_tok.lexeme;
+                                item_line      = alias_tok.line;
+                                item_col_start = alias_tok.column_start;
+                                item_col_end   = alias_tok.column_end;
+                                tokens.push_back(alias_tok);
+                            }
+                        } else {
+                            position = saved_pos; column = saved_col; line = saved_line;
+                            current = input.cbegin() + position;
                         }
-                        
-                        alias = alias_token.lexeme;
-                        // Usar posição do alias se houver
-                        item_line = alias_token.line;
-                        item_col_start = alias_token.column_start;
-                        item_col_end = alias_token.column_end;
                     }
-                    
+
                     import_info.imports.push_back({import_name, alias});
                     import_info.import_items.emplace_back(import_name, alias, item_line, item_col_start, item_col_end);
-                    
                     skip_whitespace();
-                    
-                    // Verifica se há vírgula (mais imports)
+
                     if (!is_eof() && peek() == ',') {
+                        size_t comma_pos = position, comma_col = column;
                         advance();
+                        tokens.emplace_back(TokenType::COMMA, ",", line, comma_col, column, comma_pos, position, filename);
                         skip_whitespace();
-                    } else if (!is_eof() && peek() != ';') {
-                        // Erro de sintaxe
-                        tokens.emplace_back(TokenType::UNKNOWN, "from " + module_path + " import ...", start_line, start_col, column, start_pos, position, filename);
+                    } else {
                         break;
                     }
                 }
-                
-                skip_whitespace();
-                if (!is_eof() && peek() == ';') {
-                    advance();
-                }
-                
-                // Cria token de importação e armazena informações
-                tokens.emplace_back(TokenType::IMPORT, "from " + module_path + " import ...", start_line, start_col, column, start_pos, position, filename);
-                import_infos.push_back(import_info);
-                
-                // Mantém compatibilidade com código antigo
-                imported_modules.push_back(module_path);
-                
-                continue;
             }
+
+            skip_whitespace();
+            if (!is_eof() && peek() == ';') {
+                size_t semi_pos = position, semi_col = column;
+                advance();
+                tokens.emplace_back(TokenType::SEMICOLON, ";", line, semi_col, column, semi_pos, position, filename);
+            }
+
+            // Armazenar info de dependência (para module manager) sem emitir token extra
+            import_infos.push_back(import_info);
+            imported_modules.push_back(module_path);
+            continue;
         }
 
         // identifiers or keywords
