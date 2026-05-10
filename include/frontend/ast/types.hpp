@@ -64,7 +64,8 @@ enum class NodeType {
     InterfaceStatement,
     SliceExpression,
     DeferErrorStatement,
-    ExternStatement
+    ExternStatement,
+    ExternFromImportStatement
 };
 
 class PositionData {
