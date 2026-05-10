@@ -98,7 +98,10 @@ enum class TokenType {
     OR_KW,
     PROPAGATE,
     ERR_KW,
-    NONE_KW
+    NONE_KW,
+    DEFER,
+    EXTERN,
+    FROM
 };
 
 inline const char* get_token_name(TokenType type) {
@@ -198,6 +201,9 @@ inline const char* get_token_name(TokenType type) {
         case TokenType::PROPAGATE: return "PROPAGATE";
         case TokenType::ERR_KW: return "ERR_KW";
         case TokenType::NONE_KW: return "NONE_KW";
+        case TokenType::DEFER: return "DEFER";
+        case TokenType::EXTERN: return "EXTERN";
+        case TokenType::FROM: return "FROM";
         default: return "UNKNOWN";
     }
 }
