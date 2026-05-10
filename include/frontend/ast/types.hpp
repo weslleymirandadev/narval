@@ -62,7 +62,9 @@ enum class NodeType {
     PropagateStatement,
     NoneLiteral,
     InterfaceStatement,
-    SliceExpression
+    SliceExpression,
+    DeferErrorStatement,
+    ExternStatement
 };
 
 class PositionData {
