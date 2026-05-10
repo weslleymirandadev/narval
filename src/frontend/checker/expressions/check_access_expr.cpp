@@ -26,11 +26,19 @@ std::shared_ptr<nv::Type>& check_access_expr(nv::Checker* ch, Node* node) {
     index_type = ch->unify_ctx.resolve(index_type);
     
     // Verificar que o índice é int ou string (para Map)
-    bool index_is_int = index_type->kind == nv::Kind::INT;
+    bool index_is_int    = index_type->kind == nv::Kind::INT;
     bool index_is_string = index_type->kind == nv::Kind::STRING;
-    
+
+    // TypeVar não resolvida usada como índice → inferir como int (HM: constrangimento de uso)
+    if (!index_is_int && !index_is_string && index_type->kind == nv::Kind::TYPE_VAR) {
+        try {
+            ch->unify_ctx.unify(index_type, ch->gettyptr("int"));
+            index_is_int = true;
+        } catch (...) {}
+    }
+
     if (!index_is_int && !index_is_string) {
-        ch->error(access_expr->index.get(), 
+        ch->error(access_expr->index.get(),
                   "Access index must be int or string, but got '" + index_type->toString() + "'");
         return ch->gettyptr("void");
     }
