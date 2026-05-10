@@ -19,9 +19,18 @@
 #include "frontend/parser/statements/parse_extern_stmt.hpp"
 #include "frontend/parser/statements/parse_extern_from_import_stmt.hpp"
 #include "frontend/parser/statements/parse_import_stmt.hpp"
+#include "frontend/parser/statements/parse_attribute_stmt.hpp"
 
 std::unique_ptr<Node> parse_stmt(Parser* parser) {
     switch (parser->current_token().type) {
+        case TokenType::OBRACKET: {
+            auto node = parse_attribute_stmt(parser);
+            if (node) return node;
+            // If parse_attribute_stmt decided this is not an attribute it will
+            // have reported an error or returned nullptr. Fallthrough to default
+            // to parse it as an expression (array literal) if appropriate.
+            break;
+        }
         case TokenType::MUT: 
             parser->consume_token(); // Consumir o token MUT
             return parse_declaration_stmt(parser, true);
