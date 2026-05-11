@@ -8,10 +8,8 @@
 #include "frontend/checker/checker.hpp"
 #include "frontend/checker/type.hpp"
 
-// Forward declarations para handlers
 namespace nv {
     class BuiltinHandler;
-    class JsonHandler;
 }
 
 namespace {
@@ -142,7 +140,7 @@ static llvm::Value* value_to_i32(IRGenerationContext& ctx, llvm::Value* v) {
     return llvm::ConstantInt::get(I32, 0);
 }
 
-// === BUILTIN: write, read, exit, json.load ===
+// === BUILTIN: write, read, exit ===
 llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name, const std::vector<std::unique_ptr<ArgNode>>& args) {
     auto& B = ctx.get_builder();
     auto* ValueTy = ir_utils::get_value_struct(ctx);
@@ -199,65 +197,6 @@ llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name
         B.CreateCall(exit_fn, {i32_code});
         B.CreateUnreachable();
         return llvm::UndefValue::get(ir_utils::get_value_struct(ctx));
-    }
-
-    if (name == "write") {
-        if (args.empty()) {
-            auto* empty = B.CreateGlobalString("");
-            emit_write(ctx, empty);
-            // Return an undef Value for empty write
-            return llvm::UndefValue::get(ir_utils::get_value_struct(ctx));
-        } else {
-            // Generate code for the argument
-            if (args[0]->value) args[0]->value->codegen(ctx);
-            // Get the value but keep it on the stack conceptually
-            llvm::Value* val = ctx.pop_value();
-            
-            // If value generation failed, treat as null/undef and emit write with empty string
-            if (!val) {
-                auto* empty = B.CreateGlobalString("");
-                emit_write(ctx, empty);
-                return llvm::UndefValue::get(ir_utils::get_value_struct(ctx));
-            }
-            
-            // If we're generating code for a REPL loop body, box the argument,
-            // store it into the out_result pointer for the host, and return the boxed value.
-            auto* ValueTy = ir_utils::get_value_struct(ctx);
-            if (ctx.is_repl_loop_mode() && ctx.get_repl_out_result_ptr()) {
-                // Box the value (or reuse if already boxed)
-                llvm::Value* boxed_alloca = nullptr;
-                if (val->getType() == ValueTy) {
-                    // Already boxed: store into a preserve alloca
-                    boxed_alloca = ctx.create_alloca(ValueTy, "write_preserve");
-                    B.CreateStore(val, boxed_alloca);
-                } else {
-                    boxed_alloca = box_value(ctx, val);
-                }
-                // Load the boxed Value and store it into out_result
-                auto* boxed_loaded = B.CreateLoad(ValueTy, boxed_alloca);
-                B.CreateStore(boxed_loaded, ctx.get_repl_out_result_ptr());
-                // Return the boxed value (loaded)
-                return boxed_loaded;
-            }
-
-            // Emit write with the value (this will box it internally)
-            emit_write(ctx, val);
-
-            // Return the original value so it can be used as program return value
-            // IMPORTANT: We need to preserve the value by creating a copy in an alloca
-            // This ensures the value survives optimization and is available for program return
-            if (val->getType() == ValueTy) {
-                // Create a copy in an alloca to preserve the value
-                auto* preserve_alloca = ctx.create_alloca(ValueTy, "write_result");
-                B.CreateStore(val, preserve_alloca);
-                // Load it back to ensure it's preserved
-                return B.CreateLoad(ValueTy, preserve_alloca, "write_preserved");
-            } else {
-                // Box the value to return it as a Value struct
-                llvm::Value* boxed = box_value(ctx, val);
-                return B.CreateLoad(ValueTy, boxed);
-            }
-        }
     }
 
     if (name == "read") {
@@ -411,7 +350,7 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
     ctx.set_debug_location(position.get());
     auto& B = ctx.get_builder();
 
-    // === 1. BUILTIN CALLS (write, read, json.load) ===
+    // === 1. BUILTIN CALLS (write, read) ===
     if (caller->kind == NodeType::Identifier) {
         auto* id = static_cast<IdentifierNode*>(caller.get());
         std::string name = id->symbol;
@@ -606,11 +545,11 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
             }
         }
 
-        // Avalia o objeto (ex: "json")
+        // Avalia o objeto
         mem->object->codegen(ctx);
         llvm::Value* obj = ctx.pop_value();
 
-        // Extrai o nome do método (ex: "load")
+        // Extrai o nome do método
         std::string method;
         if (mem->property->kind == NodeType::Identifier) {
             method = static_cast<IdentifierNode*>(mem->property.get())->symbol;
@@ -618,182 +557,6 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
             ctx.push_value(nullptr);
             return;
         }
-
-        // === ESPECIAL: json.parseString("json_string") ===
-        if (method == "parseString") {
-            // Registrar features JSON
-            nv::register_feature("json");
-            nv::register_feature("str");
-            
-            // Verifica se o objeto é o identifier "json"
-            if (mem->object->kind == NodeType::Identifier) { auto* objId = static_cast<IdentifierNode*>(mem->object.get());
-                if (objId->symbol == "json") {
-                    if (args.empty()) {
-                        ctx.push_value(nullptr);
-                        return;
-                    }
-
-                    // Criar variável global para o resultado
-                    auto* ValueTy = ir_utils::get_value_struct(ctx);
-                    auto* global_result = new llvm::GlobalVariable(
-                        ctx.get_module(),
-                        ValueTy,
-                        false,
-                        llvm::GlobalValue::InternalLinkage,
-                        llvm::Constant::getNullValue(ValueTy),
-                        "json_parse_string_global"
-                    );
-
-                    // Avalia o argumento (json_string)
-                    if (args[0]->value) args[0]->value->codegen(ctx);
-                    llvm::Value* json_string = ctx.pop_value();
-                    auto* I8P = ir_utils::get_i8_ptr(ctx);
-
-                    if (!json_string->getType()->isPointerTy()) {
-                        json_string = ctx.get_builder().CreateGlobalString(""); // fallback
-                    } else if (json_string->getType() != I8P) {
-                        json_string = ctx.get_builder().CreateBitCast(json_string, I8P);
-                    }
-
-                    // Chama void json_parse_string(Value*, const char*)
-                    auto* ValuePtr = ir_utils::get_value_ptr(ctx);
-                    auto* fn = ctx.ensure_runtime_func(
-                        "json_parse_string",
-                        {ValuePtr, I8P},
-                        llvm::Type::getVoidTy(ctx.get_context())
-                    );
-                    ctx.get_builder().CreateCall(fn, {global_result, json_string});
-                    // Retornar o ponteiro global
-                    ctx.push_value(global_result);
-                    return;
-                }
-            }
-        }
-        if (method == "parse") {
-            // Verifica se o objeto é o identifier "json"
-            if (mem->object->kind == NodeType::Identifier) { auto* objId = static_cast<IdentifierNode*>(mem->object.get());
-                if (objId->symbol == "json") {
-                    if (args.empty()) {
-                        ctx.push_value(nullptr);
-                        return;
-                    }
-
-                    // Avalia o argumento (filename)
-                    if (args[0]->value) args[0]->value->codegen(ctx);
-                    llvm::Value* filename = ctx.pop_value();
-                    auto* I8P = ir_utils::get_i8_ptr(ctx);
-
-                    if (!filename->getType()->isPointerTy()) {
-                        filename = ctx.get_builder().CreateGlobalString(""); // fallback
-                    } else if (filename->getType() != I8P) {
-                        filename = ctx.get_builder().CreateBitCast(filename, I8P);
-                    }
-
-                    // Chama void json_parse(Value*, const char*) e carrega o Value
-                    auto* ValueTy = ir_utils::get_value_struct(ctx);
-                    auto* ValuePtr = ir_utils::get_value_ptr(ctx);
-                    auto* fn = ctx.ensure_runtime_func(
-                        "json_parse",
-                        {ValuePtr, I8P},
-                        llvm::Type::getVoidTy(ctx.get_context())
-                    );
-                    auto* outAlloca = ctx.create_alloca(ValueTy, "json_out");
-                    ctx.get_builder().CreateCall(fn, {outAlloca, filename});
-                    llvm::Value* loaded = ctx.get_builder().CreateLoad(ValueTy, outAlloca);
-                    ctx.push_value(loaded);
-                    return;
-                }
-            }
-        }
-
-        // === ESPECIAL: json.dump(value, "file.json") ===
-        if (method == "dump") {
-            // Verifica se o objeto é o identifier "json"
-            if (mem->object->kind == NodeType::Identifier) { auto* objId = static_cast<IdentifierNode*>(mem->object.get());
-                if (objId->symbol == "json") {
-                    if (args.size() < 2) {
-                        ctx.push_value(nullptr);
-                        return;
-                    }
-
-                    // Avalia os argumentos (value, filename)
-                    if (args[0]->value) args[0]->value->codegen(ctx);
-                    llvm::Value* value = ctx.pop_value();
-                    
-                    if (args[1]->value) args[1]->value->codegen(ctx);
-                    llvm::Value* filename = ctx.pop_value();
-                    auto* I8P = ir_utils::get_i8_ptr(ctx);
-
-                    if (!filename->getType()->isPointerTy()) {
-                        filename = ctx.get_builder().CreateGlobalString(""); // fallback
-                    } else if (filename->getType() != I8P) {
-                        filename = ctx.get_builder().CreateBitCast(filename, I8P);
-                    }
-
-                    // Chama void json_dump(const Value*, const char*)
-                    auto* ValueTy = ir_utils::get_value_struct(ctx);
-                    auto* ValuePtr = ir_utils::get_value_ptr(ctx);
-                    auto* fn = ctx.ensure_runtime_func(
-                        "json_dump",
-                        {ValuePtr, I8P},
-                        llvm::Type::getVoidTy(ctx.get_context())
-                    );
-                    
-                    // Se o valor não for um ponteiro para Value, fazer boxing
-                    if (!value->getType()->isPointerTy() || value->getType() != ValuePtr) {
-                        auto* valueAlloca = ctx.create_alloca(ValueTy, "json_dump_value");
-                        ctx.get_builder().CreateStore(value, valueAlloca);
-                        value = valueAlloca;
-                    }
-                    
-                    ctx.get_builder().CreateCall(fn, {value, filename});
-                    ctx.push_value(nullptr); // dump retorna void
-                    return;
-                }
-            }
-        }
-
-        // === ESPECIAL: json.stringify(value) ===
-        if (method == "stringify") {
-            // Verifica se o objeto é o identifier "json"
-            if (mem->object->kind == NodeType::Identifier) { auto* objId = static_cast<IdentifierNode*>(mem->object.get());
-                if (objId->symbol == "json") {
-                    if (args.empty()) {
-                        ctx.push_value(nullptr);
-                        return;
-                    }
-
-                    // Avalia o argumento (value)
-                    if (args[0]->value) args[0]->value->codegen(ctx);
-                    llvm::Value* value = ctx.pop_value();
-
-                    // Chama void json_stringify(Value* out, const Value*)
-                    auto* ValueTy = ir_utils::get_value_struct(ctx);
-                    auto* ValuePtr = ir_utils::get_value_ptr(ctx);
-                    auto* fn = ctx.ensure_runtime_func(
-                        "json_stringify",
-                        {ValuePtr, ValuePtr},
-                        llvm::Type::getVoidTy(ctx.get_context())
-                    );
-                    
-                    auto* outAlloca = ctx.create_alloca(ValueTy, "json_stringify_out");
-                    
-                    // Se o valor não for um ponteiro para Value, fazer boxing
-                    if (!value->getType()->isPointerTy() || value->getType() != ValuePtr) {
-                        auto* valueAlloca = ctx.create_alloca(ValueTy, "json_stringify_value");
-                        ctx.get_builder().CreateStore(value, valueAlloca);
-                        value = valueAlloca;
-                    }
-                    
-                    ctx.get_builder().CreateCall(fn, {outAlloca, value});
-                    llvm::Value* result = ctx.get_builder().CreateLoad(ValueTy, outAlloca);
-                    ctx.push_value(result);
-                    return;
-                }
-            }
-        }
-
-        // === FIM DO ESPECIAL json.load ===
 
         // === MÉTODOS DE CLASSE DEFINIDOS PELO USUÁRIO ===
         if (ctx.get_type_checker()) {
