@@ -76,6 +76,7 @@ std::shared_ptr<nv::Type>& check_primary_expr(nv::Checker* ch, Node* node) {
             return ch->gettyptr("void");
         case NodeType::Identifier: {
             const auto* id = static_cast<IdentifierNode*>(node);
+            
             // `err` é reservado: só pode ser usado dentro de blocos `or { }`
             if (id->symbol == "err" && ch->or_block_depth == 0) {
                 ch->error(node, "'err' pode ser usado apenas dentro de expressões 'or'");
@@ -85,7 +86,7 @@ std::shared_ptr<nv::Type>& check_primary_expr(nv::Checker* ch, Node* node) {
             // Usar try-catch apenas para detectar, mas converter para error() imediatamente
             try {
                 auto& var_type = ch->scope->get_key(id->symbol);
-                // Se for tipo polimórfico, instanciar
+                                // Se for tipo polimórfico, instanciar
                 if (var_type->kind == nv::Kind::POLY_TYPE) {
                     auto poly = std::static_pointer_cast<nv::PolyType>(var_type);
                     int next_id = ch->unify_ctx.get_next_var_id();
