@@ -880,6 +880,82 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
             // Void return, push nullptr
             ctx.push_value(nullptr);
         }
+    } else if (callee && callee->getType() == ir_utils::get_value_struct(ctx)) {
+        // Callee is a runtime Value — dispatch as closure call via call_closure().
+        auto* ValueTy  = ir_utils::get_value_struct(ctx);
+        auto* ValuePtr = ir_utils::get_value_ptr(ctx);
+        auto* I32      = llvm::Type::getInt32Ty(ctx.get_context());
+        auto* VoidTy   = llvm::Type::getVoidTy(ctx.get_context());
+
+        // Store closure Value into an alloca so we can pass Value* to call_closure
+        auto* closure_alloca = ctx.create_alloca(ValueTy, "closure.obj");
+        B.CreateStore(callee, closure_alloca);
+
+        // Evaluate each argument and build a contiguous Value[] array on the stack
+        int n = static_cast<int>(args.size());
+        llvm::Value* args_ptr = llvm::ConstantPointerNull::get(
+            llvm::cast<llvm::PointerType>(ValuePtr));
+
+        if (n > 0) {
+            auto* arr_ty = llvm::ArrayType::get(ValueTy, n);
+            auto* arr    = ctx.create_alloca(arr_ty, "closure.args");
+            auto* zero   = llvm::ConstantInt::get(I32, 0);
+
+            for (int i = 0; i < n; i++) {
+                if (args[i]->value) args[i]->value->codegen(ctx);
+                auto* av = ctx.pop_value();
+
+                auto* slot_ptr = B.CreateGEP(arr_ty, arr,
+                    {zero, llvm::ConstantInt::get(I32, i)}, "carg.slot");
+
+                if (av && av->getType() == ValueTy) {
+                    B.CreateStore(av, slot_ptr);
+                } else if (av) {
+                    // Box primitive into a temporary Value then store
+                    auto* tmp = ctx.create_alloca(ValueTy, "carg.box");
+                    auto* f64 = llvm::Type::getDoubleTy(ctx.get_context());
+                    auto* i8p = ir_utils::get_i8_ptr(ctx);
+                    if (av->getType()->isIntegerTy(1)) {
+                        B.CreateCall(ctx.ensure_runtime_func("create_bool", {ValuePtr, I32}),
+                                     {tmp, B.CreateZExt(av, I32)});
+                    } else if (av->getType()->isIntegerTy()) {
+                        auto* iv = av->getType()->isIntegerTy(32)
+                                       ? av
+                                       : B.CreateSExtOrTrunc(av, I32);
+                        B.CreateCall(ctx.ensure_runtime_func("create_int", {ValuePtr, I32}),
+                                     {tmp, iv});
+                    } else if (av->getType()->isFloatingPointTy()) {
+                        auto* fv = av->getType() == f64 ? av : B.CreateFPExt(av, f64);
+                        B.CreateCall(ctx.ensure_runtime_func("create_float", {ValuePtr, f64}),
+                                     {tmp, fv});
+                    } else if (av->getType()->isPointerTy()) {
+                        B.CreateCall(ctx.ensure_runtime_func("create_str", {ValuePtr, av->getType()}),
+                                     {tmp, av});
+                    } else {
+                        B.CreateStore(llvm::UndefValue::get(ValueTy), tmp);
+                    }
+                    B.CreateStore(B.CreateLoad(ValueTy, tmp), slot_ptr);
+                } else {
+                    B.CreateStore(llvm::UndefValue::get(ValueTy), slot_ptr);
+                }
+            }
+
+            // First element pointer = &arr[0]
+            args_ptr = B.CreateGEP(arr_ty, arr,
+                {zero, llvm::ConstantInt::get(I32, 0)}, "closure.args.ptr");
+        }
+
+        // Result alloca
+        auto* result_alloca = ctx.create_alloca(ValueTy, "closure.result");
+
+        // call_closure(Value* closure, Value* args, i32 argc, Value* result) : void
+        auto* call_closure_fn = ctx.ensure_runtime_func(
+            "call_closure", {ValuePtr, ValuePtr, I32, ValuePtr}, VoidTy);
+        B.CreateCall(call_closure_fn,
+                     {closure_alloca, args_ptr,
+                      llvm::ConstantInt::get(I32, n), result_alloca});
+
+        ctx.push_value(B.CreateLoad(ValueTy, result_alloca, "closure.ret"));
     } else {
         ctx.push_value(nullptr);
     }
