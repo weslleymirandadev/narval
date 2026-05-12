@@ -32,5 +32,5 @@ std::unique_ptr<Node> parse_logical_expr(Parser* parser) {
 
         left = std::move(binaryNode);
     }
-    return try_parse_or(parser, std::move(left));
+    return try_parse_or(parser, std::move(std::unique_ptr<Expr>(static_cast<Expr*>(left.release()))));
 }
