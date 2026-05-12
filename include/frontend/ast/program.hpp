@@ -526,6 +526,7 @@ public:
                 for (const auto& param : closureExpr->parameters) {
                     std::cout << indent << "    - Name: " << param.first << ", Type: " << param.second << "\n";
                 }
+                std::cout << indent << "  Return Type: " << closureExpr->return_type << "\n";
                 std::cout << indent << "  Body:\n";
                 for (const auto& stmt : closureExpr->body) {
                     print_statement(static_cast<const Stmt*>(stmt.get()), indentNum + 2);
@@ -534,6 +535,7 @@ public:
                 for (const auto& capture : closureExpr->captures) {
                     std::cout << indent << "    - " << capture << "\n";
                 }
+                break;
             }
             case NodeType::EnumStatement: {
                 const auto* enumStmt = static_cast<const EnumStmtNode*>(stmt);
