@@ -1,8 +1,10 @@
 #include "frontend/ast/statements/defer_error_stmt_node.hpp"
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
+#include "backend/codegen/generate_ir.hpp"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
 
@@ -10,6 +12,7 @@ using namespace llvm;
 //   try { remaining_body } catch Error err { handler }
 // Usa o mesmo mecanismo setjmp/longjmp do try/catch existente.
 void DeferErrorStmtNode::codegen(nv::IRGenerationContext& ctx) {
+    if (nv::get_feature_tracker().no_std) return;
     auto& B   = ctx.get_builder();
     auto& M   = ctx.get_module();
     auto& C   = ctx.get_context();
