@@ -2,6 +2,8 @@
 #include "frontend/checker/statements/check_class_stmt.hpp"
 #include "frontend/checker/statements/check_enum_stmt.hpp"
 #include "frontend/checker/statements/check_interface_stmt.hpp"
+#include "frontend/checker/statements/check_import_stmt.hpp"
+#include "frontend/checker/statements/check_function_stmt.hpp"
 #include "frontend/ast/ast.hpp"
 #include "frontend/ast/expressions/assignment_expr_node.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
@@ -16,6 +18,7 @@
 #include <stdexcept>
 
 namespace {
+
     // Helper: verifica se um identifier existe no escopo atual ou em escopos pais
     bool identifier_exists(nv::Checker* checker, const std::string& symbol) {
         try {
@@ -38,48 +41,49 @@ namespace {
 
         // Verificar se o target é um Identifier
         if (assign_node->target->kind != NodeType::Identifier) {
-            // Não é um identifier simples, não converter
             return nullptr;
         }
-        
+
         auto* id_node = static_cast<IdentifierNode*>(assign_node->target.get());
-        const std::string& symbol = id_node->symbol;
         
-        // Verificar se o identifier já existe
-        if (identifier_exists(checker, symbol)) {
-            // Identifier já existe, manter como assignment
+        // Verificar se o identifier já existe no escopo atual
+        if (identifier_exists(checker, id_node->symbol)) {
             return nullptr;
         }
-        
-        // Identifier não existe - converter para declaração mutável com inferência automática
-        // Criar novo IdentifierNode para o target (clonar)
-        auto new_target = std::unique_ptr<Expr>(static_cast<Expr*>(id_node->clone()));
-        
-        // Clonar o value
-        auto new_value = assign_node->value ? 
-            std::unique_ptr<Expr>(static_cast<Expr*>(assign_node->value->clone())) : nullptr;
-        
-        // Criar DeclarationStmtNode com tipo "automatic" (inferência automática) e não constante (mutável)
+
+        // Criar DeclarationStmtNode
         auto decl_node = std::make_unique<DeclarationStmtNode>(
-            std::move(new_target),
-            std::move(new_value),
+            std::unique_ptr<Expr>(static_cast<Expr*>(id_node->clone())),
+            assign_node->value 
+                ? std::unique_ptr<Expr>(static_cast<Expr*>(assign_node->value->clone()))
+                : nullptr,
             "automatic",  // tipo automático para inferência
             false         // não constante (mutável)
         );
-        
+
         // Copiar posição do assignment para a declaração
         if (assign_node->position) {
             decl_node->position = std::make_unique<PositionData>(*assign_node->position);
         }
-        
+
+        // Registrar o símbolo no escopo do checker para que assignments
+        // subsequentes (x += 5) reconheçam que x já existe
+        checker->scope->put_key(
+            id_node->symbol,
+            std::make_shared<nv::TypeVar>(checker->unify_ctx.get_next_var_id()),
+            true  // mutable = true
+        );
+
         return decl_node;
     }
-    
+
     // Processa recursivamente uma lista de nodes (ex: or block stmts)
     void process_nodelist(std::vector<std::unique_ptr<Node>>& nodes, nv::Checker* checker) {
         for (size_t i = 0; i < nodes.size(); i++) {
             auto& stmt = nodes[i];
             if (!stmt) continue;
+
+            // Converter AssignmentExpression para DeclarationStmtNode se necessário
             if (stmt->kind == NodeType::AssignmentExpression) {
                 auto* assign_node = static_cast<AssignmentExprNode*>(stmt.get());
                 auto converted = convert_assignment_to_declaration(assign_node, checker);
@@ -87,15 +91,30 @@ namespace {
                     stmt.reset(converted.release());
                 }
             }
-            // Recurse into or blocks nested inside
+            
+            // Recursão para blocos aninhados
             if (stmt->kind == NodeType::OrExpression) {
                 auto* or_node = static_cast<OrExprNode*>(stmt.get());
-                process_nodelist(or_node->block_stmts, checker);
+                std::vector<std::unique_ptr<Node>> stmt_nodes;
+                for (auto& stmt : or_node->block_stmts) {
+                    if (stmt) {
+                        stmt_nodes.push_back(std::unique_ptr<Node>(static_cast<Node*>(stmt.release())));
+                    }
+                }
+                process_nodelist(stmt_nodes, checker);
+                // Converter de volta
+                or_node->block_stmts.clear();
+                for (auto& node : stmt_nodes) {
+                    if (node) {
+                        or_node->block_stmts.push_back(std::unique_ptr<Stmt>(static_cast<Stmt*>(node.release())));
+                    }
+                }
             }
         }
     }
 
     // Processa recursivamente um CodeBlock convertendo assignments não declarados
+    // em declarações
     void process_codeblock(CodeBlock& body, nv::Checker* checker) {
         for (size_t i = 0; i < body.size(); i++) {
             auto& stmt = body[i];
@@ -103,23 +122,9 @@ namespace {
             // Verificar se é AssignmentExpression
             if (stmt->kind == NodeType::AssignmentExpression) {
                 auto* assign_node = static_cast<AssignmentExprNode*>(stmt.get());
-                
-                // Tentar converter para declaração
                 auto converted = convert_assignment_to_declaration(assign_node, checker);
-                
                 if (converted) {
-                    // Registrar o símbolo no scope do checker para que assignemnts
-                    // subsequentes (x += 5) reconheçam que x já existe
-                    auto* id_node = static_cast<IdentifierNode*>(assign_node->target.get());
-                    // Registrar como mutable (true) para que check_decl_stmt possa
-                    // sobrescrever com o tipo real inferido na passagem final
-                    checker->scope->put_key(
-                        id_node->symbol,
-                        std::make_shared<nv::TypeVar>(checker->unify_ctx.get_next_var_id()),
-                        true
-                    );
-                    // Substituir o assignment pela declaração
-                    stmt = std::move(converted);
+                    stmt.reset(converted.release());
                 }
             }
             
@@ -148,9 +153,9 @@ namespace {
                     break;
                 }
                 case NodeType::FunctionStatement: {
-                    auto* function_stmt = static_cast<FunctionStmtNode*>(stmt.get());
-                    process_codeblock(function_stmt->body, checker);
-                    break;
+                    // Corpos de função são processados em check_function_stmt com escopo correto
+                    // Não processar aqui para evitar verificação no escopo errado
+                    continue;
                 }
                 case NodeType::MatchStatement: {
                     auto* match_stmt = static_cast<MatchStmtNode*>(stmt.get());
@@ -161,7 +166,20 @@ namespace {
                 }
                 case NodeType::OrExpression: {
                     auto* or_node = static_cast<OrExprNode*>(stmt.get());
-                    process_nodelist(or_node->block_stmts, checker);
+                    std::vector<std::unique_ptr<Node>> stmt_nodes;
+                    for (auto& stmt : or_node->block_stmts) {
+                        if (stmt) {
+                            stmt_nodes.push_back(std::unique_ptr<Node>(static_cast<Node*>(stmt.release())));
+                        }
+                    }
+                    process_nodelist(stmt_nodes, checker);
+                    // Converter de volta
+                    or_node->block_stmts.clear();
+                    for (auto& node : stmt_nodes) {
+                        if (node) {
+                            or_node->block_stmts.push_back(std::unique_ptr<Stmt>(static_cast<Stmt*>(node.release())));
+                        }
+                    }
                     break;
                 }
                 default:
@@ -169,7 +187,8 @@ namespace {
             }
         }
     }
-}
+
+} // anonymous namespace
 
 std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
     auto* program = static_cast<Program*>(node);
@@ -185,14 +204,14 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
     // Processa recursivamente todos os blocos de código (incluindo aninhados)
     process_codeblock(program->body, ch);
 
-    // TERCEIRA PASSAGEM [NOVA]: Registrar interfaces primeiro (antes das classes).
+    // Terceira passagem: Registrar interfaces primeiro (antes das classes).
     for (auto& el : program->body) {
         if (el->kind == NodeType::InterfaceStatement) {
             check_interface_stmt(ch, el.get());
         }
     }
 
-    // QUARTA PASSAGEM: Registrar todas as classes e enums.
+    // Quarta passagem: Registrar todas as classes e enums.
     // Isso permite usar classes/enums como tipos em parâmetros/retornos de funções
     // e em declarações mesmo quando aparecem depois no arquivo.
     for (auto& el : program->body) {
@@ -203,7 +222,7 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
         }
     }
 
-    // QUARTA PASSAGEM [NOVA]: Registrar assinaturas de todas as funções (defs) antes de checar corpos
+    // Quinta passagem: Registrar assinaturas de todas as funções (defs) antes de checar corpos
     for (auto& el : program->body) {
         if (el->kind == NodeType::FunctionStatement) {
             auto* function_stmt = static_cast<FunctionStmtNode*>(el.get());
