@@ -165,9 +165,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
     }
 
     // Verificar o caller (função sendo chamada) usando infer_expr
-    fprintf(stderr, "DEBUG: check_call_expr: About to infer caller, scope count: %zu\n", ch->namespaces.size());
     auto func_type = ch->infer_expr(call->caller.get());
-    fprintf(stderr, "DEBUG: check_call_expr: After infer caller, scope count: %zu\n", ch->namespaces.size());
     bool caller_has_error = ch->err;
     
     // Verificar cada argumento recursivamente usando infer_expr
