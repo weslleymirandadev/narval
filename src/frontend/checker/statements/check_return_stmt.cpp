@@ -8,7 +8,7 @@ std::shared_ptr<nv::Type>& check_return_stmt(nv::Checker* ch, Node* node) {
     
     // `return` é permitido dentro de blocos `or { }` (redireciona o resultado do or)
     if (!ch->current_return_type && ch->or_block_depth == 0) {
-        ch->error(node, "Return statement outside of function");
+        ch->error(node, "Return statement outside of function or closure. Return statements can only be used inside functions, closures, or or-blocks");
         return ch->gettyptr("void");
     }
     // Dentro de um bloco or sem função envolvente, aceitar qualquer tipo de retorno
