@@ -22,6 +22,10 @@ void create_map(Value* out);
 void create_tuple(Value* out, int32_t field_count);
 void create_any(Value* out);
 
+// Closures
+void create_closure(Value* result, void* function_ptr);
+void call_closure(Value* closure_val, Value* args, int arg_count, Value* result);
+
 // Option / Result
 void create_option_some(Value* out, Value* val);
 void create_option_none(Value* out);
