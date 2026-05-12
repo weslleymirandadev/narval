@@ -4,6 +4,7 @@
 #include "frontend/checker/statements/check_interface_stmt.hpp"
 #include "frontend/checker/statements/check_defer_error_stmt.hpp"
 #include "frontend/checker/statements/check_extern_stmt.hpp"
+#include "frontend/checker/expressions/check_closure_expr.hpp"
 #include "frontend/checker/statements/check_extern_from_import_stmt.hpp"
 #include "frontend/checker/expressions/check_or_expr.hpp"
 #include "frontend/checker/statements/check_function_stmt.hpp"
@@ -94,14 +95,29 @@ std::shared_ptr<nv::Type> nv::Checker::check_node(Node* node) {
         case NodeType::BreakStatement:
         case NodeType::ContinueStatement:
           return gettyptr("void");
+        case NodeType::TryStatement:
+          if (no_std_attr_node) no_std_error(node, "try/catch");
+          return gettyptr("void");
+        case NodeType::ThrowStatement:
+          if (no_std_attr_node) no_std_error(node, "throw");
+          return gettyptr("void");
         case NodeType::DeferErrorStatement:
+          if (no_std_attr_node) { no_std_error(node, "defer error"); return gettyptr("void"); }
           return check_defer_error_stmt(this, node);
         case NodeType::ExternStatement:
           return check_extern_stmt(this, node);
         case NodeType::ExternFromImportStatement:
           return check_extern_from_import_stmt(this, node);
         case NodeType::ModuleAttrStatement:
-          return gettyptr("void"); // processado no codegen; checker não precisa validar
+          return gettyptr("void"); // atributos de módulo: sem checagem de tipo
+        case NodeType::AttributeStatement:
+          return gettyptr("void"); // atributos: sem checagem de tipo
+        case NodeType::DecoratorStatement:
+          return gettyptr("void"); // decorators: sem checagem de tipo
+        case NodeType::ClosureExpression: {
+          auto* closure = static_cast<ClosureExprNode*>(node);
+          return check_closure_expr(closure, *this); // closures: tipo função específico
+        }
         default:
           return gettyptr("void");
     }
