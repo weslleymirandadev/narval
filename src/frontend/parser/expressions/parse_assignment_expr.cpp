@@ -8,7 +8,6 @@
 #include "frontend/parser/expressions/parse_closure_expr.hpp"
 #include "frontend/parser/expressions/parse_expr.hpp"
 #include "frontend/parser/statements/parse_declaration_stmt.hpp"
-#include <iostream>
 
 std::unique_ptr<Node> parse_assignment_expr(Parser* parser) {
     size_t line = parser->current_token().line;
