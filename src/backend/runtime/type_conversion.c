@@ -41,7 +41,6 @@ void nv_str_convert(Value* out, Value* input) {
     }
     
     NvTypeObject* type = input->obj->ob_type;
-    printf("DEBUG: Converting object of type %s (type=%p)\n", type ? type->tp_name : "NULL", type);
     if (!type || (uintptr_t)type < 0x1000) {
         create_str(out, "None");
         return;
