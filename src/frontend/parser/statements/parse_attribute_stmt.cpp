@@ -1,5 +1,5 @@
 #include "frontend/parser/statements/parse_attribute_stmt.hpp"
-#include "frontend/ast/statements/module_attr_node.hpp"
+#include "frontend/ast/statements/attribute_stmt_node.hpp"
 
 std::unique_ptr<Node> parse_attribute_stmt(Parser* parser) {
     // Only handle the case: [ IDENTIFIER ( , IDENTIFIER )* ]
@@ -20,7 +20,7 @@ std::unique_ptr<Node> parse_attribute_stmt(Parser* parser) {
     // Begin actual parsing (we already know current is OBRACKET)
     parser->consume_token(); // consume '['
 
-    auto node = std::make_unique<ModuleAttrNode>();
+    auto node = std::make_unique<AttributeStmtNode>();
 
     while (parser->not_eof() && parser->current_token().type != TokenType::CBRACKET) {
         if (parser->current_token().type == TokenType::IDENTIFIER) {
@@ -29,17 +29,17 @@ std::unique_ptr<Node> parse_attribute_stmt(Parser* parser) {
         } else if (parser->current_token().type == TokenType::COMMA) {
             parser->consume_token();
         } else {
-            // Found something unexpected (e.g. OPAREN) — not a module attribute.
+            // Found something unexpected (e.g. OPAREN) — not a valid attribute.
             // Rewind is not possible here, so signal failure by returning nullptr.
             // The caller should not have consumed the '[' in that case; but we already
             // consumed it. To be conservative, emit an error message and abort parsing
             // to avoid inconsistent parser state.
-            parser->error("Invalid module attribute syntax (only simple identifiers allowed)");
+            parser->error("Invalid attribute syntax (only simple identifiers allowed)");
             return nullptr;
         }
     }
 
-    parser->expect(TokenType::CBRACKET, "Expected ']' to close module attribute");
+    parser->expect(TokenType::CBRACKET, "Expected ']' to close attribute");
 
     return node;
 }
