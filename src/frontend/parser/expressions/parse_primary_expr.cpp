@@ -7,6 +7,7 @@
 #include "frontend/parser/expressions/parse_new_expr.hpp"
 #include "frontend/parser/expressions/parse_self_super.hpp"
 #include "frontend/parser/expressions/parse_instanceof_expr.hpp"
+#include "frontend/parser/expressions/parse_closure_expr.hpp"
 #include "frontend/ast/expressions/binary_expr_node.hpp"
 #include <cctype>
 
@@ -181,9 +182,8 @@ std::unique_ptr<Node> parse_primary_expr(Parser* parser) {
                 std::vector<std::unique_ptr<Expr>> elements;
                 elements.push_back(std::unique_ptr<Expr>(static_cast<Expr*>(first_expr.release())));
                 
-                // Parse remaining elements
                 while (parser->current_token().type == TokenType::COMMA) {
-                    parser->consume_token(); // consume ','
+                    parser->consume_token();
                     auto element = parse_logical_expr(parser);
                     elements.push_back(std::unique_ptr<Expr>(static_cast<Expr*>(element.release())));
                 }
@@ -230,6 +230,18 @@ std::unique_ptr<Node> parse_primary_expr(Parser* parser) {
         case TokenType::FALSE:
             expr = parse_boolean_literal(parser);
             break;
+        case TokenType::BITWISE_OR:
+        case TokenType::OR: {
+            // Closure expression
+            auto closure_node = parse_closure_expr(parser);
+            if (closure_node && closure_node->position) {
+                pos->col[1] = closure_node->position->col[1];
+                pos->pos[1] = closure_node->position->pos[1];
+            }
+            closure_node->position = std::move(pos);
+            expr = std::move(closure_node);
+            break;
+        }
         default:
             parser->error("Unexpected token in primary expression: '" + parser->current_token().lexeme + "'");
             return nullptr;
