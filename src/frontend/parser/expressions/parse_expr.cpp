@@ -12,9 +12,15 @@
 #include "frontend/parser/expressions/parse_assignment_expr.hpp"
 #include "frontend/parser/expressions/parse_vector_expr.hpp"
 #include "frontend/parser/expressions/parse_array_map_expr.hpp"
+#include "frontend/parser/expressions/parse_closure_expr.hpp"
 #include "frontend/ast/expressions/assignment_expr_node.hpp"
 
 std::unique_ptr<Node> parse_expr(Parser* parser) {
+    // Closures têm a precedência mais alta
+    if (parser->current_token().type == TokenType::BITWISE_OR || parser->next_token().type == TokenType::OR) {
+        return parse_closure_expr(parser);
+    }
+    
     if (parser->current_token().type == TokenType::OBRACKET) {
         return parse_vector_expr(parser);
     }
@@ -70,7 +76,7 @@ std::unique_ptr<Node> parse_expr(Parser* parser) {
             );
         }
 
-        return try_parse_or(parser, std::move(expr));
+        return try_parse_or(parser, std::move(std::unique_ptr<Expr>(static_cast<Expr*>(expr.release()))));
     }
 
     if (parser->next_token().type == TokenType::COLON) {
