@@ -5,6 +5,8 @@
 #include "frontend/parser/expressions/parse_type.hpp"
 #include "frontend/parser/expressions/parse_conditional_expr.hpp"
 #include "frontend/parser/expressions/parse_or_expr.hpp"
+#include "frontend/parser/expressions/parse_closure_expr.hpp"
+#include "frontend/parser/expressions/parse_expr.hpp"
 #include "frontend/parser/statements/parse_declaration_stmt.hpp"
 #include <iostream>
 
@@ -17,7 +19,7 @@ std::unique_ptr<Node> parse_assignment_expr(Parser* parser) {
     if (parser->current_token().type == TokenType::MUT) {
         parser->consume_token();
         // Verificar se tem tipo explícito após o identificador
-        auto target = parse_array_map_expr(parser);
+        auto target = parse_expr(parser);
         std::string typ = "automatic";
         
         if (parser->current_token().type == TokenType::COLON) {
@@ -45,6 +47,8 @@ std::unique_ptr<Node> parse_assignment_expr(Parser* parser) {
         target = parse_array_map_expr(parser);
     } else if (parser->current_token().type == TokenType::OBRACKET) {
         target = parse_vector_expr(parser);
+    } else if (parser->current_token().type == TokenType::BITWISE_OR) {
+        target = parse_closure_expr(parser);
     } else {
         target = parse_logical_expr(parser);
     }
@@ -81,6 +85,9 @@ std::unique_ptr<Node> parse_assignment_expr(Parser* parser) {
             } break;
             case TokenType::OBRACE: {
                 value = parse_array_map_expr(parser);
+            } break;
+            case TokenType::BITWISE_OR: {
+                value = parse_closure_expr(parser);
             } break;
             default: {
                 value = parse_logical_expr(parser);
@@ -124,5 +131,5 @@ std::unique_ptr<Node> parse_assignment_expr(Parser* parser) {
         target = parse_conditional_expr(parser, std::move(target));
     }
 
-    return try_parse_or(parser, std::move(target));
+    return try_parse_or(parser, std::move(std::unique_ptr<Expr>(static_cast<Expr*>(target.release()))));
 }
