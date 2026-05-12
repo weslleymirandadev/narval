@@ -6,6 +6,7 @@
 #include "frontend/checker/type.hpp"
 #include <algorithm>
 #include <sstream>
+#include <unordered_set>
 
 std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
     const auto* call = static_cast<CallExprNode*>(node);
@@ -149,8 +150,24 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
         }
     }
 
+    // Verificar uso de funções stdlib quando [no_std] está ativo.
+    // Passa o IdentifierNode do caller para que o ^ aponte o nome da função, não o '('.
+    if (ch->no_std_attr_node && call->caller->kind == NodeType::Identifier) {
+        static const std::unordered_set<std::string> stdlib_builtins = {
+            "write", "read", "exit", "str", "int", "float", "bool",
+            "Some", "Ok", "Err"
+        };
+        auto* id = static_cast<IdentifierNode*>(call->caller.get());
+        if (stdlib_builtins.count(id->symbol)) {
+            ch->no_std_error(call->caller.get(), id->symbol);
+            return ch->gettyptr("void");
+        }
+    }
+
     // Verificar o caller (função sendo chamada) usando infer_expr
+    fprintf(stderr, "DEBUG: check_call_expr: About to infer caller, scope count: %zu\n", ch->namespaces.size());
     auto func_type = ch->infer_expr(call->caller.get());
+    fprintf(stderr, "DEBUG: check_call_expr: After infer caller, scope count: %zu\n", ch->namespaces.size());
     bool caller_has_error = ch->err;
     
     // Verificar cada argumento recursivamente usando infer_expr
