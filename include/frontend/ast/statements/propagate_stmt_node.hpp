@@ -1,7 +1,6 @@
 #pragma once
 #include "frontend/ast/types.hpp"
 
-// `propagate` — re-propaga o erro atual dentro de um bloco `or`
 class PropagateStmtNode : public Stmt {
 public:
     PropagateStmtNode() : Stmt(NodeType::PropagateStatement) {}

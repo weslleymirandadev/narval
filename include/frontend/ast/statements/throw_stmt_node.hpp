@@ -1,10 +1,11 @@
 #pragma once
-#include "frontend/ast/ast.hpp"
+#include "frontend/ast/types.hpp"
 #include <memory>
 
 namespace nv { class IRGenerationContext; }
 
-struct ThrowStatementNode : public Stmt {
+class ThrowStatementNode : public Stmt {
+public:
     std::unique_ptr<Node> exception;
     
     ThrowStatementNode(std::unique_ptr<Node> exception) 

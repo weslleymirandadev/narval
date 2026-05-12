@@ -3,14 +3,12 @@
 #include <string>
 #include <vector>
 
-// Assinatura de método em uma interface
 struct InterfaceMethodSig {
     std::string name;
     std::vector<std::pair<std::string, std::string>> params; // (param_name, param_type)
     std::string return_type; // "void" por padrão
 };
 
-// Interface — puramente compile-time, sem código gerado
 class InterfaceStmtNode : public Stmt {
 public:
     std::string name;
@@ -28,6 +26,5 @@ public:
         return node;
     }
 
-    // Interfaces não geram código — compile-time only
     void codegen(nv::IRGenerationContext&) override {}
 };

@@ -47,6 +47,7 @@ enum class NodeType {
     ListComprehension,
     VectorExpression,
     RangeExpression,
+    ClosureExpression,
     ImportStatement,
     ClassStatement,
     ClassField,
@@ -66,7 +67,9 @@ enum class NodeType {
     DeferErrorStatement,
     ExternStatement,
     ExternFromImportStatement,
-    ModuleAttrStatement
+    ModuleAttrStatement,
+    DecoratorStatement,
+    AttributeStatement
 };
 
 class PositionData {

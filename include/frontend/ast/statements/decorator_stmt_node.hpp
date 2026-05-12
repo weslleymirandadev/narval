@@ -6,15 +6,14 @@
 
 namespace nv { class IRGenerationContext; }
 
-class ModuleAttrNode : public Stmt {
-public:
-    std::vector<std::string> attrs;
+struct DecoratorStmtNode : public Stmt {
+    std::vector<std::string> decorators;
 
-    ModuleAttrNode() : Stmt(NodeType::ModuleAttrStatement) {}
+    DecoratorStmtNode() : Stmt(NodeType::DecoratorStatement) {}
 
     Node* clone() const override {
-        auto* n = new ModuleAttrNode();
-        n->attrs = attrs;
+        auto* n = new DecoratorStmtNode();
+        n->decorators = decorators;
         if (position) n->position = std::make_unique<PositionData>(*position);
         return n;
     }

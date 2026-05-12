@@ -30,6 +30,11 @@
 #include "expressions/self_expr_node.hpp"
 #include "expressions/super_expr_node.hpp"
 #include "expressions/instanceof_expr_node.hpp"
+#include "expressions/or_expr_node.hpp"
+#include "expressions/none_literal_node.hpp"
+#include "expressions/slice_expr_node.hpp"
+#include "expressions/closure_expr_node.hpp"
+
 #include "statements/return_stmt_node.hpp"
 #include "statements/declaration_stmt_node.hpp"
 #include "statements/function_stmt_node.hpp"
@@ -39,6 +44,14 @@
 #include "statements/while_stmt_node.hpp"
 #include "statements/match_stmt_node.hpp"
 #include "statements/class_stmt_node.hpp"
+#include "statements/enum_stmt_node.hpp"
+#include "statements/interface_stmt_node.hpp"
+#include "statements/propagate_stmt_node.hpp"
+#include "statements/break_stmt_node.hpp"
+#include "statements/continue_stmt_node.hpp"
+#include "statements/throw_stmt_node.hpp"
+#include "statements/try_stmt_node.hpp"
+#include "statements/import_stmt_node.hpp"
 
 class Program : public Stmt {
 public:
@@ -119,6 +132,31 @@ public:
                 std::cout << indent << "  Operator: " << assignExpr->op << std::endl;
                 std::cout << indent << "  Value:\n";
                 print_statement(assignExpr->value.get(), indentNum + 2);
+                break;
+            }
+            case NodeType::ImportStatement: {
+                const auto* importStmt = static_cast<const ImportStmtNode*>(stmt);
+                std::cout << indent << "ImportStatement: " << importStmt->module_path;
+                if (!importStmt->filename.empty()) {
+                    std::cout << " (file: " << importStmt->filename << ")";
+                }
+                std::cout << "\n";
+                if (importStmt->is_wildcard) {
+                    std::cout << indent << "  Wildcard import";
+                    if (!importStmt->wildcard_alias.empty()) {
+                        std::cout << " as " << importStmt->wildcard_alias;
+                    }
+                    std::cout << "\n";
+                } else {
+                    std::cout << indent << "  Imports:\n";
+                    for (const auto& import : importStmt->imports) {
+                        std::cout << indent << "    - " << import.name;
+                        if (!import.alias.empty()) {
+                            std::cout << " as " << import.alias;
+                        }
+                        std::cout << "\n";
+                    }
+                }
                 break;
             }
             case NodeType::ClassStatement: {
@@ -436,6 +474,127 @@ public:
                 std::cout << indent << "  Object:\n";
                 print_statement(instanceofExpr->object.get(), indentNum + 2);
                 std::cout << indent << "  Class: " << instanceofExpr->class_name << "\n";
+                break;
+            }
+            case NodeType::OrExpression: {
+                const auto* orExpr = static_cast<const OrExprNode*>(stmt);
+                std::cout << indent << "OrExpression\n";
+                std::cout << indent << "  Expression:\n";
+                print_statement(orExpr->expr.get(), indentNum + 2);
+                if (orExpr->is_block_handler) {
+                    std::cout << indent << "  Block Handler:\n";
+                    for (const auto& stmt : orExpr->block_stmts) {
+                        print_statement(stmt.get(), indentNum + 2);
+                    }
+                } else {
+                    std::cout << indent << "  Value Handler:\n";
+                    print_statement(orExpr->value_handler.get(), indentNum + 2);
+                }
+                break;
+            }
+            case NodeType::NoneLiteral: {
+                std::cout << indent << "NoneLiteral\n";
+                break;
+            }
+            case NodeType::PropagateStatement: {
+                std::cout << indent << "PropagateStatement\n";
+                break;
+            }
+            case NodeType::SliceExpression: {
+                const auto* sliceExpr = static_cast<const SliceExprNode*>(stmt);
+                std::cout << indent << "SliceExpression\n";
+                std::cout << indent << "  Collection:\n";
+                print_statement(sliceExpr->collection.get(), indentNum + 2);
+                if (sliceExpr->start) {
+                    std::cout << indent << "  Start:\n";
+                    print_statement(sliceExpr->start.get(), indentNum + 2);
+                }
+                if (sliceExpr->stop) {
+                    std::cout << indent << "  Stop:\n";
+                    print_statement(sliceExpr->stop.get(), indentNum + 2);
+                }
+                if (sliceExpr->step) {
+                    std::cout << indent << "  Step:\n";
+                    print_statement(sliceExpr->step.get(), indentNum + 2);
+                }
+                break;
+            }
+            case NodeType::ClosureExpression: {
+                const auto* closureExpr = static_cast<const ClosureExprNode*>(stmt);
+                std::cout << indent << "ClosureExpression\n";
+                std::cout << indent << "  Parameters:\n";
+                for (const auto& param : closureExpr->parameters) {
+                    std::cout << indent << "    - Name: " << param.first << ", Type: " << param.second << "\n";
+                }
+                std::cout << indent << "  Body:\n";
+                for (const auto& stmt : closureExpr->body) {
+                    print_statement(static_cast<const Stmt*>(stmt.get()), indentNum + 2);
+                }
+                std::cout << indent << "  Captures:\n";
+                for (const auto& capture : closureExpr->captures) {
+                    std::cout << indent << "    - " << capture << "\n";
+                }
+            }
+            case NodeType::EnumStatement: {
+                const auto* enumStmt = static_cast<const EnumStmtNode*>(stmt);
+                std::cout << indent << "EnumStatement\n";
+                std::cout << indent << "  Name: " << enumStmt->name << "\n";
+                std::cout << indent << "  Variants:\n";
+                for (const auto& variant : enumStmt->variants) {
+                    std::cout << indent << "    - Name: " << variant.name;
+                    if (variant.has_explicit_value) {
+                        std::cout << ", ExplicitValue: " << variant.explicit_value;
+                    }
+                    std::cout << "\n";
+                }
+                break;
+            }
+            case NodeType::InterfaceStatement: {
+                const auto* interfaceStmt = static_cast<const InterfaceStmtNode*>(stmt);
+                std::cout << indent << "InterfaceStatement\n";
+                std::cout << indent << "  Name: " << interfaceStmt->name << "\n";
+                std::cout << indent << "  Parent Interfaces:\n";
+                for (const auto& parent : interfaceStmt->parent_interfaces) {
+                    std::cout << indent << "    - " << parent << "\n";
+                }
+                std::cout << indent << "  Methods:\n";
+                for (const auto& method : interfaceStmt->methods) {
+                    std::cout << indent << "    - Name: " << method.name << "\n";
+                    std::cout << indent << "      Parameters:\n";
+                    for (const auto& param : method.params) {
+                        std::cout << indent << "        - Name: " << param.first << ", Type: " << param.second << "\n";
+                    }
+                    std::cout << indent << "      Return Type: " << method.return_type << "\n";
+                }
+                break;
+            }
+            case NodeType::ThrowStatement: {
+                const auto* throwStmt = static_cast<const ThrowStatementNode*>(stmt);
+                std::cout << indent << "ThrowStatement\n";
+                std::cout << indent << "  Exception:\n";
+                print_statement(static_cast<const Stmt*>(throwStmt->exception.get()), indentNum + 2);
+                break;
+            }
+            case NodeType::TryStatement: {
+                const auto* tryStmt = static_cast<const TryStatementNode*>(stmt);
+                std::cout << indent << "TryStatement\n";
+                std::cout << indent << "  Try Body:\n";
+                for (const auto& stmt : tryStmt->try_body) {
+                    print_statement(static_cast<const Stmt*>(stmt.get()), indentNum + 2);
+                }
+                std::cout << indent << "  Catch Clauses:\n";
+                for (const auto& catchClause : tryStmt->catches) {
+                    std::cout << indent << "    - Exception Type: " << catchClause->exception_type << "\n";
+                    std::cout << indent << "      Exception Variable: " << catchClause->exception_var << "\n";
+                    std::cout << indent << "      Catch Body:\n";
+                    for (const auto& stmt : catchClause->body) {
+                        print_statement(static_cast<const Stmt*>(stmt.get()), indentNum + 4);
+                    }
+                }
+                std::cout << indent << "  Finally Body:\n";
+                for (const auto& stmt : tryStmt->finally_body) {
+                    print_statement(static_cast<const Stmt*>(stmt.get()), indentNum + 2);
+                }
                 break;
             }
             default: std::cout << indent << "Unknown Statement\n";

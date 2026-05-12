@@ -1,5 +1,5 @@
 #pragma once
-#include "frontend/ast/ast.hpp"
+#include "frontend/ast/types.hpp"
 #include <vector>
 #include <memory>
 
@@ -15,7 +15,8 @@ struct CatchClause {
         : exception_type(type), exception_var(var), body(std::move(b)) {}
 };
 
-struct TryStatementNode : public Stmt {
+class TryStatementNode : public Stmt {
+public:
     std::vector<std::unique_ptr<Node>> try_body;
     std::vector<std::unique_ptr<CatchClause>> catches;
     std::vector<std::unique_ptr<Node>> finally_body;
