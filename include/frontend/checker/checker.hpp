@@ -40,6 +40,8 @@ namespace nv {
             int or_block_depth = 0;
             // Rastrear se a função atual é falível (usa propagate → retorna Result<T>)
             bool in_fallible_function = false;
+            // Quando não-nulo, o módulo declarou [no_std] — usado para reportar violações.
+            Node* no_std_attr_node = nullptr;
             // Símbolos registrados como namespaces Python dinâmicos (from extern "Python" import ...).
             // Qualquer member access / call neles é permitido sem verificação de tipo.
             std::unordered_set<std::string> python_namespaces;
@@ -63,5 +65,7 @@ namespace nv {
             void note_at(const std::string& filename, size_t line,
                          size_t col_start, size_t col_end,
                          const std::string& message);
+            // Emite ERROR com posição do uso + NOTE apontando a declaração [no_std].
+            void no_std_error(Node* use_node, const std::string& feature_name);
     };
 } 
