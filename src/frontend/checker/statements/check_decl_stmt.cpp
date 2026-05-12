@@ -79,16 +79,60 @@ std::shared_ptr<nv::Type>& check_decl_stmt(nv::Checker* ch, Node* node) {
 
     if (decl->typ == "automatic") {
         // Usar inferência de tipos
+        fprintf(stderr, "DEBUG: check_decl_stmt: About to infer type for '%s', scope count: %zu\n", 
+                name->symbol.c_str(), ch->namespaces.size());
+        
+        // Verificar se os parâmetros existem antes da inferência
+        try {
+            ch->scope->get_key("x");
+            fprintf(stderr, "DEBUG: check_decl_stmt: Before inference - Parameter 'x' FOUND in scope\n");
+        } catch (...) {
+            fprintf(stderr, "DEBUG: check_decl_stmt: Before inference - Parameter 'x' NOT FOUND in scope\n");
+        }
+        
+        try {
+            ch->scope->get_key("y");
+            fprintf(stderr, "DEBUG: check_decl_stmt: Before inference - Parameter 'y' FOUND in scope\n");
+        } catch (...) {
+            fprintf(stderr, "DEBUG: check_decl_stmt: Before inference - Parameter 'y' NOT FOUND in scope\n");
+        }
+        
         auto inferred_type = ch->infer_expr(decl->value.get());
         
+        fprintf(stderr, "DEBUG: check_decl_stmt: After inference, scope count: %zu\n", ch->namespaces.size());
+        
+        // Verificar se os parâmetros ainda existem após a inferência
+        try {
+            ch->scope->get_key("x");
+            fprintf(stderr, "DEBUG: check_decl_stmt: After inference - Parameter 'x' FOUND in scope\n");
+        } catch (...) {
+            fprintf(stderr, "DEBUG: check_decl_stmt: After inference - Parameter 'x' NOT FOUND in scope\n");
+        }
+        
+        try {
+            ch->scope->get_key("y");
+            fprintf(stderr, "DEBUG: check_decl_stmt: After inference - Parameter 'y' FOUND in scope\n");
+        } catch (...) {
+            fprintf(stderr, "DEBUG: check_decl_stmt: After inference - Parameter 'y' NOT FOUND in scope\n");
+        }
+        
         // Resolver tipo após inferência
+        fprintf(stderr, "DEBUG: check_decl_stmt: Before resolve, scope count: %zu\n", ch->namespaces.size());
+        fprintf(stderr, "DEBUG: check_decl_stmt: About to call unify_ctx.resolve\n");
         inferred_type = ch->unify_ctx.resolve(inferred_type);
+        fprintf(stderr, "DEBUG: check_decl_stmt: After resolve, scope count: %zu\n", ch->namespaces.size());
         
         // Generalizar tipo (criar tipo polimórfico se necessário)
+        fprintf(stderr, "DEBUG: check_decl_stmt: Before generalize, scope count: %zu\n", ch->namespaces.size());
+        fprintf(stderr, "DEBUG: check_decl_stmt: About to call get_free_vars_in_env\n");
         auto free_in_env = ch->get_free_vars_in_env();
+        fprintf(stderr, "DEBUG: check_decl_stmt: About to call unify_ctx.generalize\n");
         auto generalized = ch->unify_ctx.generalize(inferred_type, free_in_env);
+        fprintf(stderr, "DEBUG: check_decl_stmt: After generalize, scope count: %zu\n", ch->namespaces.size());
         
+        fprintf(stderr, "DEBUG: check_decl_stmt: Before put_key, scope count: %zu\n", ch->namespaces.size());
         ch->scope->put_key(name->symbol, generalized, decl->mutable_);
+        fprintf(stderr, "DEBUG: check_decl_stmt: After put_key, scope count: %zu\n", ch->namespaces.size());
         
         // Retornar referência ao tipo no namespace
         return ch->scope->get_key(name->symbol);
