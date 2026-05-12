@@ -3,8 +3,10 @@
 #include "frontend/ast/expressions/identifier_node.hpp"
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
+#include "backend/codegen/generate_ir.hpp"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/raw_ostream.h"
 
 static const char* exc_create_fn(const std::string& type_name) {
     if (type_name == "ValueError")     return "create_value_error";
@@ -20,6 +22,7 @@ static const char* exc_create_fn(const std::string& type_name) {
 }
 
 void ThrowStatementNode::codegen(nv::IRGenerationContext& ctx) {
+    if (nv::get_feature_tracker().no_std) return;
     auto& B     = ctx.get_builder();
     auto* ValueTy  = nv::ir_utils::get_value_struct(ctx);
     auto* ValuePtr = nv::ir_utils::get_value_ptr(ctx);
