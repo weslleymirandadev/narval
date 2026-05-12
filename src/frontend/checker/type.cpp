@@ -3,6 +3,7 @@
 #include "frontend/ast/ast.hpp"
 #include <functional>
 #include <algorithm>
+#include <sstream>
 
 std::shared_ptr<nv::Type> nv::Type::get_method(const std::string& name) const {
     if (!prototype) return nullptr;
@@ -54,6 +55,82 @@ bool nv::Tuple::equals(const nv::Type& other) const {
     
 }
 
+//--- CLOSURE TYPE PARSING
+
+namespace nv {
+    // Verifica se uma string representa um tipo função
+    bool is_function_type(const std::string& type_str) {
+        return type_str.size() >= 2 && type_str.front() == '|' && type_str.find('|') != std::string::npos;
+    }
+    
+    // Parse de tipo função: |param1: type1, param2: type2|: return_type
+    std::shared_ptr<Type> parse_function_type(const std::string& type_str, std::function<std::shared_ptr<Type>(const std::string&)> type_resolver) {
+        if (!is_function_type(type_str)) {
+            throw std::runtime_error("Not a function type: " + type_str);
+        }
+        
+        // Encontrar o separador principal |...|: return_type
+        size_t main_pipe_pos = type_str.find_last_of('|');
+        if (main_pipe_pos == std::string::npos || main_pipe_pos == 0) {
+            throw std::runtime_error("Invalid function type format: " + type_str);
+        }
+        
+        // Extrair parâmetros e tipo de retorno
+        std::string params_str = type_str.substr(1, main_pipe_pos - 1);
+        std::string return_part = type_str.substr(main_pipe_pos + 1);
+        
+        // Verificar se tem : return_type
+        if (return_part.empty() || return_part[0] != ':') {
+            throw std::runtime_error("Function type must have return type: " + type_str);
+        }
+        
+        std::string return_type_str = return_part.substr(1); // Remover ':'
+        
+        // Parsear parâmetros
+        std::vector<std::shared_ptr<Type>> param_types;
+        if (!params_str.empty()) {
+            std::stringstream ss(params_str);
+            std::string param;
+            
+            while (std::getline(ss, param, ',')) {
+                // Remover espaços em branco
+                param.erase(0, param.find_first_not_of(" \t"));
+                param.erase(param.find_last_not_of(" \t") + 1);
+                
+                if (!param.empty()) {
+                    // Parsear "name: type"
+                    size_t colon_pos = param.find(':');
+                    if (colon_pos == std::string::npos) {
+                        throw std::runtime_error("Parameter must have type: " + param);
+                    }
+                    
+                    std::string param_type_str = param.substr(colon_pos + 1);
+                    param_type_str.erase(0, param_type_str.find_first_not_of(" \t"));
+                    param_type_str.erase(param_type_str.find_last_not_of(" \t") + 1);
+                    
+                    auto param_type = type_resolver(param_type_str);
+                    param_types.push_back(param_type);
+                }
+            }
+        }
+        
+        // Parsear tipo de retorno
+        auto return_type = type_resolver(return_type_str);
+        
+        return std::make_shared<Function>(param_types, return_type);
+    }
+    
+    // Criar string de tipo função a partir de parâmetros e retorno
+    std::string create_function_type_string(const std::vector<std::pair<std::string, std::string>>& params, const std::string& return_type) {
+        std::string result = "|";
+        for (size_t i = 0; i < params.size(); ++i) {
+            result += params[i].first + ":" + params[i].second;
+            if (i < params.size() - 1) result += ", ";
+        }
+        result += "|:" + return_type;
+        return result;
+    }
+}
 
 //--- PROTOTYPES
 
