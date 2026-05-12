@@ -74,6 +74,11 @@ nv::Checker::Checker() {
     types["float"] = std::make_shared<nv::Float>();
     types["bool"] = std::make_shared<nv::Boolean>();
     types["void"] = std::make_shared<nv::Void>();
+    // Tipo function genérico (params desconhecidos, retorno desconhecido)
+    types["function"] = std::make_shared<nv::Function>(
+        std::vector<std::shared_ptr<nv::Type>>{}, 
+        types["void"]
+    );
 
     // Agora que os objetos Type estão dentro de shared_ptr, inicializar seus prototypes
     types["int"]->init_prototype();
@@ -173,12 +178,14 @@ std::shared_ptr<nv::Type>& nv::Checker::gettyptr(std::string ty){
     return types["void"];
 }
 void nv::Checker::push_scope() {
+    fprintf(stderr, "DEBUG: push_scope called - current scope count: %zu\n", namespaces.size());
     auto ns = std::make_shared<Namespace>(scope);
     namespaces.push_back(ns);
     scope = ns;
 }
 
 void nv::Checker::pop_scope() {
+    fprintf(stderr, "DEBUG: pop_scope called - current scope count: %zu\n", namespaces.size());
     namespaces.pop_back();
     scope = namespaces[namespaces.size() - 1];
 }
@@ -315,6 +322,15 @@ void nv::Checker::note_at(const std::string& filename, size_t line,
         std::cerr << ANSI_RESET << "\n\n";
     }
     std::cerr.flush();
+}
+
+void nv::Checker::no_std_error(Node* use_node, const std::string& feature_name) {
+    error(use_node, "'" + feature_name + "' not available with [no_std].");
+    if (no_std_attr_node && no_std_attr_node->position) {
+        auto* pos = no_std_attr_node->position.get();
+        const std::string& fn = pos->filename.empty() ? current_filename : pos->filename;
+        note_at(fn, pos->line, pos->col[0], pos->col[1], "[no_std] declared here.");
+    }
 }
 
 std::shared_ptr<nv::Type> nv::Checker::infer_type(Node* node) {
