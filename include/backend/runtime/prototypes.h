@@ -79,6 +79,9 @@ typedef struct NvTypeObject {
 #define NV_RESULT_OK_BASE   23
 #define NV_RESULT_ERR_BASE  24
 
+// Tipos de função
+#define NV_CLOSURE_BASE     25
+
 // Estrutura Value simplificada - agora é apenas um wrapper para NvObject
 typedef struct {
     NvObject* obj;                  // Ponteiro para o objeto real
