@@ -5,6 +5,7 @@
 #include <vector>
 #include <unordered_set>
 #include <unordered_map>
+#include <functional>
 #include "namespace.hpp" // Adicionado include completo do Namespace
 
 namespace nv {
@@ -573,4 +574,15 @@ namespace nv {
             return std::make_shared<Map>(key_type->substitute(subst), value_type->substitute(subst));
         }
     };
+
+    //--- CLOSURE TYPE PARSING FUNCTIONS
+    
+    // Verifica se uma string representa um tipo função
+    bool is_function_type(const std::string& type_str);
+    
+    // Parse de tipo função: |param1: type1, param2: type2|: return_type
+    std::shared_ptr<Type> parse_function_type(const std::string& type_str, std::function<std::shared_ptr<Type>(const std::string&)> type_resolver);
+    
+    // Criar string de tipo função a partir de parâmetros e retorno
+    std::string create_function_type_string(const std::vector<std::pair<std::string, std::string>>& params, const std::string& return_type);
 };
