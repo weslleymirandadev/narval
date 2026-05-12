@@ -41,6 +41,17 @@ static bool stmts_have_propagate(const std::vector<std::unique_ptr<Stmt>>& stmts
 std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
     auto* function_stmt = static_cast<FunctionStmtNode*>(node);
     
+    // Verificar se função já está registrada no escopo (já foi verificada)
+    try {
+        auto& existing_type = ch->scope->get_key(function_stmt->name);
+        // Se já existe e é uma função, retornar o tipo existente sem re-verificar
+        if (existing_type && existing_type->kind == nv::Kind::FUNCTION) {
+            return existing_type;
+        }
+    } catch (std::runtime_error&) {
+        // Função não existe no escopo, prosseguir com verificação normal
+    }
+    
     // Criar novo escopo para a função
     ch->push_scope();
     
@@ -81,7 +92,7 @@ std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
             param_type = ch->gettyptr(param_type_str);
         }
         
-        // Adicionar parâmetro ao escopo
+        // Adicionar parâmetro ao escopo da função
         ch->scope->put_key(param_name, param_type, false);
         param_types.push_back(param_type);
     }
@@ -108,7 +119,55 @@ std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
     ch->current_return_type = return_type;
     ch->in_fallible_function = is_fallible;
 
-    // Verificar corpo da função
+    
+    // Implementar conversão local usando o mesmo algoritmo do process_codeblock
+    for (size_t i = 0; i < function_stmt->body.size(); i++) {
+        auto& stmt = function_stmt->body[i];
+        
+        // Verificar se é AssignmentExpression que precisa ser convertido
+        if (stmt->kind == NodeType::AssignmentExpression) {
+            auto* assign_node = static_cast<AssignmentExprNode*>(stmt.get());
+            
+            // Apenas converter assignments simples (operador =) com target Identifier
+            if (assign_node->op == "=" && assign_node->target->kind == NodeType::Identifier) {
+                auto* id_node = static_cast<IdentifierNode*>(assign_node->target.get());
+                
+                // Verificar se o identifier já existe no escopo atual
+                // Se não existe, converter para declaração
+                bool identifier_exists = false;
+                try {
+                    ch->scope->get_key(id_node->symbol);
+                    identifier_exists = true;
+                } catch (std::runtime_error&) {
+                    identifier_exists = false;
+                }
+                
+                if (!identifier_exists) {
+                    // Converter AssignmentExpression para DeclarationStmtNode
+                    auto new_target = std::unique_ptr<Expr>(static_cast<Expr*>(id_node->clone()));
+                    auto new_value = assign_node->value ? 
+                        std::unique_ptr<Expr>(static_cast<Expr*>(assign_node->value->clone())) : nullptr;
+                    
+                    auto decl_node = std::make_unique<DeclarationStmtNode>(
+                        std::move(new_target),
+                        std::move(new_value),
+                        "automatic",  // tipo automático para inferência
+                        false         // não constante (mutável)
+                    );
+                    
+                    // Copiar posição do assignment para a declaração
+                    if (assign_node->position) {
+                        decl_node->position = std::make_unique<PositionData>(*assign_node->position);
+                    }
+                    
+                    // Substituir o assignment pela declaração
+                    stmt = std::move(decl_node);
+                }
+            }
+        }
+    }
+    
+    // Verificar o corpo processado (agora com declarações corretas)
     for (auto& stmt : function_stmt->body) {
         ch->check_node(stmt.get());
     }
@@ -118,7 +177,6 @@ std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
     ch->in_fallible_function = saved_fallible;
     
     // Criar tipo de função e registrar no escopo pai
-    ch->pop_scope();
     
     // Criar função type (PolyType para suportar polimorfismo)
     auto free_vars = ch->get_free_vars_in_env();
@@ -170,6 +228,8 @@ std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
         }
         ch->function_default_values[function_stmt->name] = std::move(default_values);
     }
+    
+    ch->pop_scope();
     
     return ch->scope->get_key(function_stmt->name);
 }
