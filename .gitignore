@@ -3,7 +3,6 @@ build/
 .vscode/
 narval_program
 .claude
-CLAUDE.md
 MEMORY.md
 memory
 test*.nv
