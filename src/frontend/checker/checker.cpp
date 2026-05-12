@@ -166,6 +166,24 @@ std::shared_ptr<nv::Type>& nv::Checker::gettyptr(std::string ty){
             return types[ty];
         }
     }
+    
+    // Tipo função: |param1: type1, param2: type2|: return_type
+    if (nv::is_function_type(ty)) {
+        try {
+            auto func_type = nv::parse_function_type(ty, [this](const std::string& type_str) -> std::shared_ptr<nv::Type> {
+                return gettyptr(type_str);
+            });
+            types[ty] = func_type;
+            return types[ty];
+        } catch (const std::exception& e) {
+            std::string abs_filename = to_absolute_path(current_filename);
+            std::cerr << ANSI_BOLD << abs_filename << ": "
+                      << ANSI_RED << "ERROR" << ANSI_RESET << ANSI_BOLD << ": "
+                      << "Invalid function type: " << ty << " - " << e.what() << ANSI_RESET << "\n\n";
+            err = true;
+            return types["void"];
+        }
+    }
 
     // Tipo não encontrado
     // Não temos Node aqui, então usar erro genérico
@@ -178,14 +196,12 @@ std::shared_ptr<nv::Type>& nv::Checker::gettyptr(std::string ty){
     return types["void"];
 }
 void nv::Checker::push_scope() {
-    fprintf(stderr, "DEBUG: push_scope called - current scope count: %zu\n", namespaces.size());
     auto ns = std::make_shared<Namespace>(scope);
     namespaces.push_back(ns);
     scope = ns;
 }
 
 void nv::Checker::pop_scope() {
-    fprintf(stderr, "DEBUG: pop_scope called - current scope count: %zu\n", namespaces.size());
     namespaces.pop_back();
     scope = namespaces[namespaces.size() - 1];
 }
