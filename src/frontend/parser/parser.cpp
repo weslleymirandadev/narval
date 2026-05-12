@@ -177,6 +177,64 @@ std::unique_ptr<Node> Parser::produce_ast(const std::vector<Token>& tokens, cons
 
     auto program = std::make_unique<Program>();
 
+    // Atributos de módulo: [attr1, attr2, func(arg)]
+    // Só são válidos no início do arquivo (antes de qualquer outro statement).
+    // Lookahead: se [ for seguido somente de IDENTIFIER, COMMA, OPAREN, CPAREN → é atributo.
+    // Qualquer outro token dentro (NUMBER, STRING, operador…) → vetor literal normal.
+    while (not_eof() && current_token().type == TokenType::OBRACKET) {
+        size_t la = index + 1;
+        bool is_attr = true;
+        while (la < token_count && tokens[la].type != TokenType::CBRACKET
+                                && tokens[la].type != TokenType::EOF_TOKEN) {
+            auto t = tokens[la].type;
+            if (t != TokenType::IDENTIFIER && t != TokenType::COMMA &&
+                t != TokenType::OPAREN    && t != TokenType::CPAREN) {
+                is_attr = false;
+                break;
+            }
+            ++la;
+        }
+        if (!is_attr || la >= token_count) break;
+
+        auto attr_node = std::make_unique<ModuleAttrNode>();
+
+        // Salvar posição do token '[' para o NOTE do checker
+        Token open_tok = current_token();
+        consume_token(); // consume [
+
+        while (not_eof() && current_token().type != TokenType::CBRACKET) {
+            if (current_token().type == TokenType::IDENTIFIER) {
+                std::string attr = current_token().lexeme;
+                consume_token();
+                if (current_token().type == TokenType::OPAREN) {
+                    consume_token();
+                    if (current_token().type == TokenType::IDENTIFIER) {
+                        attr += "(" + current_token().lexeme + ")";
+                        consume_token();
+                    }
+                    expect(TokenType::CPAREN, "Expected ')' in attribute argument");
+                }
+                attr_node->attrs.push_back(std::move(attr));
+            }
+            if (current_token().type == TokenType::COMMA) consume_token();
+        }
+
+        Token close_tok = current_token();
+        expect(TokenType::CBRACKET, "Expected ']' to close module attribute");
+
+        // Posição abrange de '[' até ']' — usada pelo checker no NOTE
+        attr_node->position = std::make_unique<PositionData>(
+            open_tok.line,
+            open_tok.column_start,
+            close_tok.column_end,
+            open_tok.position_start,
+            close_tok.position_end,
+            open_tok.filename
+        );
+
+        program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(attr_node.release())));
+    }
+
     while (not_eof()) {
         Token current = current_token();
         try {
