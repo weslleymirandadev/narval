@@ -17,7 +17,7 @@
 
 std::unique_ptr<Node> parse_expr(Parser* parser) {
     // Closures têm a precedência mais alta
-    if (parser->current_token().type == TokenType::BITWISE_OR || parser->next_token().type == TokenType::OR) {
+    if (parser->current_token().type == TokenType::BITWISE_OR || parser->current_token().type == TokenType::OR) {
         return parse_closure_expr(parser);
     }
     
