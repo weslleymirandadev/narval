@@ -5,10 +5,6 @@
 #include <stdio.h>
 #include <stdint.h>
 
-/* ============================================================= */
-/*                    FUNÇÕES DE CONVERSÃO DE TIPO             */
-/* ============================================================= */
-
 static void nv_i32_to_string(int32_t value, char* out, size_t out_size) {
     if (!out || out_size == 0) return;
     if (out_size == 1) { out[0] = '\0'; return; }
@@ -38,12 +34,14 @@ void nv_str_convert(Value* out, Value* input) {
         create_str(out, "None");
         return;
     }
+    
     if ((uintptr_t)input->obj < 0x1000) {
         create_str(out, "None");
         return;
     }
     
     NvTypeObject* type = input->obj->ob_type;
+    printf("DEBUG: Converting object of type %s (type=%p)\n", type ? type->tp_name : "NULL", type);
     if (!type || (uintptr_t)type < 0x1000) {
         create_str(out, "None");
         return;
