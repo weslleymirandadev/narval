@@ -20,19 +20,22 @@
 #include "frontend/parser/statements/parse_extern_from_import_stmt.hpp"
 #include "frontend/parser/statements/parse_import_stmt.hpp"
 #include "frontend/parser/statements/parse_attribute_stmt.hpp"
+#include "frontend/parser/statements/parse_decorator_stmt.hpp"
 
 std::unique_ptr<Node> parse_stmt(Parser* parser) {
     switch (parser->current_token().type) {
+        case TokenType::AT: {
+            auto node = parse_decorator_stmt(parser);
+            if (node) return node;
+            break;
+        }
         case TokenType::OBRACKET: {
             auto node = parse_attribute_stmt(parser);
             if (node) return node;
-            // If parse_attribute_stmt decided this is not an attribute it will
-            // have reported an error or returned nullptr. Fallthrough to default
-            // to parse it as an expression (array literal) if appropriate.
             break;
         }
         case TokenType::MUT: 
-            parser->consume_token(); // Consumir o token MUT
+            parser->consume_token();
             return parse_declaration_stmt(parser, true);
         case TokenType::CLASS: return parse_class_stmt(parser);
         case TokenType::INTERFACE: return parse_interface_stmt(parser);
@@ -55,7 +58,6 @@ std::unique_ptr<Node> parse_stmt(Parser* parser) {
                 return parse_extern_from_import_stmt(parser);
             if (parser->next_token().type == TokenType::STRING)
                 return parse_import_stmt(parser);
-            [[fallthrough]];
         case TokenType::PROPAGATE: {
             auto node = std::make_unique<PropagateStmtNode>();
             parser->consume_token();
@@ -64,11 +66,11 @@ std::unique_ptr<Node> parse_stmt(Parser* parser) {
             return node;
         }
         default: {
-            auto node = parse_expr(parser);
+            auto expr = parse_expr(parser);
             if (parser->current_token().type == TokenType::SEMICOLON) {
                 parser->consume_token();
             }
-            return node;
+            return expr;
         }
     }
 }
