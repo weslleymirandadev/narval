@@ -24,6 +24,7 @@ struct FeatureTracker {
     bool has_map_operations    = false;
     bool has_string_operations = false;
     bool has_vector_operations = false;
+    bool has_closures          = false;
 
     // [no_std] — remove toda a stdlib do binário final.
     // Apenas o núcleo sintático permanece: criação de literais, aritmética, comparações.
