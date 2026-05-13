@@ -61,6 +61,11 @@ void nv_str_convert(Value* out, Value* input) {
         NVBool* bool_obj = (NVBool*)input->obj;
         create_str(out, bool_obj->value ? "true" : "false");
     }
+    else if (type == NVChar_Type) {
+        NVChar* char_obj = (NVChar*)input->obj;
+        char buffer[2] = { char_obj->value, '\0' };
+        create_str(out, buffer);
+    }
     else if (type == NVStr_Type) {
         // Já é string, apenas copiar
         NVStr* str_obj = (NVStr*)input->obj;
@@ -185,6 +190,10 @@ void nv_int_convert(Value* out, Value* input) {
         NVBool* bool_obj = (NVBool*)input->obj;
         create_int(out, bool_obj->value ? 1 : 0);
     }
+    else if (type == NVChar_Type) {
+        NVChar* char_obj = (NVChar*)input->obj;
+        create_int(out, (int32_t)(unsigned char)char_obj->value);
+    }
     else if (type == NVStr_Type) {
         NVStr* str_obj = (NVStr*)input->obj;
         if (str_obj->value) {
@@ -203,6 +212,40 @@ void nv_int_convert(Value* out, Value* input) {
     }
     else {
         nv_raise_type_error("int() argument must be a str or number");
+    }
+}
+
+// char() - converte para um caractere de 1 byte, estilo C
+void nv_char_convert(Value* out, Value* input) {
+    if (!out || !input || !input->obj) {
+        create_char(out, '\0');
+        return;
+    }
+
+    NvTypeObject* type = input->obj->ob_type;
+
+    if (type == NVChar_Type) {
+        create_char(out, ((NVChar*)input->obj)->value);
+    }
+    else if (type == NVInt_Type) {
+        create_char(out, (char)((NVInt*)input->obj)->value);
+    }
+    else if (type == NVBool_Type) {
+        create_char(out, ((NVBool*)input->obj)->value ? 1 : 0);
+    }
+    else if (type == NVFloat_Type) {
+        create_char(out, (char)((NVFloat*)input->obj)->value);
+    }
+    else if (type == NVStr_Type) {
+        NVStr* str_obj = (NVStr*)input->obj;
+        if (str_obj->value && str_obj->len == 1) {
+            create_char(out, str_obj->value[0]);
+        } else {
+            nv_raise_value_error("char() argument must be a one-character str or number");
+        }
+    }
+    else {
+        nv_raise_type_error("char() argument must be a one-character str or number");
     }
 }
 
@@ -227,6 +270,10 @@ void nv_float_convert(Value* out, Value* input) {
     else if (type == NVBool_Type) {
         NVBool* bool_obj = (NVBool*)input->obj;
         create_float(out, bool_obj->value ? 1.0 : 0.0);
+    }
+    else if (type == NVChar_Type) {
+        NVChar* char_obj = (NVChar*)input->obj;
+        create_float(out, (double)(unsigned char)char_obj->value);
     }
     else if (type == NVStr_Type) {
         NVStr* str_obj = (NVStr*)input->obj;
@@ -270,6 +317,10 @@ void nv_bool_convert(Value* out, Value* input) {
         // Já é bool, apenas copiar
         NVBool* bool_obj = (NVBool*)input->obj;
         create_bool(out, bool_obj->value);
+    }
+    else if (type == NVChar_Type) {
+        NVChar* char_obj = (NVChar*)input->obj;
+        create_bool(out, char_obj->value != '\0');
     }
     else if (type == NVStr_Type) {
         NVStr* str_obj = (NVStr*)input->obj;
@@ -317,4 +368,3 @@ void float_to_string(Value* out, double value) {
     snprintf(buffer, sizeof(buffer), "%g", value);
     create_str(out, buffer);
 }
-

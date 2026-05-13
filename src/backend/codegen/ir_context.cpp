@@ -116,6 +116,9 @@ llvm::Type* IRGenerationContext::nv_type_to_llvm(std::shared_ptr<Type> nv_type) 
     switch (nv_type->kind) {
         case Kind::INT:
             return llvm::Type::getInt32Ty(llvm_context);
+
+        case Kind::CHAR:
+            return ir_utils::get_value_struct(*this);
         
         case Kind::FLOAT:
             return llvm::Type::getDoubleTy(llvm_context);

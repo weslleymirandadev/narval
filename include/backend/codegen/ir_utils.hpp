@@ -22,6 +22,7 @@ struct IfElseBlocks {
 // === Constantes ===
 llvm::Value* create_string_constant(IRGenerationContext& context, const std::string& value);
 llvm::Value* create_int_constant(IRGenerationContext& context, int32_t value);
+llvm::Value* create_char_constant(IRGenerationContext& context, char value);
 llvm::Value* create_float_constant(IRGenerationContext& context, double value);
 llvm::Value* create_bool_constant(IRGenerationContext& context, bool value);
 

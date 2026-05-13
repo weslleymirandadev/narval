@@ -64,6 +64,7 @@ static void declare_runtime(IRGenerationContext& context) {
     // ── Núcleo sintático (sempre declarado) ──────────────────────────────────
     // Criação de literais
     M.getOrInsertFunction("create_int",   llvm::FunctionType::get(VoidTy, {ValuePtr, I32}, false));
+    M.getOrInsertFunction("create_char",  llvm::FunctionType::get(VoidTy, {ValuePtr, I8}, false));
     M.getOrInsertFunction("create_float", llvm::FunctionType::get(VoidTy, {ValuePtr, F64}, false));
     M.getOrInsertFunction("create_bool",  llvm::FunctionType::get(VoidTy, {ValuePtr, I32}, false));
     M.getOrInsertFunction("create_str",   llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
@@ -102,6 +103,7 @@ static void declare_runtime(IRGenerationContext& context) {
     // Conversões de tipo (str(), int(), float(), bool())
     M.getOrInsertFunction("nv_str_convert",   llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
     M.getOrInsertFunction("nv_int_convert",   llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
+    M.getOrInsertFunction("nv_char_convert",  llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
     M.getOrInsertFunction("nv_float_convert", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
     M.getOrInsertFunction("nv_bool_convert",  llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
     M.getOrInsertFunction("int_to_string",    llvm::FunctionType::get(VoidTy, {ValuePtr, I32}, false));

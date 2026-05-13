@@ -23,5 +23,13 @@ add_custom_command(
     COMMAND_EXPAND_LISTS
 )
 
-# Alvo legado para compatibilidade com dependências externas
-add_custom_target(runtime_o ALL DEPENDS runtime_shared)
+# Alvo legado para compatibilidade com dependências externas.
+# Deve rodar sempre: o compilador procura build/lib/runtime.o em tempo de
+# execução, e apagar esse arquivo não força o POST_BUILD de runtime_shared.
+add_custom_target(runtime_o ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${LIB_DIR}
+    COMMAND ${CMAKE_LINKER} -r -o ${LIB_DIR}/runtime.o $<TARGET_OBJECTS:runtime_objs>
+    DEPENDS runtime_objs runtime_shared
+    COMMENT "Regenerando runtime.o em lib/"
+    COMMAND_EXPAND_LISTS
+)

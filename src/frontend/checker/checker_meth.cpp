@@ -30,6 +30,7 @@ std::shared_ptr<nv::Type> nv::Checker::check_node(Node* node) {
     switch (node->kind) {
         case NodeType::NumericLiteral:
         case NodeType::StringLiteral:
+        case NodeType::CharLiteral:
         case NodeType::BooleanLiteral:
         case NodeType::Identifier:
           return check_primary_expr(this, node);

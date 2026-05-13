@@ -22,6 +22,7 @@ int32_t get_value_type(const Value* v) {
     if (type == NVInt_Type) return NV_INT_BASE;
     if (type == NVFloat_Type) return NV_FLOAT_BASE;
     if (type == NVBool_Type) return NV_BOOL_BASE;
+    if (type == NVChar_Type) return NV_CHAR_BASE;
     if (type == NVStr_Type) return NV_STR_BASE;
     if (type == NVArray_Type) return NV_ARRAY_BASE;
     if (type == NVVector_Type) return NV_VECTOR_BASE;
@@ -205,6 +206,44 @@ void create_bool(Value* out, int32_t value) {
     
     bool_obj->value = value ? 1 : 0;
     out->obj = (NvObject*)bool_obj;
+}
+
+void create_char(Value* out, char value) {
+    if (!out) return;
+
+    memset(out, 0, sizeof(Value));
+
+    if (!NVChar_Type) {
+        register_global_init();
+    }
+
+    if (!NVChar_Type) {
+        NVChar* char_obj = (NVChar*)calloc(1, sizeof(NVChar));
+        if (!char_obj) {
+            out->obj = NULL;
+            return;
+        }
+
+        char_obj->ob_base.ob_type = NULL;
+        char_obj->ob_base.ref_count = 1;
+        char_obj->ob_base.flags = 0;
+        char_obj->value = value;
+
+        out->obj = (NvObject*)char_obj;
+        return;
+    }
+
+    NVChar* char_obj = (NVChar*)calloc(1, sizeof(NVChar));
+    if (!char_obj) {
+        out->obj = NULL;
+        return;
+    }
+
+    char_obj->ob_base.ob_type = NVChar_Type;
+    char_obj->ob_base.ref_count = 1;
+    char_obj->ob_base.flags = 0;
+    char_obj->value = value;
+    out->obj = (NvObject*)char_obj;
 }
 
 void create_str(Value* out, const char* value) {

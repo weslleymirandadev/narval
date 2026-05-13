@@ -16,6 +16,9 @@ int32_t extract_int_from_value(Value* v) {
     if (type == NVInt_Type) {
         NVInt* int_obj = (NVInt*)v->obj;
         return int_obj->value;
+    } else if (type == NVChar_Type) {
+        NVChar* char_obj = (NVChar*)v->obj;
+        return (int32_t)(unsigned char)char_obj->value;
     } else if (type == NVBool_Type) {
         NVBool* bool_obj = (NVBool*)v->obj;
         return bool_obj->value ? 1 : 0;
@@ -25,6 +28,23 @@ int32_t extract_int_from_value(Value* v) {
     }
     
     return 0;
+}
+
+char extract_char_from_value(Value* v) {
+    if (!v || !v->obj) {
+        return '\0';
+    }
+
+    NvTypeObject* type = v->obj->ob_type;
+    if (!type) {
+        return '\0';
+    }
+
+    if (type == NVChar_Type) {
+        return ((NVChar*)v->obj)->value;
+    }
+
+    return (char)extract_int_from_value(v);
 }
 
 double extract_float_from_value(Value* v) {
@@ -43,6 +63,9 @@ double extract_float_from_value(Value* v) {
     } else if (type == NVInt_Type) {
         NVInt* int_obj = (NVInt*)v->obj;
         return (double)int_obj->value;
+    } else if (type == NVChar_Type) {
+        NVChar* char_obj = (NVChar*)v->obj;
+        return (double)(unsigned char)char_obj->value;
     }
     
     return 0.0;
@@ -66,12 +89,21 @@ int32_t nv_value_cmp(Value* a, Value* b) {
         if (va > vb) return  1;
         return 0;
     }
-    /* mixed int/float */
-    double va = (ta == NVFloat_Type) ? ((NVFloat*)a->obj)->value : (double)((NVInt*)a->obj)->value;
-    double vb = (tb == NVFloat_Type) ? ((NVFloat*)b->obj)->value : (double)((NVInt*)b->obj)->value;
-    if (va < vb) return -1;
-    if (va > vb) return  1;
-    return 0;
+    if (ta == NVChar_Type && tb == NVChar_Type) {
+        unsigned char va = (unsigned char)((NVChar*)a->obj)->value;
+        unsigned char vb = (unsigned char)((NVChar*)b->obj)->value;
+        return (va > vb) - (va < vb);
+    }
+    if ((ta == NVInt_Type || ta == NVFloat_Type) &&
+        (tb == NVInt_Type || tb == NVFloat_Type)) {
+        double va = (ta == NVFloat_Type) ? ((NVFloat*)a->obj)->value : (double)((NVInt*)a->obj)->value;
+        double vb = (tb == NVFloat_Type) ? ((NVFloat*)b->obj)->value : (double)((NVInt*)b->obj)->value;
+        if (va < vb) return -1;
+        if (va > vb) return  1;
+        return 0;
+    }
+
+    return strcmp(ta->tp_name ? ta->tp_name : "", tb->tp_name ? tb->tp_name : "");
 }
 
 char* extract_string_from_value(Value* v) {

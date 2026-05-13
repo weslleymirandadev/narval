@@ -160,6 +160,10 @@ namespace nv {
     void nv::Int::init_prototype() {
         prototype = std::make_shared<nv::Namespace>();
     } 
+
+    void nv::Char::init_prototype() {
+        prototype = std::make_shared<nv::Namespace>();
+    }
     
     void nv::Float::init_prototype() {
         prototype = std::make_shared<nv::Namespace>();

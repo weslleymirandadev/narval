@@ -495,6 +495,7 @@ public:
 private:
     void initialize_type_cache() {
         type_cache[Kind::INT] = llvm::Type::getInt32Ty(llvm_context);
+        type_cache[Kind::CHAR] = llvm::Type::getInt8Ty(llvm_context);
         type_cache[Kind::FLOAT] = llvm::Type::getDoubleTy(llvm_context);
         type_cache[Kind::BOOL] = llvm::Type::getInt1Ty(llvm_context);
         type_cache[Kind::VOID] = llvm::Type::getVoidTy(llvm_context);
@@ -505,4 +506,3 @@ private:
 };
 
 } // namespace nv
-

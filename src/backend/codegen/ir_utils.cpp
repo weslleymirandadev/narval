@@ -57,6 +57,10 @@ llvm::Value* create_int_constant(IRGenerationContext& context, int32_t value) {
     return llvm::ConstantInt::get(get_i32(context), value);
 }
 
+llvm::Value* create_char_constant(IRGenerationContext& context, char value) {
+    return llvm::ConstantInt::get(llvm::Type::getInt8Ty(context.get_context()), static_cast<unsigned char>(value));
+}
+
 llvm::Value* create_float_constant(IRGenerationContext& context, double value) {
     return llvm::ConstantFP::get(get_f64(context), value);
 }
@@ -778,6 +782,7 @@ static llvm::Type* parse_type_recursive(const std::string& s, size_t& p, IRGener
         return get_i8_ptr(ctx);
     }
     if (s.substr(p, 3) == "str") { p += 3; return get_i8_ptr(ctx); }
+    if (s.substr(p, 4) == "char") { p += 4; return get_value_struct(ctx); }
     if (s.substr(p, 6) == "vector") { p += 6; return get_value_ptr(ctx); }
     if (s.substr(p, 4) == "json") { p += 4; return get_value_ptr(ctx); }
     if (s.substr(p, 4) == "void") { p += 4; return get_void(ctx); }

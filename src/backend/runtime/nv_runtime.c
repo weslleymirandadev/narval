@@ -90,6 +90,7 @@ void nv_raise_type_error(const char* msg) {
 NvTypeObject* NVInt_Type = NULL;
 NvTypeObject* NVFloat_Type = NULL;
 NvTypeObject* NVBool_Type = NULL;
+NvTypeObject* NVChar_Type = NULL;
 NvTypeObject* NVStr_Type = NULL;
 NvTypeObject* NVArray_Type = NULL;
 NvTypeObject* NVVector_Type = NULL;

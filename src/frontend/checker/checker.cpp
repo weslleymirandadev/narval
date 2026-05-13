@@ -71,6 +71,7 @@ nv::Checker::Checker() {
     scope = globalnamespace;
     types["int"] = std::make_shared<nv::Int>();
     types["str"] = std::make_shared<nv::String>();
+    types["char"] = std::make_shared<nv::Char>();
     types["float"] = std::make_shared<nv::Float>();
     types["bool"] = std::make_shared<nv::Boolean>();
     types["void"] = std::make_shared<nv::Void>();
@@ -83,6 +84,7 @@ nv::Checker::Checker() {
     // Agora que os objetos Type estão dentro de shared_ptr, inicializar seus prototypes
     types["int"]->init_prototype();
     types["str"]->init_prototype();
+    types["char"]->init_prototype();
     types["float"]->init_prototype();
     types["bool"]->init_prototype();
     types["void"]->init_prototype();
@@ -361,6 +363,7 @@ std::shared_ptr<nv::Type> nv::Checker::infer_expr(Node* node) {
     switch (node->kind) {
         case NodeType::NumericLiteral:
         case NodeType::StringLiteral:
+        case NodeType::CharLiteral:
         case NodeType::BooleanLiteral:
         case NodeType::Identifier: {
             auto& result = check_primary_expr(this, node);

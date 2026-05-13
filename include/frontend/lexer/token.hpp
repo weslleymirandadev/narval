@@ -219,7 +219,8 @@ struct Token {
     size_t position_start;
     size_t position_end;
     std::string filename;
+    char delimiter;
 
-    Token(TokenType t, std::string l, size_t li, size_t cs, size_t ce, size_t ps, size_t pe, std::string f)
-        : type(t), lexeme(l), line(li), column_start(cs), column_end(ce), position_start(ps), position_end(pe), filename(f) {}
+    Token(TokenType t, std::string l, size_t li, size_t cs, size_t ce, size_t ps, size_t pe, std::string f, char d = '\0')
+        : type(t), lexeme(l), line(li), column_start(cs), column_end(ce), position_start(ps), position_end(pe), filename(f), delimiter(d) {}
 };

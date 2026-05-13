@@ -339,6 +339,9 @@ void nv_write(Value* v) {
     } else if (type == NVBool_Type) {
         NVBool* bool_obj = (NVBool*)obj;
         printf("%s\n", bool_obj->value ? "true" : "false");
+    } else if (type == NVChar_Type) {
+        NVChar* char_obj = (NVChar*)obj;
+        printf("%c\n", char_obj->value);
     } else if (type == NVArray_Type) {
         NVArray* arr = (NVArray*)obj;
         const char* elem_type_name = "?";
@@ -386,6 +389,8 @@ void nv_write_no_nl(Value* v) {
         printf("%f", ((NVFloat*)v->obj)->value);
     } else if (type == NVBool_Type) {
         printf("%s", ((NVBool*)v->obj)->value ? "true" : "false");
+    } else if (type == NVChar_Type) {
+        printf("%c", ((NVChar*)v->obj)->value);
     } else if (type == NVArray_Type) {
         NVArray* arr = (NVArray*)v->obj;
         const char* elem_type_name = "?";

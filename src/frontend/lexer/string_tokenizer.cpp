@@ -7,6 +7,7 @@ Token tokenize_string(const std::string& input, size_t& position, size_t& line, 
     size_t start_col = column;
     char quote = input[position]; // ' or " or `
     bool is_backtick_string = quote == '`';
+    bool is_char_literal = quote == '\'';
 
     // Advances the initial quote
     ++position;
@@ -23,6 +24,7 @@ Token tokenize_string(const std::string& input, size_t& position, size_t& line, 
                 case 'n': value += '\n'; break;
                 case 't': value += '\t'; break;
                 case 'r': value += '\r'; break;
+                case '0': value += '\0'; break;
                 case '\\': value += '\\'; break;
                 case '\'': value += '\''; break;
                 case '"': value += '"'; break;
@@ -36,7 +38,12 @@ Token tokenize_string(const std::string& input, size_t& position, size_t& line, 
             // End of string
             ++position;
             ++column;
-            return Token(TokenType::STRING, value, start_line, start_col, column, start_pos, position, filename);
+            if (is_char_literal) {
+                if (value.size() != 1) {
+                    throw std::runtime_error("Char literal must contain exactly one character");
+                }
+            }
+            return Token(TokenType::STRING, value, start_line, start_col, column, start_pos, position, filename, quote);
         } else if (c == '\n') {
             if (!is_backtick_string) {
                 throw std::runtime_error("Line break not allowed inside string literal");

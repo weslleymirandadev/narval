@@ -12,6 +12,7 @@ namespace nv {
     class Namespace;
     enum Kind {
         STRING,
+        CHAR,
         INT,
         FLOAT,
         BOOL,
@@ -201,6 +202,13 @@ namespace nv {
         void init_prototype() override;
 
         std::string toString() override { return "str"; }
+    };
+
+    struct Char : public Type {
+        Char() : Type(Kind::CHAR) {}
+        void init_prototype() override;
+
+        std::string toString() override { return "char"; }
     };
 
     struct Int : public Type {

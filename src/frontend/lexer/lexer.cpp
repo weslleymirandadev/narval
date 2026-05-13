@@ -196,7 +196,9 @@ std::vector<Token> Lexer::tokenize()
         // from "module" import items — detectar cedo para resolver dependências,
         // mas emitir tokens individuais para que o parser parseia normalmente.
         if (c == 'f' && std::distance(current, input.cend()) >= 4 &&
-            input.substr(position, 4) == "from")
+            input.substr(position, 4) == "from" &&
+            (position + 4 >= input.size() ||
+             !(std::isalnum(static_cast<unsigned char>(input[position + 4])) || input[position + 4] == '_')))
         {
             size_t start_pos = position;
             size_t start_col = column;

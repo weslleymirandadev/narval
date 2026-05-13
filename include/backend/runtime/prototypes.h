@@ -81,6 +81,7 @@ typedef struct NvTypeObject {
 
 // Tipos de função
 #define NV_CLOSURE_BASE     25
+#define NV_CHAR_BASE        26
 
 // Estrutura Value simplificada - agora é apenas um wrapper para NvObject
 typedef struct {
@@ -106,6 +107,11 @@ typedef struct {
     NvObject_HEAD;
     int32_t value;
 } NVBool;
+
+typedef struct {
+    NvObject_HEAD;
+    char value;
+} NVChar;
 
 typedef struct {
     NvObject_HEAD;
@@ -378,6 +384,7 @@ extern TypeRegistry* global_type_registry;
 extern NvTypeObject* NVInt_Type;
 extern NvTypeObject* NVFloat_Type;
 extern NvTypeObject* NVBool_Type;
+extern NvTypeObject* NVChar_Type;
 extern NvTypeObject* NVStr_Type;
 extern NvTypeObject* NVArray_Type;
 extern NvTypeObject* NVVector_Type;

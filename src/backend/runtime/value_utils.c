@@ -59,6 +59,9 @@ void print_type_info(const Value* v) {
     } else if (type == NVBool_Type) {
         NVBool* bool_obj = (NVBool*)v->obj;
         printf("  value: %s\n", bool_obj->value ? "true" : "false");
+    } else if (type == NVChar_Type) {
+        NVChar* char_obj = (NVChar*)v->obj;
+        printf("  value: '%c'\n", char_obj->value);
     } else if (type == NVStr_Type) {
         NVStr* str_obj = (NVStr*)v->obj;
         printf("  value: \"%s\" (len: %zu)\n", str_obj->value ? str_obj->value : "", str_obj->len);
@@ -109,6 +112,10 @@ int convert_type(Value* out, const Value* in, int32_t target_type) {
                 NVBool* bool_obj = (NVBool*)in->obj;
                 create_int(out, bool_obj->value ? 1 : 0);
                 return 1;
+            } else if (source_type == NVChar_Type) {
+                NVChar* char_obj = (NVChar*)in->obj;
+                create_int(out, (int32_t)(unsigned char)char_obj->value);
+                return 1;
             }
             break;
             
@@ -126,6 +133,10 @@ int convert_type(Value* out, const Value* in, int32_t target_type) {
             } else if (source_type == NVBool_Type) {
                 NVBool* bool_obj = (NVBool*)in->obj;
                 create_float(out, bool_obj->value ? 1.0 : 0.0);
+                return 1;
+            } else if (source_type == NVChar_Type) {
+                NVChar* char_obj = (NVChar*)in->obj;
+                create_float(out, (double)(unsigned char)char_obj->value);
                 return 1;
             }
             break;
@@ -146,6 +157,11 @@ int convert_type(Value* out, const Value* in, int32_t target_type) {
             } else if (source_type == NVBool_Type) {
                 NVBool* bool_obj = (NVBool*)in->obj;
                 create_str(out, bool_obj->value ? "true" : "false");
+                return 1;
+            } else if (source_type == NVChar_Type) {
+                NVChar* char_obj = (NVChar*)in->obj;
+                char buffer[2] = { char_obj->value, '\0' };
+                create_str(out, buffer);
                 return 1;
             }
             break;
@@ -171,6 +187,10 @@ int convert_type(Value* out, const Value* in, int32_t target_type) {
                         return 1;
                     }
                 }
+            } else if (source_type == NVChar_Type) {
+                NVChar* char_obj = (NVChar*)in->obj;
+                create_bool(out, char_obj->value != '\0');
+                return 1;
             }
             break;
     }
@@ -236,6 +256,12 @@ int compare_values(const Value* a, const Value* b) {
         if (!str_a->value) return -1;
         if (!str_b->value) return 1;
         return strcmp(str_a->value, str_b->value);
+    } else if (type_a == NVChar_Type) {
+        unsigned char char_a = (unsigned char)((NVChar*)a->obj)->value;
+        unsigned char char_b = (unsigned char)((NVChar*)b->obj)->value;
+        if (char_a < char_b) return -1;
+        if (char_a > char_b) return 1;
+        return 0;
     } else if (type_a == NVBool_Type) {
         NVBool* bool_a = (NVBool*)a->obj;
         NVBool* bool_b = (NVBool*)b->obj;

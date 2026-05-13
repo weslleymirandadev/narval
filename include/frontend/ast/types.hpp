@@ -14,6 +14,7 @@ enum class NodeType {
     Program,
     NumericLiteral,
     BooleanLiteral,
+    CharLiteral,
     Identifier,
     BinaryExpression,
     AssignmentExpression,

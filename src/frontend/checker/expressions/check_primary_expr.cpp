@@ -4,6 +4,7 @@
 #include "frontend/checker/checker.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
 #include "frontend/ast/expressions/numeric_literal_node.hpp"
+#include "frontend/ast/expressions/char_literal_node.hpp"
 #include "frontend/checker/type.hpp"
 #include <sstream>
 #include <filesystem>
@@ -66,6 +67,10 @@ std::shared_ptr<nv::Type>& check_primary_expr(nv::Checker* ch, Node* node) {
         }
         case NodeType::StringLiteral:
             temp_result = ch->gettyptr("str");
+            ensure_proto(temp_result);
+            return temp_result;
+        case NodeType::CharLiteral:
+            temp_result = ch->gettyptr("char");
             ensure_proto(temp_result);
             return temp_result;
         case NodeType::BooleanLiteral:

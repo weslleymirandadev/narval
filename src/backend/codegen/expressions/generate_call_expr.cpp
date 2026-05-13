@@ -183,6 +183,7 @@ llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name
     };
     if (name == "str")   return try_convert("nv_str_convert",   "str_out");
     if (name == "int")   return try_convert("nv_int_convert",   "int_out");
+    if (name == "char")  return try_convert("nv_char_convert",  "chr_out");
     if (name == "float") return try_convert("nv_float_convert", "flt_out");
     if (name == "bool")  return try_convert("nv_bool_convert",  "boo_out");
 

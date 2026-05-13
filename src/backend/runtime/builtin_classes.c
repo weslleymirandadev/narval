@@ -323,6 +323,8 @@ static NvTypeObject* create_builtin_numeric_class(const char* name, int base_id)
             type->tp_basicsize = sizeof(NVFloat);
         } else if (strcmp(name, "bool") == 0) {
             type->tp_basicsize = sizeof(NVBool);
+        } else if (strcmp(name, "char") == 0) {
+            type->tp_basicsize = sizeof(NVChar);
         }
     }
     
@@ -387,6 +389,7 @@ void initialize_builtin_classes(void) {
     NVInt_Type = create_builtin_numeric_class("int", NV_INT_BASE);
     NVFloat_Type = create_builtin_numeric_class("float", NV_FLOAT_BASE);
     NVBool_Type = create_builtin_numeric_class("bool", NV_BOOL_BASE);
+    NVChar_Type = create_builtin_numeric_class("char", NV_CHAR_BASE);
     
     NVStr_Type = create_builtin_sequence_class("str", NV_STR_BASE);
     NVArray_Type = create_builtin_sequence_class("array", NV_ARRAY_BASE);

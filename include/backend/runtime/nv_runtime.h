@@ -13,6 +13,7 @@ extern "C" {
 
 // Criar valores básicos
 void create_int(Value* out, int32_t value);
+void create_char(Value* out, char value);
 void create_float(Value* out, double value);
 void create_bool(Value* out, int32_t value);
 void create_str(Value* out, const char* value);
@@ -122,6 +123,7 @@ char* get_exception_message(Value* exception);
 // Funções de conversão de tipo (estilo Python)
 void nv_str_convert(Value* out, Value* input);
 void nv_int_convert(Value* out, Value* input);
+void nv_char_convert(Value* out, Value* input);
 void nv_float_convert(Value* out, Value* input);
 void nv_bool_convert(Value* out, Value* input);
 

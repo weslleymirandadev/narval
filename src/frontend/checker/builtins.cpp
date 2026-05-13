@@ -22,6 +22,9 @@ namespace nv {
         
         // int: aceita 1 argumento de qualquer tipo, retorna int
         BuiltinFunction("int", {}, std::make_shared<Int>(), false, true, 1, 1),
+
+        // char: tipo primitivo de 1 byte; conversão explícita vira char
+        BuiltinFunction("char", {}, std::make_shared<Char>(), false, true, 1, 1),
         
         // float: aceita 1 argumento de qualquer tipo, retorna float
         BuiltinFunction("float", {}, std::make_shared<Float>(), false, true, 1, 1),

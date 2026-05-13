@@ -144,7 +144,7 @@ TypeInfo* get_type_info_by_name(const char* name) {
 
 // Verificar se tipo é válido
 int is_valid_type(int32_t type) {
-    return (type >= NV_INT_BASE && type <= NV_ANY_BASE);
+    return (type >= NV_INT_BASE && type <= NV_ANY_BASE) || type == NV_CHAR_BASE;
 }
 
 // Obter nome do tipo como string
@@ -153,6 +153,7 @@ const char* get_type_name(int32_t type) {
         case NV_INT_BASE: return "int";
         case NV_FLOAT_BASE: return "float";
         case NV_BOOL_BASE: return "bool";
+        case NV_CHAR_BASE: return "char";
         case NV_STR_BASE: return "str";
         case NV_ARRAY_BASE: return "array";
         case NV_VECTOR_BASE: return "vector";
