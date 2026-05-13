@@ -203,11 +203,9 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
             return ch->gettyptr("void");
         }
         func_type = ch->unify_ctx.resolve(func_type);
-        if (func_type->kind == nv::Kind::FUNCTION) {
-            auto function = std::static_pointer_cast<nv::Function>(func_type);
-            return function->returntype;
-        }
-    } else {
+    }
+    
+    if (func_type->kind == nv::Kind::FUNCTION) {
         auto function = std::static_pointer_cast<nv::Function>(func_type);
         
         // Verificar se é uma função builtin com argumentos opcionais
