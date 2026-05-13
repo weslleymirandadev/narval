@@ -30,6 +30,7 @@ void register_feature(const std::string& feature) {
     else if (feature == "map_operations") g_feature_tracker.has_map_operations = true;
     else if (feature == "string_operations") g_feature_tracker.has_string_operations = true;
     else if (feature == "vector_operations") g_feature_tracker.has_vector_operations = true;
+    else if (feature == "closures") g_feature_tracker.has_closures = true;
 }
 
 // Função para obter o tracker atual
@@ -148,10 +149,7 @@ static void declare_runtime(IRGenerationContext& context) {
         M.getOrInsertFunction("vector_get_method", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr, I32}, false));
         M.getOrInsertFunction("vector_set_method", llvm::FunctionType::get(VoidTy, {ValuePtr, I32, ValuePtr}, false));
     }
-    if (tracker.has_json) {
-        M.getOrInsertFunction("json_parse",        llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
-        M.getOrInsertFunction("json_parse_string", llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
-    }
+    
     // REPL helpers
     M.getOrInsertFunction("nv_register_write_value",    llvm::FunctionType::get(VoidTy, {I8Ptr}, false));
     M.getOrInsertFunction("nv_register_function_return",llvm::FunctionType::get(VoidTy, {I8Ptr, I8Ptr}, false));
@@ -160,6 +158,13 @@ static void declare_runtime(IRGenerationContext& context) {
     M.getOrInsertFunction("array_get_index_v",          llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr, I32}, false));
     M.getOrInsertFunction("nv_set_at_index",            llvm::FunctionType::get(VoidTy, {ValuePtr, I32, ValuePtr}, false));
     M.getOrInsertFunction("nv_collection_slice",        llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr, I32, I32, I32}, false));
+
+    // Closures (declaradas se a feature for usada)
+    if (tracker.has_closures) {
+        M.getOrInsertFunction("create_closure", llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr}, false));
+        M.getOrInsertFunction("create_closure_with_captures", llvm::FunctionType::get(VoidTy, {ValuePtr, I8Ptr, ValuePtr, I32}, false));
+        M.getOrInsertFunction("call_closure", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr, I32, ValuePtr}, false));
+    }
 }
 
 void generate_ir(
