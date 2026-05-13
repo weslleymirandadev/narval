@@ -221,6 +221,8 @@ llvm::Value* create_comparison(IRGenerationContext& context, llvm::Value* lhs, l
             lhs_type = lhs->getType();
         } else if (lhs_type->isIntegerTy(32) && rhs->getType()->isIntegerTy(1)) {
             rhs = builder.CreateZExt(rhs, lhs_type);
+        } else if (lhs_type->isIntegerTy() && rhs->getType()->isIntegerTy()) {
+            rhs = builder.CreateSExtOrTrunc(rhs, lhs_type);
         } else if (lhs_type->isIntegerTy() && rhs->getType()->isFloatingPointTy()) {
             lhs = builder.CreateSIToFP(lhs, rhs->getType());
             lhs_type = lhs->getType(); // Atualizar tipo após conversão
@@ -230,6 +232,34 @@ llvm::Value* create_comparison(IRGenerationContext& context, llvm::Value* lhs, l
     }
     
     // Após conversão, ambos devem ter o mesmo tipo - usar o tipo atualizado
+    if (lhs->getType() != rhs->getType()) {
+        lhs_type = lhs->getType();
+        auto* rhs_type = rhs->getType();
+        if (lhs_type->isFloatingPointTy() && rhs_type->isIntegerTy()) {
+            rhs = builder.CreateSIToFP(rhs, lhs_type);
+        } else if (lhs_type->isIntegerTy() && rhs_type->isFloatingPointTy()) {
+            lhs = builder.CreateSIToFP(lhs, rhs_type);
+        } else if (lhs_type->isIntegerTy() && rhs_type->isIntegerTy()) {
+            rhs = builder.CreateSExtOrTrunc(rhs, lhs_type);
+        } else if (!(lhs_type->isPointerTy() && rhs_type->isPointerTy())) {
+            auto to_bool = [&](llvm::Value* v) -> llvm::Value* {
+                if (v->getType()->isIntegerTy(1)) return v;
+                if (v->getType()->isIntegerTy()) {
+                    return builder.CreateICmpNE(v, llvm::ConstantInt::get(v->getType(), 0));
+                }
+                if (v->getType()->isFloatingPointTy()) {
+                    return builder.CreateFCmpONE(v, llvm::ConstantFP::get(v->getType(), 0.0));
+                }
+                if (v->getType()->isPointerTy()) {
+                    return builder.CreateIsNotNull(v);
+                }
+                return llvm::ConstantInt::getFalse(context.get_context());
+            };
+            lhs = to_bool(lhs);
+            rhs = to_bool(rhs);
+        }
+    }
+
     auto* final_type = lhs->getType();
     bool is_float = final_type->isFloatingPointTy();
     bool is_int = final_type->isIntegerTy() || final_type->isPointerTy();

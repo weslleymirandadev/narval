@@ -3,7 +3,10 @@
 #include <vector>
 #include <memory>
 
-namespace nv { class IRGenerationContext; }
+namespace nv {
+class IRGenerationContext;
+struct Type;
+}
 
 class ClosureExprNode : public Expr {
 public:
@@ -11,6 +14,8 @@ public:
     std::string return_type;
     CodeBlock body;
     std::vector<std::string> captures;
+    bool type_checked = false;
+    std::shared_ptr<nv::Type> cached_type = nullptr;
 
     ClosureExprNode() : Expr(NodeType::ClosureExpression) {}
 
@@ -21,6 +26,8 @@ public:
         for (const auto& s : body)
             n->body.push_back(std::unique_ptr<Stmt>(static_cast<Stmt*>(s->clone())));
         n->captures = captures;
+        n->type_checked = type_checked;
+        n->cached_type = cached_type;
         if (position) n->position = std::make_unique<PositionData>(*position);
         return n;
     }

@@ -26,7 +26,19 @@ void IfStatementNode::codegen(nv::IRGenerationContext& ctx) {
     if (!cond_v) throw std::runtime_error("if statement without condition value");
 
     // Ensure condition is i1
-    if (!cond_v->getType()->isIntegerTy(1)) {
+    auto* ValueTy = nv::ir_utils::get_value_struct(ctx);
+    if (cond_v->getType() == ValueTy) {
+        auto* ValuePtr = nv::ir_utils::get_value_ptr(ctx);
+        auto* I32 = llvm::Type::getInt32Ty(ctx.get_context());
+        auto* in = ctx.create_alloca(ValueTy, "if.cond.value");
+        auto* out = ctx.create_alloca(ValueTy, "if.cond.bool");
+        ctx.get_builder().CreateStore(cond_v, in);
+        auto* conv = ctx.ensure_runtime_func("nv_bool_convert", {ValuePtr, ValuePtr});
+        ctx.get_builder().CreateCall(conv, {out, in});
+        auto* extract = ctx.ensure_runtime_func("extract_int_from_value", {ValuePtr}, I32);
+        auto* as_i32 = ctx.get_builder().CreateCall(extract, {out}, "if.cond.i32");
+        cond_v = ctx.get_builder().CreateICmpNE(as_i32, llvm::ConstantInt::get(I32, 0), "tobool");
+    } else if (!cond_v->getType()->isIntegerTy(1)) {
         cond_v = ctx.get_builder().CreateICmpNE(
             cond_v,
             llvm::ConstantInt::get(cond_v->getType(), 0),
@@ -71,7 +83,18 @@ void IfStatementNode::codegen(nv::IRGenerationContext& ctx) {
             elif_node->condition->codegen(ctx);
             auto* elif_cond = ctx.pop_value();
             if (!elif_cond) throw std::runtime_error("elif without condition value");
-            if (!elif_cond->getType()->isIntegerTy(1)) {
+            if (elif_cond->getType() == ValueTy) {
+                auto* ValuePtr = nv::ir_utils::get_value_ptr(ctx);
+                auto* I32 = llvm::Type::getInt32Ty(ctx.get_context());
+                auto* in = ctx.create_alloca(ValueTy, "elif.cond.value");
+                auto* out = ctx.create_alloca(ValueTy, "elif.cond.bool");
+                B.CreateStore(elif_cond, in);
+                auto* conv = ctx.ensure_runtime_func("nv_bool_convert", {ValuePtr, ValuePtr});
+                B.CreateCall(conv, {out, in});
+                auto* extract = ctx.ensure_runtime_func("extract_int_from_value", {ValuePtr}, I32);
+                auto* as_i32 = B.CreateCall(extract, {out}, "elif.cond.i32");
+                elif_cond = B.CreateICmpNE(as_i32, llvm::ConstantInt::get(I32, 0), "tobool");
+            } else if (!elif_cond->getType()->isIntegerTy(1)) {
                 elif_cond = B.CreateICmpNE(
                     elif_cond,
                     llvm::ConstantInt::get(elif_cond->getType(), 0),
@@ -81,6 +104,11 @@ void IfStatementNode::codegen(nv::IRGenerationContext& ctx) {
 
             // Create blocks for this elif
             auto elif_blocks = nv::ir_utils::create_if_else_structure(ctx, "elif");
+            B.SetInsertPoint(elif_blocks.merge_block);
+            if (!B.GetInsertBlock()->getTerminator()) {
+                B.CreateBr(merge_block);
+            }
+            B.SetInsertPoint(current_else_block);
             nv::ir_utils::create_conditional_branch(ctx, elif_cond, elif_blocks.then_block, elif_blocks.else_block);
 
             // Elif then: execute its consequent, then jump to merge

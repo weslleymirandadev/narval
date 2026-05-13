@@ -104,6 +104,11 @@ std::shared_ptr<nv::Type>& check_access_expr(nv::Checker* ch, Node* node) {
         int next_id = ch->unify_ctx.get_next_var_id();
         temp_result = std::make_shared<nv::TypeVar>(next_id);
         return temp_result;
+    } else if (expr_type->kind == nv::Kind::FUNCTION && index_is_int) {
+        // Closure arrays currently flow through annotations like |x:int|:int[2].
+        // Treat indexing such a value as retrieving a callable element.
+        temp_result = expr_type;
+        return temp_result;
     } else {
         ch->error(access_expr->expr.get(), 
                   "Access expression requires array, vector, string, map, or tuple, but got '" + 

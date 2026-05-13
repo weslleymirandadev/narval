@@ -45,44 +45,74 @@ void ClosureExprNode::codegen(nv::IRGenerationContext& ctx) {
         module
     );
     
-    // === SOLUÇÃO DEFINITIVA: Captura sem referências cruzadas ===
-    std::vector<llvm::Value*> captured_values;
+    // Captures are stored as Value* slots. Locals/params that would otherwise
+    // die with the current stack frame are promoted to heap cells when captured.
+    std::vector<llvm::Value*> captured_slots;
+    auto* capture_cell_new = ctx.ensure_runtime_func("nv_closure_cell_new", {ValuePtr}, ValuePtr);
+
+    auto box_to_value_slot = [&](llvm::Value* value, const std::string& name) -> llvm::Value* {
+        auto* boxed = ctx.create_alloca(ValueTy, name + "_boxed");
+        if (!value) {
+            builder.CreateStore(llvm::UndefValue::get(ValueTy), boxed);
+        } else if (value->getType() == ValueTy) {
+            builder.CreateStore(value, boxed);
+        } else if (value->getType()->isIntegerTy(1)) {
+            auto* create_bool_fn = ctx.ensure_runtime_func("create_bool", {ValuePtr, I32});
+            builder.CreateCall(create_bool_fn, {boxed, builder.CreateZExt(value, I32)});
+        } else if (value->getType()->isIntegerTy()) {
+            auto* create_int_fn = ctx.ensure_runtime_func("create_int", {ValuePtr, I32});
+            llvm::Value* iv = value->getType()->isIntegerTy(32)
+                ? value
+                : builder.CreateSExtOrTrunc(value, I32);
+            builder.CreateCall(create_int_fn, {boxed, iv});
+        } else if (value->getType()->isFloatingPointTy()) {
+            auto* F64 = llvm::Type::getDoubleTy(llvm_context);
+            auto* create_float_fn = ctx.ensure_runtime_func("create_float", {ValuePtr, F64});
+            llvm::Value* fv = value->getType() == F64 ? value : builder.CreateFPExt(value, F64);
+            builder.CreateCall(create_float_fn, {boxed, fv});
+        } else if (value->getType() == I8P) {
+            auto* create_str_fn = ctx.ensure_runtime_func("create_str", {ValuePtr, I8P});
+            builder.CreateCall(create_str_fn, {boxed, value});
+        } else {
+            builder.CreateStore(llvm::UndefValue::get(ValueTy), boxed);
+        }
+        return boxed;
+    };
+
     for (const auto& capture_name : captures) {
         auto capture_info_opt = ctx.get_symbol_info(capture_name);
         if (capture_info_opt) {
             const auto& capture_info = capture_info_opt.value();
-            llvm::Value* capture_value = nullptr;
-            
-            // Extrair o valor primitivo usando o runtime para garantir independência total
-            auto* I32 = llvm::Type::getInt32Ty(llvm_context);
-            auto* I8P = llvm::PointerType::getUnqual(llvm_context);
-            
-            // Criar um Value temporário para extração
-            auto* temp_alloca = ctx.create_alloca(ValueTy, capture_name + "_temp");
-            
-            if (capture_info.is_allocated) {
-                // É uma alocação - carregar o Value
-                auto* loaded_val = builder.CreateLoad(ValueTy, capture_info.value, capture_name + "_loaded");
-                builder.CreateStore(loaded_val, temp_alloca);
+            llvm::Value* capture_slot = nullptr;
+
+            if (llvm::isa<llvm::GlobalVariable>(capture_info.value)) {
+                capture_slot = capture_info.value;
+            } else if (capture_info.is_allocated &&
+                       !llvm::isa<llvm::AllocaInst>(capture_info.value) &&
+                       capture_info.value->getType() == ValuePtr) {
+                // Already a heap/environment slot from an outer closure.
+                capture_slot = capture_info.value;
+            } else if (capture_info.is_allocated) {
+                llvm::Value* loaded = builder.CreateLoad(
+                    capture_info.llvm_type, capture_info.value, capture_name + "_loaded");
+                auto* boxed = box_to_value_slot(loaded, capture_name);
+                capture_slot = builder.CreateCall(capture_cell_new, {boxed}, capture_name + "_cell");
+
+                nv::SymbolInfo promoted(capture_slot, ValueTy, capture_info.nv_type, true, false);
+                if (!ctx.get_symbol_table().update_symbol(capture_name, promoted)) {
+                    ctx.get_symbol_table().define_symbol(capture_name, promoted);
+                }
+            } else if (capture_info.value && capture_info.value->getType() == ValuePtr) {
+                capture_slot = capture_info.value;
             } else {
-                // Já é um Value direto
-                builder.CreateStore(capture_info.value, temp_alloca);
+                auto* boxed = box_to_value_slot(capture_info.value, capture_name);
+                capture_slot = builder.CreateCall(capture_cell_new, {boxed}, capture_name + "_cell");
             }
-            
-            // Extrair o primitivo do Value
-            auto* extract_fn = ctx.ensure_runtime_func("extract_int_from_value", {I32, ValuePtr});
-            auto* primitive_val = builder.CreateCall(extract_fn, {temp_alloca}, "extracted");
-            
-            // Criar um Value completamente novo e independente
-            auto* final_alloca = ctx.create_alloca(ValueTy, capture_name + "_final");
-            auto* create_fn = ctx.ensure_runtime_func("create_int", {ValuePtr, I32});
-            builder.CreateCall(create_fn, {final_alloca, primitive_val});
-            
-            // Carregar o Value final
-            capture_value = builder.CreateLoad(ValueTy, final_alloca, capture_name + "_capture");
-            captured_values.push_back(capture_value);
+
+            captured_slots.push_back(capture_slot);
         } else {
-            captured_values.push_back(llvm::UndefValue::get(ValueTy));
+            auto* boxed = box_to_value_slot(nullptr, capture_name);
+            captured_slots.push_back(builder.CreateCall(capture_cell_new, {boxed}, capture_name + "_missing_cell"));
         }
     }
     
@@ -93,7 +123,6 @@ void ClosureExprNode::codegen(nv::IRGenerationContext& ctx) {
     
     // Mudar para o contexto da função da closure
     ctx.set_current_function(closure_func);
-    ctx.set_program_function(closure_func);
     
     // Manter o escopo atual para evitar segmentation fault
     
@@ -142,18 +171,15 @@ void ClosureExprNode::codegen(nv::IRGenerationContext& ctx) {
     for (size_t i = 0; i < captures.size(); ++i) {
         const std::string& capture_name = captures[i];
         
-        // Carregar do array de capturas
+        // Load the captured Value* slot and register it directly. Assignments
+        // to the captured name store through this slot, preserving JS-like state.
         auto* index = llvm::ConstantInt::get(I32, i);
-        auto* capture_gep = builder.CreateGEP(ValueTy, captures_ptr, {index}, "capture_ptr");
-        auto* capture_value = builder.CreateLoad(ValueTy, capture_gep, capture_name);
-        
-        // Criar alloca para a captura e registrar
-        auto* capture_alloca = ctx.create_alloca(ValueTy, capture_name);
-        builder.CreateStore(capture_value, capture_alloca);
+        auto* capture_gep = builder.CreateGEP(ValuePtr, captures_ptr, {index}, "capture_slot_ptr");
+        auto* capture_slot = builder.CreateLoad(ValuePtr, capture_gep, capture_name + "_slot");
         
         // IMPORTANTE: Registrar na tabela de símbolos do escopo ATUAL da closure
         // Isso sobrescreve qualquer referência externa
-        nv::SymbolInfo info(capture_alloca, ValueTy, nullptr, true, false);
+        nv::SymbolInfo info(capture_slot, ValueTy, nullptr, true, false);
         ctx.get_symbol_table().define_symbol(capture_name, info);
     }
     
@@ -232,14 +258,14 @@ void ClosureExprNode::codegen(nv::IRGenerationContext& ctx) {
         builder.CreateCall(create_fn, {closure_alloca, func_ptr});
     } else {
         // Closure com capturas - preparar array de capturas
-        auto* captures_array = builder.CreateAlloca(ValueTy, 
+        auto* captures_array = builder.CreateAlloca(ValuePtr,
             llvm::ConstantInt::get(I32, captures.size()), "captures_array");
         
-        // Preencher array com valores capturados coletados anteriormente
-        for (size_t i = 0; i < captured_values.size(); ++i) {
+        // Preencher array com slots capturados coletados anteriormente
+        for (size_t i = 0; i < captured_slots.size(); ++i) {
             auto* index = llvm::ConstantInt::get(I32, i);
-            auto* elem_ptr = builder.CreateGEP(ValueTy, captures_array, {index});
-            builder.CreateStore(captured_values[i], elem_ptr);
+            auto* elem_ptr = builder.CreateGEP(ValuePtr, captures_array, {index});
+            builder.CreateStore(captured_slots[i], elem_ptr);
         }
         
         // Criar closure com capturas

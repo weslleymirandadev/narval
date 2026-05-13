@@ -5,7 +5,7 @@
 typedef struct {
     NvObject ob_base;
     void*    function_ptr;
-    Value*   captured_vars;  // Array of captured variables
+    Value**  captured_vars;  // Array of captured Value slots
     int      capture_count;
 } NvClosure;
 
@@ -33,7 +33,17 @@ void create_closure(Value* result, void* function_ptr) {
     result->obj = (NvObject*)c;
 }
 
-void create_closure_with_captures(Value* result, void* function_ptr, Value* captured_vars, int capture_count) {
+Value* nv_closure_cell_new(Value* initial) {
+    Value* cell = (Value*)malloc(sizeof(Value));
+    if (initial) {
+        *cell = *initial;
+    } else {
+        cell->obj = NULL;
+    }
+    return cell;
+}
+
+void create_closure_with_captures(Value* result, void* function_ptr, Value** captured_vars, int capture_count) {
     init_closure_type_once();
     NvClosure* c = (NvClosure*)malloc(sizeof(NvClosure));
     c->ob_base.ob_type  = NVClosure_Type;
@@ -43,7 +53,7 @@ void create_closure_with_captures(Value* result, void* function_ptr, Value* capt
     
     // Copy captured variables
     if (capture_count > 0 && captured_vars) {
-        c->captured_vars = (Value*)malloc(sizeof(Value) * capture_count);
+        c->captured_vars = (Value**)malloc(sizeof(Value*) * capture_count);
         c->capture_count = capture_count;
         for (int i = 0; i < capture_count; i++) {
             c->captured_vars[i] = captured_vars[i];
@@ -56,15 +66,15 @@ void create_closure_with_captures(Value* result, void* function_ptr, Value* capt
     result->obj = (NvObject*)c;
 }
 
-// Closure body signature: Value fn(Value* args, int argc, Value* captures, int capture_count)
+// Closure body signature: Value fn(Value* args, int argc, Value** captures, int capture_count)
 // args is a contiguous array of Value structs on the caller's stack.
-// captures is an array of captured variables from the outer scope.
+// captures is an array of captured Value slots from the outer scope.
 void call_closure(Value* closure_val, Value* args, int arg_count, Value* result) {
     if (!closure_val || !closure_val->obj) return;
     NvClosure* c = (NvClosure*)closure_val->obj;
     
-    // New signature with captures: Value fn(Value* args, int argc, Value* captures, int capture_count)
-    typedef Value (*ClosureFn)(Value* args, int argc, Value* captures, int capture_count);
+    // New signature with captures: Value fn(Value* args, int argc, Value** captures, int capture_count)
+    typedef Value (*ClosureFn)(Value* args, int argc, Value** captures, int capture_count);
     ClosureFn fn = (ClosureFn)c->function_ptr;
     *result = fn(args, arg_count, c->captured_vars, c->capture_count);
 }

@@ -23,7 +23,19 @@ void WhileStmtNode::codegen(nv::IRGenerationContext& ctx) {
         cond_v = ctx.pop_value();
     }
     if (!cond_v) cond_v = llvm::ConstantInt::getFalse(ctx.get_context());
-    if (!cond_v->getType()->isIntegerTy(1)) {
+    auto* ValueTy = nv::ir_utils::get_value_struct(ctx);
+    if (cond_v->getType() == ValueTy) {
+        auto* ValuePtr = nv::ir_utils::get_value_ptr(ctx);
+        auto* I32 = llvm::Type::getInt32Ty(ctx.get_context());
+        auto* in = ctx.create_alloca(ValueTy, "while.cond.value");
+        auto* out = ctx.create_alloca(ValueTy, "while.cond.bool");
+        b.CreateStore(cond_v, in);
+        auto* conv = ctx.ensure_runtime_func("nv_bool_convert", {ValuePtr, ValuePtr});
+        b.CreateCall(conv, {out, in});
+        auto* extract = ctx.ensure_runtime_func("extract_int_from_value", {ValuePtr}, I32);
+        auto* as_i32 = b.CreateCall(extract, {out}, "while.cond.i32");
+        cond_v = b.CreateICmpNE(as_i32, llvm::ConstantInt::get(I32, 0), "tobool");
+    } else if (!cond_v->getType()->isIntegerTy(1)) {
         cond_v = b.CreateICmpNE(cond_v, llvm::ConstantInt::get(cond_v->getType(), 0), "tobool");
     }
     b.CreateCondBr(cond_v, body_bb, exit_bb);

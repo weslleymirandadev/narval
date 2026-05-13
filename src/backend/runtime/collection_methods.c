@@ -105,7 +105,26 @@ void vector_set_method(Value* self_vec, int32_t index, Value* elem) {
 
     NVVector* v = (NVVector*)self_vec->obj;
     if (index < 0) index += v->size;
-    if (index < 0 || index >= v->size) return;
+    if (index < 0) return;
+
+    if (index >= v->size) {
+        if (index >= v->capacity) {
+            int new_capacity = v->capacity == 0 ? 4 : v->capacity;
+            while (index >= new_capacity) {
+                new_capacity *= 2;
+            }
+
+            Value* new_elements = (Value*)realloc(v->elements, new_capacity * sizeof(Value));
+            if (!new_elements) return;
+            v->elements = new_elements;
+            v->capacity = new_capacity;
+        }
+
+        for (int i = v->size; i <= index; i++) {
+            memset(&v->elements[i], 0, sizeof(Value));
+        }
+        v->size = index + 1;
+    }
 
     v->elements[index] = *elem;
 }

@@ -47,6 +47,10 @@ namespace nv {
             std::unordered_set<std::string> python_namespaces;
             // Namespace aliases de wildcard imports: alias -> (nome_membro -> tipo)
             std::unordered_map<std::string, std::map<std::string, std::shared_ptr<Type>>> import_namespaces;
+            // Symbols seen while type-checking closure bodies. Some frontend
+            // passes revisit cloned closure body nodes after the lexical scope
+            // is gone; this lets those rechecks stay permissive.
+            std::unordered_map<std::string, std::shared_ptr<Type>> closure_fallback_symbols;
             Checker();
             nv::Type& getty(std::string ty);
             std::shared_ptr<nv::Type>& gettyptr(std::string ty);

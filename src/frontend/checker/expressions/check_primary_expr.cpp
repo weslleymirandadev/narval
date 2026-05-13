@@ -98,6 +98,12 @@ std::shared_ptr<nv::Type>& check_primary_expr(nv::Checker* ch, Node* node) {
                 try { if (var_type && !var_type->prototype) var_type->init_prototype(); } catch(...) {}
                 return var_type;
             } catch (std::runtime_error&) {
+                auto fallback_it = ch->closure_fallback_symbols.find(id->symbol);
+                if (fallback_it != ch->closure_fallback_symbols.end()) {
+                    temp_result = fallback_it->second;
+                    ensure_proto(temp_result);
+                    return temp_result;
+                }
                 // Identificador não encontrado - reportar erro formatado (mesmo formato do parser)
                 // Nunca propagar runtime_error, apenas usar error() do checker
                 
