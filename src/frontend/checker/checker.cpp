@@ -268,6 +268,10 @@ void nv::Checker::set_source_file(const std::string& filename) {
     read_lines(filename);
 }
 
+void nv::Checker::set_emit_diagnostics(bool enabled) {
+    emit_diagnostics = enabled;
+}
+
 void nv::Checker::error(Node* node, const std::string& message) {
     // Evitar reportar o mesmo erro duas vezes usando o ponteiro do nó
     // O ponteiro do nó é único e não muda, então é a forma mais confiável de identificar o mesmo erro
@@ -285,29 +289,38 @@ void nv::Checker::error(Node* node, const std::string& message) {
     }
     
     if (!node || !node->position) {
-        std::cerr << ANSI_BOLD << abs_filename << ": "
-                  << ANSI_RED << "ERROR" << ANSI_RESET << ANSI_BOLD << ": "
-                  << message << ANSI_RESET << "\n\n";
+        diagnostics.push_back({abs_filename, 1, 1, 1, 1, message});
+        if (emit_diagnostics) {
+            std::cerr << ANSI_BOLD << abs_filename << ": "
+                      << ANSI_RED << "ERROR" << ANSI_RESET << ANSI_BOLD << ": "
+                      << message << ANSI_RESET << "\n\n";
+        }
         err = true;
-        std::cerr.flush();
+        if (emit_diagnostics) std::cerr.flush();
         return;
     }
     
     PositionData* pos = node->position.get();
-    std::cerr << ANSI_BOLD
-              << abs_filename << ":" << pos->line << ":" << pos->col[0] << ": "
-              << ANSI_RED << "ERROR" << ANSI_RESET << ANSI_BOLD << ": "
-              << message << ANSI_RESET << "\n";
+    diagnostics.push_back({abs_filename, pos->line, pos->col[0], pos->col[1], 1, message});
+    if (emit_diagnostics) {
+        std::cerr << ANSI_BOLD
+                  << abs_filename << ":" << pos->line << ":" << pos->col[0] << ": "
+                  << ANSI_RED << "ERROR" << ANSI_RESET << ANSI_BOLD << ": "
+                  << message << ANSI_RESET << "\n";
 
-    print_error_context(pos);
+        print_error_context(pos);
+    }
     err = true;
-    std::cerr.flush();  // Garantir que a mensagem foi exibida antes de continuar
+    if (emit_diagnostics) std::cerr.flush();  // Garantir que a mensagem foi exibida antes de continuar
 }
 
 void nv::Checker::note_at(const std::string& filename, size_t line,
                            size_t col_start, size_t col_end,
                            const std::string& message) {
     std::string abs_filename = to_absolute_path(filename);
+    diagnostics.push_back({abs_filename, line, col_start, col_end, 3, message});
+    if (!emit_diagnostics) return;
+
     std::cerr << ANSI_BOLD
               << abs_filename << ":" << line << ":" << col_start << ": "
               << ANSI_BLUE << "NOTE" << ANSI_RESET << ANSI_BOLD << ": "
