@@ -66,6 +66,15 @@ target_include_directories(narval PRIVATE ${PROJECT_SOURCE_DIR}/include)
 target_link_libraries(narval PRIVATE narval_all_common lexer parser checker generator interactive runtime_objs runtime_shared)
 add_dependencies(narval runtime_o)
 
+add_executable(narval_semantic_analyzer
+    src/frontend/module_manager_cli.cpp
+    src/frontend/module_manager.cpp
+    src/frontend/module_manager_codegen_stubs.cpp
+)
+target_link_options(narval_semantic_analyzer PRIVATE -W -fPIE)
+target_include_directories(narval_semantic_analyzer PRIVATE ${PROJECT_SOURCE_DIR}/include)
+target_link_libraries(narval_semantic_analyzer PRIVATE narval_all_common lexer parser checker)
+
 if(TARGET narval)
     target_compile_definitions(narval PRIVATE
         NARVAL_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
