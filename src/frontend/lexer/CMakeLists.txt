@@ -4,7 +4,7 @@ add_library(lexer lexer.cpp
     number_tokenizer.cpp
     string_tokenizer.cpp)
 
-target_link_libraries(lexer PUBLIC narval_project_includes narval_all_common)
+target_link_libraries(lexer PUBLIC narval_project_includes)
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/lexer.test.cpp")
     narval_add_test(lexer_test lexer.test.cpp ../module_manager.cpp)
