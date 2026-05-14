@@ -8,6 +8,46 @@
 #include <sstream>
 #include <unordered_set>
 
+namespace {
+    std::string call_type_name(std::shared_ptr<nv::Type> type) {
+        return type ? type->toString() : "<unknown>";
+    }
+
+    bool check_call_arg_type(nv::Checker* ch,
+                             Node* error_node,
+                             std::shared_ptr<nv::Type> arg_type,
+                             std::shared_ptr<nv::Type> param_type,
+                             const std::string& label) {
+        arg_type = ch->unify_ctx.resolve(arg_type);
+        param_type = ch->unify_ctx.resolve(param_type);
+
+        if (!arg_type || !param_type) {
+            ch->error(error_node, label + " argument type error: unknown argument type");
+            return false;
+        }
+
+        if (arg_type->kind == nv::Kind::TYPE_VAR || param_type->kind == nv::Kind::TYPE_VAR) {
+            try {
+                ch->unify_ctx.unify(arg_type, param_type);
+                return true;
+            } catch (std::runtime_error& e) {
+                ch->error(error_node, label + " argument type error: " + std::string(e.what()));
+                return false;
+            }
+        }
+
+        if (!arg_type->equals(*param_type)) {
+            ch->error(error_node,
+                      label + " argument type error: expected '" +
+                      call_type_name(param_type) + "', got '" +
+                      call_type_name(arg_type) + "'");
+            return false;
+        }
+
+        return true;
+    }
+}
+
 std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
     const auto* call = static_cast<CallExprNode*>(node);
 
@@ -124,14 +164,11 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
             return ch->gettyptr("void");
         }
         
-        // Unificar tipos dos argumentos
+        // Validar tipos dos argumentos. Chamadas são estritas: int não é aceito
+        // como float implicitamente aqui, para o erro aparecer no checker.
         for (size_t i = 0; i < call->args.size(); i++) {
-            try {
-                ch->unify_ctx.unify(arg_types[i], function->paramstype[i]);
-            } catch (std::runtime_error& e) {
-                std::ostringstream oss;
-                oss << "Method call argument type error: " << e.what();
-                ch->error(const_cast<Node*>(node), oss.str());
+            Node* arg_node = call->args[i]->value ? call->args[i]->value.get() : const_cast<Node*>(node);
+            if (!check_call_arg_type(ch, arg_node, arg_types[i], function->paramstype[i], "Method call")) {
                 return ch->gettyptr("void");
             }
         }
@@ -265,18 +302,14 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
             }
         }
         
-        // Unificar tipos dos argumentos com tipos dos parâmetros
-        // Para funções com varargs, unificar apenas os argumentos fornecidos
+        // Validar tipos dos argumentos com tipos dos parâmetros.
+        // Para funções com varargs, validar apenas os argumentos fornecidos.
         if (!has_keywords) {
             if (call->args.size() > 0) {
                 size_t max_args = std::min(call->args.size(), function->paramstype.size());
                 for (size_t i = 0; i < max_args; i++) {
-                    try {
-                        ch->unify_ctx.unify(arg_types[i], function->paramstype[i]);
-                    } catch (std::runtime_error& e) {
-                        std::ostringstream oss;
-                        oss << "Function call argument type error: " << e.what();
-                        ch->error(const_cast<Node*>(node), oss.str());
+                    Node* arg_node = call->args[i]->value ? call->args[i]->value.get() : const_cast<Node*>(node);
+                    if (!check_call_arg_type(ch, arg_node, arg_types[i], function->paramstype[i], "Function call")) {
                         return ch->gettyptr("void");
                     }
                 }
@@ -300,6 +333,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
             }
 
             std::vector<std::shared_ptr<nv::Type>> ordered_args(function->paramstype.size());
+            std::vector<Node*> ordered_arg_nodes(function->paramstype.size(), nullptr);
             std::vector<bool> assigned(function->paramstype.size(), false);
             size_t pos_index = 0;
             bool seen_keyword = false;
@@ -315,6 +349,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
                     }
                     ordered_args[pos_index++] = ch->infer_expr(a->value.get());
                     assigned[pos_index-1] = true;
+                    ordered_arg_nodes[pos_index-1] = a->value ? a->value.get() : const_cast<Node*>(node);
                 } else {
                     seen_keyword = true;
                     auto found = std::find(pname_list.begin(), pname_list.end(), a->name);
@@ -329,6 +364,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
                     }
                     ordered_args[idx] = ch->infer_expr(a->value.get());
                     assigned[idx] = true;
+                    ordered_arg_nodes[idx] = a->value ? a->value.get() : const_cast<Node*>(node);
                 }
             }
 
@@ -349,15 +385,11 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
                 }
             }
 
-            // Unify types in order (skip positions that were not provided and have defaults)
+            // Validate types in order (skip positions that were not provided and have defaults)
             for (size_t i = 0; i < ordered_args.size(); ++i) {
                 if (!ordered_args[i]) continue; // omitted param with default — skip unification
-                try {
-                    ch->unify_ctx.unify(ordered_args[i], function->paramstype[i]);
-                } catch (std::runtime_error& e) {
-                    std::ostringstream oss;
-                    oss << "Function call argument type error: " << e.what();
-                    ch->error(const_cast<Node*>(node), oss.str());
+                Node* arg_node = ordered_arg_nodes[i] ? ordered_arg_nodes[i] : const_cast<Node*>(node);
+                if (!check_call_arg_type(ch, arg_node, ordered_args[i], function->paramstype[i], "Function call")) {
                     return ch->gettyptr("void");
                 }
             }

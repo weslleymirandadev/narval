@@ -41,17 +41,6 @@ static bool stmts_have_propagate(const std::vector<std::unique_ptr<Stmt>>& stmts
 std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
     auto* function_stmt = static_cast<FunctionStmtNode*>(node);
     
-    // Verificar se função já está registrada no escopo (já foi verificada)
-    try {
-        auto& existing_type = ch->scope->get_key(function_stmt->name);
-        // Se já existe e é uma função, retornar o tipo existente sem re-verificar
-        if (existing_type && existing_type->kind == nv::Kind::FUNCTION) {
-            return existing_type;
-        }
-    } catch (std::runtime_error&) {
-        // Função não existe no escopo, prosseguir com verificação normal
-    }
-    
     // Criar novo escopo para a função
     ch->push_scope();
     
@@ -187,9 +176,6 @@ std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
     // Generalizar tipo de função
     auto generalized_func = ch->unify_ctx.generalize(func_type, free_vars);
     
-    // Registrar função no escopo
-    ch->scope->put_key(function_stmt->name, generalized_func, false);
-    // Also record parameter names order for keyword-arg binding
     std::vector<std::string> pname_list;
     std::vector<bool> param_has_default;
     size_t param_idx = 0;
@@ -230,6 +216,7 @@ std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
     }
     
     ch->pop_scope();
+    ch->scope->put_key(function_stmt->name, generalized_func, false);
     
     return ch->scope->get_key(function_stmt->name);
 }

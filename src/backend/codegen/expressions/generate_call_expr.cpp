@@ -506,6 +506,12 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
                                     av = B.CreateLoad(ValueTy, av);
                                 }
                             }
+                            if (av && av->getType() != param_types[i] &&
+                                ((av->getType()->isIntegerTy() && param_types[i]->isFloatingPointTy()) ||
+                                 (av->getType()->isFloatingPointTy() && param_types[i]->isIntegerTy()) ||
+                                 (av->getType()->isIntegerTy() && param_types[i]->isIntegerTy()))) {
+                                av = ir_utils::promote_type(ctx, av, param_types[i]);
+                            }
                             call_args.push_back(av);
                         }
 
@@ -562,7 +568,17 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
         // === MÉTODOS DE CLASSE DEFINIDOS PELO USUÁRIO ===
         if (ctx.get_type_checker()) {
             auto* checker = static_cast<nv::Checker*>(ctx.get_type_checker());
-            auto obj_type = checker->infer_expr(mem->object.get());
+            std::shared_ptr<nv::Type> obj_type = nullptr;
+            if (mem->object->kind == NodeType::Identifier) {
+                auto* obj_id = static_cast<IdentifierNode*>(mem->object.get());
+                auto obj_sym = ctx.get_symbol_table().lookup_symbol(obj_id->symbol);
+                if (obj_sym.has_value()) {
+                    obj_type = obj_sym->nv_type;
+                }
+            }
+            if (!obj_type) {
+                obj_type = checker->infer_expr(mem->object.get());
+            }
             if (obj_type) {
                 obj_type = checker->unify_ctx.resolve(obj_type);
                 if (obj_type && obj_type->kind == nv::Kind::CLASS) {
@@ -717,6 +733,13 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
                     arg_val = B.CreateLoad(ValueTy, boxed, "arg_boxed");
                 }
 
+                if (arg_val && arg_val->getType() != param_types[i] &&
+                    ((arg_val->getType()->isIntegerTy() && param_types[i]->isFloatingPointTy()) ||
+                     (arg_val->getType()->isFloatingPointTy() && param_types[i]->isIntegerTy()) ||
+                     (arg_val->getType()->isIntegerTy() && param_types[i]->isIntegerTy()))) {
+                    arg_val = ir_utils::promote_type(ctx, arg_val, param_types[i]);
+                }
+
                 argv.push_back(arg_val);
             }
         } else {
@@ -822,6 +845,12 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
                     arg_val = B.CreateLoad(ValueTy, slot);
                 } else if (arg_val && arg_val->getType()->isPointerTy() && param_types[i] == ValueTy) {
                     arg_val = B.CreateLoad(ValueTy, arg_val);
+                }
+                if (arg_val && arg_val->getType() != param_types[i] &&
+                    ((arg_val->getType()->isIntegerTy() && param_types[i]->isFloatingPointTy()) ||
+                     (arg_val->getType()->isFloatingPointTy() && param_types[i]->isIntegerTy()) ||
+                     (arg_val->getType()->isIntegerTy() && param_types[i]->isIntegerTy()))) {
+                    arg_val = ir_utils::promote_type(ctx, arg_val, param_types[i]);
                 }
                 argv.push_back(arg_val);
             }
