@@ -9,6 +9,15 @@
 #include <map>
 
 namespace nv {
+    struct Diagnostic {
+        std::string filename;
+        size_t line = 1;
+        size_t col_start = 1;
+        size_t col_end = 1;
+        int severity = 1;
+        std::string message;
+    };
+
     class Checker {
         private:
             std::vector<std::string> lines;
@@ -29,6 +38,8 @@ namespace nv {
             std::unordered_map<std::string, std::vector<std::unique_ptr<Expr>>> function_default_values;
             UnificationContext unify_ctx;
             bool err;
+            bool emit_diagnostics = true;
+            std::vector<Diagnostic> diagnostics;
             std::string current_filename;  // Nome do arquivo fonte atual (para erros e resolução de imports)
             // Usar ponteiro do nó como chave para evitar duplicação - o ponteiro é único e não muda
             std::unordered_set<const void*> reported_errors;  // Nós que já tiveram erros reportados (usando ponteiro como chave)
@@ -65,6 +76,7 @@ namespace nv {
             
             // Gerenciamento de arquivo fonte para erros
             void set_source_file(const std::string& filename);
+            void set_emit_diagnostics(bool enabled);
             void error(Node* node, const std::string& message);
             void note_at(const std::string& filename, size_t line,
                          size_t col_start, size_t col_end,
