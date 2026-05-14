@@ -2,6 +2,7 @@ file(GLOB_RECURSE CHECKER_SOURCES "*.cpp")
 list(FILTER CHECKER_SOURCES EXCLUDE REGEX ".*checker\\.test\\.cpp$")
 
 add_library(checker ${CHECKER_SOURCES})
+target_link_libraries(checker PUBLIC narval_project_includes)
 
 include_directories(${PROJECT_SOURCE_DIR}/include)
 
