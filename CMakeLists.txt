@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 project(Narval)
+include(GNUInstallDirs)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -10,6 +11,7 @@ file(MAKE_DIRECTORY ${LIB_DIR})
 
 # === Passa para subdiretórios ===
 set(LIB_DIR ${LIB_DIR} CACHE INTERNAL "Pasta de arquivos gerados")
+set(NARVAL_INSTALL_RUNTIME_DIR "${CMAKE_INSTALL_FULL_LIBDIR}/narval" CACHE PATH "Installed Narval runtime directory")
 
 include_directories(${PROJECT_SOURCE_DIR}/include)
 
@@ -59,26 +61,46 @@ add_subdirectory(src/frontend/checker)
 add_subdirectory(src/frontend/interactive)
 add_subdirectory(src/backend/runtime)
 add_subdirectory(src/backend/codegen)
+add_subdirectory(src/lsp)
 
 add_executable(narval src/main.cpp src/frontend/module_manager.cpp)
 target_link_options(narval PRIVATE -W -fPIE)
 target_include_directories(narval PRIVATE ${PROJECT_SOURCE_DIR}/include)
 target_link_libraries(narval PRIVATE narval_all_common lexer parser checker generator interactive runtime_objs runtime_shared)
 add_dependencies(narval runtime_o)
-
-add_executable(narval_semantic_analyzer
-    src/frontend/module_manager_cli.cpp
-    src/frontend/module_manager.cpp
-    src/frontend/module_manager_codegen_stubs.cpp
-)
-target_link_options(narval_semantic_analyzer PRIVATE -W -fPIE)
-target_include_directories(narval_semantic_analyzer PRIVATE ${PROJECT_SOURCE_DIR}/include)
-target_link_libraries(narval_semantic_analyzer PRIVATE narval_all_common lexer parser checker)
+if(NARVAL_BUILD_LSP)
+    add_dependencies(narval narval_LSP)
+endif()
+if(NARVAL_BUILD_LSP_ALL_PLATFORMS)
+    add_dependencies(narval narval_LSP_all_platforms)
+endif()
 
 if(TARGET narval)
     target_compile_definitions(narval PRIVATE
         NARVAL_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
         NARVAL_INCLUDE_DIR="${PROJECT_SOURCE_DIR}/include"
+        NARVAL_INSTALL_RUNTIME_DIR="${NARVAL_INSTALL_RUNTIME_DIR}"
         NARVAL_DEV_MODE=$<BOOL:${NARVAL_DEV_MODE}>
     )
 endif()
+
+install(TARGETS narval
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+if(TARGET narval_LSP)
+    install(TARGETS narval_LSP
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+endif()
+
+install(TARGETS runtime_shared
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/narval
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/narval
+)
+
+install(FILES ${LIB_DIR}/runtime.o
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/narval
+    OPTIONAL
+)
