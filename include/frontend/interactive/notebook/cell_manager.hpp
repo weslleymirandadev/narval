@@ -19,7 +19,7 @@ public:
 
     bool add_cell(const std::string& src);
     bool delete_cell(int id);
-    bool run_cell(int id, class REPL* repl);
+    bool run_cell(int id, class REPL* repl, const std::string& source_name = "");
     bool run_all(class REPL* repl);
     void list_cells();
     const std::vector<NotebookCell>& get_cells() const { return cells; }

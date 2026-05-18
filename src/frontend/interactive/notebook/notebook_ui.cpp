@@ -1,5 +1,6 @@
 #include "frontend/interactive/notebook/notebook_ui.hpp"
 #include <iostream>
+#include <iomanip>
 
 namespace nv {
 
@@ -33,6 +34,16 @@ void NotebookUI::show_help() {
 
 void NotebookUI::show_prompt() {
     std::cout << PROMPT;
+    std::cout.flush();
+}
+
+void NotebookUI::show_input_prompt(int execution_count) {
+    std::cout << "In [" << execution_count << "]: ";
+    std::cout.flush();
+}
+
+void NotebookUI::show_continuation_prompt(int execution_count) {
+    std::cout << "   ..." << std::setw(static_cast<int>(std::to_string(execution_count).size()) + 2) << ": ";
     std::cout.flush();
 }
 

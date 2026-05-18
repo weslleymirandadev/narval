@@ -731,6 +731,10 @@ int run_repl_mode() {
         config.show_prompt = true;
         config.show_errors = true;
         config.show_warnings = true;
+        config.prompt = ">>> ";
+        config.multiline_prompt = "... ";
+        config.output_prompt = "<<< ";
+        config.label_write_output = true;
         
         // Criar e inicializar o REPL
         auto repl = std::make_unique<nv::REPL>(config);
@@ -755,6 +759,7 @@ int run_notebook_mode() {
     try {
         nv::REPLConfig cfg;
         cfg.enable_readline = true;
+        cfg.show_banner = false;
         nv::Notebook nb(cfg);
         if (!nb.initialize()) {
             std::cerr << "Failed to initialize Notebook" << std::endl;

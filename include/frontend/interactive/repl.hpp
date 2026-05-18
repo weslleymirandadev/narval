@@ -31,9 +31,12 @@ struct REPLConfig {
     bool show_prompt = true;
     bool show_errors = true;
     bool show_warnings = true;
+    bool show_banner = true;
     bool auto_print = true;
+    bool label_write_output = false;
     std::string prompt = "nv> ";
     std::string multiline_prompt = "... ";
+    std::string output_prompt;
     int max_history = 1000;
     int optimization_level = 1;
     bool enable_debug = false;
@@ -47,9 +50,11 @@ public:
     bool initialize();
     void run();
     void stop();
+    void set_output_prompt(const std::string& prompt);
 
     // Execute a source snippet using the REPL machinery (public API for Notebook)
     bool execute_source(const std::string& src);
+    bool execute_source(const std::string& src, const std::string& source_name);
 
     REPLState* get_state();
 
@@ -70,6 +75,7 @@ private:
     // Multiline input state
     bool in_multiline = false;
     std::string current_input;
+    int input_counter = 1;
 
     // Helpers (implemented in src/frontend/interactive/repl.cpp)
     std::string read_input();

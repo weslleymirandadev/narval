@@ -22,12 +22,14 @@ bool CellManager::delete_cell(int id) {
     return true;
 }
 
-bool CellManager::run_cell(int id, REPL* repl) {
+bool CellManager::run_cell(int id, REPL* repl, const std::string& source_name) {
     if (!repl) return false;
     
     for (auto &c : cells) {
         if (c.id == id) {
-            bool ok = repl->execute_source(c.source);
+            bool ok = source_name.empty()
+                ? repl->execute_source(c.source)
+                : repl->execute_source(c.source, source_name);
             c.last_output = ok ? "(executed)" : "(error)";
             return ok;
         }

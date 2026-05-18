@@ -2,6 +2,7 @@
 #include "frontend/interactive/import_processor.hpp"
 #include "frontend/interactive/repl.hpp"
 #include "frontend/lexer/lexer.hpp"
+#include "frontend/lexer/lexer_error.hpp"
 #include "frontend/parser/parser.hpp"
 #include "frontend/ast/expressions/call_expr_node.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
@@ -17,6 +18,8 @@
 #include "backend/codegen/generate_ir.hpp"
 #include <iostream>
 #include <algorithm>
+#include <cmath>
+#include <sstream>
 
 // Incluir funções do runtime
 #include "backend/runtime/nv_runtime.h"
@@ -32,12 +35,54 @@ extern "C" {
 
 namespace nv {
 
+namespace {
+
+constexpr const char* ANSI_BOLD = "\x1b[1m";
+constexpr const char* ANSI_RESET = "\x1b[0m";
+constexpr const char* ANSI_RED = "\x1b[31m";
+
+bool contains_write_call(Node* node) {
+    if (!node) return false;
+    if (auto* prog = dynamic_cast<Program*>(node)) {
+        for (const auto& stmt : prog->get_statements()) {
+            if (contains_write_call(stmt.get())) return true;
+        }
+        return false;
+    }
+    if (auto* call = dynamic_cast<CallExprNode*>(node)) {
+        if (auto* id = dynamic_cast<IdentifierNode*>(call->caller.get())) {
+            if (id->symbol == "write") return true;
+        }
+        for (const auto& arg : call->args) {
+            if (arg && contains_write_call(arg->value.get())) return true;
+        }
+        return false;
+    }
+    if (auto* if_stmt = dynamic_cast<IfStatementNode*>(node)) {
+        if (contains_write_call(if_stmt->condition.get())) return true;
+        for (const auto& stmt : if_stmt->consequent) {
+            if (contains_write_call(stmt.get())) return true;
+        }
+        for (const auto& stmt : if_stmt->alternate) {
+            if (contains_write_call(stmt.get())) return true;
+        }
+        return false;
+    }
+    if (auto* bin = dynamic_cast<BinaryExprNode*>(node)) {
+        return contains_write_call(bin->left.get()) || contains_write_call(bin->right.get());
+    }
+    return false;
+}
+
+} // namespace
+
 CompilationEngine::CompilationEngine(REPLState* state, ModuleManager& module_manager)
     : state(state), module_manager(module_manager) {}
 
-bool CompilationEngine::compile_and_execute(const std::string& input) {
+bool CompilationEngine::compile_and_execute(const std::string& input, const std::string& source_name) {
     try {
-        Lexer lexer(input, "repl_line_001");
+        Lexer lexer(input, source_name);
+        lexer.set_emit_diagnostics(false);
         auto tokens = lexer.tokenize();
         if (tokens.empty()) return true;
 
@@ -45,10 +90,15 @@ bool CompilationEngine::compile_and_execute(const std::string& input) {
         std::vector<ImportInfo> import_infos;
         
         Parser parser;
-        auto ast = parser.produce_ast(tokens, import_infos);
-        if (parser.has_error()) { 
+        parser.set_emit_diagnostics(false);
+        std::unique_ptr<Node> ast;
+        try {
+            ast = parser.produce_ast(tokens, import_infos);
+        } catch (const std::exception&) {
             if (state->config && state->config->show_errors) {
-                std::cerr << "Syntax error in input" << std::endl;
+                for (const auto& diagnostic : parser.diagnostics) {
+                    print_diagnostic(diagnostic, input);
+                }
             }
             return false; 
         }
@@ -91,14 +141,19 @@ bool CompilationEngine::compile_and_execute(const std::string& input) {
             }
         }
 
-        state->checker->set_source_file("repl_line_001");
+        state->checker->set_source_file(source_name);
+        state->checker->set_emit_diagnostics(false);
         auto type = state->checker->check_node(ast.get());
         if (state->checker->err) { 
             if (state->config && state->config->show_errors) {
-                std::cerr << "Type error in input" << std::endl;
+                for (const auto& diagnostic : state->checker->diagnostics) {
+                    print_diagnostic(diagnostic, input);
+                }
             }
+            state->checker->set_emit_diagnostics(true);
             return false; 
         }
+        state->checker->set_emit_diagnostics(true);
 
         std::unordered_set<std::string> defined_this_line, used_this_line;
         collect_repl_names(ast.get(), defined_this_line, used_this_line);
@@ -109,16 +164,9 @@ bool CompilationEngine::compile_and_execute(const std::string& input) {
         IRGenerationContext context(*state->llvm_context, *temp_module, *temp_builder, state->checker.get());
 
         auto& C = *state->llvm_context;
-        auto* ValueTy = llvm::StructType::getTypeByName(C, "nv.rt.Value");
-        if (!ValueTy) {
-            auto* i32 = llvm::Type::getInt32Ty(C);
-            auto* i64 = llvm::Type::getInt64Ty(C);
-            auto* i8  = llvm::Type::getInt8Ty(C);
-            auto* i8p = llvm::PointerType::getUnqual(C);
-            ValueTy = llvm::StructType::create(C, {i32, i64, i8p, i8p, i32}, "nv.rt.Value");
-        }
+        auto* ValueTy = nv::ir_utils::get_value_struct(context);
         auto* VoidTy  = llvm::Type::getVoidTy(C);
-        auto* ValuePtr= llvm::PointerType::getUnqual(C);
+        auto* ValuePtr= nv::ir_utils::get_value_ptr(context);
 
         temp_module->getOrInsertFunction("nv_write", llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
         temp_module->getOrInsertFunction("create_str", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::PointerType::getUnqual(C)}, false));
@@ -134,7 +182,9 @@ bool CompilationEngine::compile_and_execute(const std::string& input) {
             nv_type = context.resolve_type(nv_type);
             if (nv_type->kind == nv::Kind::FUNCTION) continue;
             slot_names.push_back(name);
-            state->repl_var_values[name] = Value{};
+            if (state->repl_var_values.find(name) == state->repl_var_values.end()) {
+                state->repl_var_values[name] = Value{};
+            }
         }
         for (const std::string& name : used_this_line) {
             if (defined_this_line.count(name)) continue;
@@ -168,13 +218,51 @@ bool CompilationEngine::compile_and_execute(const std::string& input) {
             return true;
         }
 
-        return compile_expression(ast, defined_this_line, used_this_line, slot_names, single_write_call);
+        bool has_write_call = contains_write_call(ast.get());
+        return compile_expression(ast, defined_this_line, used_this_line, slot_names, single_write_call, has_write_call);
+    } catch (const LexicalError& e) {
+        if (state->config && state->config->show_errors) {
+            print_diagnostic(e.diagnostic(), input);
+        }
+        return false;
     } catch (const std::exception& e) {
         if (state->config && state->config->show_errors) {
             std::cerr << "Compilation error: " << e.what() << std::endl;
         }
         return false;
     }
+}
+
+void CompilationEngine::print_diagnostic(const nv::Diagnostic& diagnostic, const std::string& input) {
+    std::cout.flush();
+    std::cerr << ANSI_BOLD
+              << diagnostic.filename << ":" << diagnostic.line << ":" << diagnostic.col_start << ": "
+              << ANSI_RED << "ERROR" << ANSI_RESET << ANSI_BOLD << ": "
+              << diagnostic.message << ANSI_RESET << "\n";
+
+    std::istringstream stream(input);
+    std::string line;
+    size_t current_line = 1;
+    while (std::getline(stream, line)) {
+        if (current_line == diagnostic.line) {
+            std::cerr << " " << diagnostic.line << " |   " << line << "\n";
+            int line_width = diagnostic.line > 0
+                ? static_cast<int>(std::log10(static_cast<double>(diagnostic.line)) + 1)
+                : 1;
+            std::cerr << std::string(line_width, ' ') << "  |"
+                      << std::string(diagnostic.col_start > 0 ? diagnostic.col_start + 2 : 3, ' ');
+            std::cerr << ANSI_RED;
+            size_t caret_end = std::max(diagnostic.col_end, diagnostic.col_start + 1);
+            for (size_t col = diagnostic.col_start; col < caret_end; ++col) {
+                std::cerr << "^";
+            }
+            std::cerr << ANSI_RESET << "\n\n";
+            return;
+        }
+        current_line++;
+    }
+
+    std::cerr << "\n";
 }
 
 bool CompilationEngine::process_imports(const std::string& input, std::unique_ptr<Node>& ast) {
@@ -267,30 +355,23 @@ bool CompilationEngine::compile_expression(std::unique_ptr<Node>& ast,
     const std::unordered_set<std::string>& defined_this_line,
     const std::unordered_set<std::string>& used_this_line,
     const std::vector<std::string>& slot_names,
-    bool single_write_call) {
+    bool single_write_call,
+    bool contains_write_call) {
     
     auto temp_module = std::make_unique<llvm::Module>("repl_expr", *state->llvm_context);
     auto temp_builder = std::make_unique<llvm::IRBuilder<llvm::NoFolder>>(*state->llvm_context);
     
+    IRGenerationContext context(*state->llvm_context, *temp_module, *temp_builder, state->checker.get());
     auto& C = *state->llvm_context;
-    auto* ValueTy = llvm::StructType::getTypeByName(C, "nv.rt.Value");
-    if (!ValueTy) {
-        auto* i32 = llvm::Type::getInt32Ty(C);
-        auto* i64 = llvm::Type::getInt64Ty(C);
-        auto* i8  = llvm::Type::getInt8Ty(C);
-        auto* i8p = llvm::PointerType::getUnqual(C);
-        ValueTy = llvm::StructType::create(C, {i32, i64, i8p, i8p, i32}, "nv.rt.Value");
-    }
+    auto* ValueTy = nv::ir_utils::get_value_struct(context);
     auto* VoidTy = llvm::Type::getVoidTy(C);
-    auto* ValuePtr = llvm::PointerType::getUnqual(C);
+    auto* ValuePtr = nv::ir_utils::get_value_ptr(context);
 
     temp_module->getOrInsertFunction("nv_write", llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
-    temp_module->getOrInsertFunction("create_str", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::PointerType::getUnqual(C)}, false));
+    temp_module->getOrInsertFunction("create_str", llvm::FunctionType::get(VoidTy, {ValuePtr, nv::ir_utils::get_i8_ptr(context)}, false));
     temp_module->getOrInsertFunction("create_int", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::Type::getInt32Ty(C)}, false));
     temp_module->getOrInsertFunction("create_float", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::Type::getDoubleTy(C)}, false));
     temp_module->getOrInsertFunction("create_bool", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::Type::getInt32Ty(C)}, false));
-
-    IRGenerationContext context(*state->llvm_context, *temp_module, *temp_builder, state->checker.get());
 
     // Setup global variables and functions (missing part)
     for (const std::string& name : state->repl_global_names) {
@@ -385,13 +466,48 @@ bool CompilationEngine::compile_expression(std::unique_ptr<Node>& ast,
     bool have_result = false;
     if (context.has_value()) {
         llvm::Value* result = context.pop_value();
-        if (result && result->getType() == ValueTy) {
-            llvm::Value* to_store = result;
-            if (llvm::isa<llvm::AllocaInst>(result)) {
+        if (result) {
+            llvm::Value* to_store = nullptr;
+            if (result->getType() == ValueTy) {
+                to_store = result;
+            } else if (auto* alloca = llvm::dyn_cast<llvm::AllocaInst>(result);
+                       alloca && alloca->getAllocatedType() == ValueTy) {
                 to_store = temp_builder->CreateLoad(ValueTy, result, "repl_result_load");
+            } else {
+                auto* boxed = context.create_alloca(ValueTy, "repl_result_box");
+                if (result->getType()->isIntegerTy(1)) {
+                    auto* create_bool = context.ensure_runtime_func("create_bool", {ValuePtr, I32});
+                    temp_builder->CreateCall(create_bool, {boxed, temp_builder->CreateZExt(result, I32)});
+                    to_store = temp_builder->CreateLoad(ValueTy, boxed, "repl_bool_result");
+                } else if (result->getType()->isIntegerTy()) {
+                    auto* create_int = context.ensure_runtime_func("create_int", {ValuePtr, I32});
+                    llvm::Value* iv = result->getType()->isIntegerTy(32)
+                        ? result
+                        : temp_builder->CreateSExtOrTrunc(result, I32);
+                    temp_builder->CreateCall(create_int, {boxed, iv});
+                    to_store = temp_builder->CreateLoad(ValueTy, boxed, "repl_int_result");
+                } else if (result->getType()->isFloatingPointTy()) {
+                    auto* F64 = llvm::Type::getDoubleTy(C);
+                    auto* create_float = context.ensure_runtime_func("create_float", {ValuePtr, F64});
+                    llvm::Value* fv = result->getType() == F64
+                        ? result
+                        : temp_builder->CreateFPExt(result, F64);
+                    temp_builder->CreateCall(create_float, {boxed, fv});
+                    to_store = temp_builder->CreateLoad(ValueTy, boxed, "repl_float_result");
+                } else if (result->getType()->isPointerTy()) {
+                    auto* I8P = nv::ir_utils::get_i8_ptr(context);
+                    auto* create_str = context.ensure_runtime_func("create_str", {ValuePtr, I8P});
+                    llvm::Value* sv = result->getType() == I8P
+                        ? result
+                        : temp_builder->CreateBitCast(result, I8P);
+                    temp_builder->CreateCall(create_str, {boxed, sv});
+                    to_store = temp_builder->CreateLoad(ValueTy, boxed, "repl_str_result");
+                }
             }
-            temp_builder->CreateStore(to_store, out_param);
-            have_result = true;
+            if (to_store) {
+                temp_builder->CreateStore(to_store, out_param);
+                have_result = true;
+            }
         }
     }
     
@@ -410,6 +526,9 @@ bool CompilationEngine::compile_expression(std::unique_ptr<Node>& ast,
     Value result_buffer = {};
     if (auto func_symbol = state->jit->lookup(func_name)) {
         void* addr = (void*)func_symbol->getValue();
+        if (contains_write_call && state->config && state->config->label_write_output && !state->config->output_prompt.empty()) {
+            std::cout << state->config->output_prompt;
+        }
         if (slot_names.empty()) {
             ((void(*)(Value*))addr)(&result_buffer);
         } else {
@@ -419,6 +538,9 @@ bool CompilationEngine::compile_expression(std::unique_ptr<Node>& ast,
         }
         
         if (have_result && !single_write_call) {
+            if (state->config && !state->config->output_prompt.empty()) {
+                std::cout << state->config->output_prompt;
+            }
             print_value(llvm::JITTargetAddress(&result_buffer));
         }
     } else {

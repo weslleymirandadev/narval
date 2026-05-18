@@ -37,6 +37,9 @@ namespace {
         if (path.empty()) {
             return path;
         }
+        if (path.rfind("repl[", 0) == 0 || path.rfind("notebook[", 0) == 0 || path.rfind("repl_line_", 0) == 0 || path.rfind("cell_", 0) == 0) {
+            return path;
+        }
         
         try {
             std::filesystem::path file_path(path);

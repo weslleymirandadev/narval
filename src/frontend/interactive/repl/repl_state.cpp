@@ -51,6 +51,7 @@ bool REPLState::initialize() {
 static const char* const RUNTIME_SYMBOLS[] = {
     "nv_write", "nv_write_no_nl",
     "create_int", "create_float", "create_bool", "create_str",
+    "extract_int_from_value", "extract_float_from_value",
     "create_array", "create_vector", "create_map",
     "ensure_value_type", "nv_read",
     "string_to_upper_case", "string_replace", "string_includes",

@@ -36,8 +36,10 @@ bool REPL::initialize() {
         std::cerr << "Failed to initialize REPL" << std::endl;
         return false;
     }
-    std::cout << "Narval REPL - Interactive Compiler" << std::endl;
-    std::cout << "Type :help for available commands or :quit to exit" << std::endl;
+    if (config.show_banner) {
+        std::cout << "Narval REPL - Interactive Compiler" << std::endl;
+        std::cout << "Type :help for available commands or :quit to exit" << std::endl;
+    }
     return true;
 }
 
@@ -54,8 +56,12 @@ std::string REPL::preprocess_input(const std::string& input) {
 }
 
 bool REPL::execute_source(const std::string& src) {
+    return execute_source(src, "repl[" + std::to_string(input_counter++) + "]");
+}
+
+bool REPL::execute_source(const std::string& src, const std::string& source_name) {
     std::string processed = preprocess_input(src);
-    return compilation_engine->compile_and_execute(processed);
+    return compilation_engine->compile_and_execute(processed, source_name);
 }
 
 REPLState* REPL::get_state() {
@@ -152,5 +158,9 @@ void REPL::run() {
 }
 
 void REPL::stop() { }
+
+void REPL::set_output_prompt(const std::string& prompt) {
+    config.output_prompt = prompt;
+}
 
 } // namespace nv

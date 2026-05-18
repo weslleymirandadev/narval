@@ -2,7 +2,9 @@
 #include "frontend/interactive/notebook/cell_manager.hpp"
 #include "frontend/interactive/notebook/notebook_io.hpp"
 #include "frontend/interactive/notebook/notebook_ui.hpp"
+#include "frontend/interactive/repl_utils.hpp"
 #include <iostream>
+#include <sstream>
 
 namespace nv {
 
@@ -15,7 +17,7 @@ Notebook::~Notebook() = default;
 bool Notebook::initialize() {
     if (!repl) repl = std::make_unique<REPL>(REPLConfig{});
     if (!repl->initialize()) return false;
-    std::cout << "Narval Notebook - simple interactive notebook" << std::endl;
+    std::cout << "Narval Notebook" << std::endl;
     std::cout << "Type :help for commands, :exit to quit" << std::endl;
     return true;
 }
@@ -53,9 +55,10 @@ bool Notebook::load(const std::string& filename) {
 }
 
 void Notebook::run() {
+    int execution_count = 1;
     while (true) {
         std::string line;
-        notebook_ui->show_prompt();
+        notebook_ui->show_input_prompt(execution_count);
         if (!std::getline(std::cin, line)) break;
         if (line.empty()) continue;
         if (line[0] == ':') {
@@ -92,16 +95,21 @@ void Notebook::run() {
                 std::cerr << "Unknown command: " << cmd << std::endl;
             }
         } else {
-            // Treat normal input as start of a multiline cell (terminated by a single '.')
             std::string src = line + "\n";
-            while (true) {
-                std::cout << " "; std::cout.flush();
+            while (repl_utils::needs_continuation(src)) {
+                notebook_ui->show_continuation_prompt(execution_count);
                 if (!std::getline(std::cin, line)) break;
-                if (line == ".") break;
                 src += line + "\n";
             }
             add_cell(src);
-            std::cout << "Added cell [" << cell_manager->get_cells().back().id << "] (use :run <id> to execute)\n";
+            repl->set_output_prompt("Out[" + std::to_string(execution_count) + "]: ");
+            cell_manager->run_cell(
+                cell_manager->get_cells().back().id,
+                repl.get(),
+                "notebook[" + std::to_string(execution_count) + "]"
+            );
+            repl->set_output_prompt("");
+            execution_count++;
         }
     }
 }
