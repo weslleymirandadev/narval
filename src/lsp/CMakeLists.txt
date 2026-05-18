@@ -57,6 +57,7 @@ function(narval_add_lsp_target target_name)
     )
     set_target_properties(${target_name} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+        OUTPUT_NAME narval-lsp
     )
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang" AND NOT WIN32)
         target_link_options(${target_name} PRIVATE -W -fPIE)

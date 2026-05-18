@@ -1,4 +1,5 @@
 #pragma once
+#include "frontend/diagnostic.hpp"
 #include "frontend/checker/type.hpp"
 #include "frontend/checker/namespace.hpp"
 #include "frontend/checker/unification.hpp"
@@ -9,15 +10,6 @@
 #include <map>
 
 namespace nv {
-    struct Diagnostic {
-        std::string filename;
-        size_t line = 1;
-        size_t col_start = 1;
-        size_t col_end = 1;
-        int severity = 1;
-        std::string message;
-    };
-
     class Checker {
         private:
             std::vector<std::string> lines;

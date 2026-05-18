@@ -87,9 +87,27 @@ bool Parser::has_error() const {
     return has_errors;
 }
 
+void Parser::set_emit_diagnostics(bool enabled) {
+    emit_diagnostics = enabled;
+}
+
 void Parser::error(const std::string& message) {
     Token token = current_token();
     std::string abs_filename = to_absolute_path(token.filename);
+    has_errors = true;
+    diagnostics.push_back({
+        abs_filename,
+        token.line,
+        token.column_start,
+        token.column_end,
+        1,
+        message
+    });
+
+    if (!emit_diagnostics) {
+        throw std::runtime_error(message);
+    }
+
     std::cerr << ANSI_BOLD
               << abs_filename << ":" << token.line << ":" << token.column_start << ": "
               << ANSI_RED << "ERROR" << ANSI_RESET << ANSI_BOLD << ": "
@@ -159,6 +177,7 @@ std::unique_ptr<Node> Parser::produce_ast(const std::vector<Token>& tokens, cons
     index = 0;
     import_index = 0;
     has_errors = false;
+    diagnostics.clear();
     lines.clear();
     line_count = 0;
 
@@ -243,7 +262,9 @@ std::unique_ptr<Node> Parser::produce_ast(const std::vector<Token>& tokens, cons
                 program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt.release())));
             }
         } catch (const std::exception& e) {
-            std::cerr << "Error during statement parsing: " << e.what() << "\n";
+            if (emit_diagnostics) {
+                std::cerr << "Error during statement parsing: " << e.what() << "\n";
+            }
             if (has_errors) break;
         }
     }

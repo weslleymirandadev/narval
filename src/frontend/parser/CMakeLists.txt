@@ -1,5 +1,6 @@
-file(GLOB_RECURSE PARSER_SOURCES "*.cpp")
-list(FILTER PARSER_SOURCES EXCLUDE REGEX ".*parser\\.test\\.cpp$")
+narval_collect_sources(PARSER_SOURCES
+    EXCLUDE_REGEXES ".*parser\\.test\\.cpp$"
+)
 
 add_library(parser ${PARSER_SOURCES})
 target_link_libraries(parser PUBLIC narval_project_includes)
