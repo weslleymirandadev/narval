@@ -27,9 +27,9 @@ std::unique_ptr<Node> parse_interface_stmt(Parser* parser) {
     while (parser->current_token().type != TokenType::CBRACE &&
            parser->current_token().type != TokenType::EOF_TOKEN) {
 
-        // Suporte a: methodName(params): returnType  ou  def methodName(params): returnType
+        // Supports: methodName(params): returnType; or def methodName(params): returnType;
         if (parser->current_token().type == TokenType::DEF)
-            parser->consume_token(); // consume opcional `def`
+            parser->consume_token(); // consume optional `def`
 
         if (parser->current_token().type != TokenType::IDENTIFIER &&
             parser->current_token().type != TokenType::NEW) {
@@ -41,7 +41,6 @@ std::unique_ptr<Node> parse_interface_stmt(Parser* parser) {
         sig.name = parser->current_token().lexeme;
         parser->consume_token(); // consume method name
 
-        // Parâmetros
         parser->expect(TokenType::OPAREN, "Expected '(' after method name in interface");
         while (parser->current_token().type != TokenType::CPAREN &&
                parser->current_token().type != TokenType::EOF_TOKEN) {
@@ -62,16 +61,13 @@ std::unique_ptr<Node> parse_interface_stmt(Parser* parser) {
         }
         parser->expect(TokenType::CPAREN, "Expected ')' after parameters");
 
-        // Tipo de retorno opcional
         sig.return_type = "void";
         if (parser->current_token().type == TokenType::COLON) {
             parser->consume_token();
             sig.return_type = parse_type(parser);
         }
 
-        // Ponto-e-vírgula opcional após assinatura
-        if (parser->current_token().type == TokenType::SEMICOLON)
-            parser->consume_token();
+        parser->expect(TokenType::SEMICOLON, "Expected ';' after interface method signature");
 
         iface_node->methods.push_back(std::move(sig));
     }
