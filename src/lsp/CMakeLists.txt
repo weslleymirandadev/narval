@@ -18,7 +18,7 @@ else()
     set(NARVAL_NLOHMANN_JSON_INCLUDE_DIR "${NARVAL_NLOHMANN_JSON_INCLUDE_DIR}" CACHE PATH "Directory containing nlohmann/json.hpp")
 endif()
 if(NOT NARVAL_NLOHMANN_JSON_INCLUDE_DIR)
-    message(FATAL_ERROR "narval_LSP requires nlohmann/json.hpp. Install nlohmann-json3-dev or set NARVAL_NLOHMANN_JSON_INCLUDE_DIR.")
+    message(FATAL_ERROR "narval-lsp requires nlohmann/json.hpp. Install nlohmann-json3-dev or set NARVAL_NLOHMANN_JSON_INCLUDE_DIR.")
 endif()
 
 if(NOT NARVAL_LSP_WINDOWS_TOOLCHAIN)
@@ -52,7 +52,7 @@ target_link_libraries(narval_lsp_core PUBLIC narval_project_includes lexer parse
 
 function(narval_add_lsp_target target_name)
     add_executable(${target_name}
-        ${CMAKE_CURRENT_SOURCE_DIR}/narval_LSP.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/narval-lsp.cpp
         ${PROJECT_SOURCE_DIR}/src/frontend/module_manager_codegen_stubs.cpp
     )
     set_target_properties(${target_name} PROPERTIES
@@ -66,14 +66,14 @@ function(narval_add_lsp_target target_name)
 endfunction()
 
 if(NARVAL_BUILD_LSP)
-    narval_add_lsp_target(narval_LSP)
+    narval_add_lsp_target(narval-lsp)
 endif()
 
 function(narval_add_lsp_platform_target platform_name toolchain_file)
     set(platform_build_dir "${CMAKE_BINARY_DIR}/lsp-${platform_name}")
 
     if(toolchain_file)
-        add_custom_target(narval_LSP_${platform_name}
+        add_custom_target(narval-lsp_${platform_name}
             COMMAND ${CMAKE_COMMAND}
                 -S ${PROJECT_SOURCE_DIR}
                 -B ${platform_build_dir}
@@ -83,20 +83,20 @@ function(narval_add_lsp_platform_target platform_name toolchain_file)
                 -DCMAKE_TOOLCHAIN_FILE=${toolchain_file}
             COMMAND ${CMAKE_COMMAND}
                 --build ${platform_build_dir}
-                --target narval_LSP
+                --target narval-lsp
             COMMENT "Building Narval LSP for ${platform_name}"
             VERBATIM
         )
-    elseif(platform_name STREQUAL NARVAL_HOST_PLATFORM AND TARGET narval_LSP)
-        add_custom_target(narval_LSP_${platform_name}
-            DEPENDS narval_LSP
-            COMMENT "Narval LSP for ${platform_name} is the native narval_LSP target"
+    elseif(platform_name STREQUAL NARVAL_HOST_PLATFORM AND TARGET narval-lsp)
+        add_custom_target(narval-lsp_${platform_name}
+            DEPENDS narval-lsp
+            COMMENT "Narval LSP for ${platform_name} is the native narval-lsp target"
         )
     else()
         string(TOUPPER "${platform_name}" platform_name_upper)
-        add_custom_target(narval_LSP_${platform_name}
+        add_custom_target(narval-lsp_${platform_name}
             COMMAND ${CMAKE_COMMAND} -E echo
-                "Skipping narval_LSP_${platform_name}: set NARVAL_LSP_${platform_name_upper}_TOOLCHAIN to cross-build this platform."
+                "Skipping narval-lsp_${platform_name}: set NARVAL_LSP_${platform_name_upper}_TOOLCHAIN to cross-build this platform."
             VERBATIM
         )
     endif()
@@ -114,6 +114,6 @@ narval_add_lsp_platform_target(linux "${NARVAL_LSP_LINUX_TOOLCHAIN}")
 narval_add_lsp_platform_target(windows "${NARVAL_LSP_WINDOWS_TOOLCHAIN}")
 narval_add_lsp_platform_target(macos "${NARVAL_LSP_MACOS_TOOLCHAIN}")
 
-add_custom_target(narval_LSP_all_platforms
-    DEPENDS narval_LSP_linux narval_LSP_windows narval_LSP_macos
+add_custom_target(narval-lsp_all_platforms
+    DEPENDS narval-lsp_linux narval-lsp_windows narval-lsp_macos
 )

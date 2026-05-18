@@ -112,6 +112,197 @@ bool is_builtin_type(const std::string& text) {
            text == "array" || text == "Error";
 }
 
+bool is_boundary(TokenType type) {
+    switch (type) {
+        case TokenType::ASSIGNMENT:
+        case TokenType::RETURN:
+        case TokenType::SEMICOLON:
+        case TokenType::COMMA:
+        case TokenType::OPAREN:
+        case TokenType::OBRACE:
+        case TokenType::CBRACE:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool has_param_named(const std::vector<Token>& tokens, size_t begin, size_t end, const std::string& name) {
+    for (size_t i = begin; i + 1 < end; ++i) {
+        if (tokens[i].type == TokenType::IDENTIFIER &&
+            tokens[i].lexeme == name &&
+            tokens[i + 1].type == TokenType::COLON) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool is_closure_parameter_declaration(const std::vector<Token>& tokens, size_t index) {
+    if (index + 1 >= tokens.size() || tokens[index + 1].type != TokenType::COLON) {
+        return false;
+    }
+
+    size_t boundary = 0;
+    for (size_t i = index; i > 0; --i) {
+        if (is_boundary(tokens[i - 1].type)) {
+            boundary = i;
+            break;
+        }
+    }
+
+    size_t open_pipe = tokens.size();
+    for (size_t i = boundary; i < index; ++i) {
+        if (tokens[i].type == TokenType::BITWISE_OR) {
+            open_pipe = i;
+            break;
+        }
+    }
+    if (open_pipe == tokens.size()) {
+        return false;
+    }
+
+    for (size_t i = index + 1; i < tokens.size(); ++i) {
+        if (tokens[i].type == TokenType::BITWISE_OR) {
+            return true;
+        }
+        if (tokens[i].type == TokenType::OBRACE || tokens[i].type == TokenType::SEMICOLON ||
+            tokens[i].type == TokenType::ASSIGNMENT) {
+            return false;
+        }
+    }
+
+    return false;
+}
+
+bool is_function_parameter_declaration(const std::vector<Token>& tokens, size_t index) {
+    if (index + 1 >= tokens.size() || tokens[index + 1].type != TokenType::COLON) {
+        return false;
+    }
+
+    size_t open_paren = tokens.size();
+    int depth = 0;
+    for (size_t i = index; i > 0; --i) {
+        const TokenType type = tokens[i - 1].type;
+        if (type == TokenType::CPAREN) {
+            ++depth;
+        } else if (type == TokenType::OPAREN) {
+            if (depth == 0) {
+                open_paren = i - 1;
+                break;
+            }
+            --depth;
+        } else if (depth == 0 && (type == TokenType::OBRACE || type == TokenType::SEMICOLON)) {
+            return false;
+        }
+    }
+
+    if (open_paren == tokens.size() || open_paren == 0) {
+        return false;
+    }
+
+    for (size_t i = open_paren; i > 0; --i) {
+        if (tokens[i - 1].type == TokenType::DEF) {
+            return true;
+        }
+        if (tokens[i - 1].type == TokenType::SEMICOLON || tokens[i - 1].type == TokenType::OBRACE ||
+            tokens[i - 1].type == TokenType::CBRACE) {
+            break;
+        }
+    }
+
+    return false;
+}
+
+bool is_parameter_declaration(const std::vector<Token>& tokens, size_t index) {
+    return is_closure_parameter_declaration(tokens, index) ||
+           is_function_parameter_declaration(tokens, index);
+}
+
+std::optional<size_t> enclosing_body_start(const std::vector<Token>& tokens, size_t index) {
+    int depth = 0;
+    for (size_t i = index; i > 0; --i) {
+        const TokenType type = tokens[i - 1].type;
+        if (type == TokenType::CBRACE) {
+            ++depth;
+        } else if (type == TokenType::OBRACE) {
+            if (depth == 0) {
+                return i - 1;
+            }
+            --depth;
+        }
+    }
+    return std::nullopt;
+}
+
+bool header_has_function_param(const std::vector<Token>& tokens, size_t body_start, const std::string& name) {
+    size_t close_paren = body_start;
+    while (close_paren > 0 && tokens[close_paren - 1].type != TokenType::CPAREN) {
+        --close_paren;
+    }
+    if (close_paren == 0) {
+        return false;
+    }
+    --close_paren;
+
+    int depth = 0;
+    for (size_t i = close_paren; i > 0; --i) {
+        const TokenType type = tokens[i - 1].type;
+        if (type == TokenType::CPAREN) {
+            ++depth;
+        } else if (type == TokenType::OPAREN) {
+            if (depth == 0) {
+                return has_param_named(tokens, i, close_paren, name);
+            }
+            --depth;
+        }
+    }
+
+    return false;
+}
+
+bool header_has_closure_param(const std::vector<Token>& tokens, size_t body_start, const std::string& name) {
+    size_t boundary = 0;
+    for (size_t i = body_start; i > 0; --i) {
+        if (is_boundary(tokens[i - 1].type)) {
+            boundary = i;
+            break;
+        }
+    }
+
+    size_t open_pipe = tokens.size();
+    for (size_t i = boundary; i < body_start; ++i) {
+        if (tokens[i].type == TokenType::BITWISE_OR) {
+            open_pipe = i;
+            break;
+        }
+    }
+    if (open_pipe == tokens.size()) {
+        return false;
+    }
+
+    for (size_t close_pipe = open_pipe + 1; close_pipe < body_start; ++close_pipe) {
+        if (tokens[close_pipe].type == TokenType::BITWISE_OR) {
+            return has_param_named(tokens, open_pipe + 1, close_pipe, name);
+        }
+    }
+
+    return false;
+}
+
+bool is_parameter_reference(const std::vector<Token>& tokens, size_t index) {
+    const std::string& name = tokens[index].lexeme;
+    auto body_start = enclosing_body_start(tokens, index);
+    while (body_start) {
+        if (header_has_closure_param(tokens, *body_start, name) ||
+            header_has_function_param(tokens, *body_start, name)) {
+            return true;
+        }
+        body_start = enclosing_body_start(tokens, *body_start);
+    }
+    return false;
+}
+
 } // namespace
 
 std::optional<SemanticToken> classify_token(const std::vector<Token>& tokens, size_t index) {
@@ -143,6 +334,11 @@ std::optional<SemanticToken> classify_token(const std::vector<Token>& tokens, si
             modifiers = 1;
         } else if (prev && prev->type == TokenType::COLON) {
             type = Type;
+        } else if (is_parameter_declaration(tokens, index)) {
+            type = Parameter;
+            modifiers = 1;
+        } else if (is_parameter_reference(tokens, index)) {
+            type = Parameter;
         } else if (next && next->type == TokenType::COLON) {
             type = Variable;
             modifiers = 1;

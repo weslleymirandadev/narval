@@ -70,10 +70,10 @@ target_include_directories(narval PRIVATE ${PROJECT_SOURCE_DIR}/include)
 target_link_libraries(narval PRIVATE narval_all_common lexer parser checker generator interactive runtime_objs runtime_shared)
 add_dependencies(narval runtime_o)
 if(NARVAL_BUILD_LSP)
-    add_dependencies(narval narval_LSP)
+    add_dependencies(narval narval-lsp)
 endif()
 if(NARVAL_BUILD_LSP_ALL_PLATFORMS)
-    add_dependencies(narval narval_LSP_all_platforms)
+    add_dependencies(narval narval-lsp_all_platforms)
 endif()
 
 if(TARGET narval)
@@ -89,8 +89,8 @@ install(TARGETS narval
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-if(TARGET narval_LSP)
-    install(TARGETS narval_LSP
+if(TARGET narval-lsp)
+    install(TARGETS narval-lsp
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
 endif()
