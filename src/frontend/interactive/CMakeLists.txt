@@ -8,7 +8,7 @@ option(BUILD_NOTEBOOK_MODE "Build Jupyter-like notebook support" ON)
 option(ENABLE_INTERACTIVE_DEBUG "Enable debug features for interactive mode" OFF)
 
 # Source collection (explicitly search this directory and subdirectories)
-file(GLOB_RECURSE INTERACTIVE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
+narval_collect_sources(INTERACTIVE_SOURCES)
 
 # Core interactive library
 # Core interactive library

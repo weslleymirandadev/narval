@@ -1,5 +1,6 @@
-file(GLOB_RECURSE CHECKER_SOURCES "*.cpp")
-list(FILTER CHECKER_SOURCES EXCLUDE REGEX ".*checker\\.test\\.cpp$")
+narval_collect_sources(CHECKER_SOURCES
+    EXCLUDE_REGEXES ".*checker\\.test\\.cpp$"
+)
 
 add_library(checker ${CHECKER_SOURCES})
 target_link_libraries(checker PUBLIC narval_project_includes)
@@ -7,7 +8,6 @@ target_link_libraries(checker PUBLIC narval_project_includes)
 include_directories(${PROJECT_SOURCE_DIR}/include)
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/checker.test.cpp")
-    add_executable(checker_test checker.test.cpp ../module_manager.cpp)
-    target_link_libraries(checker_test PRIVATE lexer parser checker generator)
-    include_directories(${PROJECT_SOURCE_DIR}/include)
+    narval_add_test(checker_test checker.test.cpp ../module_manager.cpp)
+    target_link_libraries(checker_test PRIVATE checker)
 endif()

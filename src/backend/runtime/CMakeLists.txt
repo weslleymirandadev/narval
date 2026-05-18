@@ -1,6 +1,8 @@
 # src/backend/runtime/CMakeLists.txt
 
-file(GLOB RUNTIME_SOURCES "*.c")
+narval_collect_sources(RUNTIME_SOURCES
+    PATTERNS "*.c"
+)
 
 add_library(runtime_objs OBJECT ${RUNTIME_SOURCES})
 target_include_directories(runtime_objs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/include)

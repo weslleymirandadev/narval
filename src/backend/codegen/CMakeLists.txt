@@ -1,5 +1,6 @@
-file(GLOB_RECURSE GENERATOR_SOURCES "*.cpp")
-list(FILTER GENERATOR_SOURCES EXCLUDE REGEX ".*generator\\.test\\.cpp$")
+narval_collect_sources(GENERATOR_SOURCES
+    EXCLUDE_REGEXES ".*generator\\.test\\.cpp$"
+)
 
 add_library(generator ${GENERATOR_SOURCES})
 target_link_libraries(generator PUBLIC narval_project_includes narval_all_common)
