@@ -1,5 +1,4 @@
 #include "frontend/lexer/string_tokenizer.hpp"
-#include <stdexcept>
 
 Token tokenize_string(const std::string& input, size_t& position, size_t& line, size_t& column, const std::string& filename) {
     size_t start_pos = position;
@@ -40,13 +39,23 @@ Token tokenize_string(const std::string& input, size_t& position, size_t& line, 
             ++column;
             if (is_char_literal) {
                 if (value.size() != 1) {
-                    throw std::runtime_error("Char literal must contain exactly one character");
+                    throw LexicalError(
+                        filename,
+                        start_line,
+                        start_col,
+                        column,
+                        "Char literal must contain exactly one character");
                 }
             }
             return Token(TokenType::STRING, value, start_line, start_col, column, start_pos, position, filename, quote);
         } else if (c == '\n') {
             if (!is_backtick_string) {
-                throw std::runtime_error("Line break not allowed inside string literal");
+                throw LexicalError(
+                    filename,
+                    line,
+                    column,
+                    column + 1,
+                    "Line break not allowed inside string literal");
             }
 
             value += c;
@@ -62,5 +71,10 @@ Token tokenize_string(const std::string& input, size_t& position, size_t& line, 
         ++column;
     }
 
-    throw std::runtime_error("String literal not closed");
+    throw LexicalError(
+        filename,
+        start_line,
+        start_col,
+        start_col + 1,
+        "String literal not closed");
 }

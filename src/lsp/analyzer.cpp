@@ -3,6 +3,7 @@
 #include "lsp/path_utils.hpp"
 
 #include "frontend/checker/checker.hpp"
+#include "frontend/lexer/lexer_error.hpp"
 #include "frontend/lexer/lexer.hpp"
 #include "frontend/parser/parser.hpp"
 
@@ -18,6 +19,7 @@ DocumentState NarvalAnalyzer::analyze(const std::string& uri, const std::string&
 
     try {
         Lexer lexer(text, state.path);
+        lexer.set_emit_diagnostics(false);
         state.lexer_tokens = lexer.tokenize();
 
         Parser parser;
@@ -37,6 +39,8 @@ DocumentState NarvalAnalyzer::analyze(const std::string& uri, const std::string&
             checker.diagnostics.begin(),
             checker.diagnostics.end()
         );
+    } catch (const LexicalError& e) {
+        state.diagnostics.push_back(e.diagnostic());
     } catch (const std::exception& e) {
         state.diagnostics.push_back({state.path, 1, 1, 1, 1, e.what()});
     }

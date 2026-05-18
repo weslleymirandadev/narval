@@ -4,6 +4,44 @@
 #include "frontend/lexer/number_tokenizer.hpp"
 #include "frontend/lexer/string_tokenizer.hpp"
 
+#include <algorithm>
+#include <cmath>
+#include <cstdlib>
+#include <filesystem>
+#include <iostream>
+#include <sstream>
+
+constexpr const char* ANSI_BOLD = "\x1b[1m";
+constexpr const char* ANSI_RESET = "\x1b[0m";
+constexpr const char* ANSI_RED = "\x1b[31m";
+
+namespace {
+std::string to_absolute_path(const std::string& path) {
+    if (path.empty()) {
+        return path;
+    }
+
+    try {
+        std::filesystem::path file_path(path);
+        if (file_path.is_absolute()) {
+            try {
+                return std::filesystem::canonical(file_path).string();
+            } catch (const std::filesystem::filesystem_error&) {
+                return std::filesystem::absolute(file_path).string();
+            }
+        }
+
+        try {
+            return std::filesystem::canonical(std::filesystem::absolute(file_path)).string();
+        } catch (const std::filesystem::filesystem_error&) {
+            return std::filesystem::absolute(file_path).string();
+        }
+    } catch (const std::exception&) {
+        return path;
+    }
+}
+}
+
 Lexer::Lexer(std::string src, std::string file)
     : input(std::move(src)), filename(std::move(file)), current(input.cbegin()), line(1), column(1), position(0)
 {
@@ -59,6 +97,8 @@ Lexer::Lexer(std::string src, std::string file)
     } else {
         module_name = filename.substr(last_slash + 1);
     }
+
+    read_lines();
 }
 
 bool Lexer::is_eof() const
@@ -122,6 +162,74 @@ bool Lexer::is_operator_start(char c)
            c == '-';
 }
 
+void Lexer::read_lines()
+{
+    lines.clear();
+    std::istringstream stream(input);
+    std::string source_line;
+    while (std::getline(stream, source_line)) {
+        if (!source_line.empty() && source_line.back() == '\r') {
+            source_line.pop_back();
+        }
+        lines.push_back(source_line);
+    }
+    if (!input.empty() && input.back() == '\n') {
+        lines.emplace_back();
+    }
+}
+
+void Lexer::print_error_context(size_t error_line, size_t col_start, size_t col_end) const
+{
+    if (lines.empty() || error_line == 0 || error_line - 1 >= lines.size()) {
+        return;
+    }
+
+    std::string line_content = lines[error_line - 1];
+    std::replace(line_content.begin(), line_content.end(), '\n', ' ');
+
+    std::cerr << " " << error_line << " |   " << line_content << "\n";
+
+    int line_width = error_line > 0 ? static_cast<int>(std::log10(error_line) + 1) : 1;
+    std::cerr << std::string(line_width, ' ') << "  |";
+    std::cerr << std::string(col_start > 0 ? col_start - 1 + 3 : 3, ' ');
+
+    std::cerr << ANSI_RED;
+    size_t caret_end = std::max(col_end, col_start + 1);
+    for (size_t i = col_start; i < caret_end; ++i) {
+        std::cerr << "^";
+    }
+    std::cerr << ANSI_RESET << "\n\n";
+}
+
+void Lexer::report_error(const LexicalError& error)
+{
+    std::string abs_filename = to_absolute_path(error.filename().empty() ? filename : error.filename());
+    diagnostics.push_back({
+        abs_filename,
+        error.line(),
+        error.col_start(),
+        std::max(error.col_end(), error.col_start() + 1),
+        1,
+        error.what()
+    });
+
+    if (!emit_diagnostics) {
+        throw error;
+    }
+
+    std::cerr << ANSI_BOLD
+              << abs_filename << ":" << error.line() << ":" << error.col_start() << ": "
+              << ANSI_RED << "ERROR" << ANSI_RESET << ANSI_BOLD << ": "
+              << error.what() << ANSI_RESET << "\n";
+    print_error_context(error.line(), error.col_start(), error.col_end());
+    std::exit(1);
+}
+
+void Lexer::set_emit_diagnostics(bool enabled)
+{
+    emit_diagnostics = enabled;
+}
+
 const std::vector<std::string>& Lexer::get_imported_modules() const { return imported_modules; }
 const std::vector<ImportInfo>& Lexer::get_import_infos() const { return import_infos; }
 const std::string& Lexer::get_module_name() const { return module_name; }
@@ -166,11 +274,12 @@ std::vector<Token> Lexer::tokenize()
 
                 if (!comment_closed)
                 {
-                    throw std::runtime_error(
-                        "Unterminated multiline comment at line " +
-                        std::to_string(comment_line) +
-                        ", column " +
-                        std::to_string(comment_column));
+                    report_error(LexicalError(
+                        filename,
+                        comment_line,
+                        comment_column,
+                        comment_column + 2,
+                        "Unterminated multiline comment"));
                 }
 
                 continue;
@@ -188,7 +297,11 @@ std::vector<Token> Lexer::tokenize()
 
         // strings
         if (c == '"' || c == '\'' || c == '`') {
-            tokens.push_back(tokenize_string(input, position, line, column, filename));
+            try {
+                tokens.push_back(tokenize_string(input, position, line, column, filename));
+            } catch (const LexicalError& error) {
+                report_error(error);
+            }
             current = input.cbegin() + position;
             continue;
         }
@@ -341,7 +454,11 @@ std::vector<Token> Lexer::tokenize()
         // numbers
         if (std::isdigit(c) || (c == '-' && std::distance(current, input.cend()) > 1 && std::isdigit(*(current + 1))))
         {
-            tokens.push_back(tokenize_number(input, position, line, column, filename));
+            try {
+                tokens.push_back(tokenize_number(input, position, line, column, filename));
+            } catch (const LexicalError& error) {
+                report_error(error);
+            }
             current = input.cbegin() + position;
             continue;
         }
@@ -349,17 +466,24 @@ std::vector<Token> Lexer::tokenize()
         // operators
         if (is_operator_start(c))
         {
-            tokens.push_back(tokenize_operator(input, position, line, column, filename));
+            try {
+                tokens.push_back(tokenize_operator(input, position, line, column, filename));
+            } catch (const LexicalError& error) {
+                report_error(error);
+            }
             current = input.cbegin() + position;
             continue;
         }
 
         // unknown character
         size_t start_col = column;
-        size_t start_pos = position;
         char ch = peek();
-        advance();
-        tokens.emplace_back(TokenType::UNKNOWN, std::string(1, ch), line, start_col, column, start_pos, position, filename);
+        report_error(LexicalError(
+            filename,
+            line,
+            start_col,
+            start_col + 1,
+            "Unexpected character: '" + std::string(1, ch) + "'"));
     }
 
     tokens.emplace_back(TokenType::EOF_TOKEN, "EOF", line, column, column, position, position, filename);

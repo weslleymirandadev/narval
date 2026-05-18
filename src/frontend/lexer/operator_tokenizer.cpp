@@ -283,6 +283,6 @@ Token tokenize_operator(const std::string& input, size_t& pos, size_t& line, siz
         column += 1;
         return Token(TokenType::AT, value, line, start_column, column, start_position, pos, filename);
     } else {
-        throw std::runtime_error("Invalid operator at line " + std::to_string(line) + ", column " + std::to_string(start_column));
+        throw LexicalError(filename, line, start_column, start_column + 1, "Invalid operator");
     }
 }

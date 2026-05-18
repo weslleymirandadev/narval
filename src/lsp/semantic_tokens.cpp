@@ -117,7 +117,6 @@ bool is_boundary(TokenType type) {
         case TokenType::ASSIGNMENT:
         case TokenType::RETURN:
         case TokenType::SEMICOLON:
-        case TokenType::COMMA:
         case TokenType::OPAREN:
         case TokenType::OBRACE:
         case TokenType::CBRACE:
@@ -136,6 +135,39 @@ bool has_param_named(const std::vector<Token>& tokens, size_t begin, size_t end,
         }
     }
     return false;
+}
+
+std::optional<size_t> matching_close_paren(const std::vector<Token>& tokens, size_t open_paren) {
+    int depth = 0;
+    for (size_t i = open_paren; i < tokens.size(); ++i) {
+        if (tokens[i].type == TokenType::OPAREN) {
+            ++depth;
+        } else if (tokens[i].type == TokenType::CPAREN) {
+            --depth;
+            if (depth == 0) {
+                return i;
+            }
+        } else if (depth == 1 && (tokens[i].type == TokenType::OBRACE ||
+                                  tokens[i].type == TokenType::SEMICOLON)) {
+            return std::nullopt;
+        }
+    }
+    return std::nullopt;
+}
+
+bool is_function_like_parameter_list(const std::vector<Token>& tokens, size_t open_paren) {
+    if (open_paren == 0 ||
+        (tokens[open_paren - 1].type != TokenType::IDENTIFIER &&
+         tokens[open_paren - 1].type != TokenType::NEW)) {
+        return false;
+    }
+
+    auto close_paren = matching_close_paren(tokens, open_paren);
+    if (!close_paren || *close_paren + 1 >= tokens.size()) {
+        return false;
+    }
+
+    return tokens[*close_paren + 1].type == TokenType::COLON;
 }
 
 bool is_closure_parameter_declaration(const std::vector<Token>& tokens, size_t index) {
@@ -199,6 +231,10 @@ bool is_function_parameter_declaration(const std::vector<Token>& tokens, size_t 
 
     if (open_paren == tokens.size() || open_paren == 0) {
         return false;
+    }
+
+    if (is_function_like_parameter_list(tokens, open_paren)) {
+        return true;
     }
 
     for (size_t i = open_paren; i > 0; --i) {
@@ -337,7 +373,7 @@ std::optional<SemanticToken> classify_token(const std::vector<Token>& tokens, si
         } else if (is_parameter_declaration(tokens, index)) {
             type = Parameter;
             modifiers = 1;
-        } else if (is_parameter_reference(tokens, index)) {
+        } else if ((!prev || prev->type != TokenType::DOT) && is_parameter_reference(tokens, index)) {
             type = Parameter;
         } else if (next && next->type == TokenType::COLON) {
             type = Variable;

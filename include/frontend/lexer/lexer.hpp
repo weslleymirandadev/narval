@@ -5,6 +5,8 @@
 #include <cctype>
 #include <stdexcept>
 #include <unordered_map>
+#include "frontend/diagnostic.hpp"
+#include "frontend/lexer/lexer_error.hpp"
 #include "frontend/lexer/token.hpp"
 
 struct ImportItemInfo {
@@ -40,6 +42,12 @@ class Lexer {
         std::vector<std::string> imported_modules; // Mantido para compatibilidade temporária
         std::vector<ImportInfo> import_infos;      // Nova estrutura para importações detalhadas
         std::string module_name;
+        bool emit_diagnostics = true;
+        std::vector<std::string> lines;
+
+        void read_lines();
+        void print_error_context(size_t error_line, size_t col_start, size_t col_end) const;
+        void report_error(const LexicalError& error);
         
     public:
         Lexer(std::string src, std::string file);
@@ -48,7 +56,9 @@ class Lexer {
         void skip_whitespace();
         void advance();
         bool is_operator_start(char c);
+        void set_emit_diagnostics(bool enabled);
         std::vector<Token> tokenize();
+        std::vector<nv::Diagnostic> diagnostics;
         const std::vector<std::string>& get_imported_modules() const;
         const std::vector<ImportInfo>& get_import_infos() const;
         const std::string& get_module_name() const;

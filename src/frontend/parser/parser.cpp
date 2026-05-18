@@ -161,7 +161,7 @@ Token Parser::expect(TokenType expected_type, const std::string& error_msg) {
 
     if (prev.type != expected_type) {
         std::ostringstream oss;
-        oss << "Expected token type " << get_token_name(expected_type)
+        oss << "Expected '" << get_token_display(expected_type) << "'"
             << ", but got token: '" << prev.lexeme << "'.";
         --index;
         error(oss.str());
