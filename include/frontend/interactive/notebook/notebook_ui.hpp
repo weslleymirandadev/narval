@@ -14,6 +14,8 @@ public:
     void show_prompt();
     void show_input_prompt(int execution_count);
     void show_continuation_prompt(int execution_count);
+    std::string read_input_line(int execution_count);
+    std::string read_continuation_line(int execution_count);
 
 private:
     static const std::string PROMPT;
