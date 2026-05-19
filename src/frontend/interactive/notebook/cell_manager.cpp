@@ -1,5 +1,6 @@
 #include "frontend/interactive/notebook/cell_manager.hpp"
 #include "frontend/interactive/repl.hpp"
+#include "frontend/interactive/syntax_highlighter.hpp"
 #include <iostream>
 #include <algorithm>
 
@@ -50,8 +51,10 @@ bool CellManager::run_all(REPL* repl) {
 void CellManager::list_cells() {
     std::cout << "Notebook cells:\n";
     for (const auto &c : cells) {
-        std::cout << "  [" << c.id << "] " 
-                  << (c.source.size() > 60 ? c.source.substr(0,60) + "..." : c.source) 
+        std::string preview = c.source.size() > 60 ? c.source.substr(0, 60) + "..." : c.source;
+        std::replace(preview.begin(), preview.end(), '\n', ' ');
+        std::cout << "  [" << c.id << "] "
+                  << syntax_highlighter::highlight_line(preview)
                   << "\n";
     }
 }
