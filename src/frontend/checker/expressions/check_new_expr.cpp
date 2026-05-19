@@ -55,6 +55,11 @@ namespace nv {
         }
         
         auto class_obj = std::static_pointer_cast<Class>(class_type);
+        if (class_obj->is_abstract) {
+            checker->error(node, "Cannot instantiate abstract class '" + new_expr->class_name + "'");
+            return checker->gettyptr("void");
+        }
+
         auto ctor_type = class_obj->get_method("new");
         if (!ctor_type) {
             if (!new_expr->arguments.empty()) {
