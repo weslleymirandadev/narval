@@ -1,6 +1,7 @@
 #include "frontend/interactive/command_handler.hpp"
 #include "frontend/interactive/repl.hpp"
 #include "frontend/interactive/repl_utils.hpp"
+#include "frontend/interactive/syntax_highlighter.hpp"
 #include <iostream>
 #include <fstream>
 
@@ -72,7 +73,8 @@ void CommandHandler::show_variables() {
 void CommandHandler::show_history() {
     std::cout << "\nCommand history:\n";
     for (size_t i = 0; i < state->history.size(); ++i) {
-        std::cout << "  " << (i + 1) << ": " << state->history[i] << std::endl;
+        std::cout << "  " << (i + 1) << ": "
+                  << syntax_highlighter::highlight_source(state->history[i]) << std::endl;
     }
     std::cout << std::endl;
 }
@@ -89,7 +91,8 @@ bool CommandHandler::load_file(const std::string& filename) {
     while (std::getline(file, line)) {
         line_num++;
         if (!line.empty()) {
-            std::cout << "Loading line " << line_num << ": " << line << std::endl;
+            std::cout << "Loading line " << line_num << ": "
+                      << syntax_highlighter::highlight_line(line) << std::endl;
             // Note: This would need access to compilation engine
             // For now, we'll just add to history
             state->history.push_back(line);
