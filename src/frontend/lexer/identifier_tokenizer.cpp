@@ -34,6 +34,7 @@ Token tokenize_identifier_or_keyword(const std::string& input, size_t& pos, size
     else if (value == "private") type = TokenType::PRIVATE;
     else if (value == "protected") type = TokenType::PROTECTED;
     else if (value == "abstract") type = TokenType::ABSTRACT;
+    else if (value == "override") type = TokenType::OVERRIDE;
     else if (value == "extends") type = TokenType::EXTENDS;
     else if (value == "implements") type = TokenType::IMPLEMENTS;
     else if (value == "interface") type = TokenType::INTERFACE;
