@@ -5,6 +5,7 @@
 #include "frontend/parser/parser.hpp"
 #include "frontend/module_manager.hpp"
 #include "frontend/checker/checker.hpp"
+#include "frontend/attributes/attribute_mapper.hpp"
 #include "backend/codegen/generate_ir.hpp"
 #include "backend/codegen/ir_utils.hpp"
 
@@ -387,9 +388,14 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
     try {
         module_manager.compile_module(module_name, filename, true);
         auto ast = module_manager.get_combined_ast(module_name);
+        nv::reset_feature_tracker();
+        nv::CompilationAttributes attrs = nv::map_compilation_attributes(ast.get());
+        const bool no_std = attrs.no_std;
+        const std::string no_std_entry = nv::program_has_function(ast.get(), "_start") ? "_start" : "main";
 
         // Create checker for type inference
         nv::Checker checker;
+        checker.apply_compilation_attributes(attrs);
         checker.set_source_file(filename);
         // Check types before code generation
         if (ast) {
@@ -428,16 +434,17 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
         context.set_debug_info(&DIB, cu, diFile, cu);
 
         auto* i32_ty      = llvm::Type::getInt32Ty(Context);
-        auto* main_sig    = llvm::FunctionType::get(llvm::Type::getVoidTy(Context), false);
+        llvm::Function* main_start = nullptr;
 
-        llvm::Function* main_start = llvm::Function::Create(
+        // Attach DISubprogram to main.start for better function-level debug info
+        if (!no_std) {
+        auto* main_sig    = llvm::FunctionType::get(llvm::Type::getVoidTy(Context), false);
+        main_start = llvm::Function::Create(
             main_sig,
             llvm::Function::ExternalLinkage,
             "main.start",
             Mod
         );
-
-        // Attach DISubprogram to main.start for better function-level debug info
         {
             auto* sub_ty = DIB.createSubroutineType(DIB.getOrCreateTypeArray({}));
             auto* subp = DIB.createFunction(
@@ -459,12 +466,13 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
         context.get_builder().SetInsertPoint(entry_bb);
         context.set_current_function(main_start);
         context.set_program_function(main_start);
+        }
 
         // x86 only: align RSP to 16 bytes at the entry point.
         // movaps inside variadic functions (printf) requires RSP % 16 == 0.
         // On aarch64 the ABI already guarantees alignment, so asm is not needed.
 #if defined(__x86_64__) || defined(_M_X64)
-        if (is_x86_64_target(target_triple)) {
+        if (!no_std && is_x86_64_target(target_triple)) {
             auto* AsmTy = llvm::FunctionType::get(llvm::Type::getVoidTy(Context), false);
             auto* Asm   = llvm::InlineAsm::get(
                 AsmTy,
@@ -477,6 +485,7 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
 #endif
 
         // Call register_global_init first to initialize types
+        if (!no_std) {
         auto* register_init_fn = Mod.getFunction("register_global_init");
         if (!register_init_fn) {
             auto* void_ty = llvm::Type::getVoidTy(Context);
@@ -489,11 +498,59 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
             );
         }
         context.get_builder().CreateCall(register_init_fn, {});
+        }
 
         nv::generate_ir(std::move(ast), context);
-        
+
+        // no_std: generate a thin entry wrapper that aligns RSP, calls the user's
+        // main/_start, and terminates via sys_exit(0) (Linux x86_64) or equivalent.
+        // Without this the function returns into an invalid stack frame and segfaults.
+        if (no_std) {
+            auto* void_ty = llvm::Type::getVoidTy(Context);
+            auto* fn_ty   = llvm::FunctionType::get(void_ty, false);
+            auto* wrapper = llvm::Function::Create(
+                fn_ty, llvm::Function::ExternalLinkage, "_narval_ns_start", Mod);
+            auto* entry_bb = llvm::BasicBlock::Create(Context, "entry", wrapper);
+            // Clear any stale debug location from user-function codegen.
+            Builder.SetCurrentDebugLocation(llvm::DebugLoc());
+            Builder.SetInsertPoint(entry_bb);
+
+#if defined(__x86_64__) || defined(_M_X64)
+            if (is_x86_64_target(target_triple)) {
+                // Align RSP: the kernel passes argc at [RSP], no return address.
+                auto* align_asm = llvm::InlineAsm::get(
+                    fn_ty, "and $$-16, %rsp",
+                    "~{rsp},~{dirflag},~{fpsr},~{flags}", true);
+                Builder.CreateCall(align_asm, {});
+            }
+#endif
+
+            // Initialise the minimal no_std type table before user code runs.
+            auto* init_ns_fn = llvm::cast<llvm::Function>(
+                Mod.getOrInsertFunction("nv_ns_init_types", fn_ty).getCallee());
+            Builder.CreateCall(init_ns_fn, {});
+
+            auto* user_fn = Mod.getFunction(no_std_entry);
+            if (user_fn) {
+                Builder.CreateCall(user_fn, {});
+            }
+
+#if defined(__x86_64__) || defined(_M_X64)
+            if (is_x86_64_target(target_triple)) {
+                // sys_exit_group(0) — syscall 231 on x86_64 Linux.
+                auto* exit_asm = llvm::InlineAsm::get(
+                    fn_ty,
+                    "mov $$231, %rax\n\txor %rdi, %rdi\n\tsyscall",
+                    "~{rax},~{rdi}", true);
+                Builder.CreateCall(exit_asm, {});
+            }
+#endif
+            Builder.CreateUnreachable();
+        }
+
         // IMPORTANT: finalize global initializations AFTER generating the main code.
         // This guarantees that every declaration has been processed.
+        if (!no_std) {
         context.finalize_global_inits(65535);
         
         // Explicitly call the initialization function at the beginning of main.start.
@@ -520,7 +577,9 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
                 }
             }
         }
+        }
 
+        if (!no_std) {
         llvm::Value* return_value = nullptr;
         if (context.has_value()) {
             return_value = context.pop_value();
@@ -557,6 +616,7 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
         // call _exit(retcode); no return
         context.get_builder().CreateCall(exit_fn, {return_value});
         context.get_builder().CreateUnreachable();
+        }
 
         DIB.finalize();
 
@@ -627,11 +687,14 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
 
         // Resolve runtime path
         std::string runtime_path;
+        std::string runtime_nostd_path;
         const char* narval_home = std::getenv("NARVAL_HOME");
         if (narval_home) {
-            runtime_path = std::string(narval_home) + "/runtime.o";
+            runtime_path       = std::string(narval_home) + "/runtime.o";
+            runtime_nostd_path = std::string(narval_home) + "/runtime_nostd.o";
         } else {
             const std::string local_runtime = std::string(NARVAL_SOURCE_DIR) + "/build/lib/runtime.o";
+            const std::string local_nostd   = std::string(NARVAL_SOURCE_DIR) + "/build/lib/runtime_nostd.o";
             if (std::filesystem::exists(local_runtime)) {
                 runtime_path = local_runtime;
             } else if (!nv_executable_path_storage.empty()) {
@@ -648,6 +711,11 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
                 }
             } else {
                 runtime_path = std::string(NARVAL_INSTALL_RUNTIME_DIR) + "/runtime.o";
+            }
+            if (std::filesystem::exists(local_nostd)) {
+                runtime_nostd_path = local_nostd;
+            } else {
+                runtime_nostd_path = std::string(NARVAL_INSTALL_RUNTIME_DIR) + "/runtime_nostd.o";
             }
         }
 
@@ -673,17 +741,34 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
             link_extra += " " + item;
 
         const auto& ft = nv::get_feature_tracker();
-        std::string link_cmd =
-            std::string("gcc -g ") + runtime_path + " " +
-            obj_path + " -pthread -ldl -lm -o " + bin_path + " " +
-            "-Wl,-e,main.start " +
-            "-nostartfiles " +
-            std::string(pie_flag) + " " +
-            "-lc -w " +
-            "-Wl,--gc-sections " +
-            (ft.strip ? "-Wl,--strip-all " : "") +
-            (ft.lto   ? "-flto "           : "") +
-            link_extra;
+        std::string link_cmd;
+        if (no_std) {
+            // Include the minimal runtime (provides create_int, arithmetic, etc.)
+            // only when the file actually exists; pure-asm programs can skip it.
+            std::string nostd_rt = std::filesystem::exists(runtime_nostd_path)
+                ? runtime_nostd_path + " " : "";
+            link_cmd =
+                std::string("gcc ") + obj_path + " " + nostd_rt + "-o " + bin_path + " " +
+                "-nostdlib -nostartfiles " +
+                std::string(pie_flag) + " " +
+                "-Wl,-e,_narval_ns_start " +
+                "-Wl,--gc-sections " +
+                (ft.strip ? "-Wl,--strip-all " : "") +
+                (ft.lto   ? "-flto "           : "") +
+                link_extra;
+        } else {
+            link_cmd =
+                std::string("gcc -g ") + runtime_path + " " +
+                obj_path + " -pthread -ldl -lm -o " + bin_path + " " +
+                "-Wl,-e,main.start " +
+                "-nostartfiles " +
+                std::string(pie_flag) + " " +
+                "-lc -w " +
+                "-Wl,--gc-sections " +
+                (ft.strip ? "-Wl,--strip-all " : "") +
+                (ft.lto   ? "-flto "           : "") +
+                link_extra;
+        }
 
         if (system(link_cmd.c_str()) != 0) {
             std::filesystem::remove(obj_path);

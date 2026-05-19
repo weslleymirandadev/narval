@@ -3,6 +3,7 @@
 #include "lsp/path_utils.hpp"
 
 #include "frontend/checker/checker.hpp"
+#include "frontend/attributes/attribute_mapper.hpp"
 #include "frontend/ast/program.hpp"
 #include "frontend/ast/statements/declaration_stmt_node.hpp"
 #include "frontend/ast/statements/function_stmt_node.hpp"
@@ -176,6 +177,7 @@ DocumentState NarvalAnalyzer::analyze(const std::string& uri, const std::string&
         );
 
         nv::Checker checker;
+        checker.apply_compilation_attributes(nv::map_compilation_attributes(check_ast.get()));
         checker.set_source_file(state.path);
         checker.set_emit_diagnostics(false);
         checker.check_node(check_ast.get());

@@ -23,6 +23,7 @@
 #include "frontend/checker/expressions/check_list_comp_expr.hpp"
 #include "frontend/checker/expressions/check_range_expr.hpp"
 #include "frontend/checker/expressions/check_assignment_expr.hpp"
+#include "frontend/attributes/attribute_mapper.hpp"
 #include <memory>
 
 std::shared_ptr<nv::Type> nv::Checker::check_node(Node* node) {
@@ -35,6 +36,7 @@ std::shared_ptr<nv::Type> nv::Checker::check_node(Node* node) {
         case NodeType::Identifier:
           return check_primary_expr(this, node);
         case NodeType::Program:
+          apply_compilation_attributes(nv::map_compilation_attributes(node));
           return check_program_stmt(this, node);
         case NodeType::DeclarationStatement:
           return check_decl_stmt(this, node);

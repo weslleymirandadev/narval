@@ -191,7 +191,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
     // Passa o IdentifierNode do caller para que o ^ aponte o nome da função, não o '('.
     if (ch->no_std_attr_node && call->caller->kind == NodeType::Identifier) {
         static const std::unordered_set<std::string> stdlib_builtins = {
-            "write", "read", "exit", "str", "int", "float", "bool",
+            "write", "read", "exit", "str", "int", "char", "float", "bool",
             "Some", "Ok", "Err"
         };
         auto* id = static_cast<IdentifierNode*>(call->caller.get());

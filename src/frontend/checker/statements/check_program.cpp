@@ -13,6 +13,8 @@
 #include "frontend/ast/statements/while_stmt_node.hpp"
 #include "frontend/ast/statements/forever_stmt_node.hpp"
 #include "frontend/ast/statements/function_stmt_node.hpp"
+#include "frontend/ast/statements/attribute_stmt_node.hpp"
+#include "frontend/ast/statements/decorator_stmt_node.hpp"
 #include "frontend/ast/statements/match_stmt_node.hpp"
 #include "frontend/ast/expressions/or_expr_node.hpp"
 #include <stdexcept>
@@ -188,10 +190,39 @@ namespace {
         }
     }
 
+    bool no_std_allows_toplevel(NodeType kind) {
+        return kind == NodeType::AttributeStatement ||
+               kind == NodeType::ModuleAttrStatement ||
+               kind == NodeType::DecoratorStatement ||
+               kind == NodeType::FunctionStatement ||
+               kind == NodeType::ExternStatement ||
+               kind == NodeType::ExternFromImportStatement;
+    }
+
 } // anonymous namespace
 
 std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
     auto* program = static_cast<Program*>(node);
+
+    if (ch->no_std_attr_node) {
+        bool has_main = false;
+        bool has_start = false;
+        for (auto& el : program->body) {
+            if (!el) continue;
+            if (el->kind == NodeType::FunctionStatement) {
+                auto* fn = static_cast<FunctionStmtNode*>(el.get());
+                has_main = has_main || fn->name == "main";
+                has_start = has_start || fn->name == "_start";
+            } else if (el->kind == NodeType::ImportStatement) {
+                ch->no_std_error(el.get(), "imports");
+            } else if (!no_std_allows_toplevel(el->kind)) {
+                ch->no_std_error(el.get(), "top-level runtime code");
+            }
+        }
+        if (!has_main && !has_start) {
+            ch->error(ch->no_std_attr_node, "@[no_std] requires a 'main' or '_start' function.");
+        }
+    }
 
     // Primeira passagem: processar imports ANTES de tudo para registrar símbolos no escopo
     for (auto& el : program->body) {

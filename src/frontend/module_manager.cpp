@@ -3,6 +3,7 @@
 #include "frontend/parser/parser.hpp"
 #include "frontend/checker/checker.hpp"
 #include "frontend/checker/checker_meth.hpp"
+#include "frontend/attributes/attribute_mapper.hpp"
 #include "frontend/ast/statements/declaration_stmt_node.hpp"
 #include "frontend/ast/statements/function_stmt_node.hpp"
 #include "frontend/ast/statements/import_stmt_node.hpp"
@@ -45,6 +46,7 @@ void ModuleManager::load_module(const std::string& module_name, const std::strin
     }
     if (config & ENABLE_CHECKING) {
         nv::Checker checker;
+        checker.apply_compilation_attributes(nv::map_compilation_attributes(module.ast.get()));
         checker.set_source_file(file_path);
         checker.check_node(module.ast.get());
     }

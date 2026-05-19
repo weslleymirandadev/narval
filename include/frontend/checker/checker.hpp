@@ -4,6 +4,7 @@
 #include "frontend/checker/namespace.hpp"
 #include "frontend/checker/unification.hpp"
 #include "frontend/ast/ast.hpp"
+#include "frontend/attributes/attribute_mapper.hpp"
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
@@ -55,6 +56,7 @@ namespace nv {
             // is gone; this lets those rechecks stay permissive.
             std::unordered_map<std::string, std::shared_ptr<Type>> closure_fallback_symbols;
             Checker();
+            void apply_compilation_attributes(const CompilationAttributes& attrs);
             nv::Type& getty(std::string ty);
             std::shared_ptr<nv::Type>& gettyptr(std::string ty);
             void push_scope();

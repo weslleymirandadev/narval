@@ -2,6 +2,7 @@
 #include "frontend/checker/type.hpp"
 #include "frontend/checker/unification.hpp"
 #include "frontend/checker/builtins.hpp"
+#include "frontend/attributes/attribute_mapper.hpp"
 #include "frontend/checker/expressions/check_call_expr.hpp"
 #include "frontend/checker/expressions/check_primary_expr.hpp"
 #include "frontend/checker/expressions/check_binary_expr.hpp"
@@ -102,6 +103,21 @@ nv::Checker::Checker() {
 
     // Registrar funções builtin do runtime
     register_builtins(*this);
+}
+
+void nv::Checker::apply_compilation_attributes(const CompilationAttributes& attrs) {
+    if (!attrs.no_std) {
+        return;
+    }
+
+    no_std_attr_node = attrs.no_std_node;
+    static const std::vector<std::string> runtime_symbols = {
+        "write", "read", "exit", "str", "int", "char", "float", "bool",
+        "Some", "Ok", "Err", "json", "Error"
+    };
+    for (const auto& name : runtime_symbols) {
+        scope->erase_key(name);
+    }
 }
 
 nv::Type& nv::Checker::getty(std::string ty) {
@@ -384,7 +400,7 @@ void nv::Checker::no_std_error(Node* use_node, const std::string& feature_name) 
     if (no_std_attr_node && no_std_attr_node->position) {
         auto* pos = no_std_attr_node->position.get();
         const std::string& fn = pos->filename.empty() ? current_filename : pos->filename;
-        note_at(fn, pos->line, pos->col[0], pos->col[1], "[no_std] declared here.");
+    note_at(fn, pos->line, pos->col[0], pos->col[1], "@[no_std] declared here.");
     }
 }
 

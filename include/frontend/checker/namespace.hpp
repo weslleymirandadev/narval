@@ -32,6 +32,7 @@ namespace nv {
             void put_key(const std::string& k, const std::shared_ptr<nv::Type>& v, bool ismutable);
             void put_key(const std::string& k, const std::shared_ptr<nv::Type>& v);
             void set_key(const std::string& k, const std::shared_ptr<nv::Type>& v);
+            void erase_key(const std::string& k);
             void record_decl_pos(const std::string& k, const DeclPos& pos);
             const DeclPos* get_decl_pos(const std::string& k) const;
 

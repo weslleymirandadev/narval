@@ -8,6 +8,7 @@
 #include <memory>
 #include <string>
 #include "frontend/ast/ast.hpp"
+#include "frontend/attributes/attribute_mapper.hpp"
 #include "backend/codegen/ir_context.hpp"
 
 namespace nv {
@@ -48,6 +49,12 @@ struct FeatureTracker {
         // Implementação específica será adicionada conforme necessário
         // decorators desconhecidos são silenciosamente ignorados
     }
+
+    void apply_compilation_attributes(const CompilationAttributes& attrs) {
+        no_std = attrs.no_std;
+        strip = attrs.strip;
+        lto = attrs.lto;
+    }
 };
 
 // Registra uso de uma feature durante o codegen
@@ -58,6 +65,7 @@ const FeatureTracker& get_feature_tracker();
 
 // Acesso mutável — usado pelo pré-scan de generate_ir para setar atributos
 FeatureTracker& get_mutable_feature_tracker();
+void reset_feature_tracker();
 
 void generate_ir(std::unique_ptr<Node> node, IRGenerationContext& context, bool keep_result = false);
 

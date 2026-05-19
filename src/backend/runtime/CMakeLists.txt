@@ -2,6 +2,7 @@
 
 narval_collect_sources(RUNTIME_SOURCES
     PATTERNS "*.c"
+    EXCLUDE_REGEXES ".*/nostd/.*"
 )
 
 add_library(runtime_objs OBJECT ${RUNTIME_SOURCES})
@@ -25,6 +26,20 @@ add_custom_command(
     COMMAND_EXPAND_LISTS
 )
 
+# ── Minimal no_std runtime ──────────────────────────────────────────────────
+# Compiled separately so it never mixes with the full runtime.
+# Each function in its own section; --gc-sections strips unused ones.
+add_library(runtime_nostd_objs OBJECT nostd/runtime_nostd.c)
+target_include_directories(runtime_nostd_objs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/include)
+target_compile_options(runtime_nostd_objs PRIVATE -ffunction-sections -fdata-sections -ffreestanding)
+
+add_custom_target(runtime_nostd_o ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${LIB_DIR}
+    COMMAND ${CMAKE_LINKER} -r -o ${LIB_DIR}/runtime_nostd.o $<TARGET_OBJECTS:runtime_nostd_objs>
+    DEPENDS runtime_nostd_objs
+    COMMENT "Gerando runtime_nostd.o em lib/"
+    COMMAND_EXPAND_LISTS
+)
 # Alvo legado para compatibilidade com dependências externas.
 # Deve rodar sempre: o compilador procura build/lib/runtime.o em tempo de
 # execução, e apagar esse arquivo não força o POST_BUILD de runtime_shared.

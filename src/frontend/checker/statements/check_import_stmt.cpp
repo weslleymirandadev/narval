@@ -1,4 +1,5 @@
 #include "frontend/checker/statements/check_import_stmt.hpp"
+#include "frontend/attributes/attribute_mapper.hpp"
 #include "frontend/syntax_highlighter.hpp"
 #include "frontend/ast/ast.hpp"
 #include "frontend/ast/statements/import_stmt_node.hpp"
@@ -380,6 +381,7 @@ std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
         
         // Criar um checker temporário para verificar o módulo importado e obter os tipos
         nv::Checker module_checker;
+        module_checker.apply_compilation_attributes(nv::map_compilation_attributes(program));
         module_checker.set_source_file(full_path);
         module_checker.check_node(program);
         

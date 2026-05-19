@@ -42,6 +42,10 @@ FeatureTracker& get_mutable_feature_tracker() {
     return g_feature_tracker;
 }
 
+void reset_feature_tracker() {
+    g_feature_tracker = FeatureTracker{};
+}
+
 static void declare_runtime(IRGenerationContext& context) {
     auto& M = context.get_module();
     auto& C = context.get_context();
@@ -209,7 +213,9 @@ void generate_ir(
     }
 
     // Ensure runtime declarations are present in the module
-    declare_runtime(context);
+    if (!g_feature_tracker.no_std) {
+        declare_runtime(context);
+    }
 
     context.enter_scope();
 
@@ -286,12 +292,18 @@ void generate_ir(
 
     // Push frame do módulo no shadow stack de traceback
     const std::string& src_file = context.get_source_file();
-    if (!src_file.empty()) {
+    if (!src_file.empty() && !g_feature_tracker.no_std) {
         ir_utils::emit_push_frame(context, src_file, "<module>");
     }
 
     for (size_t i = 0; i < program->body.size(); ++i) {
         auto* stmt = program->body[i].get();
+        if (g_feature_tracker.no_std &&
+            stmt && stmt->kind != NodeType::FunctionStatement &&
+            stmt->kind != NodeType::ExternStatement &&
+            stmt->kind != NodeType::ExternFromImportStatement) {
+            continue;
+        }
         if (stmt && stmt->position && !src_file.empty())
             ir_utils::emit_set_line(context, static_cast<int>(stmt->position->line));
         stmt->codegen(context);
@@ -299,7 +311,7 @@ void generate_ir(
 
     // In REPL (keep_result=true) leave the last value on the stack for auto-print.
     // In batch: discard any values left (e.g. from write()), then push 0 as exit value.
-    if (!keep_result) {
+    if (!keep_result && !g_feature_tracker.no_std) {
         while (context.has_value()) {
             (void) context.pop_value();
         }

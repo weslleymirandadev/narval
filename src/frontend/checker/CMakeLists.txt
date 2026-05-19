@@ -3,6 +3,7 @@ narval_collect_sources(CHECKER_SOURCES
 )
 
 add_library(checker ${CHECKER_SOURCES})
+target_sources(checker PRIVATE ../attributes/attribute_mapper.cpp)
 target_link_libraries(checker PUBLIC narval_project_includes frontend_utils)
 
 include_directories(${PROJECT_SOURCE_DIR}/include)

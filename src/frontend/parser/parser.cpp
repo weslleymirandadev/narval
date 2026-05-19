@@ -201,11 +201,7 @@ std::unique_ptr<Node> Parser::produce_ast(const std::vector<Token>& tokens, cons
 
     auto program = std::make_unique<Program>();
 
-    // Atributos de módulo: [attr1, attr2, func(arg)]
-    // Só são válidos no início do arquivo (antes de qualquer outro statement).
-    // Lookahead: se [ for seguido somente de IDENTIFIER, COMMA, OPAREN, CPAREN → é atributo.
-    // Qualquer outro token dentro (NUMBER, STRING, operador…) → vetor literal normal.
-    while (not_eof() && current_token().type == TokenType::OBRACKET) {
+    while (false && not_eof() && current_token().type == TokenType::OBRACKET) {
         size_t la = index + 1;
         bool is_attr = true;
         while (la < token_count && tokens[la].type != TokenType::CBRACKET

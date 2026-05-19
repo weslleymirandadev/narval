@@ -1,24 +1,11 @@
 #include "frontend/parser/statements/parse_attribute_stmt.hpp"
 #include "frontend/ast/statements/attribute_stmt_node.hpp"
+#include <iostream>
 
 std::unique_ptr<Node> parse_attribute_stmt(Parser* parser) {
-    // Only handle the case: [ IDENTIFIER ( , IDENTIFIER )* ]
-    if (parser->current_token().type != TokenType::OBRACKET) return nullptr;
+    Token at_tok = parser->consume_token();
 
-    // Lookahead to ensure we don't accept other constructs (for now disallow func(arg))
-
-    // Manual lookahead using tokens vector via parser internals is not available here,
-    // so we will scan using parser->next_token() repeatedly by temporarily consuming
-    // and restoring position is not exposed. Instead, implement a safe conservative
-    // check: inspect tokens until CBRACKET but reject if OPAREN found.
-
-    // We'll implement the lookahead by peeking using next_token() repeatedly while
-    // incrementing a local index via consuming and pushing back; but Parser doesn't
-    // expose an API to restore index. Simpler: perform a single-pass parse that
-    // rejects if an unexpected token (including OPAREN) appears.
-
-    // Begin actual parsing (we already know current is OBRACKET)
-    parser->consume_token(); // consume '['
+    parser->expect(TokenType::OBRACKET, "Expected '[' after '@' for attribute statement");
 
     auto node = std::make_unique<AttributeStmtNode>();
 
@@ -29,17 +16,21 @@ std::unique_ptr<Node> parse_attribute_stmt(Parser* parser) {
         } else if (parser->current_token().type == TokenType::COMMA) {
             parser->consume_token();
         } else {
-            // Found something unexpected (e.g. OPAREN) — not a valid attribute.
-            // Rewind is not possible here, so signal failure by returning nullptr.
-            // The caller should not have consumed the '[' in that case; but we already
-            // consumed it. To be conservative, emit an error message and abort parsing
-            // to avoid inconsistent parser state.
             parser->error("Invalid attribute syntax (only simple identifiers allowed)");
             return nullptr;
         }
     }
 
+    Token close_tok = parser->current_token();
     parser->expect(TokenType::CBRACKET, "Expected ']' to close attribute");
+    node->position = std::make_unique<PositionData>(
+        at_tok.line,
+        at_tok.column_start,
+        close_tok.column_end,
+        at_tok.position_start,
+        close_tok.position_end,
+        at_tok.filename
+    );
 
     return node;
 }

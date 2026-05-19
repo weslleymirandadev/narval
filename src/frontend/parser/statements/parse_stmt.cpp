@@ -25,12 +25,9 @@
 std::unique_ptr<Node> parse_stmt(Parser* parser) {
     switch (parser->current_token().type) {
         case TokenType::AT: {
-            auto node = parse_decorator_stmt(parser);
-            if (node) return node;
-            break;
-        }
-        case TokenType::OBRACKET: {
-            auto node = parse_attribute_stmt(parser);
+            auto node = parser->next_token().type == TokenType::OBRACKET
+                ? parse_attribute_stmt(parser)
+                : parse_decorator_stmt(parser);
             if (node) return node;
             break;
         }

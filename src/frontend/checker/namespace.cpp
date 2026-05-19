@@ -48,6 +48,12 @@ void nv::Namespace::set_key(const std::string& k, const std::shared_ptr<nv::Type
     names[k] = v;
 }
 
+void nv::Namespace::erase_key(const std::string& k) {
+    names.erase(k);
+    consts.erase(k);
+    decl_positions.erase(k);
+}
+
 void nv::Namespace::record_decl_pos(const std::string& k, const DeclPos& pos) {
     decl_positions[k] = pos;
 }
