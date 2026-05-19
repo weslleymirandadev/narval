@@ -57,9 +57,8 @@ bool Notebook::load(const std::string& filename) {
 void Notebook::run() {
     int execution_count = 1;
     while (true) {
-        std::string line;
-        notebook_ui->show_input_prompt(execution_count);
-        if (!std::getline(std::cin, line)) break;
+        std::string line = notebook_ui->read_input_line(execution_count);
+        if (line.empty() && std::cin.eof()) break;
         if (line.empty()) continue;
         if (line[0] == ':') {
             std::istringstream ss(line);
@@ -97,8 +96,8 @@ void Notebook::run() {
         } else {
             std::string src = line + "\n";
             while (repl_utils::needs_continuation(src)) {
-                notebook_ui->show_continuation_prompt(execution_count);
-                if (!std::getline(std::cin, line)) break;
+                line = notebook_ui->read_continuation_line(execution_count);
+                if (line.empty() && std::cin.eof()) break;
                 src += line + "\n";
             }
             add_cell(src);
