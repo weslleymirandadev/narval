@@ -1,17 +1,10 @@
 #include "frontend/interactive/input_processor.hpp"
+#include "frontend/interactive/line_editor.hpp"
 #include "frontend/interactive/repl.hpp"
 #include "frontend/interactive/repl_utils.hpp"
 #include <iostream>
 #include <algorithm>
 #include <cstring>
-
-#ifdef HAVE_READLINE
-#include <readline/readline.h>
-#include <readline/history.h>
-#ifdef RETURN
-#undef RETURN
-#endif
-#endif
 
 namespace nv {
 
@@ -21,11 +14,10 @@ std::string InputProcessor::read_input(bool in_multiline) {
     std::string line;
 #ifdef HAVE_READLINE
     if (config.enable_readline) {
-        char* raw_line = readline(in_multiline ? config.multiline_prompt.c_str() : config.prompt.c_str());
-        if (!raw_line) return "";
-        line = raw_line;
-        free(raw_line);
-        if (!line.empty()) add_history(line.c_str());
+        return line_editor::read_line(
+            in_multiline ? config.multiline_prompt : config.prompt,
+            true
+        );
     } else {
 #endif
         if (config.show_prompt) {
