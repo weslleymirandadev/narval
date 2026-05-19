@@ -1,4 +1,5 @@
 #include "frontend/checker/statements/check_import_stmt.hpp"
+#include "frontend/syntax_highlighter.hpp"
 #include "frontend/ast/ast.hpp"
 #include "frontend/ast/statements/import_stmt_node.hpp"
 #include "frontend/ast/statements/declaration_stmt_node.hpp"
@@ -171,7 +172,8 @@ namespace {
             if (import_line > 0 && import_line <= file_lines.size()) {
                 std::string line_content = file_lines[import_line - 1];
                 std::replace(line_content.begin(), line_content.end(), '\n', ' ');
-                std::cerr << " " << import_line << " |   " << line_content << "\n";
+                std::cerr << " " << import_line << " |   "
+                          << nv::syntax_highlighter::highlight_line(line_content) << "\n";
                 
                 int line_width = import_line > 0 ? static_cast<int>(std::log10(import_line) + 1) : 1;
                 std::cerr << std::string(line_width, ' ') << "  |";
