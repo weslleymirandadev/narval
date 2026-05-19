@@ -1,8 +1,19 @@
 #include "frontend/interactive/notebook/notebook_ui.hpp"
+#include "frontend/interactive/line_editor.hpp"
 #include <iostream>
 #include <iomanip>
+#include <sstream>
 
 namespace nv {
+namespace {
+
+std::string continuation_prompt(int execution_count) {
+    std::ostringstream out;
+    out << "   ..." << std::setw(static_cast<int>(std::to_string(execution_count).size()) + 2) << ": ";
+    return out.str();
+}
+
+} // namespace
 
 const std::string NotebookUI::PROMPT = "nb> ";
 const std::string NotebookUI::MULTILINE_PROMPT = " ";
@@ -11,9 +22,8 @@ std::string NotebookUI::read_multiline() {
     std::string buffer;
     std::string line;
     while (true) {
-        std::cout << MULTILINE_PROMPT; 
-        std::cout.flush();
-        if (!std::getline(std::cin, line)) break;
+        line = line_editor::read_line(MULTILINE_PROMPT, false);
+        if (line.empty() && std::cin.eof()) break;
         if (line == ".") break;
         buffer += line + "\n";
     }
@@ -43,8 +53,16 @@ void NotebookUI::show_input_prompt(int execution_count) {
 }
 
 void NotebookUI::show_continuation_prompt(int execution_count) {
-    std::cout << "   ..." << std::setw(static_cast<int>(std::to_string(execution_count).size()) + 2) << ": ";
+    std::cout << continuation_prompt(execution_count);
     std::cout.flush();
+}
+
+std::string NotebookUI::read_input_line(int execution_count) {
+    return line_editor::read_line("In [" + std::to_string(execution_count) + "]: ", false);
+}
+
+std::string NotebookUI::read_continuation_line(int execution_count) {
+    return line_editor::read_line(continuation_prompt(execution_count), false);
 }
 
 } // namespace nv
