@@ -41,6 +41,7 @@ namespace {
 constexpr const char* ANSI_BOLD = "\x1b[1m";
 constexpr const char* ANSI_RESET = "\x1b[0m";
 constexpr const char* ANSI_RED = "\x1b[31m";
+constexpr const char* ANSI_BLUE = "\x1b[34m";
 
 bool contains_write_call(Node* node) {
     if (!node) return false;
@@ -81,6 +82,10 @@ CompilationEngine::CompilationEngine(REPLState* state, ModuleManager& module_man
     : state(state), module_manager(module_manager) {}
 
 bool CompilationEngine::compile_and_execute(const std::string& input, const std::string& source_name) {
+    if (state) {
+        state->source_cache[source_name] = input;
+    }
+
     try {
         Lexer lexer(input, source_name);
         lexer.set_emit_diagnostics(false);
@@ -236,13 +241,24 @@ bool CompilationEngine::compile_and_execute(const std::string& input, const std:
 }
 
 void CompilationEngine::print_diagnostic(const nv::Diagnostic& diagnostic, const std::string& input) {
+    const bool is_note = diagnostic.severity == 3;
+    const char* label = is_note ? "NOTE" : "ERROR";
+    const char* color = is_note ? ANSI_BLUE : ANSI_RED;
+    const std::string* source = &input;
+    if (state) {
+        auto cached = state->source_cache.find(diagnostic.filename);
+        if (cached != state->source_cache.end()) {
+            source = &cached->second;
+        }
+    }
+
     std::cout.flush();
     std::cerr << ANSI_BOLD
               << diagnostic.filename << ":" << diagnostic.line << ":" << diagnostic.col_start << ": "
-              << ANSI_RED << "ERROR" << ANSI_RESET << ANSI_BOLD << ": "
+              << color << label << ANSI_RESET << ANSI_BOLD << ": "
               << diagnostic.message << ANSI_RESET << "\n";
 
-    std::istringstream stream(input);
+    std::istringstream stream(*source);
     std::string line;
     size_t current_line = 1;
     while (std::getline(stream, line)) {
@@ -254,7 +270,7 @@ void CompilationEngine::print_diagnostic(const nv::Diagnostic& diagnostic, const
                 : 1;
             std::cerr << std::string(line_width, ' ') << "  |"
                       << std::string(diagnostic.col_start > 0 ? diagnostic.col_start + 2 : 3, ' ');
-            std::cerr << ANSI_RED;
+            std::cerr << color;
             size_t caret_end = std::max(diagnostic.col_end, diagnostic.col_start + 1);
             for (size_t col = diagnostic.col_start; col < caret_end; ++col) {
                 std::cerr << "^";

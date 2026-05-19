@@ -175,6 +175,7 @@ void REPLState::reset() {
     repl_global_names.clear();
     repl_var_values.clear();
     repl_globals_added.clear();
+    source_cache.clear();
     result_counter = 0;
 
     llvm_context = std::make_unique<llvm::LLVMContext>();

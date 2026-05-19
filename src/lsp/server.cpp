@@ -5,6 +5,7 @@
 #include "lsp/path_utils.hpp"
 #include "lsp/semantic_tokens.hpp"
 
+#include <map>
 #include <vector>
 
 namespace narval::lsp {
@@ -117,15 +118,26 @@ void LSPServer::handle_semantic_tokens(const json* id, const json& message) {
 }
 
 void LSPServer::publish_diagnostics(const DocumentState& state) {
-    json diagnostics = json::array();
+    std::map<std::string, json> diagnostics_by_uri;
+
     for (const auto& diagnostic : state.diagnostics) {
-        diagnostics.push_back(diagnostic_to_json(diagnostic));
+        const std::string uri = diagnostic.filename.empty() || diagnostic.filename == state.path
+            ? (state.uri.empty() ? path_to_uri(state.path) : state.uri)
+            : path_to_uri(diagnostic.filename);
+        diagnostics_by_uri[uri].push_back(diagnostic_to_json(diagnostic));
     }
 
-    send_notification("textDocument/publishDiagnostics", {
-        {"uri", state.uri.empty() ? path_to_uri(state.path) : state.uri},
-        {"diagnostics", diagnostics},
-    });
+    const std::string current_uri = state.uri.empty() ? path_to_uri(state.path) : state.uri;
+    if (diagnostics_by_uri.find(current_uri) == diagnostics_by_uri.end()) {
+        diagnostics_by_uri[current_uri] = json::array();
+    }
+
+    for (const auto& [uri, diagnostics] : diagnostics_by_uri) {
+        send_notification("textDocument/publishDiagnostics", {
+            {"uri", uri},
+            {"diagnostics", diagnostics},
+        });
+    }
 }
 
 void LSPServer::send_response(const json* id, const json& result) {
