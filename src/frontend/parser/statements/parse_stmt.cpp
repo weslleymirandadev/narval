@@ -37,6 +37,7 @@ std::unique_ptr<Node> parse_stmt(Parser* parser) {
         case TokenType::MUT: 
             parser->consume_token();
             return parse_declaration_stmt(parser, true);
+        case TokenType::ABSTRACT:
         case TokenType::CLASS: return parse_class_stmt(parser);
         case TokenType::INTERFACE: return parse_interface_stmt(parser);
         case TokenType::ENUM: return parse_enum_stmt(parser);
