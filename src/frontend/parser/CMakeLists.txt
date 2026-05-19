@@ -3,7 +3,7 @@ narval_collect_sources(PARSER_SOURCES
 )
 
 add_library(parser ${PARSER_SOURCES})
-target_link_libraries(parser PUBLIC narval_project_includes)
+target_link_libraries(parser PUBLIC narval_project_includes frontend_utils)
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/parser.test.cpp")
     narval_add_test(parser_test parser.test.cpp ../module_manager.cpp)
