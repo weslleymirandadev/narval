@@ -2,6 +2,7 @@
 #include "frontend/parser/statements/parse_stmt.hpp"
 #include "frontend/ast/statements/import_stmt_node.hpp"
 #include "frontend/ast/statements/module_attr_node.hpp"
+#include "frontend/syntax_highlighter.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -73,7 +74,8 @@ void Parser::print_error_context(const Token& token) {
     std::string line_content = lines[token.line - 1];
     std::replace(line_content.begin(), line_content.end(), '\n', ' ');
 
-    std::cerr << " " << token.line << " |   " << line_content << "\n";
+    std::cerr << " " << token.line << " |   "
+              << nv::syntax_highlighter::highlight_line(line_content) << "\n";
 
     int line_width = token.line > 0 ? static_cast<int>(std::log10(token.line) + 1) : 1;
     std::cerr << std::string(line_width, ' ') << "  |";
