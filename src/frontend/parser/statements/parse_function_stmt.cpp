@@ -14,15 +14,31 @@ std::unique_ptr<Node> parse_function_stmt(Parser* parser) {
     parser->consume_token();
 
     auto function_name = parser->expect(TokenType::IDENTIFIER, "Expected function name");
-
-    parser->expect(TokenType::OPAREN, "Expected '(' .");
-
     auto function_node = std::make_unique<FunctionStmtNode>(
         function_name.lexeme,
         std::vector<ParamNode>{},
         "void",
         std::vector<std::unique_ptr<Stmt>>{}
     );
+
+
+    if (parser->current_token().type == TokenType::COLON) {
+        parser->consume_token();
+        function_node->return_type = parse_type(parser);
+
+        parser->expect(TokenType::OBRACE, "Expected '{'.");
+        function_node->body = parse_body(parser);
+        parser->expect(TokenType::CBRACE, "Expected '}'.");
+
+        if (function_node && function_node->position) {
+            pos->col[1] = function_node->position->col[1];
+            pos->pos[1] = function_node->position->pos[1];
+        }
+
+        return function_node;
+    }
+
+    parser->expect(TokenType::OPAREN, "Expected '(' .");
 
     while (parser->not_eof() && parser->current_token().type != TokenType::CPAREN) {
         size_t line_param = parser->current_token().line;
