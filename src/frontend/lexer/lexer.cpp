@@ -3,6 +3,7 @@
 #include "frontend/lexer/operator_tokenizer.hpp"
 #include "frontend/lexer/number_tokenizer.hpp"
 #include "frontend/lexer/string_tokenizer.hpp"
+#include "frontend/syntax_highlighter.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -190,7 +191,8 @@ void Lexer::print_error_context(size_t error_line, size_t col_start, size_t col_
     std::string line_content = lines[error_line - 1];
     std::replace(line_content.begin(), line_content.end(), '\n', ' ');
 
-    std::cerr << " " << error_line << " |   " << line_content << "\n";
+    std::cerr << " " << error_line << " |   "
+              << nv::syntax_highlighter::highlight_line(line_content) << "\n";
 
     int line_width = error_line > 0 ? static_cast<int>(std::log10(error_line) + 1) : 1;
     std::cerr << std::string(line_width, ' ') << "  |";
