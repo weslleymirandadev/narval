@@ -11,6 +11,7 @@
 #include "frontend/checker/expressions/check_vector_expr.hpp"
 #include "frontend/checker/checker_meth.hpp"
 #include "frontend/ast/ast.hpp"
+#include "frontend/syntax_highlighter.hpp"
 #include <memory>
 #include <unordered_set>
 #include <algorithm>
@@ -253,7 +254,8 @@ void nv::Checker::print_error_context(const PositionData* pos) {
     std::string line_content = lines[pos->line - 1];
     std::replace(line_content.begin(), line_content.end(), '\n', ' ');
 
-    std::cerr << " " << pos->line << " |   " << line_content << "\n";
+    std::cerr << " " << pos->line << " |   "
+              << nv::syntax_highlighter::highlight_line(line_content) << "\n";
 
     int line_width = pos->line > 0 ? static_cast<int>(std::log10(pos->line) + 1) : 1;
     std::cerr << std::string(line_width, ' ') << "  |";
@@ -317,6 +319,24 @@ void nv::Checker::error(Node* node, const std::string& message) {
     if (emit_diagnostics) std::cerr.flush();  // Garantir que a mensagem foi exibida antes de continuar
 }
 
+void nv::Checker::error_at(const std::string& filename, size_t line,
+                           size_t col_start, size_t col_end,
+                           const std::string& message) {
+    std::string abs_filename = to_absolute_path(filename.empty() ? current_filename : filename);
+    diagnostics.push_back({abs_filename, line, col_start, col_end, 1, message});
+    if (emit_diagnostics) {
+        std::cerr << ANSI_BOLD
+                  << abs_filename << ":" << line << ":" << col_start << ": "
+                  << ANSI_RED << "ERROR" << ANSI_RESET << ANSI_BOLD << ": "
+                  << message << ANSI_RESET << "\n";
+
+        PositionData pos(line, col_start, col_end, 0, 0, abs_filename);
+        print_error_context(&pos);
+    }
+    err = true;
+    if (emit_diagnostics) std::cerr.flush();
+}
+
 void nv::Checker::note_at(const std::string& filename, size_t line,
                            size_t col_start, size_t col_end,
                            const std::string& message) {
@@ -346,7 +366,8 @@ void nv::Checker::note_at(const std::string& filename, size_t line,
     if (src_lines && line > 0 && line - 1 < src_lines->size()) {
         std::string line_content = (*src_lines)[line - 1];
         std::replace(line_content.begin(), line_content.end(), '\n', ' ');
-        std::cerr << " " << line << " |   " << line_content << "\n";
+        std::cerr << " " << line << " |   "
+                  << nv::syntax_highlighter::highlight_line(line_content) << "\n";
         int line_width = line > 0 ? static_cast<int>(std::log10(static_cast<double>(line)) + 1) : 1;
         std::cerr << std::string(line_width, ' ') << "  |";
         if (col_start > 0)
