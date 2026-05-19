@@ -4,17 +4,43 @@
 #include "frontend/parser/statements/parse_stmt.hpp"
 
 std::unique_ptr<Node> parse_class_stmt(Parser* parser) {
-    parser->consume_token(); // consumir CLASS
+    bool is_abstract = false;
+    if (parser->current_token().type == TokenType::ABSTRACT) {
+        is_abstract = true;
+        parser->consume_token();
+        parser->expect(TokenType::CLASS, "Expected 'class' after 'abstract'");
+    } else {
+        parser->consume_token(); // consumir CLASS
+    }
     
-    std::string class_name = parser->current_token().lexeme;
+    Token class_name_token = parser->current_token();
+    std::string class_name = class_name_token.lexeme;
     parser->consume_token(); // consumir nome da classe
     
     auto class_node = std::make_unique<ClassStmtNode>(class_name);
+    class_node->is_abstract = is_abstract;
+    class_node->position = std::make_unique<PositionData>(
+        class_name_token.line,
+        class_name_token.column_start,
+        class_name_token.column_end,
+        class_name_token.position_start,
+        class_name_token.position_end,
+        class_name_token.filename
+    );
     
     // Verificar herança
     if (parser->current_token().type == TokenType::EXTENDS) {
         parser->consume_token();
-        class_node->parent_class = parser->current_token().lexeme;
+        Token parent_token = parser->current_token();
+        class_node->parent_class = parent_token.lexeme;
+        class_node->parent_position = std::make_unique<PositionData>(
+            parent_token.line,
+            parent_token.column_start,
+            parent_token.column_end,
+            parent_token.position_start,
+            parent_token.position_end,
+            parent_token.filename
+        );
         parser->consume_token();
     }
 
@@ -22,7 +48,16 @@ std::unique_ptr<Node> parse_class_stmt(Parser* parser) {
     if (parser->current_token().type == TokenType::IMPLEMENTS) {
         parser->consume_token();
         while (parser->current_token().type == TokenType::IDENTIFIER) {
-            class_node->implements_interfaces.push_back(parser->current_token().lexeme);
+            Token interface_token = parser->current_token();
+            class_node->implements_interfaces.push_back(interface_token.lexeme);
+            class_node->implements_positions.push_back(std::make_unique<PositionData>(
+                interface_token.line,
+                interface_token.column_start,
+                interface_token.column_end,
+                interface_token.position_start,
+                interface_token.position_end,
+                interface_token.filename
+            ));
             parser->consume_token();
             if (parser->current_token().type == TokenType::COMMA)
                 parser->consume_token();
@@ -39,18 +74,28 @@ std::unique_ptr<Node> parse_class_stmt(Parser* parser) {
         
         // Verificar modificador de acesso (privado por padrão)
         std::string access_modifier = "private";
-        if (parser->current_token().type == TokenType::PUBLIC ||
-            parser->current_token().type == TokenType::PRIVATE ||
-            parser->current_token().type == TokenType::PROTECTED) {
-            
-            if (parser->current_token().type == TokenType::PUBLIC) {
-                access_modifier = "public";
-            } else if (parser->current_token().type == TokenType::PRIVATE) {
-                access_modifier = "private";
-            } else if (parser->current_token().type == TokenType::PROTECTED) {
-                access_modifier = "protected";
+        bool is_override = false;
+        bool consumed_modifier = true;
+        while (consumed_modifier) {
+            consumed_modifier = false;
+            if (parser->current_token().type == TokenType::PUBLIC ||
+                parser->current_token().type == TokenType::PRIVATE ||
+                parser->current_token().type == TokenType::PROTECTED) {
+
+                if (parser->current_token().type == TokenType::PUBLIC) {
+                    access_modifier = "public";
+                } else if (parser->current_token().type == TokenType::PRIVATE) {
+                    access_modifier = "private";
+                } else if (parser->current_token().type == TokenType::PROTECTED) {
+                    access_modifier = "protected";
+                }
+                parser->consume_token();
+                consumed_modifier = true;
+            } else if (parser->current_token().type == TokenType::OVERRIDE) {
+                is_override = true;
+                parser->consume_token();
+                consumed_modifier = true;
             }
-            parser->consume_token();
         }
         
         // Verificar se é um membro válido
@@ -146,7 +191,7 @@ std::unique_ptr<Node> parse_class_stmt(Parser* parser) {
                 }
                 parser->expect(TokenType::CBRACE, "Expected '}'");
 
-                auto method = std::make_unique<ClassMethodNode>(member_name, access_modifier, std::move(def_node));
+                auto method = std::make_unique<ClassMethodNode>(member_name, access_modifier, std::move(def_node), is_override);
                 class_node->methods.push_back(std::move(method));
             }
             else {
