@@ -82,6 +82,7 @@ enum class TokenType {
     PRIVATE,
     PROTECTED,
     ABSTRACT,
+    OVERRIDE,
     EXTENDS,
     IMPLEMENTS,
     INTERFACE,
@@ -186,6 +187,7 @@ inline const char* get_token_name(TokenType type) {
         case TokenType::PRIVATE: return "PRIVATE";
         case TokenType::PROTECTED: return "PROTECTED";
         case TokenType::ABSTRACT: return "ABSTRACT";
+        case TokenType::OVERRIDE: return "OVERRIDE";
         case TokenType::EXTENDS: return "EXTENDS";
         case TokenType::IMPLEMENTS: return "IMPLEMENTS";
         case TokenType::INTERFACE: return "INTERFACE";
@@ -291,6 +293,7 @@ inline const char* get_token_display(TokenType type) {
         case TokenType::PRIVATE: return "private";
         case TokenType::PROTECTED: return "protected";
         case TokenType::ABSTRACT: return "abstract";
+        case TokenType::OVERRIDE: return "override";
         case TokenType::EXTENDS: return "extends";
         case TokenType::IMPLEMENTS: return "implements";
         case TokenType::INTERFACE: return "interface";
