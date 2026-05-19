@@ -29,6 +29,7 @@ bool is_keyword(TokenType type) {
         case TokenType::PRIVATE:
         case TokenType::PROTECTED:
         case TokenType::ABSTRACT:
+        case TokenType::OVERRIDE:
         case TokenType::EXTENDS:
         case TokenType::IMPLEMENTS:
         case TokenType::INTERFACE:
@@ -339,6 +340,35 @@ bool is_parameter_reference(const std::vector<Token>& tokens, size_t index) {
     return false;
 }
 
+bool is_inheritance_type(const std::vector<Token>& tokens, size_t index) {
+    if (index == 0) {
+        return false;
+    }
+
+    if (tokens[index - 1].type == TokenType::EXTENDS ||
+        tokens[index - 1].type == TokenType::IMPLEMENTS) {
+        return true;
+    }
+
+    if (tokens[index - 1].type != TokenType::COMMA) {
+        return false;
+    }
+
+    for (size_t i = index; i > 0; --i) {
+        const TokenType type = tokens[i - 1].type;
+        if (type == TokenType::IMPLEMENTS || type == TokenType::EXTENDS) {
+            return true;
+        }
+        if (type == TokenType::CLASS || type == TokenType::INTERFACE ||
+            type == TokenType::ENUM || type == TokenType::DEF ||
+            type == TokenType::OBRACE || type == TokenType::SEMICOLON) {
+            return false;
+        }
+    }
+
+    return false;
+}
+
 } // namespace
 
 std::optional<SemanticToken> classify_token(const std::vector<Token>& tokens, size_t index) {
@@ -363,6 +393,8 @@ std::optional<SemanticToken> classify_token(const std::vector<Token>& tokens, si
         const Token* next = index + 1 < tokens.size() ? &tokens[index + 1] : nullptr;
 
         if (is_builtin_type(token.lexeme)) {
+            type = Type;
+        } else if (is_inheritance_type(tokens, index)) {
             type = Type;
         } else if (prev && (prev->type == TokenType::DEF || prev->type == TokenType::CLASS ||
                            prev->type == TokenType::INTERFACE || prev->type == TokenType::ENUM)) {
