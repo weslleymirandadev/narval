@@ -1,6 +1,7 @@
 #include "frontend/interactive/compilation_engine.hpp"
 #include "frontend/interactive/import_processor.hpp"
 #include "frontend/interactive/repl.hpp"
+#include "frontend/interactive/syntax_highlighter.hpp"
 #include "frontend/lexer/lexer.hpp"
 #include "frontend/lexer/lexer_error.hpp"
 #include "frontend/parser/parser.hpp"
@@ -134,7 +135,8 @@ bool CompilationEngine::compile_and_execute(const std::string& input, const std:
             }
             if (!stmts.empty()) {
                 Node* last = stmts.back().get();
-                if (dynamic_cast<ForStmtNode*>(last) || dynamic_cast<WhileStmtNode*>(last) ||
+                if (dynamic_cast<IfStatementNode*>(last) ||
+                    dynamic_cast<ForStmtNode*>(last) || dynamic_cast<WhileStmtNode*>(last) ||
                     dynamic_cast<ForeverStmtNode*>(last) || dynamic_cast<MatchStmtNode*>(last)) {
                     last_stmt_no_result = true;
                 }
@@ -219,7 +221,7 @@ bool CompilationEngine::compile_and_execute(const std::string& input, const std:
         }
 
         bool has_write_call = contains_write_call(ast.get());
-        return compile_expression(ast, defined_this_line, used_this_line, slot_names, single_write_call, has_write_call);
+        return compile_expression(ast, defined_this_line, used_this_line, slot_names, single_write_call, has_write_call || last_stmt_no_result);
     } catch (const LexicalError& e) {
         if (state->config && state->config->show_errors) {
             print_diagnostic(e.diagnostic(), input);
@@ -245,7 +247,8 @@ void CompilationEngine::print_diagnostic(const nv::Diagnostic& diagnostic, const
     size_t current_line = 1;
     while (std::getline(stream, line)) {
         if (current_line == diagnostic.line) {
-            std::cerr << " " << diagnostic.line << " |   " << line << "\n";
+            std::cerr << " " << diagnostic.line << " |   "
+                      << syntax_highlighter::highlight_line(line) << "\n";
             int line_width = diagnostic.line > 0
                 ? static_cast<int>(std::log10(static_cast<double>(diagnostic.line)) + 1)
                 : 1;
@@ -537,7 +540,7 @@ bool CompilationEngine::compile_expression(std::unique_ptr<Node>& ast,
             ((void(*)(Value*, Value**))addr)(&result_buffer, slot_ptrs.data());
         }
         
-        if (have_result && !single_write_call) {
+        if (have_result && !single_write_call && !contains_write_call) {
             if (state->config && !state->config->output_prompt.empty()) {
                 std::cout << state->config->output_prompt;
             }
