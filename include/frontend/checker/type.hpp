@@ -243,6 +243,7 @@ namespace nv {
         std::shared_ptr<Class> parent_class;
         std::shared_ptr<Type> parent_builtin_type;  // Para herança de tipos builtin
         bool is_builtin_derived = false;
+        bool is_abstract = false;
         std::unordered_map<std::string, std::shared_ptr<Type>> fields;
         std::unordered_map<std::string, std::shared_ptr<Type>> methods;
         std::unordered_map<std::string, std::string> method_access; // method_name -> "public"/"private"/"protected"
