@@ -19,6 +19,9 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 add_library(narval_project_includes INTERFACE)
 target_include_directories(narval_project_includes INTERFACE ${PROJECT_SOURCE_DIR}/include)
 
+add_library(frontend_utils src/frontend/syntax_highlighter.cpp)
+target_link_libraries(frontend_utils PUBLIC narval_project_includes)
+
 execute_process(COMMAND llvm-config --cxxflags OUTPUT_VARIABLE LLVM_CXX_FLAGS)
 execute_process(COMMAND llvm-config --libs OUTPUT_VARIABLE LLVM_LIBS)
 execute_process(COMMAND llvm-config --system-libs OUTPUT_VARIABLE LLVM_SYS_LIBS)
