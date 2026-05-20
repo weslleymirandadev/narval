@@ -5,6 +5,7 @@
 #include "frontend/ast/statements/module_attr_node.hpp"
 #include "frontend/ast/statements/attribute_stmt_node.hpp"
 #include "frontend/ast/statements/decorator_stmt_node.hpp"
+#include "frontend/ast/statements/inline_asm_stmt_node.hpp"
 #include <unordered_set>
 #include <string>
 #include "llvm/IR/LLVMContext.h"
@@ -16,6 +17,12 @@
 #include "llvm/Support/raw_ostream.h"
 
 namespace nv {
+
+// Força inclusão de generate_inline_asm_stmt.cpp.o pelo linker.
+// Sem isso o weak stub do checker "satisfaz" o símbolo e o strong codegen nunca é linkado.
+void _register_inline_asm_codegen_module();
+static void* _inline_asm_anchor __attribute__((used)) =
+    reinterpret_cast<void*>(&nv::_register_inline_asm_codegen_module);
 
 // Tracker global - será atualizado pelos arquivos de generate
 static FeatureTracker g_feature_tracker;
@@ -65,7 +72,11 @@ static void declare_runtime(IRGenerationContext& context) {
     const auto& tracker = get_feature_tracker();
     auto* F64 = llvm::Type::getDoubleTy(C);
 
-    // ── Núcleo sintático (sempre declarado) ──────────────────────────────────
+    // @[no_std]: não declarar NENHUM símbolo de runtime — objeto fica limpo,
+    // contém apenas o que o usuário definiu explicitamente.
+    if (tracker.no_std) return;
+
+    // ── Núcleo sintático (padrão, sem no_std) ────────────────────────────────
     // Criação de literais
     M.getOrInsertFunction("create_int",   llvm::FunctionType::get(VoidTy, {ValuePtr, I32}, false));
     M.getOrInsertFunction("create_char",  llvm::FunctionType::get(VoidTy, {ValuePtr, I8}, false));
@@ -86,9 +97,6 @@ static void declare_runtime(IRGenerationContext& context) {
     M.getOrInsertFunction("nv_extract_string_ptr",     llvm::FunctionType::get(I8Ptr, {ValuePtr}, false));
     // memset usado internamente pelo codegen
     M.getOrInsertFunction("memset", llvm::FunctionType::get(I8Ptr, {I8Ptr, I32, I64}, false));
-
-    // Com [no_std], apenas o núcleo acima entra no binário; tudo mais é cortado.
-    if (tracker.no_std) return;
 
     // ── Stdlib (disponível por padrão) ───────────────────────────────────────
     // Coleções
