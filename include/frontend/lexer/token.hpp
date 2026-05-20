@@ -104,6 +104,9 @@ enum class TokenType {
     EXTERN,
     FROM,
     AS,
+    // Assembly
+    ASM,
+    NAKED_ASM,
 };
 
 inline const char* get_token_name(TokenType type) {
@@ -208,6 +211,8 @@ inline const char* get_token_name(TokenType type) {
         case TokenType::DEFER: return "DEFER";
         case TokenType::EXTERN: return "EXTERN";
         case TokenType::FROM: return "FROM";
+        case TokenType::ASM: return "ASM";
+        case TokenType::NAKED_ASM: return "NAKED_ASM";
         default: return "UNKNOWN";
     }
 }
@@ -315,6 +320,8 @@ inline const char* get_token_display(TokenType type) {
         case TokenType::EXTERN: return "extern";
         case TokenType::FROM: return "from";
         case TokenType::AS: return "as";
+        case TokenType::ASM: return "asm";
+        case TokenType::NAKED_ASM: return "naked_asm";
         default: return "unknown token";
     }
 }
