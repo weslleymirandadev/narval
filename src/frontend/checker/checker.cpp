@@ -80,6 +80,7 @@ nv::Checker::Checker() {
     types["float"] = std::make_shared<nv::Float>();
     types["bool"] = std::make_shared<nv::Boolean>();
     types["void"] = std::make_shared<nv::Void>();
+    types["None"] = types["void"]; // None is the user-facing name for void
 
     // Tipos low-level para funções @[abi(...)] e blocos asm
     auto make_ll = [](const std::string& n, bool s, int b) {

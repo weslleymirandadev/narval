@@ -15,6 +15,12 @@ std::string parse_type(Parser* parser) {
 
     Token curr = parser->current_token();
 
+    // None como tipo de retorno (equivale a void)
+    if (curr.type == TokenType::NONE_KW) {
+        parser->consume_token();
+        return "void";
+    }
+
     // 1. Pode começar com: IDENTIFIER, OBRACKET, ou OPAREN
     if (curr.type == TokenType::IDENTIFIER) {
         Token base = parser->consume_token();

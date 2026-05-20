@@ -737,6 +737,7 @@ static llvm::Type* parse_type_recursive(const std::string& s, size_t& p, IRGener
     if (match("usize")) return llvm::Type::getInt64Ty(ctx.get_context());
     if (match("isize")) return llvm::Type::getInt64Ty(ctx.get_context());
     if (match("ptr"))   return llvm::PointerType::getUnqual(ctx.get_context());
+    if (match("None"))  return llvm::Type::getVoidTy(ctx.get_context());
 
     // --- Primitivos ---
     if (s.substr(p, 3) == "int") {
