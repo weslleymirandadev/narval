@@ -1,8 +1,8 @@
-#include "frontend/parser/statements/parse_locked_stmt.hpp"
+#include "frontend/parser/statements/parse_variable_stmt.hpp"
 #include "frontend/parser/expressions/parse_expr.hpp"
 #include "frontend/parser/expressions/parse_type.hpp"
 
-std::unique_ptr<Node> parse_locked_stmt(Parser* parser, bool lockd) {
+std::unique_ptr<Node> parse_variable_stmt(Parser* parser, bool is_mut) {
     auto nametoken = parser->expect(TokenType::IDENTIFIER, "Expected an identifier");
     
     size_t line = nametoken.line;
@@ -30,7 +30,7 @@ std::unique_ptr<Node> parse_locked_stmt(Parser* parser, bool lockd) {
             std::unique_ptr<Expr>(static_cast<Expr*>(name.release())),
             std::unique_ptr<Expr>(static_cast<Expr*>(value.release())),
             typ,
-            lockd
+            is_mut
         );
     if (value && value->position) {
         node->position = std::make_unique<PositionData>(value->position->line, col[0], value->position->col[1], pos[0], value->position->pos[1]);

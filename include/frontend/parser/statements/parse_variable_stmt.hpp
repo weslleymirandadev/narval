@@ -3,4 +3,4 @@
 #include "frontend/ast/ast.hpp"
 #include "frontend/parser/parser.hpp"
 
-std::unique_ptr<Node> parse_locked_stmt(Parser* parser, bool lockd);
+std::unique_ptr<Node> parse_variable_stmt(Parser* parser, bool is_mut);
