@@ -80,6 +80,26 @@ nv::Checker::Checker() {
     types["float"] = std::make_shared<nv::Float>();
     types["bool"] = std::make_shared<nv::Boolean>();
     types["void"] = std::make_shared<nv::Void>();
+
+    // Tipos low-level para funções @[abi(...)] e blocos asm
+    auto make_ll = [](const std::string& n, bool s, int b) {
+        return std::make_shared<nv::LowLevelType>(n, s, b);
+    };
+    types["i8"]    = make_ll("i8",    true,  8);
+    types["i16"]   = make_ll("i16",   true,  16);
+    types["i32"]   = make_ll("i32",   true,  32);
+    types["i64"]   = make_ll("i64",   true,  64);
+    types["i128"]  = make_ll("i128",  true,  128);
+    types["u8"]    = make_ll("u8",    false, 8);
+    types["u16"]   = make_ll("u16",   false, 16);
+    types["u32"]   = make_ll("u32",   false, 32);
+    types["u64"]   = make_ll("u64",   false, 64);
+    types["u128"]  = make_ll("u128",  false, 128);
+    types["f32"]   = make_ll("f32",   true,  32);
+    types["f64"]   = make_ll("f64",   true,  64);
+    types["usize"] = make_ll("usize", false, 64);
+    types["isize"] = make_ll("isize", true,  64);
+    types["ptr"]   = make_ll("ptr",   false, 0);
     // Tipo function genérico (params desconhecidos, retorno desconhecido)
     types["function"] = std::make_shared<nv::Function>(
         std::vector<std::shared_ptr<nv::Type>>{}, 
@@ -396,7 +416,7 @@ void nv::Checker::note_at(const std::string& filename, size_t line,
 }
 
 void nv::Checker::no_std_error(Node* use_node, const std::string& feature_name) {
-    error(use_node, "'" + feature_name + "' not available with [no_std].");
+    error(use_node, "'" + feature_name + "' not available with @[no_std].");
     if (no_std_attr_node && no_std_attr_node->position) {
         auto* pos = no_std_attr_node->position.get();
         const std::string& fn = pos->filename.empty() ? current_filename : pos->filename;
