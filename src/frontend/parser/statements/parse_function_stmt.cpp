@@ -17,7 +17,7 @@ std::unique_ptr<Node> parse_function_stmt(Parser* parser) {
     auto function_node = std::make_unique<FunctionStmtNode>(
         function_name.lexeme,
         std::vector<ParamNode>{},
-        "void",
+        "None",
         std::vector<std::unique_ptr<Stmt>>{}
     );
 

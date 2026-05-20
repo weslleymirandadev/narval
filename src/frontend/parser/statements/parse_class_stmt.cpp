@@ -159,7 +159,7 @@ std::unique_ptr<Node> parse_class_stmt(Parser* parser) {
                 parser->expect(TokenType::CPAREN, "Expected ')' after parameters");
 
                 // Tipo de retorno opcional: ): tipo {
-                std::string return_type = "void";
+                std::string return_type = "None";
                 if (parser->current_token().type == TokenType::COLON) {
                     parser->consume_token();
                     return_type = parse_type(parser);

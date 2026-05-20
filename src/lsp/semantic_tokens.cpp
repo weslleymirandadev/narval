@@ -111,7 +111,7 @@ bool is_operator(TokenType type) {
 
 bool is_builtin_type(const std::string& text) {
     return text == "int"   || text == "float"  || text == "str"   || text == "bool" ||
-           text == "void"  || text == "vector" || text == "map"   || text == "tuple" ||
+           text == "vector" || text == "map"   || text == "tuple" ||
            text == "array" || text == "Error"  ||
            // low-level types for @[abi] functions and asm blocks
            text == "i8"    || text == "i16"    || text == "i32"   || text == "i64"  ||

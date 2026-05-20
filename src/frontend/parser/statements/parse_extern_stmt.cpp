@@ -59,7 +59,7 @@ std::unique_ptr<Node> parse_extern_stmt(Parser* parser) {
         }
         parser->expect(TokenType::CPAREN, "Expected ')' after extern parameters");
 
-        std::string ret_type = "void";
+        std::string ret_type = "None";
         if (parser->current_token().type == TokenType::COLON) {
             parser->consume_token();
             ret_type = parse_type(parser);

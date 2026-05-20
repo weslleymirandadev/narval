@@ -37,7 +37,7 @@ const std::unordered_set<std::string> STORAGE_WORDS = {
 };
 
 const std::unordered_set<std::string> BUILTIN_TYPES = {
-    "int", "str", "char", "float", "bool", "void"
+    "int", "str", "char", "float", "bool"
 };
 
 const std::unordered_set<std::string> BUILTIN_FUNCTIONS = {

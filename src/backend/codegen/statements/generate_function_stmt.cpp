@@ -76,7 +76,7 @@ void FunctionStmtNode::codegen(nv::IRGenerationContext& ctx) {
                 catch (...) { return false; }
             }());
             if (!is_ll_type && (composite_types.count(kv.second) ||
-                (param_ty && (param_ty->isVoidTy() || param_ty->isPointerTy()) && kv.second != "void"))) {
+                (param_ty && (param_ty->isVoidTy() || param_ty->isPointerTy()) && kv.second != "void" && kv.second != "None"))) {
                 param_ty = nv::ir_utils::get_value_struct(ctx);
             }
             param_types.push_back(param_ty);
@@ -98,7 +98,7 @@ void FunctionStmtNode::codegen(nv::IRGenerationContext& ctx) {
         try { return checker->gettyptr(return_type)->kind == nv::Kind::LOW_LEVEL; }
         catch (...) { return false; }
     }());
-    if (!ret_is_ll && ret_ty && ret_ty->isVoidTy() && return_type != "void") {
+    if (!ret_is_ll && ret_ty && ret_ty->isVoidTy() && return_type != "void" && return_type != "None") {
         ret_ty = nv::ir_utils::get_value_struct(ctx);
     }
     // Funções falíveis sempre retornam Value (que contém Result::Ok ou Result::Err)

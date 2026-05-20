@@ -61,7 +61,7 @@ std::unique_ptr<Node> parse_interface_stmt(Parser* parser) {
         }
         parser->expect(TokenType::CPAREN, "Expected ')' after parameters");
 
-        sig.return_type = "void";
+        sig.return_type = "None";
         if (parser->current_token().type == TokenType::COLON) {
             parser->consume_token();
             sig.return_type = parse_type(parser);

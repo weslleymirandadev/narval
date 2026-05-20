@@ -83,7 +83,7 @@ std::unique_ptr<Node> parse_stmt(Parser* parser) {
             parser->expect(TokenType::CBRACE, "Expected '}'");
 
             auto fn = std::make_unique<FunctionStmtNode>(
-                fn_name, std::vector<ParamNode>{}, "void",
+                fn_name, std::vector<ParamNode>{}, "None",
                 std::vector<std::unique_ptr<Stmt>>{});
             fn->is_naked_asm  = true;
             fn->naked_asm_body = asm_body;

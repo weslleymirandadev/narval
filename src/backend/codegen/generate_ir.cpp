@@ -255,7 +255,7 @@ void generate_ir(
                         };
                         if (composite.count(kv.second) ||
                             !param_ty || param_ty->isVoidTy() ||
-                            (param_ty->isPointerTy() && kv.second != "str" && kv.second != "void")) {
+                            (param_ty->isPointerTy() && kv.second != "str" && kv.second != "void" && kv.second != "None")) {
                             param_ty = nv::ir_utils::get_value_struct(context);
                         }
                     }

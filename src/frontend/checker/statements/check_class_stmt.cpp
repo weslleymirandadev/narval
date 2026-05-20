@@ -124,7 +124,7 @@ namespace nv {
                     }
                 }
                 if (!function->return_type.empty() && function->return_type != "void" &&
-                    function->return_type != "automatic") {
+                    function->return_type != "None" && function->return_type != "automatic") {
                     ret_type = checker->gettyptr(function->return_type);
                 }
             }
