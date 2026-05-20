@@ -76,6 +76,25 @@ namespace nv {
             // Unificar tipos compostos
             if (t1->kind == t2->kind) {
                 switch (t1->kind) {
+                    case Kind::OPTION: {
+                        auto o1 = std::static_pointer_cast<Option>(t1);
+                        auto o2 = std::static_pointer_cast<Option>(t2);
+                        unify(o1->element_type, o2->element_type);
+                        return;
+                    }
+                    case Kind::RESULT: {
+                        auto r1 = std::static_pointer_cast<Result>(t1);
+                        auto r2 = std::static_pointer_cast<Result>(t2);
+                        unify(r1->ok_type, r2->ok_type);
+                        unify(r1->err_type, r2->err_type);
+                        return;
+                    }
+                    case Kind::FUTURE: {
+                        auto f1 = std::static_pointer_cast<Future>(t1);
+                        auto f2 = std::static_pointer_cast<Future>(t2);
+                        unify(f1->element_type, f2->element_type);
+                        return;
+                    }
                     case Kind::ARRAY: {
                         auto a1 = std::static_pointer_cast<Array>(t1);
                         auto a2 = std::static_pointer_cast<Array>(t2);
@@ -152,6 +171,18 @@ namespace nv {
             
             // Verificar recursivamente em tipos compostos
             switch (t->kind) {
+                case Kind::OPTION: {
+                    auto o = std::static_pointer_cast<Option>(t);
+                    return occurs_in(var, o->element_type);
+                }
+                case Kind::RESULT: {
+                    auto r = std::static_pointer_cast<Result>(t);
+                    return occurs_in(var, r->ok_type) || occurs_in(var, r->err_type);
+                }
+                case Kind::FUTURE: {
+                    auto f = std::static_pointer_cast<Future>(t);
+                    return occurs_in(var, f->element_type);
+                }
                 case Kind::ARRAY: {
                     auto a = std::static_pointer_cast<Array>(t);
                     return occurs_in(var, a->element_type);

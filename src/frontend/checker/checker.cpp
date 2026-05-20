@@ -210,6 +210,15 @@ std::shared_ptr<nv::Type>& nv::Checker::gettyptr(std::string ty){
         }
     }
     
+    // Future<T>
+    if (ty.size() > 8 && ty.substr(0, 7) == "Future<" && ty.back() == '>') {
+        std::string inner = ty.substr(7, ty.size() - 8);
+        auto& elem = gettyptr(inner);
+        auto fut = std::make_shared<nv::Future>(elem);
+        types[ty] = fut;
+        return types[ty];
+    }
+
     // Tipo função: |param1: type1, param2: type2|: return_type
     if (nv::is_function_type(ty)) {
         try {

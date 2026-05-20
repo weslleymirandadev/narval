@@ -45,7 +45,9 @@ void FunctionStmtNode::codegen(nv::IRGenerationContext& ctx) {
     llvm::BasicBlock* prev_insert_block = ctx.get_builder().GetInsertBlock();
     llvm::DIScope* prev_scope = ctx.get_debug_scope();
     bool prev_fallible = ctx.is_current_function_fallible();
+    bool prev_async = ctx.is_current_function_async();
     ctx.set_current_function_fallible(is_fallible);
+    ctx.set_current_function_async(is_async);
 
     std::vector<llvm::Type*> param_types;
     std::vector<std::string> param_names;
@@ -102,7 +104,7 @@ void FunctionStmtNode::codegen(nv::IRGenerationContext& ctx) {
         ret_ty = nv::ir_utils::get_value_struct(ctx);
     }
     // Funções falíveis sempre retornam Value (que contém Result::Ok ou Result::Err)
-    if (is_fallible) {
+    if (is_fallible || is_async) {
         ret_ty = nv::ir_utils::get_value_struct(ctx);
     }
     auto* fn_ty = llvm::FunctionType::get(ret_ty, param_types, false);
@@ -211,6 +213,7 @@ void FunctionStmtNode::codegen(nv::IRGenerationContext& ctx) {
 
     // Restore previous codegen state so following nodes are emitted into the original function/scope
     ctx.set_current_function_fallible(prev_fallible);
+    ctx.set_current_function_async(prev_async);
     ctx.set_current_function(prev_func);
     if (prev_insert_block) {
         ctx.get_builder().SetInsertPoint(prev_insert_block);

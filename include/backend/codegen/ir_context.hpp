@@ -273,6 +273,7 @@ private:
 
     // Quando true, a função atual é "falível" (inferida pelo checker via presença de `propagate`).
     bool current_function_fallible = false;
+    bool current_function_async = false;
 
     // Itens extras para o linker gerados durante codegen (ex: bridge .o do Python).
     std::vector<std::string> extra_link_items;
@@ -468,6 +469,8 @@ public:
     // Fallible function context
     void set_current_function_fallible(bool v) { current_function_fallible = v; }
     bool is_current_function_fallible() const { return current_function_fallible; }
+    void set_current_function_async(bool v) { current_function_async = v; }
+    bool is_current_function_async() const { return current_function_async; }
 
     // Extra link items (bridge objects generated at codegen time)
     void add_extra_link_item(const std::string& item) { extra_link_items.push_back(item); }

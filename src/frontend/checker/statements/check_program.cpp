@@ -263,6 +263,9 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
             } else {
                 return_type = ch->gettyptr(function_stmt->return_type);
             }
+            if (function_stmt->is_async && return_type->kind != nv::Kind::FUTURE) {
+                return_type = std::make_shared<nv::Future>(return_type);
+            }
             
             auto func_type = std::make_shared<nv::Function>(param_types, return_type);
             

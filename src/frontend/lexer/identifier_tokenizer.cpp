@@ -59,6 +59,8 @@ Token tokenize_identifier_or_keyword(const std::string& input, size_t& pos, size
     else if (value == "as") type = TokenType::AS;
     else if (value == "asm") type = TokenType::ASM;
     else if (value == "naked_asm") type = TokenType::NAKED_ASM;
+    else if (value == "async") type = TokenType::ASYNC;
+    else if (value == "await") type = TokenType::AWAIT;
 
     return Token(type, value, line, start_column, column, start_position, pos, filename);
 }

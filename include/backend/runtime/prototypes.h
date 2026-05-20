@@ -82,6 +82,7 @@ typedef struct NvTypeObject {
 // Tipos de função
 #define NV_CLOSURE_BASE     25
 #define NV_CHAR_BASE        26
+#define NV_FUTURE_BASE      27
 
 // Estrutura Value simplificada - agora é apenas um wrapper para NvObject
 typedef struct {
@@ -236,11 +237,13 @@ typedef struct { NvObject_HEAD; }        NVOptionNone;
 typedef struct { NvObject_HEAD; Value inner; } NVOptionSome;
 typedef struct { NvObject_HEAD; Value inner; } NVResultOk;
 typedef struct { NvObject_HEAD; Value inner; } NVResultErr;
+typedef struct { NvObject_HEAD; struct NvFiber* fiber; Value resolved; int is_resolved; } NVFuture;
 
 extern NvTypeObject* NVOptionNone_Type;
 extern NvTypeObject* NVOptionSome_Type;
 extern NvTypeObject* NVResultOk_Type;
 extern NvTypeObject* NVResultErr_Type;
+extern NvTypeObject* NVFuture_Type;
 
 // Estrutura para definição de tipos dinâmicos (equivalente a criar classes)
 typedef struct TypeSpec {

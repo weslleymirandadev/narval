@@ -27,6 +27,7 @@ namespace nv {
         ENUM,
         OPTION,
         RESULT,
+        FUTURE,
         TYPE_VAR,
         POLY_TYPE,
         ERROR,
@@ -450,6 +451,25 @@ namespace nv {
         }
         std::shared_ptr<Type> substitute(const std::unordered_map<int, std::shared_ptr<Type>>& s) const override {
             return std::make_shared<Result>(ok_type->substitute(s), err_type->substitute(s));
+        }
+    };
+
+    struct Future : public Type {
+        std::shared_ptr<Type> element_type;
+
+        Future(std::shared_ptr<Type> elem) : Type(Kind::FUTURE), element_type(std::move(elem)) {}
+
+        std::string toString() override {
+            return "Future<" + element_type->toString() + ">";
+        }
+        bool equals(const Type& other) const override {
+            if (other.kind != Kind::FUTURE) return false;
+            return element_type->equals(*static_cast<const Future*>(&other)->element_type);
+        }
+        bool equals(std::shared_ptr<Type>& other) const override { return equals(*other); }
+        void collect_free_vars(std::unordered_set<int>& fv) const override { element_type->collect_free_vars(fv); }
+        std::shared_ptr<Type> substitute(const std::unordered_map<int, std::shared_ptr<Type>>& s) const override {
+            return std::make_shared<Future>(element_type->substitute(s));
         }
     };
 

@@ -34,6 +34,8 @@ void create_option_some(Value* out, Value* val);
 void create_option_none(Value* out);
 void create_result_ok(Value* out, Value* val);
 void create_result_err(Value* out, Value* err);
+void create_future_resolved(Value* out, Value* val);
+void nv_await(Value* out, Value* future);
 int  nv_is_failure(const Value* val);
 void nv_unwrap_inner(Value* out, const Value* val);
 void nv_get_failure_err(Value* out, const Value* val);

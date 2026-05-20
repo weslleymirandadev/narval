@@ -95,6 +95,18 @@ std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
     } else {
         return_type = ch->gettyptr(function_stmt->return_type);
     }
+
+    auto body_return_type = return_type;
+    auto exposed_return_type = return_type;
+    if (function_stmt->is_async) {
+        if (return_type && return_type->kind == nv::Kind::FUTURE) {
+            auto future = std::static_pointer_cast<nv::Future>(return_type);
+            body_return_type = future->element_type;
+            exposed_return_type = return_type;
+        } else {
+            exposed_return_type = std::make_shared<nv::Future>(return_type);
+        }
+    }
     
     // Inferência de fallibilidade: detectar propagate antes de checar o corpo.
     // Quando falível, o checker não força correspondência do tipo de retorno declarado
@@ -105,7 +117,7 @@ std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
     // Salvar tipo de retorno atual e restaurar após verificar corpo
     auto saved_return_type = ch->current_return_type;
     bool saved_fallible = ch->in_fallible_function;
-    ch->current_return_type = return_type;
+    ch->current_return_type = body_return_type;
     ch->in_fallible_function = is_fallible;
 
     
@@ -169,7 +181,7 @@ std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
     
     // Criar função type (PolyType para suportar polimorfismo)
     auto free_vars = ch->get_free_vars_in_env();
-    auto generalized_return = ch->unify_ctx.generalize(return_type, free_vars);
+    auto generalized_return = ch->unify_ctx.generalize(exposed_return_type, free_vars);
     
     auto func_type = std::make_shared<nv::Function>(param_types, generalized_return);
     

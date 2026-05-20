@@ -34,6 +34,7 @@ int32_t get_value_type(const Value* v) {
     if (type == NVOptionSome_Type) return NV_OPTION_SOME_BASE;
     if (type == NVResultOk_Type)   return NV_RESULT_OK_BASE;
     if (type == NVResultErr_Type)  return NV_RESULT_ERR_BASE;
+    if (type == NVFuture_Type)     return NV_FUTURE_BASE;
 
     return NV_ANY_BASE;
 }

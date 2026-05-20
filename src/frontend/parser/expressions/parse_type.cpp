@@ -30,6 +30,32 @@ std::string parse_type(Parser* parser) {
             return "void"; // recover
         }
 
+        // Option<T>
+        if (type_str == "Option") {
+            parser->expect(TokenType::LT, "Expected '<' after Option");
+            std::string inner = parse_type(parser);
+            parser->expect(TokenType::GT, "Expected '>' after Option type");
+            return "Option<" + inner + ">";
+        }
+
+        // Result<T, E>
+        if (type_str == "Result") {
+            parser->expect(TokenType::LT, "Expected '<' after Result");
+            std::string ok_t = parse_type(parser);
+            parser->expect(TokenType::COMMA, "Expected ',' in Result<T, E>");
+            std::string err_t = parse_type(parser);
+            parser->expect(TokenType::GT, "Expected '>' after Result types");
+            return "Result<" + ok_t + ", " + err_t + ">";
+        }
+
+        // Future<T>
+        if (type_str == "Future") {
+            parser->expect(TokenType::LT, "Expected '<' after Future");
+            std::string inner = parse_type(parser);
+            parser->expect(TokenType::GT, "Expected '>' after Future type");
+            return "Future<" + inner + ">";
+        }
+
         // 2. Generics: map<K,V>
         if (type_str == "map") {
             parser->expect(TokenType::LT, "Expected '<' after map.");

@@ -291,12 +291,12 @@ void nv_collection_slice(Value* out, Value* self, int32_t start, int32_t stop, i
 // Função de escrita principal
 void nv_write(Value* v) {
     if (!v) {
-        printf("null\n");
+        printf("None\n");
         return;
     }
 
     if ((uintptr_t)v < 0x1000) {
-        printf("null\n");
+        printf("None\n");
         return;
     }
     
@@ -304,13 +304,13 @@ void nv_write(Value* v) {
     NvObject* obj = v->obj;
     
     if (!obj) {
-        printf("null\n");
+        printf("None\n");
         return;
     }
     
     // Verificar se ob_type é válido
     if ((uintptr_t)obj < 0x1000) {
-        printf("null");
+        printf("None");
         return;
     }
     
@@ -377,7 +377,7 @@ void nv_write(Value* v) {
 
 // nv_write_no_nl: igual a nv_write mas sem '\n' (usado como prompt em read())
 void nv_write_no_nl(Value* v) {
-    if (!v || !v->obj) { printf("null"); return; }
+    if (!v || !v->obj) { printf("None"); return; }
     NvTypeObject* type = v->obj->ob_type;
     if (!type) { printf("<unknown>"); return; }
     if (type == NVStr_Type) {

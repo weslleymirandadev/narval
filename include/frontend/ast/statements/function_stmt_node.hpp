@@ -23,6 +23,9 @@ public:
     bool is_naked_asm = false;
     std::string naked_asm_body;
 
+    // async def NAME — body runs in a fiber, returns Future<T>
+    bool is_async = false;
+
     FunctionStmtNode(
         std::string function_name,
         std::vector<ParamNode> parameters,
@@ -49,6 +52,7 @@ public:
         node->is_low_level  = is_low_level;
         node->is_naked_asm  = is_naked_asm;
         node->naked_asm_body = naked_asm_body;
+        node->is_async      = is_async;
         if (position) {
             node->position = std::make_unique<PositionData>(*position);
         }

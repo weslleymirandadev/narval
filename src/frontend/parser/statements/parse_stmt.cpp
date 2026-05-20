@@ -1,6 +1,6 @@
+#include "frontend/parser/expressions/parse_expr.hpp"
 #include "frontend/parser/statements/parse_stmt.hpp"
 #include "frontend/parser/statements/parse_function_stmt.hpp"
-#include "frontend/parser/expressions/parse_expr.hpp"
 #include "frontend/parser/statements/parse_if_stmt.hpp"
 #include "frontend/parser/statements/parse_return_stmt.hpp"
 #include "frontend/parser/statements/parse_break_stmt.hpp"
@@ -16,6 +16,8 @@
 #include "frontend/parser/statements/parse_throw_stmt.hpp"
 #include "frontend/parser/statements/parse_enum_stmt.hpp"
 #include "frontend/parser/statements/parse_defer_error_stmt.hpp"
+#include "frontend/parser/statements/parse_defer_stmt.hpp"
+#include "frontend/ast/statements/function_stmt_node.hpp"
 #include "frontend/parser/statements/parse_extern_stmt.hpp"
 #include "frontend/parser/statements/parse_extern_from_import_stmt.hpp"
 #include "frontend/parser/statements/parse_import_stmt.hpp"
@@ -60,6 +62,19 @@ std::unique_ptr<Node> parse_stmt(Parser* parser) {
         case TokenType::INTERFACE: return parse_interface_stmt(parser);
         case TokenType::ENUM: return parse_enum_stmt(parser);
         case TokenType::DEF: return parse_function_stmt(parser);
+        case TokenType::ASYNC: {
+            // `async def name(...)` — parse function, set is_async = true
+            parser->consume_token(); // consume 'async'
+            if (parser->current_token().type != TokenType::DEF) {
+                parser->error("Expected 'def' after 'async'");
+                return nullptr;
+            }
+            auto fn_node = parse_function_stmt(parser);
+            if (fn_node && fn_node->kind == NodeType::FunctionStatement) {
+                static_cast<FunctionStmtNode*>(fn_node.get())->is_async = true;
+            }
+            return fn_node;
+        }
         case TokenType::ASM: return parse_inline_asm_stmt(parser);
         case TokenType::NAKED_ASM: {
             // naked_asm def NAME: asm { return `body`; }
@@ -102,7 +117,14 @@ std::unique_ptr<Node> parse_stmt(Parser* parser) {
         case TokenType::MATCH: return parse_match_stmt(parser);
         case TokenType::TRY: return parse_try_stmt(parser);
         case TokenType::THROW: return parse_throw_stmt(parser);
-        case TokenType::DEFER: return parse_defer_error_stmt(parser);
+        case TokenType::DEFER: {
+            // `defer error {` → defer error
+            // `defer {` ou `defer stmt;` → defer geral
+            auto nxt = parser->next_token();
+            if (nxt.type == TokenType::IDENTIFIER && nxt.lexeme == "error")
+                return parse_defer_error_stmt(parser);
+            return parse_defer_stmt(parser);
+        }
         case TokenType::EXTERN: return parse_extern_stmt(parser);
         case TokenType::FROM:
             if (parser->next_token().type == TokenType::EXTERN)

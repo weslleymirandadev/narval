@@ -8,6 +8,7 @@
 #include "frontend/parser/expressions/parse_self_super.hpp"
 #include "frontend/parser/expressions/parse_instanceof_expr.hpp"
 #include "frontend/parser/expressions/parse_closure_expr.hpp"
+#include "frontend/parser/expressions/parse_await_expr.hpp"
 #include "frontend/ast/expressions/binary_expr_node.hpp"
 #include "frontend/ast/expressions/char_literal_node.hpp"
 #include <cctype>
@@ -237,6 +238,9 @@ std::unique_ptr<Node> parse_primary_expr(Parser* parser) {
         case TokenType::FALSE:
             expr = parse_boolean_literal(parser);
             break;
+        case TokenType::AWAIT: {
+            return parse_await_expr(parser);
+        }
         case TokenType::BITWISE_OR:
         case TokenType::OR: {
             // Closure expression

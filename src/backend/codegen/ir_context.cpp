@@ -95,6 +95,13 @@ std::shared_ptr<Type> IRGenerationContext::resolve_type(std::shared_ptr<Type> nv
             }
             return nv_type;
         }
+        case Kind::FUTURE: {
+            auto future_type = std::static_pointer_cast<Future>(nv_type);
+            if (future_type && future_type->element_type) {
+                return std::make_shared<Future>(resolve_type(future_type->element_type));
+            }
+            return nv_type;
+        }
         default:
             // Tipos básicos não precisam resolução
             return nv_type;
@@ -183,6 +190,11 @@ llvm::Type* IRGenerationContext::nv_type_to_llvm(std::shared_ptr<Type> nv_type) 
             }
             return llvm::Type::getVoidTy(llvm_context); // fallback
         }
+
+        case Kind::OPTION:
+        case Kind::RESULT:
+        case Kind::FUTURE:
+            return ir_utils::get_value_struct(*this);
 
         case Kind::LOW_LEVEL: {
             auto* ll = static_cast<nv::LowLevelType*>(nv_type.get());

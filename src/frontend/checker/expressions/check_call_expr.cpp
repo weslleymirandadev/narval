@@ -49,6 +49,7 @@ namespace {
 }
 
 std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
+    static thread_local std::shared_ptr<nv::Type> temp_result;
     const auto* call = static_cast<CallExprNode*>(node);
 
     // Tratamento especial para chamadas de método: obj.method(args)
@@ -202,6 +203,32 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
     }
 
     // Verificar o caller (função sendo chamada) usando infer_expr
+    if (call->caller->kind == NodeType::Identifier) {
+        auto* id = static_cast<IdentifierNode*>(call->caller.get());
+        const std::string& name = id->symbol;
+        if (name == "Some" || name == "Ok" || name == "Err") {
+            if (call->args.size() != 1 || !call->args[0]->value) {
+                ch->error(const_cast<Node*>(node),
+                          "'" + name + "' expects exactly one argument");
+                return ch->gettyptr("void");
+            }
+            auto inner_type = ch->infer_expr(call->args[0]->value.get());
+            inner_type = ch->unify_ctx.resolve(inner_type);
+            if (name == "Some") {
+                temp_result = std::make_shared<nv::Option>(inner_type);
+            } else if (name == "Ok") {
+                temp_result = std::make_shared<nv::Result>(
+                    inner_type,
+                    ch->unify_ctx.new_type_var());
+            } else {
+                temp_result = std::make_shared<nv::Result>(
+                    ch->unify_ctx.new_type_var(),
+                    inner_type);
+            }
+            return temp_result;
+        }
+    }
+
     auto func_type = ch->infer_expr(call->caller.get());
     bool caller_has_error = ch->err;
     

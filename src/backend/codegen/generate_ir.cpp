@@ -112,6 +112,8 @@ static void declare_runtime(IRGenerationContext& context) {
     M.getOrInsertFunction("nv_is_failure",      llvm::FunctionType::get(I32,    {ValuePtr}, false));
     M.getOrInsertFunction("nv_unwrap_inner",    llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
     M.getOrInsertFunction("nv_get_failure_err", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
+    M.getOrInsertFunction("create_future_resolved", llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
+    M.getOrInsertFunction("nv_await",               llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
     // Conversões de tipo (str(), int(), float(), bool())
     M.getOrInsertFunction("nv_str_convert",   llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
     M.getOrInsertFunction("nv_int_convert",   llvm::FunctionType::get(VoidTy, {ValuePtr, ValuePtr}, false));
@@ -278,7 +280,7 @@ void generate_ir(
                 ret_ty = llvm::Type::getVoidTy(context.get_context());
             }
             // Funções falíveis retornam Value (Result::Ok ou Result::Err)
-            if (def_stmt->is_fallible) {
+            if (def_stmt->is_fallible || def_stmt->is_async) {
                 ret_ty = nv::ir_utils::get_value_struct(context);
             }
             auto* fn_ty = llvm::FunctionType::get(ret_ty, param_types, false);
