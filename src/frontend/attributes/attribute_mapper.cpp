@@ -83,4 +83,18 @@ bool program_has_function(Node* node, const std::string& name) {
     return false;
 }
 
+std::string program_naked_asm_entry(Node* node) {
+    if (!node || node->kind != NodeType::Program) return "";
+    auto* program = static_cast<Program*>(node);
+    std::string found;
+    for (const auto& stmt : program->body) {
+        if (!stmt || stmt->kind != NodeType::FunctionStatement) continue;
+        auto* fn = static_cast<FunctionStmtNode*>(stmt.get());
+        if (!fn->is_naked_asm) continue;
+        if (fn->name == "_start") return "_start";
+        if (fn->name == "main" && found.empty()) found = "main";
+    }
+    return found;
+}
+
 } // namespace nv
