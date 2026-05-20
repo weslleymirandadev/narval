@@ -712,8 +712,34 @@ llvm::Type* llvm_type_from_string(IRGenerationContext& ctx, const std::string& r
 static llvm::Type* parse_type_recursive(const std::string& s, size_t& p, IRGenerationContext& ctx) {
     if (p >= s.size()) return nullptr;
 
+    // --- Tipos low-level (verificar antes dos primitivos para evitar conflito de prefixo) ---
+    auto match = [&](const char* name) -> bool {
+        size_t len = std::strlen(name);
+        if (s.size() - p < len) return false;
+        if (s.substr(p, len) != name) return false;
+        // Garantir que não é prefixo de outro identificador
+        if (p + len < s.size() && (std::isalnum(s[p + len]) || s[p + len] == '_')) return false;
+        p += len;
+        return true;
+    };
+    if (match("i128"))  return llvm::Type::getInt128Ty(ctx.get_context());
+    if (match("u128"))  return llvm::Type::getInt128Ty(ctx.get_context());
+    if (match("i8"))    return llvm::Type::getInt8Ty(ctx.get_context());
+    if (match("i16"))   return llvm::Type::getInt16Ty(ctx.get_context());
+    if (match("i32"))   return llvm::Type::getInt32Ty(ctx.get_context());
+    if (match("i64"))   return llvm::Type::getInt64Ty(ctx.get_context());
+    if (match("u8"))    return llvm::Type::getInt8Ty(ctx.get_context());
+    if (match("u16"))   return llvm::Type::getInt16Ty(ctx.get_context());
+    if (match("u32"))   return llvm::Type::getInt32Ty(ctx.get_context());
+    if (match("u64"))   return llvm::Type::getInt64Ty(ctx.get_context());
+    if (match("f32"))   return llvm::Type::getFloatTy(ctx.get_context());
+    if (match("f64"))   return llvm::Type::getDoubleTy(ctx.get_context());
+    if (match("usize")) return llvm::Type::getInt64Ty(ctx.get_context());
+    if (match("isize")) return llvm::Type::getInt64Ty(ctx.get_context());
+    if (match("ptr"))   return llvm::PointerType::getUnqual(ctx.get_context());
+
     // --- Primitivos ---
-    if (s.substr(p, 3) == "int") { 
+    if (s.substr(p, 3) == "int") {
         p += 3;
         // Verificar se é array: int[10]
         if (p < s.size() && s[p] == '[') {
