@@ -404,14 +404,17 @@ std::optional<SemanticToken> classify_token(const std::vector<Token>& tokens, si
         const Token* next = index + 1 < tokens.size() ? &tokens[index + 1] : nullptr;
 
         // Contextual asm section markers: input, output, reg
-        // Not reserved keywords — get Macro type for distinct color
+        // Not reserved keywords — get Macro type for distinct color.
+        // Scan back up to 60 tokens without breaking on ';' or '}' since those
+        // are just statement/block terminators within the asm construct.
         auto is_asm_contextual = [&]() {
             if (token.lexeme != "input" && token.lexeme != "output" && token.lexeme != "reg")
                 return false;
-            for (int k = (int)index - 1; k >= 0 && k >= (int)index - 30; k--) {
+            for (int k = (int)index - 1; k >= 0 && k >= (int)index - 60; k--) {
                 if (tokens[k].type == TokenType::ASM || tokens[k].type == TokenType::NAKED_ASM)
                     return true;
-                if (tokens[k].type == TokenType::SEMICOLON)
+                // Only hard-stop at statement boundaries that can't be inside an asm block
+                if (tokens[k].type == TokenType::DEF || tokens[k].type == TokenType::CLASS)
                     break;
             }
             return false;

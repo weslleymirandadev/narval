@@ -49,6 +49,11 @@ target_include_directories(narval_lsp_core PUBLIC
     ${NARVAL_NLOHMANN_JSON_INCLUDE_DIR}
 )
 target_link_libraries(narval_lsp_core PUBLIC narval_project_includes lexer parser checker)
+# O LSP não precisa de debug info — -g0 sobrescreve o -g do CMAKE_BUILD_TYPE=Debug.
+# Isso evita que o binário cresça 30 MB com .debug_* sections desnecessárias.
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(narval_lsp_core PRIVATE -g0 -O2)
+endif()
 
 function(narval_add_lsp_target target_name)
     add_executable(${target_name}
@@ -63,6 +68,15 @@ function(narval_add_lsp_target target_name)
         target_link_options(${target_name} PRIVATE -W -fPIE)
     endif()
     target_link_libraries(${target_name} PRIVATE narval_lsp_core)
+    # Strip debug symbols from final LSP binary — lexer/parser/checker also carry
+    # -g info when built in Debug mode, and strip is the only reliable way to
+    # clean all of it from the linked executable.
+    if(CMAKE_STRIP AND NOT WIN32)
+        add_custom_command(TARGET ${target_name} POST_BUILD
+            COMMAND ${CMAKE_STRIP} --strip-debug $<TARGET_FILE:${target_name}>
+            COMMENT "Stripping debug symbols from ${target_name}"
+        )
+    endif()
 endfunction()
 
 if(NARVAL_BUILD_LSP)
