@@ -25,6 +25,10 @@ std::string parse_type(Parser* parser) {
     if (curr.type == TokenType::IDENTIFIER) {
         Token base = parser->consume_token();
         type_str = base.lexeme;
+        if (type_str == "void") {
+            parser->error("'void' is not a valid type — use 'None'");
+            return "void"; // recover
+        }
 
         // 2. Generics: map<K,V>
         if (type_str == "map") {
