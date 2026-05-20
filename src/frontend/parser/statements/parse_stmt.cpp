@@ -21,17 +21,38 @@
 #include "frontend/parser/statements/parse_import_stmt.hpp"
 #include "frontend/parser/statements/parse_attribute_stmt.hpp"
 #include "frontend/parser/statements/parse_decorator_stmt.hpp"
+#include "frontend/parser/statements/parse_inline_asm_stmt.hpp"
+#include "frontend/ast/statements/attribute_stmt_node.hpp"
+#include "frontend/ast/statements/function_stmt_node.hpp"
 
 std::unique_ptr<Node> parse_stmt(Parser* parser) {
     switch (parser->current_token().type) {
         case TokenType::AT: {
-            auto node = parser->next_token().type == TokenType::OBRACKET
-                ? parse_attribute_stmt(parser)
-                : parse_decorator_stmt(parser);
-            if (node) return node;
+            if (parser->next_token().type == TokenType::OBRACKET) {
+                auto attr_node = parse_attribute_stmt(parser);
+                auto* attr = static_cast<AttributeStmtNode*>(attr_node.get());
+
+                // Apenas absorver o atributo quando tem 'abi' — injetar na função seguinte.
+                // Para todos os outros (@[no_std], @[strip], etc.) retornar normalmente
+                // para que o attribute_mapper os encontre no corpo do programa.
+                if (attr && attr->has_attr("abi")) {
+                    auto next_stmt = parse_stmt(parser);
+                    if (next_stmt && next_stmt->kind == NodeType::FunctionStatement) {
+                        auto* fn = static_cast<FunctionStmtNode*>(next_stmt.get());
+                        fn->abi = attr->get_arg("abi", 0);
+                        fn->is_low_level = true;
+                    }
+                    if (next_stmt) return next_stmt;
+                }
+
+                return attr_node;
+            } else {
+                auto node = parse_decorator_stmt(parser);
+                if (node) return node;
+            }
             break;
         }
-        case TokenType::MUT: 
+        case TokenType::MUT:
             parser->consume_token();
             return parse_declaration_stmt(parser, true);
         case TokenType::ABSTRACT:
@@ -39,6 +60,38 @@ std::unique_ptr<Node> parse_stmt(Parser* parser) {
         case TokenType::INTERFACE: return parse_interface_stmt(parser);
         case TokenType::ENUM: return parse_enum_stmt(parser);
         case TokenType::DEF: return parse_function_stmt(parser);
+        case TokenType::ASM: return parse_inline_asm_stmt(parser);
+        case TokenType::NAKED_ASM: {
+            // naked_asm def NAME: asm { return `body`; }
+            // Resultado: FunctionStmtNode com is_naked_asm=true e naked_asm_body preenchido.
+            // Checker e demais passes tratam como função normal.
+            auto tok = parser->current_token();
+            parser->consume_token(); // naked_asm
+            parser->expect(TokenType::DEF, "Expected 'def' after 'naked_asm'");
+            std::string fn_name = parser->expect(TokenType::IDENTIFIER, "Expected function name").lexeme;
+            parser->expect(TokenType::COLON, "Expected ':'");
+            parser->expect(TokenType::ASM,   "Expected 'asm'");
+            parser->expect(TokenType::OBRACE, "Expected '{'");
+            parser->expect(TokenType::RETURN, "Expected 'return'");
+            if (parser->current_token().type != TokenType::STRING) {
+                parser->error("Expected backtick string with assembly body after 'return'");
+                return nullptr;
+            }
+            std::string asm_body = parser->current_token().lexeme;
+            parser->consume_token();
+            parser->expect(TokenType::SEMICOLON, "Expected ';'");
+            parser->expect(TokenType::CBRACE, "Expected '}'");
+
+            auto fn = std::make_unique<FunctionStmtNode>(
+                fn_name, std::vector<ParamNode>{}, "void",
+                std::vector<std::unique_ptr<Stmt>>{});
+            fn->is_naked_asm  = true;
+            fn->naked_asm_body = asm_body;
+            fn->position = std::make_unique<PositionData>(
+                tok.line, tok.column_start, tok.column_end,
+                tok.position_start, tok.position_end, tok.filename);
+            return fn;
+        }
         case TokenType::IF: return parse_if_stmt(parser);
         case TokenType::RETURN: return parse_return_stmt(parser);
         case TokenType::BREAK: return parse_break_stmt(parser);
@@ -71,4 +124,5 @@ std::unique_ptr<Node> parse_stmt(Parser* parser) {
             return expr;
         }
     }
+    return nullptr;
 }
