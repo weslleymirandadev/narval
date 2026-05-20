@@ -10,13 +10,42 @@ std::unique_ptr<Node> parse_attribute_stmt(Parser* parser) {
     auto node = std::make_unique<AttributeStmtNode>();
 
     while (parser->not_eof() && parser->current_token().type != TokenType::CBRACKET) {
-        if (parser->current_token().type == TokenType::IDENTIFIER) {
-            node->attrs.push_back(parser->current_token().lexeme);
+        auto cur = parser->current_token();
+
+        if (cur.type == TokenType::IDENTIFIER) {
+            AttrEntry entry;
+            entry.name = cur.lexeme;
             parser->consume_token();
-        } else if (parser->current_token().type == TokenType::COMMA) {
+
+            // Atributo com argumentos: @[abi("sysv64")]
+            if (parser->current_token().type == TokenType::OPAREN) {
+                parser->consume_token(); // consume '('
+                while (parser->not_eof() && parser->current_token().type != TokenType::CPAREN) {
+                    auto arg_tok = parser->current_token();
+                    if (arg_tok.type == TokenType::STRING ||
+                        arg_tok.type == TokenType::NUMBER ||
+                        arg_tok.type == TokenType::IDENTIFIER ||
+                        arg_tok.type == TokenType::TRUE ||
+                        arg_tok.type == TokenType::FALSE) {
+                        entry.args.push_back({arg_tok.lexeme});
+                        parser->consume_token();
+                    } else {
+                        parser->error("Expected string, number or identifier as attribute argument");
+                        return nullptr;
+                    }
+                    if (parser->current_token().type == TokenType::COMMA)
+                        parser->consume_token();
+                }
+                parser->expect(TokenType::CPAREN, "Expected ')' to close attribute arguments");
+            }
+
+            node->attrs.push_back(entry.name);
+            node->entries.push_back(std::move(entry));
+
+        } else if (cur.type == TokenType::COMMA) {
             parser->consume_token();
         } else {
-            parser->error("Invalid attribute syntax (only simple identifiers allowed)");
+            parser->error("Invalid attribute syntax");
             return nullptr;
         }
     }
