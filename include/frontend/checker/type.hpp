@@ -29,7 +29,8 @@ namespace nv {
         RESULT,
         TYPE_VAR,
         POLY_TYPE,
-        ERROR
+        ERROR,
+        LOW_LEVEL
     };
     struct Type : public std::enable_shared_from_this<Type> {
         Kind kind;
@@ -236,6 +237,22 @@ namespace nv {
         Void() : Type(Kind::VOID) {}
         void init_prototype() override;
         std::string toString() override { return "None"; }
+    };
+
+    // Tipos low-level com largura explícita para funções @[abi(...)] e asm
+    struct LowLevelType : public Type {
+        std::string type_name; // "i8", "i64", "u32", "f32", "ptr", etc.
+        bool is_signed;
+        int bit_width; // 8,16,32,64,128 — 0 para ptr
+
+        LowLevelType(const std::string& name, bool sign, int bits)
+            : Type(Kind::LOW_LEVEL), type_name(name), is_signed(sign), bit_width(bits) {}
+
+        std::string toString() override { return type_name; }
+        bool equals(const Type& other) const override {
+            if (other.kind != Kind::LOW_LEVEL) return false;
+            return type_name == static_cast<const LowLevelType&>(other).type_name;
+        }
     };
 
     struct Class : public Type {
