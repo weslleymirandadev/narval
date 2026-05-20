@@ -70,7 +70,8 @@ enum class NodeType {
     ExternFromImportStatement,
     ModuleAttrStatement,
     DecoratorStatement,
-    AttributeStatement
+    AttributeStatement,
+    InlineAsmStatement,
 };
 
 class PositionData {
