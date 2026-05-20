@@ -6,8 +6,40 @@
 #include <string>
 #include <llvm/IR/Verifier.h>
 #include <llvm/IR/DIBuilder.h>
+#include <llvm/IR/InlineAsm.h>
 
 void FunctionStmtNode::codegen(nv::IRGenerationContext& ctx) {
+    // naked_asm def NAME — emitido como module-level assembly (.intel_syntax noprefix).
+    // Isso contorna os quirks do atributo naked do LLVM e passa o assembly
+    // diretamente ao assembler, garantindo ausência de prólogo/epílogo.
+    if (is_naked_asm) {
+        auto& module = ctx.get_module();
+
+        // Construir bloco de assembly em nível de módulo
+        std::string mod_asm;
+        mod_asm += ".intel_syntax noprefix\n";
+        mod_asm += ".global " + name + "\n";
+        mod_asm += ".type " + name + ", @function\n";
+        mod_asm += name + ":\n";
+        mod_asm += naked_asm_body;
+        mod_asm += "\n.att_syntax prefix\n";
+
+        // Acumular no inline asm de módulo existente (pode haver múltiplas funções naked)
+        std::string existing = module.getModuleInlineAsm();
+        if (!existing.empty() && existing.back() != '\n') existing += "\n";
+        module.setModuleInlineAsm(existing + mod_asm);
+
+        // Declarar o símbolo como função externa no IR para que o linker resolva referências
+        auto* fn_ty = llvm::FunctionType::get(llvm::Type::getVoidTy(ctx.get_context()), {}, false);
+        if (!module.getFunction(name)) {
+            auto* fn = llvm::Function::Create(
+                fn_ty, llvm::Function::ExternalLinkage, name, module);
+            fn->addFnAttr(llvm::Attribute::NoUnwind);
+            fn->addFnAttr(llvm::Attribute::NoReturn);
+        }
+        return;
+    }
+
     // Preserve current codegen state (incl. debug scope – set before any use)
     llvm::Function* prev_func = ctx.get_current_function();
     llvm::BasicBlock* prev_insert_block = ctx.get_builder().GetInsertBlock();
@@ -35,12 +67,16 @@ void FunctionStmtNode::codegen(nv::IRGenerationContext& ctx) {
                 param_ty = nv::ir_utils::llvm_type_from_string(ctx, kv.second);
             }
             // Tipos compostos Narval (vector, array, map, tuple) são sempre Value structs.
-            // llvm_type_from_string devolve ptr para eles, o que causaria mismatch na chamada.
+            // Funções @[abi] usam tipos low-level bare — não promover para Value.
             static const std::unordered_set<std::string> composite_types = {
                 "vector", "array", "map", "tuple"
             };
-            if (composite_types.count(kv.second) ||
-                (param_ty && (param_ty->isVoidTy() || param_ty->isPointerTy()) && kv.second != "void")) {
+            bool is_ll_type = (checker && [&]{
+                try { return checker->gettyptr(kv.second)->kind == nv::Kind::LOW_LEVEL; }
+                catch (...) { return false; }
+            }());
+            if (!is_ll_type && (composite_types.count(kv.second) ||
+                (param_ty && (param_ty->isVoidTy() || param_ty->isPointerTy()) && kv.second != "void"))) {
                 param_ty = nv::ir_utils::get_value_struct(ctx);
             }
             param_types.push_back(param_ty);
@@ -58,7 +94,11 @@ void FunctionStmtNode::codegen(nv::IRGenerationContext& ctx) {
     if (!ret_ty) {
         ret_ty = nv::ir_utils::llvm_type_from_string(ctx, return_type);
     }
-    if (ret_ty && ret_ty->isVoidTy() && return_type != "void") {
+    bool ret_is_ll = (checker && [&]{
+        try { return checker->gettyptr(return_type)->kind == nv::Kind::LOW_LEVEL; }
+        catch (...) { return false; }
+    }());
+    if (!ret_is_ll && ret_ty && ret_ty->isVoidTy() && return_type != "void") {
         ret_ty = nv::ir_utils::get_value_struct(ctx);
     }
     // Funções falíveis sempre retornam Value (que contém Result::Ok ou Result::Err)
@@ -71,6 +111,16 @@ void FunctionStmtNode::codegen(nv::IRGenerationContext& ctx) {
     auto* fn = ctx.get_module().getFunction(name);
     if (!fn) {
         fn = llvm::Function::Create(fn_ty, llvm::Function::ExternalLinkage, name, ctx.get_module());
+    }
+
+    // Aplicar calling convention quando @[abi(...)] está presente
+    if (is_low_level && !abi.empty()) {
+        if (abi == "sysv64")
+            fn->setCallingConv(llvm::CallingConv::X86_64_SysV);
+        else if (abi == "win64")
+            fn->setCallingConv(llvm::CallingConv::Win64);
+        else if (abi == "C" || abi == "c")
+            fn->setCallingConv(llvm::CallingConv::C);
     }
 
     llvm::DISubprogram* subp = nullptr;
