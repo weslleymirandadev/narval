@@ -51,6 +51,8 @@ bool is_keyword(TokenType type) {
         case TokenType::EXTERN:
         case TokenType::FROM:
         case TokenType::AS:
+        case TokenType::ASM:
+        case TokenType::NAKED_ASM:
             return true;
         default:
             return false;
@@ -108,9 +110,14 @@ bool is_operator(TokenType type) {
 }
 
 bool is_builtin_type(const std::string& text) {
-    return text == "int" || text == "float" || text == "str" || text == "bool" ||
-           text == "void" || text == "vector" || text == "map" || text == "tuple" ||
-           text == "array" || text == "Error";
+    return text == "int"   || text == "float"  || text == "str"   || text == "bool" ||
+           text == "void"  || text == "vector" || text == "map"   || text == "tuple" ||
+           text == "array" || text == "Error"  ||
+           // low-level types for @[abi] functions and asm blocks
+           text == "i8"    || text == "i16"    || text == "i32"   || text == "i64"  ||
+           text == "i128"  || text == "u8"     || text == "u16"   || text == "u32"  ||
+           text == "u64"   || text == "u128"   || text == "f32"   || text == "f64"  ||
+           text == "usize" || text == "isize"  || text == "ptr";
 }
 
 bool is_boundary(TokenType type) {
@@ -392,7 +399,23 @@ std::optional<SemanticToken> classify_token(const std::vector<Token>& tokens, si
         const Token* prev = index > 0 ? &tokens[index - 1] : nullptr;
         const Token* next = index + 1 < tokens.size() ? &tokens[index + 1] : nullptr;
 
-        if (is_builtin_type(token.lexeme)) {
+        // Contextual keywords inside asm blocks: input, output, reg
+        auto is_asm_contextual_kw = [&]() {
+            if (token.lexeme != "input" && token.lexeme != "output" && token.lexeme != "reg")
+                return false;
+            // Scan backwards for an ASM token on the same or nearby scope
+            for (int k = (int)index - 1; k >= 0 && k >= (int)index - 30; k--) {
+                if (tokens[k].type == TokenType::ASM || tokens[k].type == TokenType::NAKED_ASM)
+                    return true;
+                if (tokens[k].type == TokenType::SEMICOLON)
+                    break;
+            }
+            return false;
+        };
+
+        if (is_asm_contextual_kw()) {
+            type = Keyword;
+        } else if (is_builtin_type(token.lexeme)) {
             type = Type;
         } else if (is_inheritance_type(tokens, index)) {
             type = Type;
