@@ -46,13 +46,14 @@ bool is_keyword(TokenType type) {
         case TokenType::OR_KW:
         case TokenType::PROPAGATE:
         case TokenType::ERR_KW:
-        case TokenType::NONE_KW:
         case TokenType::DEFER:
         case TokenType::EXTERN:
         case TokenType::FROM:
         case TokenType::AS:
         case TokenType::ASM:
         case TokenType::NAKED_ASM:
+        case TokenType::ASYNC:
+        case TokenType::AWAIT:
             return true;
         default:
             return false;
@@ -113,6 +114,7 @@ bool is_builtin_type(const std::string& text) {
     return text == "int"   || text == "float"  || text == "str"   || text == "bool" ||
            text == "vector" || text == "map"   || text == "tuple" ||
            text == "array" || text == "Error"  ||
+           text == "Option" || text == "Result" || text == "Future" ||
            // low-level types for @[abi] functions and asm blocks
            text == "i8"    || text == "i16"    || text == "i32"   || text == "i64"  ||
            text == "i128"  || text == "u8"     || text == "u16"   || text == "u32"  ||
@@ -391,6 +393,8 @@ std::optional<SemanticToken> classify_token(const std::vector<Token>& tokens, si
     if (token.type == TokenType::ASM) {
         const Token* prev = index > 0 ? &tokens[index - 1] : nullptr;
         type = (prev && prev->type == TokenType::COLON) ? Type : Keyword;
+    } else if (token.type == TokenType::NONE_KW) {
+        type = Type;
     } else if (is_keyword(token.type)) {
         type = Keyword;
     } else if (token.type == TokenType::STRING) {
