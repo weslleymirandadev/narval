@@ -20,8 +20,6 @@
 #include <stdexcept>
 
 namespace {
-
-    // Helper: verifica se um identifier existe no escopo atual ou em escopos pais
     bool identifier_exists(nv::Checker* checker, const std::string& symbol) {
         try {
             checker->scope->get_key(symbol);
@@ -31,45 +29,37 @@ namespace {
         }
     }
     
-    // Converte AssignmentExpression em DeclarationStmtNode quando o identifier não existe
     std::unique_ptr<Stmt> convert_assignment_to_declaration(
         AssignmentExprNode* assign_node,
         nv::Checker* checker
     ) {
-        // Operadores compostos (+=, -=, etc.) nunca são declarações
         if (assign_node->op != "=") {
             return nullptr;
         }
 
-        // Verificar se o target é um Identifier
         if (assign_node->target->kind != NodeType::Identifier) {
             return nullptr;
         }
 
         auto* id_node = static_cast<IdentifierNode*>(assign_node->target.get());
         
-        // Verificar se o identifier já existe no escopo atual
         if (identifier_exists(checker, id_node->symbol)) {
             return nullptr;
         }
 
-        // Criar DeclarationStmtNode
         auto decl_node = std::make_unique<DeclarationStmtNode>(
             std::unique_ptr<Expr>(static_cast<Expr*>(id_node->clone())),
             assign_node->value 
                 ? std::unique_ptr<Expr>(static_cast<Expr*>(assign_node->value->clone()))
                 : nullptr,
-            "automatic",  // tipo automático para inferência
-            false         // não constante (mutável)
+            "automatic",
+            false         // constant
         );
 
-        // Copiar posição do assignment para a declaração
         if (assign_node->position) {
             decl_node->position = std::make_unique<PositionData>(*assign_node->position);
         }
 
-        // Registrar o símbolo no escopo do checker para que assignments
-        // subsequentes (x += 5) reconheçam que x já existe
         checker->scope->put_key(
             id_node->symbol,
             std::make_shared<nv::TypeVar>(checker->unify_ctx.get_next_var_id()),
@@ -79,13 +69,11 @@ namespace {
         return decl_node;
     }
 
-    // Processa recursivamente uma lista de nodes (ex: or block stmts)
     void process_nodelist(std::vector<std::unique_ptr<Node>>& nodes, nv::Checker* checker) {
         for (size_t i = 0; i < nodes.size(); i++) {
             auto& stmt = nodes[i];
             if (!stmt) continue;
 
-            // Converter AssignmentExpression para DeclarationStmtNode se necessário
             if (stmt->kind == NodeType::AssignmentExpression) {
                 auto* assign_node = static_cast<AssignmentExprNode*>(stmt.get());
                 auto converted = convert_assignment_to_declaration(assign_node, checker);
@@ -94,7 +82,6 @@ namespace {
                 }
             }
             
-            // Recursão para blocos aninhados
             if (stmt->kind == NodeType::OrExpression) {
                 auto* or_node = static_cast<OrExprNode*>(stmt.get());
                 std::vector<std::unique_ptr<Node>> stmt_nodes;
@@ -104,7 +91,6 @@ namespace {
                     }
                 }
                 process_nodelist(stmt_nodes, checker);
-                // Converter de volta
                 or_node->block_stmts.clear();
                 for (auto& node : stmt_nodes) {
                     if (node) {
@@ -115,13 +101,10 @@ namespace {
         }
     }
 
-    // Processa recursivamente um CodeBlock convertendo assignments não declarados
-    // em declarações
     void process_codeblock(CodeBlock& body, nv::Checker* checker) {
         for (size_t i = 0; i < body.size(); i++) {
             auto& stmt = body[i];
             
-            // Verificar se é AssignmentExpression
             if (stmt->kind == NodeType::AssignmentExpression) {
                 auto* assign_node = static_cast<AssignmentExprNode*>(stmt.get());
                 auto converted = convert_assignment_to_declaration(assign_node, checker);
@@ -130,7 +113,6 @@ namespace {
                 }
             }
             
-            // Processar recursivamente blocos aninhados
             switch (stmt->kind) {
                 case NodeType::IfStatement: {
                     auto* if_stmt = static_cast<IfStatementNode*>(stmt.get());
@@ -155,8 +137,6 @@ namespace {
                     break;
                 }
                 case NodeType::FunctionStatement: {
-                    // Corpos de função são processados em check_function_stmt com escopo correto
-                    // Não processar aqui para evitar verificação no escopo errado
                     continue;
                 }
                 case NodeType::MatchStatement: {
@@ -175,7 +155,6 @@ namespace {
                         }
                     }
                     process_nodelist(stmt_nodes, checker);
-                    // Converter de volta
                     or_node->block_stmts.clear();
                     for (auto& node : stmt_nodes) {
                         if (node) {
@@ -195,6 +174,7 @@ namespace {
                kind == NodeType::ModuleAttrStatement ||
                kind == NodeType::DecoratorStatement ||
                kind == NodeType::FunctionStatement ||
+               kind == NodeType::InlineAsmStatement ||
                kind == NodeType::ExternStatement ||
                kind == NodeType::ExternFromImportStatement;
     }
@@ -224,27 +204,27 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
         }
     }
 
-    // Primeira passagem: processar imports ANTES de tudo para registrar símbolos no escopo
+    // Processes imports BEFORE EVERYTHING to track symbols on the scope
     for (auto& el : program->body) {
         if (el->kind == NodeType::ImportStatement) {
             ch->check_node(el.get());
         }
     }
 
-    // Segunda passagem: converter AssignmentExpression não declarados em declarações
-    // Processa recursivamente todos os blocos de código (incluindo aninhados)
+    // Second pass: convert undeclared AssignmentExpression into declarations
+    // Processes all code blocks recursively (including nested ones)
     process_codeblock(program->body, ch);
 
-    // Terceira passagem: Registrar interfaces primeiro (antes das classes).
+    // Third pass: register interfaces first (before classes).
     for (auto& el : program->body) {
         if (el->kind == NodeType::InterfaceStatement) {
             check_interface_stmt(ch, el.get());
         }
     }
 
-    // Quarta passagem: Registrar todas as classes e enums.
-    // Isso permite usar classes/enums como tipos em parâmetros/retornos de funções
-    // e em declarações mesmo quando aparecem depois no arquivo.
+    // Fourth pass: register all classes and enums.
+    // This allows using classes/enums as types in function parameters/returns
+    // and in declarations even when they appear later in the file.
     for (auto& el : program->body) {
         if (el->kind == NodeType::ClassStatement) {
             check_class_stmt(ch, el.get());
@@ -253,12 +233,12 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
         }
     }
 
-    // Quinta passagem: Registrar assinaturas de todas as funções (defs) antes de checar corpos
+    // Fifth pass: register signatures of all functions (defs) before checking bodies
     for (auto& el : program->body) {
         if (el->kind == NodeType::FunctionStatement) {
             auto* function_stmt = static_cast<FunctionStmtNode*>(el.get());
             
-            // Processar parâmetros para obter o tipo da função
+            // Process parameters to obtain the function type
             std::vector<std::shared_ptr<nv::Type>> param_types;
             for (const auto& param : function_stmt->parameters) {
                 std::string param_name;
@@ -286,13 +266,13 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
             
             auto func_type = std::make_shared<nv::Function>(param_types, return_type);
             
-            // Registrar função no escopo SEM checar o corpo ainda
-            // Passamos false para não travar o símbolo
+            // Register function in scope WITHOUT checking the body yet
+            // We pass false so the symbol is not locked
             ch->scope->put_key(function_stmt->name, func_type, false);
         }
     }
 
-    // Passagem final: processar todos os statements restantes (incluindo os convertidos)
+    // Final pass: process all remaining statements (including the converted ones)
     for (auto& el : program->body) {
         if (el->kind != NodeType::ImportStatement) {
             ch->check_node(el.get());
