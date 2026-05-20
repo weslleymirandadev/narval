@@ -391,7 +391,26 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
         nv::reset_feature_tracker();
         nv::CompilationAttributes attrs = nv::map_compilation_attributes(ast.get());
         const bool no_std = attrs.no_std;
-        const std::string no_std_entry = nv::program_has_function(ast.get(), "_start") ? "_start" : "main";
+
+        // Determinar entry point quando @[no_std]:
+        //   1. naked_asm def _start / main  — controle total sem wrapper
+        //   2. def _start / def main        — função regular, sem wrapper
+        //   3. nenhum                       — erro explícito antes de tentar linkar
+        std::string no_std_entry; // símbolo real a passar ao linker (-Wl,-e,X)
+        if (no_std) {
+            const std::string naked = nv::program_naked_asm_entry(ast.get());
+            if (!naked.empty()) {
+                no_std_entry = naked;
+            } else if (nv::program_has_function(ast.get(), "_start")) {
+                no_std_entry = "_start";
+            } else if (nv::program_has_function(ast.get(), "main")) {
+                no_std_entry = "main";
+            } else {
+                llvm::errs() << "error: @[no_std] requer um entry point\n"
+                             << "  defina 'naked_asm def _start' ou 'def _start' / 'def main'\n";
+                return 1;
+            }
+        }
 
         // Create checker for type inference
         nv::Checker checker;
@@ -502,51 +521,8 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
 
         nv::generate_ir(std::move(ast), context);
 
-        // no_std: generate a thin entry wrapper that aligns RSP, calls the user's
-        // main/_start, and terminates via sys_exit(0) (Linux x86_64) or equivalent.
-        // Without this the function returns into an invalid stack frame and segfaults.
-        if (no_std) {
-            auto* void_ty = llvm::Type::getVoidTy(Context);
-            auto* fn_ty   = llvm::FunctionType::get(void_ty, false);
-            auto* wrapper = llvm::Function::Create(
-                fn_ty, llvm::Function::ExternalLinkage, "_narval_ns_start", Mod);
-            auto* entry_bb = llvm::BasicBlock::Create(Context, "entry", wrapper);
-            // Clear any stale debug location from user-function codegen.
-            Builder.SetCurrentDebugLocation(llvm::DebugLoc());
-            Builder.SetInsertPoint(entry_bb);
-
-#if defined(__x86_64__) || defined(_M_X64)
-            if (is_x86_64_target(target_triple)) {
-                // Align RSP: the kernel passes argc at [RSP], no return address.
-                auto* align_asm = llvm::InlineAsm::get(
-                    fn_ty, "and $$-16, %rsp",
-                    "~{rsp},~{dirflag},~{fpsr},~{flags}", true);
-                Builder.CreateCall(align_asm, {});
-            }
-#endif
-
-            // Initialise the minimal no_std type table before user code runs.
-            auto* init_ns_fn = llvm::cast<llvm::Function>(
-                Mod.getOrInsertFunction("nv_ns_init_types", fn_ty).getCallee());
-            Builder.CreateCall(init_ns_fn, {});
-
-            auto* user_fn = Mod.getFunction(no_std_entry);
-            if (user_fn) {
-                Builder.CreateCall(user_fn, {});
-            }
-
-#if defined(__x86_64__) || defined(_M_X64)
-            if (is_x86_64_target(target_triple)) {
-                // sys_exit_group(0) — syscall 231 on x86_64 Linux.
-                auto* exit_asm = llvm::InlineAsm::get(
-                    fn_ty,
-                    "mov $$231, %rax\n\txor %rdi, %rdi\n\tsyscall",
-                    "~{rax},~{rdi}", true);
-                Builder.CreateCall(exit_asm, {});
-            }
-#endif
-            Builder.CreateUnreachable();
-        }
+        // @[no_std]: sem wrapper — o usuário define o entry point directamente.
+        // O linker receberá -Wl,-e,<no_std_entry> na secção de linkagem abaixo.
 
         // IMPORTANT: finalize global initializations AFTER generating the main code.
         // This guarantees that every declaration has been processed.
@@ -751,7 +727,7 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
                 std::string("gcc ") + obj_path + " " + nostd_rt + "-o " + bin_path + " " +
                 "-nostdlib -nostartfiles " +
                 std::string(pie_flag) + " " +
-                "-Wl,-e,_narval_ns_start " +
+                "-Wl,-e," + no_std_entry + " " +
                 "-Wl,--gc-sections " +
                 (ft.strip ? "-Wl,--strip-all " : "") +
                 (ft.lto   ? "-flto "           : "") +
