@@ -184,6 +184,17 @@ llvm::Type* IRGenerationContext::nv_type_to_llvm(std::shared_ptr<Type> nv_type) 
             return llvm::Type::getVoidTy(llvm_context); // fallback
         }
 
+        case Kind::LOW_LEVEL: {
+            auto* ll = static_cast<nv::LowLevelType*>(nv_type.get());
+            if (ll->bit_width == 0)
+                return llvm::PointerType::getUnqual(llvm_context);
+            if (ll->type_name == "f32")
+                return llvm::Type::getFloatTy(llvm_context);
+            if (ll->type_name == "f64")
+                return llvm::Type::getDoubleTy(llvm_context);
+            return llvm::Type::getIntNTy(llvm_context, ll->bit_width);
+        }
+
         case Kind::ERROR:
         default:
             return llvm::Type::getVoidTy(llvm_context);
