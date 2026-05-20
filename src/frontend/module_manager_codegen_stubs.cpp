@@ -1,6 +1,7 @@
 #include "frontend/ast/expressions/access_expr_node.hpp"
 #include "frontend/ast/expressions/array_expr_node.hpp"
 #include "frontend/ast/expressions/assignment_expr_node.hpp"
+#include "frontend/ast/expressions/await_expr_node.hpp"
 #include "frontend/ast/expressions/binary_expr_node.hpp"
 #include "frontend/ast/expressions/boolean_literal_node.hpp"
 #include "frontend/ast/expressions/call_expr_node.hpp"
@@ -36,6 +37,7 @@
 #include "frontend/ast/statements/declaration_stmt_node.hpp"
 #include "frontend/ast/statements/decorator_stmt_node.hpp"
 #include "frontend/ast/statements/defer_error_stmt_node.hpp"
+#include "frontend/ast/statements/defer_stmt_node.hpp"
 #include "frontend/ast/statements/enum_stmt_node.hpp"
 #include "frontend/ast/statements/extern_from_import_stmt_node.hpp"
 #include "frontend/ast/statements/extern_stmt_node.hpp"
@@ -58,6 +60,7 @@
 FRONTEND_ONLY_CODEGEN_STUB(AccessExprNode)
 FRONTEND_ONLY_CODEGEN_STUB(ArrayExprNode)
 FRONTEND_ONLY_CODEGEN_STUB(AssignmentExprNode)
+FRONTEND_ONLY_CODEGEN_STUB(AwaitExprNode)
 FRONTEND_ONLY_CODEGEN_STUB(AttributeStmtNode)
 FRONTEND_ONLY_CODEGEN_STUB(BinaryExprNode)
 FRONTEND_ONLY_CODEGEN_STUB(BooleanLiteralNode)
@@ -72,6 +75,7 @@ FRONTEND_ONLY_CODEGEN_STUB(DeclarationStmtNode)
 FRONTEND_ONLY_CODEGEN_STUB(DecoratorStmtNode)
 FRONTEND_ONLY_CODEGEN_STUB(DecrementExprNode)
 FRONTEND_ONLY_CODEGEN_STUB(DeferErrorStmtNode)
+FRONTEND_ONLY_CODEGEN_STUB(DeferStmtNode)
 FRONTEND_ONLY_CODEGEN_STUB(EnumStmtNode)
 FRONTEND_ONLY_CODEGEN_STUB(ExternFromImportStmtNode)
 FRONTEND_ONLY_CODEGEN_STUB(ExternStmtNode)

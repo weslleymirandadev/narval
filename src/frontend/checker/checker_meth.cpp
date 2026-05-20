@@ -3,6 +3,9 @@
 #include "frontend/checker/statements/check_enum_stmt.hpp"
 #include "frontend/checker/statements/check_interface_stmt.hpp"
 #include "frontend/checker/statements/check_defer_error_stmt.hpp"
+#include "frontend/checker/statements/check_defer_stmt.hpp"
+#include "frontend/checker/expressions/check_await_expr.hpp"
+#include "frontend/ast/statements/function_stmt_node.hpp"
 #include "frontend/checker/statements/check_extern_stmt.hpp"
 #include "frontend/checker/expressions/check_closure_expr.hpp"
 #include "frontend/checker/statements/check_extern_from_import_stmt.hpp"
@@ -41,8 +44,11 @@ std::shared_ptr<nv::Type> nv::Checker::check_node(Node* node) {
           return check_program_stmt(this, node);
         case NodeType::DeclarationStatement:
           return check_decl_stmt(this, node);
-        case NodeType::FunctionStatement:
+        case NodeType::FunctionStatement: {
+          auto* fn = static_cast<FunctionStmtNode*>(node);
+          if (fn->is_async && no_std_attr_node) { no_std_error(node, "async def"); return gettyptr("void"); }
           return check_function_stmt(this, node);
+        }
         case NodeType::IfStatement:
           return check_if_stmt(this, node);
         case NodeType::ForStatement:
@@ -108,6 +114,9 @@ std::shared_ptr<nv::Type> nv::Checker::check_node(Node* node) {
         case NodeType::DeferErrorStatement:
           if (no_std_attr_node) { no_std_error(node, "defer error"); return gettyptr("void"); }
           return check_defer_error_stmt(this, node);
+        case NodeType::DeferStatement:
+          if (no_std_attr_node) { no_std_error(node, "defer"); return gettyptr("void"); }
+          return check_defer_stmt(this, node);
         case NodeType::ExternStatement:
           return check_extern_stmt(this, node);
         case NodeType::ExternFromImportStatement:
@@ -120,6 +129,8 @@ std::shared_ptr<nv::Type> nv::Checker::check_node(Node* node) {
           return gettyptr("void"); // decorators: sem checagem de tipo
         case NodeType::InlineAsmStatement:
           return check_inline_asm_stmt(this, node);
+        case NodeType::AwaitExpression:
+          return check_await_expr(this, node);
         case NodeType::ClosureExpression: {
           auto* closure = static_cast<ClosureExprNode*>(node);
           return check_closure_expr(closure, *this); // closures: tipo função específico

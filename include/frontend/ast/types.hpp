@@ -66,12 +66,14 @@ enum class NodeType {
     InterfaceStatement,
     SliceExpression,
     DeferErrorStatement,
+    DeferStatement,
     ExternStatement,
     ExternFromImportStatement,
     ModuleAttrStatement,
     DecoratorStatement,
     AttributeStatement,
     InlineAsmStatement,
+    AwaitExpression,
 };
 
 class PositionData {
