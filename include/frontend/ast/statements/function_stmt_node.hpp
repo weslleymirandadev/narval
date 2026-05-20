@@ -15,6 +15,14 @@ public:
     // O codegen então emite retornos como Result::Ok e propagate como Result::Err.
     bool is_fallible = false;
 
+    // ABI explícito via @[abi("sysv64")] — vazio = Narval padrão
+    std::string abi;
+    bool is_low_level = false; // true quando abi != ""
+
+    // naked_asm def NAME: asm { return `...`; }
+    bool is_naked_asm = false;
+    std::string naked_asm_body;
+
     FunctionStmtNode(
         std::string function_name,
         std::vector<ParamNode> parameters,
@@ -36,6 +44,11 @@ public:
         }
 
         auto* node = new FunctionStmtNode(name, parameters, return_type, std::move(cloned_body));
+        node->is_fallible   = is_fallible;
+        node->abi           = abi;
+        node->is_low_level  = is_low_level;
+        node->is_naked_asm  = is_naked_asm;
+        node->naked_asm_body = naked_asm_body;
         if (position) {
             node->position = std::make_unique<PositionData>(*position);
         }
