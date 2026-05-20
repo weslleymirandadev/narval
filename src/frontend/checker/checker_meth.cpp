@@ -24,6 +24,7 @@
 #include "frontend/checker/expressions/check_range_expr.hpp"
 #include "frontend/checker/expressions/check_assignment_expr.hpp"
 #include "frontend/attributes/attribute_mapper.hpp"
+#include "frontend/checker/statements/check_inline_asm_stmt.hpp"
 #include <memory>
 
 std::shared_ptr<nv::Type> nv::Checker::check_node(Node* node) {
@@ -117,6 +118,8 @@ std::shared_ptr<nv::Type> nv::Checker::check_node(Node* node) {
           return gettyptr("void"); // atributos: sem checagem de tipo
         case NodeType::DecoratorStatement:
           return gettyptr("void"); // decorators: sem checagem de tipo
+        case NodeType::InlineAsmStatement:
+          return check_inline_asm_stmt(this, node);
         case NodeType::ClosureExpression: {
           auto* closure = static_cast<ClosureExprNode*>(node);
           return check_closure_expr(closure, *this); // closures: tipo função específico
