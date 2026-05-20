@@ -28,16 +28,20 @@ const std::unordered_set<std::string> KEYWORDS = {
     "if", "else", "elif", "match", "for", "forever", "while", "in",
     "new", "extends", "implements", "instanceof", "return", "break",
     "continue", "yield", "or", "defer", "propagate", "throw", "try",
-    "catch", "finally", "err", "from", "import", "as"
+    "catch", "finally", "err", "from", "import", "as", "await"
 };
 
 const std::unordered_set<std::string> STORAGE_WORDS = {
-    "async", "await", "public", "private", "protected", "abstract",
+    "async", "public", "private", "protected", "abstract",
     "extern", "mut", "override", "class", "interface", "enum", "def", "prop"
 };
 
 const std::unordered_set<std::string> BUILTIN_TYPES = {
-    "int", "str", "char", "float", "bool"
+    "int", "str", "char", "float", "bool", "None", "Option", "Result", "Future",
+    "array", "vector", "map", "tuple", "Error",
+    "i8", "i16", "i32", "i64", "i128",
+    "u8", "u16", "u32", "u64", "u128",
+    "f32", "f64", "usize", "isize", "ptr"
 };
 
 const std::unordered_set<std::string> BUILTIN_FUNCTIONS = {
@@ -289,9 +293,6 @@ std::string highlight_identifier(const std::string& source, size_t& pos) {
     const size_t next = skip_spaces(source, pos);
     const size_t prev = previous_non_space(source, start);
 
-    if (LANGUAGE_VALUES.count(word)) {
-        return color(CONSTANT, word);
-    }
     if (KEYWORDS.count(word)) {
         return color(KEYWORD, word);
     }
@@ -315,6 +316,9 @@ std::string highlight_identifier(const std::string& source, size_t& pos) {
     }
     if (BUILTIN_TYPES.count(word)) {
         return color(TYPE, word);
+    }
+    if (LANGUAGE_VALUES.count(word)) {
+        return color(CONSTANT, word);
     }
     if (prev != std::string::npos && source[prev] == '.') {
         return word;
