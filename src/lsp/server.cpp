@@ -58,7 +58,7 @@ void LSPServer::handle_initialize(const json* id) {
             {"textDocumentSync", 1},
             {"semanticTokensProvider", {
                 {"legend", {
-                    {"tokenTypes", {"keyword", "variable", "parameter", "function", "type", "string", "number", "operator"}},
+                    {"tokenTypes", {"keyword", "variable", "parameter", "function", "type", "string", "number", "operator", "macro"}},
                     {"tokenModifiers", {"declaration", "readonly", "defaultLibrary"}},
                 }},
                 {"full", true},

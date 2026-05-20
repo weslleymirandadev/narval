@@ -387,7 +387,11 @@ std::optional<SemanticToken> classify_token(const std::vector<Token>& tokens, si
     int type = Variable;
     int modifiers = 0;
 
-    if (is_keyword(token.type)) {
+    // `asm` after `:` is the return-type placeholder in naked_asm — color as Type
+    if (token.type == TokenType::ASM) {
+        const Token* prev = index > 0 ? &tokens[index - 1] : nullptr;
+        type = (prev && prev->type == TokenType::COLON) ? Type : Keyword;
+    } else if (is_keyword(token.type)) {
         type = Keyword;
     } else if (token.type == TokenType::STRING) {
         type = String;
@@ -399,11 +403,11 @@ std::optional<SemanticToken> classify_token(const std::vector<Token>& tokens, si
         const Token* prev = index > 0 ? &tokens[index - 1] : nullptr;
         const Token* next = index + 1 < tokens.size() ? &tokens[index + 1] : nullptr;
 
-        // Contextual keywords inside asm blocks: input, output, reg
-        auto is_asm_contextual_kw = [&]() {
+        // Contextual asm section markers: input, output, reg
+        // Not reserved keywords — get Macro type for distinct color
+        auto is_asm_contextual = [&]() {
             if (token.lexeme != "input" && token.lexeme != "output" && token.lexeme != "reg")
                 return false;
-            // Scan backwards for an ASM token on the same or nearby scope
             for (int k = (int)index - 1; k >= 0 && k >= (int)index - 30; k--) {
                 if (tokens[k].type == TokenType::ASM || tokens[k].type == TokenType::NAKED_ASM)
                     return true;
@@ -413,8 +417,8 @@ std::optional<SemanticToken> classify_token(const std::vector<Token>& tokens, si
             return false;
         };
 
-        if (is_asm_contextual_kw()) {
-            type = Keyword;
+        if (is_asm_contextual()) {
+            type = Macro;
         } else if (is_builtin_type(token.lexeme)) {
             type = Type;
         } else if (is_inheritance_type(tokens, index)) {

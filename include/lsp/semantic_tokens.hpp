@@ -16,6 +16,7 @@ enum TokenTypeIndex {
     String = 5,
     Number = 6,
     Operator = 7,
+    Macro = 8,   // contextual asm keywords: input, output, reg
 };
 
 struct SemanticToken {
