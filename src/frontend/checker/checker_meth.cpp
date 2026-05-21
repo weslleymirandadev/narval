@@ -49,7 +49,7 @@ std::shared_ptr<nv::Type> nv::Checker::check_node(Node* node) {
           return check_decl_stmt(this, node);
         case NodeType::FunctionStatement: {
           auto* fn = static_cast<FunctionStmtNode*>(node);
-          if (fn->is_async && no_std_attr_node) { no_std_error(node, "async def"); return gettyptr("void"); }
+          if (fn->is_async && no_std_attr_node) { no_std_error(node, "async def"); return gettyptr("None"); }
           return check_function_stmt(this, node);
         }
         case NodeType::IfStatement:
@@ -92,7 +92,7 @@ std::shared_ptr<nv::Type> nv::Checker::check_node(Node* node) {
         case NodeType::NewExpression:
           return check_primary_expr(this, node);
         case NodeType::ClassStatement:
-          return gettyptr("void");
+          return gettyptr("None");
         case NodeType::EnumStatement:
           return check_enum_stmt(this, node);
         case NodeType::InterfaceStatement:
@@ -102,34 +102,34 @@ std::shared_ptr<nv::Type> nv::Checker::check_node(Node* node) {
         case NodeType::OrExpression:
           return check_or_expr(this, node);
         case NodeType::NoneLiteral:
-          return gettyptr("void");
+          return gettyptr("None");
         case NodeType::PropagateStatement:
-          return gettyptr("void");
+          return gettyptr("None");
         case NodeType::BreakStatement:
         case NodeType::ContinueStatement:
-          return gettyptr("void");
+          return gettyptr("None");
         case NodeType::TryStatement:
           if (no_std_attr_node) no_std_error(node, "try/catch");
-          return gettyptr("void");
+          return gettyptr("None");
         case NodeType::ThrowStatement:
           if (no_std_attr_node) no_std_error(node, "throw");
-          return gettyptr("void");
+          return gettyptr("None");
         case NodeType::DeferErrorStatement:
-          if (no_std_attr_node) { no_std_error(node, "defer error"); return gettyptr("void"); }
+          if (no_std_attr_node) { no_std_error(node, "defer error"); return gettyptr("None"); }
           return check_defer_error_stmt(this, node);
         case NodeType::DeferStatement:
-          if (no_std_attr_node) { no_std_error(node, "defer"); return gettyptr("void"); }
+          if (no_std_attr_node) { no_std_error(node, "defer"); return gettyptr("None"); }
           return check_defer_stmt(this, node);
         case NodeType::ExternStatement:
           return check_extern_stmt(this, node);
         case NodeType::ExternFromImportStatement:
           return check_extern_from_import_stmt(this, node);
         case NodeType::ModuleAttrStatement:
-          return gettyptr("void"); // atributos de módulo: sem checagem de tipo
+          return gettyptr("None"); // atributos de módulo: sem checagem de tipo
         case NodeType::AttributeStatement:
-          return gettyptr("void"); // atributos: sem checagem de tipo
+          return gettyptr("None"); // atributos: sem checagem de tipo
         case NodeType::DecoratorStatement:
-          return gettyptr("void"); // decorators: sem checagem de tipo
+          return gettyptr("None"); // decorators: sem checagem de tipo
         case NodeType::InlineAsmStatement:
           return check_inline_asm_stmt(this, node);
         case NodeType::AwaitExpression:
@@ -139,10 +139,10 @@ std::shared_ptr<nv::Type> nv::Checker::check_node(Node* node) {
           return check_closure_expr(closure, *this); // closures: tipo função específico
         }
         default:
-          return gettyptr("void");
+          return gettyptr("None");
     }
   } catch (std::exception& e) {
     error(node, e.what());
-    return gettyptr("void");
+    return gettyptr("None");
   }
 }

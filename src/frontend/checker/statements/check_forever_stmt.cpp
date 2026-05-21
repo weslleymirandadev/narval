@@ -12,5 +12,5 @@ std::shared_ptr<nv::Type>& check_forever_stmt(nv::Checker* ch, Node* node) {
     }
     ch->pop_scope();
     
-    return ch->gettyptr("void");
+    return ch->gettyptr("None");
 }

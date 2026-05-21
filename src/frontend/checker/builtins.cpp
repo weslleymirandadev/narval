@@ -7,14 +7,14 @@ namespace nv {
     
     // Lista de funções builtin disponíveis
     const std::vector<BuiltinFunction> BUILTIN_FUNCTIONS = {
-        // write: aceita 1 argumento de qualquer tipo -> void (como print() do Python)
-        BuiltinFunction("write", {}, std::make_shared<Void>(), false, true, 1, 1),
+        // write: aceita 1 argumento de qualquer tipo -> None (como print() do Python)
+        BuiltinFunction("write", {}, std::make_shared<None>(), false, true, 1, 1),
         
         // read: aceita 0 ou 1 argumento (prompt opcional), retorna string
         BuiltinFunction("read", {}, std::make_shared<String>(), false, true, 0, 1),
         
-        // exit: encerra o processo com o código dado (int) -> void
-        BuiltinFunction("exit", {std::make_shared<Int>()}, std::make_shared<Void>(), false, false, 1, 1),
+        // exit: encerra o processo com o código dado (int) -> None
+        BuiltinFunction("exit", {std::make_shared<Int>()}, std::make_shared<None>(), false, false, 1, 1),
         
         // Funções de conversão de tipo (estilo Python)
         // str: aceita 1 argumento de qualquer tipo, retorna string
@@ -33,9 +33,9 @@ namespace nv {
         BuiltinFunction("bool", {}, std::make_shared<Boolean>(), false, true, 1, 1),
 
         // Option/Result constructors
-        BuiltinFunction("Some",   {}, std::make_shared<Void>(), false, true, 1, 1),
-        BuiltinFunction("Ok",     {}, std::make_shared<Void>(), false, true, 1, 1),
-        BuiltinFunction("Err",    {}, std::make_shared<Void>(), false, true, 1, 1),
+        BuiltinFunction("Some",   {}, std::make_shared<None>(), false, true, 1, 1),
+        BuiltinFunction("Ok",     {}, std::make_shared<None>(), false, true, 1, 1),
+        BuiltinFunction("Err",    {}, std::make_shared<None>(), false, true, 1, 1),
     };
     
     // Variáveis globais builtin (não são funções, mas objetos especiais)
@@ -62,10 +62,10 @@ namespace nv {
             );
             json_type->prototype->put_key("parseString", parse_string_func_type, true);
             
-            // Método dump: (Map, string) -> void
+            // Método dump: (Map, string) -> None
             auto dump_func_type = std::make_shared<Function>(
                 std::vector<std::shared_ptr<Type>>{json_type, checker.gettyptr("str")},
-                checker.gettyptr("void")
+                checker.gettyptr("None")
             );
             json_type->prototype->put_key("dump", dump_func_type, true);
             

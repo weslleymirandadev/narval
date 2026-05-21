@@ -78,14 +78,14 @@ std::shared_ptr<nv::Type>& check_primary_expr(nv::Checker* ch, Node* node) {
             ensure_proto(temp_result);
             return temp_result;
         case NodeType::NoneLiteral:
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         case NodeType::Identifier: {
             const auto* id = static_cast<IdentifierNode*>(node);
             
             // `err` é reservado: só pode ser usado dentro de blocos `or { }`
             if (id->symbol == "err" && ch->or_block_depth == 0) {
                 ch->error(node, "'err' can only be used inside 'or' expressions");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
             // Verificar se o identificador existe antes de tentar acessá-lo
             // Usar try-catch apenas para detectar, mas converter para error() imediatamente
@@ -128,7 +128,7 @@ std::shared_ptr<nv::Type>& check_primary_expr(nv::Checker* ch, Node* node) {
                 if (!error_key_str.empty() && 
                     reported_identifier_errors.find(error_key_str) != reported_identifier_errors.end()) {
                     ch->err = true;  // Manter flag de erro, mas não reportar novamente
-                    temp_result = ch->gettyptr("void");
+                    temp_result = ch->gettyptr("None");
                     return temp_result;
                 }
                 
@@ -141,7 +141,7 @@ std::shared_ptr<nv::Type>& check_primary_expr(nv::Checker* ch, Node* node) {
                     reported_identifier_errors.insert(error_key_str);
                 }
                 
-                temp_result = ch->gettyptr("void");
+                temp_result = ch->gettyptr("None");
                 return temp_result;
             }
         }
@@ -150,7 +150,7 @@ std::shared_ptr<nv::Type>& check_primary_expr(nv::Checker* ch, Node* node) {
             ensure_proto(temp_result);
             return temp_result;
         default:
-            temp_result = ch->gettyptr("void");
+            temp_result = ch->gettyptr("None");
             return temp_result;
     }
 }

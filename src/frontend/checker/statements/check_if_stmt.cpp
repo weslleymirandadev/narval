@@ -9,7 +9,7 @@ std::shared_ptr<nv::Type>& check_if_stmt(nv::Checker* ch, Node* node) {
     // Verificar condição
     if (!if_stmt->condition) {
         ch->error(node, "If statement requires a condition");
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
     
     auto cond_type = ch->infer_expr(if_stmt->condition.get());
@@ -21,7 +21,7 @@ std::shared_ptr<nv::Type>& check_if_stmt(nv::Checker* ch, Node* node) {
     } catch (std::runtime_error& e) {
         ch->error(if_stmt->condition.get(), 
                   "If condition must be of type 'bool', but got '" + cond_type->toString() + "'");
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
     
     // Verificar bloco consequent
@@ -38,5 +38,5 @@ std::shared_ptr<nv::Type>& check_if_stmt(nv::Checker* ch, Node* node) {
     }
     ch->pop_scope();
     
-    return ch->gettyptr("void");
+    return ch->gettyptr("None");
 }

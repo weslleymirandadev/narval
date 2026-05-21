@@ -18,5 +18,5 @@ std::shared_ptr<nv::Type>& check_defer_error_stmt(nv::Checker* checker, Node* no
     checker->or_block_depth--;
     checker->pop_scope();
 
-    return checker->gettyptr("void");
+    return checker->gettyptr("None");
 }

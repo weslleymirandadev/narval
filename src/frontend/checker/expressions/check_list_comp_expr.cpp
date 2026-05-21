@@ -9,12 +9,12 @@ std::shared_ptr<nv::Type>& check_list_comp_expr(nv::Checker* ch, Node* node) {
     
     if (!list_comp->elt) {
         ch->error(node, "List comprehension requires an element expression");
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
     
     if (list_comp->generators.empty()) {
         ch->error(node, "List comprehension requires at least one generator");
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
     
     // Criar novo escopo para os geradores
@@ -25,7 +25,7 @@ std::shared_ptr<nv::Type>& check_list_comp_expr(nv::Checker* ch, Node* node) {
         if (!target || !source) {
             ch->error(node, "Generator requires both target and source");
             ch->pop_scope();
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
         
         // Verificar tipo da fonte (deve ser iterável)
@@ -44,7 +44,7 @@ std::shared_ptr<nv::Type>& check_list_comp_expr(nv::Checker* ch, Node* node) {
             ch->error(source.get(),
                       "List comprehension source must be iterable (array, vector, string, map, tuple, or int)");
             ch->pop_scope();
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
         
         // Inferir tipo dos elementos
@@ -106,7 +106,7 @@ std::shared_ptr<nv::Type>& check_list_comp_expr(nv::Checker* ch, Node* node) {
             ch->error(list_comp->else_expr.get(), 
                       "List comprehension element and else expression have incompatible types");
             ch->pop_scope();
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
     }
     

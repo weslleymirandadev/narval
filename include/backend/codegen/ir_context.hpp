@@ -501,7 +501,7 @@ private:
         type_cache[Kind::CHAR] = llvm::Type::getInt8Ty(llvm_context);
         type_cache[Kind::FLOAT] = llvm::Type::getDoubleTy(llvm_context);
         type_cache[Kind::BOOL] = llvm::Type::getInt1Ty(llvm_context);
-        type_cache[Kind::VOID] = llvm::Type::getVoidTy(llvm_context);
+        type_cache[Kind::NONE] = llvm::Type::getVoidTy(llvm_context);
         
         // String é tratado como ponteiro para i8
         type_cache[Kind::STRING] = llvm::Type::getInt8Ty(llvm_context);

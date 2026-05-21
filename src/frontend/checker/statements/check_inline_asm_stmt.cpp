@@ -46,5 +46,5 @@ std::shared_ptr<nv::Type>& check_inline_asm_stmt(nv::Checker* checker, Node* nod
         checker->scope->put_key(out.result_var, result_type, false);
     }
 
-    return checker->gettyptr("void");
+    return checker->gettyptr("None");
 }

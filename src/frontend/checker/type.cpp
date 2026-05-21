@@ -184,12 +184,12 @@ namespace nv {
         // Estes métodos são tratados especialmente no codegen (generate_call_expr.cpp)
         // Aqui apenas registramos tipos genéricos para permitir verificação de tipos
         
-        // push: aceita 1 argumento de qualquer tipo, retorna void
+        // push: aceita 1 argumento de qualquer tipo, retorna None
         // Usamos um tipo polimórfico para aceitar qualquer tipo de argumento
         // O tipo real será inferido durante a verificação de tipos
         auto push_param_type = std::make_shared<nv::TypeVar>(-1); // ID temporário, será resolvido durante inferência
         std::vector<std::shared_ptr<nv::Type>> push_params = {push_param_type};
-        auto push_type = std::make_shared<nv::Function>(push_params, std::make_shared<nv::Void>());
+        auto push_type = std::make_shared<nv::Function>(push_params, std::make_shared<nv::None>());
         prototype->put_key("push", push_type, true);
         
         // pop: não aceita argumentos, retorna o elemento removido (tipo genérico)
@@ -208,7 +208,7 @@ namespace nv {
         prototype = std::make_shared<nv::Namespace>();
     }
 
-    void nv::Void::init_prototype() {
+    void nv::None::init_prototype() {
         prototype = std::make_shared<nv::Namespace>();
     }
 }

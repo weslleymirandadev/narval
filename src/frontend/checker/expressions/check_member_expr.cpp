@@ -11,12 +11,12 @@ std::shared_ptr<nv::Type>& check_member_expr(nv::Checker* ch, Node* node) {
     
     if (!member_expr->object) {
         ch->error(node, "Member expression requires an object");
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
     
     if (!member_expr->property) {
         ch->error(node, "Member expression requires a property");
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
     
     // Namespace Python dinâmico: qualquer member access é válido sem verificação de tipo.
@@ -24,7 +24,7 @@ std::shared_ptr<nv::Type>& check_member_expr(nv::Checker* ch, Node* node) {
     if (member_expr->object->kind == NodeType::Identifier) {
         auto* obj_id = static_cast<IdentifierNode*>(member_expr->object.get());
         if (ch->python_namespaces.count(obj_id->symbol)) {
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
     }
 
@@ -41,7 +41,7 @@ std::shared_ptr<nv::Type>& check_member_expr(nv::Checker* ch, Node* node) {
             }
             ch->error(member_expr->property.get(),
                       "Namespace '" + obj_id->symbol + "' has no member '" + prop_id2 + "'");
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
     }
 
@@ -53,7 +53,7 @@ std::shared_ptr<nv::Type>& check_member_expr(nv::Checker* ch, Node* node) {
     if (member_expr->property->kind != NodeType::Identifier) {
         ch->error(member_expr->property.get(), 
                   "Member expression property must be an identifier");
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
     
     auto* prop_id = static_cast<IdentifierNode*>(member_expr->property.get());
@@ -85,7 +85,7 @@ std::shared_ptr<nv::Type>& check_member_expr(nv::Checker* ch, Node* node) {
             if (!class_type->is_method_accessible(prop_name, ch->current_class_name)) {
                 ch->error(member_expr->property.get(),
                           "Method '" + prop_name + "' is private in class '" + class_type->name + "'");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
             temp_result = method_type;
             return temp_result;
@@ -94,7 +94,7 @@ std::shared_ptr<nv::Type>& check_member_expr(nv::Checker* ch, Node* node) {
         // Se não encontrou nem campo nem método, reportar erro
         ch->error(member_expr->property.get(), 
                   "Class '" + class_type->name + "' does not have member '" + prop_name + "'");
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
     
     // Verificar se o tipo tem o método/membro
@@ -120,5 +120,5 @@ std::shared_ptr<nv::Type>& check_member_expr(nv::Checker* ch, Node* node) {
     // Se não encontrou método e não for Map, reportar erro
     ch->error(member_expr->property.get(), 
               "Type '" + object_type->toString() + "' does not have member '" + prop_name + "'");
-    return ch->gettyptr("void");
+    return ch->gettyptr("None");
 }

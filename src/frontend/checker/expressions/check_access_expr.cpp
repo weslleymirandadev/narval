@@ -9,12 +9,12 @@ std::shared_ptr<nv::Type>& check_access_expr(nv::Checker* ch, Node* node) {
     
     if (!access_expr->expr) {
         ch->error(node, "Access expression requires an expression");
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
     
     if (!access_expr->index) {
         ch->error(node, "Access expression requires an index");
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
     
     // Verificar tipo da expressão base
@@ -40,7 +40,7 @@ std::shared_ptr<nv::Type>& check_access_expr(nv::Checker* ch, Node* node) {
     if (!index_is_int && !index_is_string) {
         ch->error(access_expr->index.get(),
                   "Access index must be int or string, but got '" + index_type->toString() + "'");
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
     
     // Verificar que a expressão base suporta acesso
@@ -49,7 +49,7 @@ std::shared_ptr<nv::Type>& check_access_expr(nv::Checker* ch, Node* node) {
         if (!index_is_int) {
             ch->error(access_expr->index.get(), 
                       "Array access requires integer index");
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
         
         auto* arr = static_cast<nv::Array*>(expr_type.get());
@@ -59,7 +59,7 @@ std::shared_ptr<nv::Type>& check_access_expr(nv::Checker* ch, Node* node) {
         if (!index_is_int) {
             ch->error(access_expr->index.get(), 
                       "Vector access requires integer index");
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
         
         // Vector pode conter qualquer tipo, retornar tipo genérico
@@ -71,7 +71,7 @@ std::shared_ptr<nv::Type>& check_access_expr(nv::Checker* ch, Node* node) {
         if (!index_is_int) {
             ch->error(access_expr->index.get(), 
                       "String access requires integer index");
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
         
         return ch->gettyptr("str");
@@ -86,7 +86,7 @@ std::shared_ptr<nv::Type>& check_access_expr(nv::Checker* ch, Node* node) {
             ch->error(access_expr->index.get(), 
                       "Map access index type '" + index_type->toString() + 
                       "' is not compatible with key type '" + map->key_type->toString() + "'");
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
         
         return map->value_type;
@@ -95,7 +95,7 @@ std::shared_ptr<nv::Type>& check_access_expr(nv::Checker* ch, Node* node) {
         if (!index_is_int) {
             ch->error(access_expr->index.get(), 
                       "Tuple access requires integer index");
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
         
         auto* tuple = static_cast<nv::Tuple*>(expr_type.get());
@@ -113,6 +113,6 @@ std::shared_ptr<nv::Type>& check_access_expr(nv::Checker* ch, Node* node) {
         ch->error(access_expr->expr.get(), 
                   "Access expression requires array, vector, string, map, or tuple, but got '" + 
                   expr_type->toString() + "'");
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
 }

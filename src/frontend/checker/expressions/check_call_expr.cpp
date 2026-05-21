@@ -63,7 +63,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
             if (ch->python_namespaces.count(obj_id->symbol)) {
                 for (const auto& arg : call->args)
                     ch->infer_expr(arg.get());
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
         }
 
@@ -89,7 +89,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
                 }
                 ch->error(member_expr->property.get(),
                           "Namespace '" + obj_id->symbol + "' has no member '" + prop_id->symbol + "'");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
         }
 
@@ -101,7 +101,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
         if (member_expr->property->kind != NodeType::Identifier) {
             ch->error(member_expr->property.get(), 
                       "Method name must be an identifier");
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
         
         auto* prop_id = static_cast<IdentifierNode*>(member_expr->property.get());
@@ -118,7 +118,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
             if (method_type && !class_type->is_method_accessible(method_name, ch->current_class_name)) {
                 ch->error(member_expr->property.get(),
                           "Method '" + method_name + "' is private in class '" + class_type->name + "'");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
         } else {
             if (!object_type->prototype) {
@@ -132,14 +132,14 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
         if (!method_type) {
             ch->error(member_expr->property.get(),
                       "Type '" + object_type->toString() + "' does not have method '" + method_name + "'");
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
         
         // Verificar se é uma função
         if (method_type->kind != nv::Kind::FUNCTION) {
             ch->error(member_expr->property.get(), 
                       "'" + method_name + "' is not a method");
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
         
         auto function = std::static_pointer_cast<nv::Function>(method_type);
@@ -152,7 +152,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
         }
         
         if (ch->err) {
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
         
         // Verificar número de argumentos
@@ -162,7 +162,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
                 << function->paramstype.size() 
                 << ", got " << call->args.size();
             ch->error(const_cast<Node*>(node), oss.str());
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
         
         // Validar tipos dos argumentos. Chamadas são estritas: int não é aceito
@@ -170,7 +170,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
         for (size_t i = 0; i < call->args.size(); i++) {
             Node* arg_node = call->args[i]->value ? call->args[i]->value.get() : const_cast<Node*>(node);
             if (!check_call_arg_type(ch, arg_node, arg_types[i], function->paramstype[i], "Method call")) {
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
         }
         
@@ -184,7 +184,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
         if (ch->python_namespaces.count(cid->symbol)) {
             for (const auto& arg : call->args)
                 ch->infer_expr(arg->value.get());
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
     }
 
@@ -198,7 +198,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
         auto* id = static_cast<IdentifierNode*>(call->caller.get());
         if (stdlib_builtins.count(id->symbol)) {
             ch->no_std_error(call->caller.get(), id->symbol);
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
     }
 
@@ -210,7 +210,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
             if (call->args.size() != 1 || !call->args[0]->value) {
                 ch->error(const_cast<Node*>(node),
                           "'" + name + "' expects exactly one argument");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
             auto inner_type = ch->infer_expr(call->args[0]->value.get());
             inner_type = ch->unify_ctx.resolve(inner_type);
@@ -248,7 +248,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
     // Se há erros (no caller ou nos argumentos), retornar imediatamente
     // após ter verificado todos os argumentos para reportar todos os erros
     if (ch->err) {
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
     
     func_type = ch->unify_ctx.resolve(func_type);
@@ -273,7 +273,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
             std::ostringstream oss;
             oss << "Call expression type error: " << e.what();
             ch->error(const_cast<Node*>(node), oss.str());
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
         func_type = ch->unify_ctx.resolve(func_type);
     }
@@ -299,7 +299,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
                         << (it->max_args == 0 ? "unlimited" : std::to_string(it->max_args))
                         << " expected, got " << call->args.size();
                     ch->error(const_cast<Node*>(node), oss.str());
-                    return ch->gettyptr("void");
+                    return ch->gettyptr("None");
                 }
             }
         }
@@ -334,7 +334,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
                 }
                 oss << ", got " << call->args.size();
                 ch->error(const_cast<Node*>(node), oss.str());
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
         }
         
@@ -346,7 +346,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
                 for (size_t i = 0; i < max_args; i++) {
                     Node* arg_node = call->args[i]->value ? call->args[i]->value.get() : const_cast<Node*>(node);
                     if (!check_call_arg_type(ch, arg_node, arg_types[i], function->paramstype[i], "Function call")) {
-                        return ch->gettyptr("void");
+                        return ch->gettyptr("None");
                     }
                 }
             }
@@ -354,18 +354,18 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
             // Map keyword args to parameter order using recorded parameter names
             if (call->caller->kind != NodeType::Identifier) {
                 ch->error(const_cast<Node*>(node), "Keyword arguments only supported for direct function identifiers");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
             auto* id = static_cast<IdentifierNode*>(call->caller.get());
             auto it = ch->function_param_names.find(id->symbol);
             if (it == ch->function_param_names.end()) {
                 ch->error(const_cast<Node*>(node), "Cannot bind keyword arguments: unknown function parameter names");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
             const auto& pname_list = it->second;
             if (pname_list.size() != function->paramstype.size()) {
                 ch->error(const_cast<Node*>(node), "Internal error: parameter name list size mismatch");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
 
             std::vector<std::shared_ptr<nv::Type>> ordered_args(function->paramstype.size());
@@ -377,11 +377,11 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
                 if (a->name.empty()) {
                     if (seen_keyword) {
                         ch->error(const_cast<Node*>(node), "Positional argument after keyword argument is not allowed");
-                        return ch->gettyptr("void");
+                        return ch->gettyptr("None");
                     }
                     if (pos_index >= ordered_args.size()) {
                         ch->error(const_cast<Node*>(node), "Too many positional arguments");
-                        return ch->gettyptr("void");
+                        return ch->gettyptr("None");
                     }
                     ordered_args[pos_index++] = ch->infer_expr(a->value.get());
                     assigned[pos_index-1] = true;
@@ -391,12 +391,12 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
                     auto found = std::find(pname_list.begin(), pname_list.end(), a->name);
                     if (found == pname_list.end()) {
                         ch->error(const_cast<Node*>(node), "Unknown parameter name '" + a->name + "'");
-                        return ch->gettyptr("void");
+                        return ch->gettyptr("None");
                     }
                     size_t idx = std::distance(pname_list.begin(), found);
                     if (assigned[idx]) {
                         ch->error(const_cast<Node*>(node), "Duplicate argument for parameter '" + a->name + "'");
-                        return ch->gettyptr("void");
+                        return ch->gettyptr("None");
                     }
                     ordered_args[idx] = ch->infer_expr(a->value.get());
                     assigned[idx] = true;
@@ -417,7 +417,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
                         continue;
                     }
                     ch->error(const_cast<Node*>(node), "Missing argument for parameter '" + pname_list[i] + "'");
-                    return ch->gettyptr("void");
+                    return ch->gettyptr("None");
                 }
             }
 
@@ -426,7 +426,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
                 if (!ordered_args[i]) continue; // omitted param with default — skip unification
                 Node* arg_node = ordered_arg_nodes[i] ? ordered_arg_nodes[i] : const_cast<Node*>(node);
                 if (!check_call_arg_type(ch, arg_node, ordered_args[i], function->paramstype[i], "Function call")) {
-                    return ch->gettyptr("void");
+                    return ch->gettyptr("None");
                 }
             }
         }
@@ -440,5 +440,5 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
 
     // Fallback: se não conseguimos determinar o tipo da função, retornar void
     // Isso não deveria acontecer em código válido, mas serve como fallback seguro
-    return ch->gettyptr("void");
+    return ch->gettyptr("None");
 }

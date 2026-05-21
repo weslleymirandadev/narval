@@ -132,7 +132,7 @@ llvm::Type* IRGenerationContext::nv_type_to_llvm(std::shared_ptr<Type> nv_type) 
         case Kind::BOOL:
             return llvm::Type::getInt1Ty(llvm_context);
         
-        case Kind::VOID:
+        case Kind::NONE:
             return llvm::Type::getVoidTy(llvm_context);
         
         case Kind::STRING:

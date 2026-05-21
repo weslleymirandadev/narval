@@ -53,6 +53,6 @@ namespace nv {
         }
 
         checker->pop_scope();
-        return checker->gettyptr("void");
+        return checker->gettyptr("None");
     }
 }

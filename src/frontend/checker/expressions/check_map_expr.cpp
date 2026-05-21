@@ -26,14 +26,14 @@ std::shared_ptr<nv::Type>& check_map_expr(nv::Checker* ch, Node* node) {
     for (auto& prop : map_node->properties) {
         if (prop->kind != NodeType::KeyValue) {
             ch->error(prop.get(), "Map properties must be key-value pairs");
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
         
         auto* kv = static_cast<KeyValueNode*>(prop.get());
         
         if (!kv->key || !kv->value) {
             ch->error(prop.get(), "Key-value pair requires both key and value");
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
         
         auto prop_key_type = ch->infer_expr(kv->key.get());
@@ -53,7 +53,7 @@ std::shared_ptr<nv::Type>& check_map_expr(nv::Checker* ch, Node* node) {
                 ch->error(kv->key.get(), 
                           "Map key type mismatch: expected '" + key_type->toString() + 
                           "', but got '" + prop_key_type->toString() + "'");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
             
             // Unificar tipos de valor
@@ -63,7 +63,7 @@ std::shared_ptr<nv::Type>& check_map_expr(nv::Checker* ch, Node* node) {
                 ch->error(kv->value.get(), 
                           "Map value type mismatch: expected '" + value_type->toString() + 
                           "', but got '" + prop_value_type->toString() + "'");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
         }
     }

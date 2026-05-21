@@ -16,7 +16,7 @@ namespace nv {
         INT,
         FLOAT,
         BOOL,
-        VOID,
+        NONE,
         FUNCTION,
         ARRAY,
         TUPLE,
@@ -234,8 +234,8 @@ namespace nv {
         std::string toString() override { return "boolean"; };
     };
 
-    struct Void : public Type {
-        Void() : Type(Kind::VOID) {}
+    struct None : public Type {
+        None() : Type(Kind::NONE) {}
         void init_prototype() override;
         std::string toString() override { return "None"; }
     };

@@ -16,7 +16,7 @@ std::shared_ptr<nv::Type>& check_unary_expr(nv::Checker* ch, Node* node) {
             auto* not_expr = static_cast<LogicalNotExprNode*>(node);
             if (!not_expr->operand) {
                 ch->error(node, "Logical not expression requires an operand");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
             
             auto operand_type = ch->infer_expr(not_expr->operand.get());
@@ -28,7 +28,7 @@ std::shared_ptr<nv::Type>& check_unary_expr(nv::Checker* ch, Node* node) {
             } catch (std::runtime_error& e) {
                 ch->error(not_expr->operand.get(), 
                           "Logical not operand must be of type 'bool', but got '" + operand_type->toString() + "'");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
             
             return ch->gettyptr("bool");
@@ -38,7 +38,7 @@ std::shared_ptr<nv::Type>& check_unary_expr(nv::Checker* ch, Node* node) {
             auto* minus_expr = static_cast<UnaryMinusExprNode*>(node);
             if (!minus_expr->operand) {
                 ch->error(node, "Unary minus expression requires an operand");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
             
             auto operand_type = ch->infer_expr(minus_expr->operand.get());
@@ -51,7 +51,7 @@ std::shared_ptr<nv::Type>& check_unary_expr(nv::Checker* ch, Node* node) {
             if (!is_int && !is_float) {
                 ch->error(minus_expr->operand.get(), 
                           "Unary minus operand must be numeric (int or float), but got '" + operand_type->toString() + "'");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
             
             temp_result = operand_type; // Retorna o mesmo tipo (int ou float)
@@ -62,7 +62,7 @@ std::shared_ptr<nv::Type>& check_unary_expr(nv::Checker* ch, Node* node) {
             auto* inc_expr = static_cast<IncrementExprNode*>(node);
             if (!inc_expr->operand) {
                 ch->error(node, "Pre-increment expression requires an operand");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
             
             // Verificar que é um lvalue (Identifier ou AccessExpression)
@@ -70,7 +70,7 @@ std::shared_ptr<nv::Type>& check_unary_expr(nv::Checker* ch, Node* node) {
                 inc_expr->operand->kind != NodeType::AccessExpression) {
                 ch->error(inc_expr->operand.get(), 
                           "Pre-increment operand must be a variable or array access");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
             
             // Verificar tipo numérico
@@ -96,7 +96,7 @@ std::shared_ptr<nv::Type>& check_unary_expr(nv::Checker* ch, Node* node) {
                         ch->error(inc_expr->operand.get(), 
                                   "Pre-increment operand must be numeric (int or float), but got '" + 
                                   operand_type->toString() + "'");
-                        return ch->gettyptr("void");
+                        return ch->gettyptr("None");
                     }
                 }
             }
@@ -105,7 +105,7 @@ std::shared_ptr<nv::Type>& check_unary_expr(nv::Checker* ch, Node* node) {
                 ch->error(inc_expr->operand.get(), 
                           "Pre-increment operand must be numeric (int or float), but got '" + 
                           operand_type->toString() + "'");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
             
             temp_result = operand_type;
@@ -116,7 +116,7 @@ std::shared_ptr<nv::Type>& check_unary_expr(nv::Checker* ch, Node* node) {
             auto* dec_expr = static_cast<DecrementExprNode*>(node);
             if (!dec_expr->operand) {
                 ch->error(node, "Pre-decrement expression requires an operand");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
             
             // Verificar que é um lvalue (Identifier ou AccessExpression)
@@ -124,7 +124,7 @@ std::shared_ptr<nv::Type>& check_unary_expr(nv::Checker* ch, Node* node) {
                 dec_expr->operand->kind != NodeType::AccessExpression) {
                 ch->error(dec_expr->operand.get(), 
                           "Pre-decrement operand must be a variable or array access");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
             
             // Verificar tipo numérico
@@ -150,7 +150,7 @@ std::shared_ptr<nv::Type>& check_unary_expr(nv::Checker* ch, Node* node) {
                         ch->error(dec_expr->operand.get(), 
                                   "Pre-decrement operand must be numeric (int or float), but got '" + 
                                   operand_type->toString() + "'");
-                        return ch->gettyptr("void");
+                        return ch->gettyptr("None");
                     }
                 }
             }
@@ -159,7 +159,7 @@ std::shared_ptr<nv::Type>& check_unary_expr(nv::Checker* ch, Node* node) {
                 ch->error(dec_expr->operand.get(), 
                           "Pre-decrement operand must be numeric (int or float), but got '" + 
                           operand_type->toString() + "'");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
             
             temp_result = operand_type;
@@ -170,7 +170,7 @@ std::shared_ptr<nv::Type>& check_unary_expr(nv::Checker* ch, Node* node) {
             auto* post_inc_expr = static_cast<PostIncrementExprNode*>(node);
             if (!post_inc_expr->operand) {
                 ch->error(node, "Post-increment expression requires an operand");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
             
             // Verificar que é um lvalue (Identifier ou AccessExpression)
@@ -178,7 +178,7 @@ std::shared_ptr<nv::Type>& check_unary_expr(nv::Checker* ch, Node* node) {
                 post_inc_expr->operand->kind != NodeType::AccessExpression) {
                 ch->error(post_inc_expr->operand.get(), 
                           "Post-increment operand must be a variable or array access");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
             
             // Verificar tipo numérico
@@ -204,7 +204,7 @@ std::shared_ptr<nv::Type>& check_unary_expr(nv::Checker* ch, Node* node) {
                         ch->error(post_inc_expr->operand.get(), 
                                   "Post-increment operand must be numeric (int or float), but got '" + 
                                   operand_type->toString() + "'");
-                        return ch->gettyptr("void");
+                        return ch->gettyptr("None");
                     }
                 }
             }
@@ -213,7 +213,7 @@ std::shared_ptr<nv::Type>& check_unary_expr(nv::Checker* ch, Node* node) {
                 ch->error(post_inc_expr->operand.get(), 
                           "Post-increment operand must be numeric (int or float), but got '" + 
                           operand_type->toString() + "'");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
             
             temp_result = operand_type;
@@ -224,7 +224,7 @@ std::shared_ptr<nv::Type>& check_unary_expr(nv::Checker* ch, Node* node) {
             auto* post_dec_expr = static_cast<PostDecrementExprNode*>(node);
             if (!post_dec_expr->operand) {
                 ch->error(node, "Post-decrement expression requires an operand");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
             
             // Verificar que é um lvalue (Identifier ou AccessExpression)
@@ -232,7 +232,7 @@ std::shared_ptr<nv::Type>& check_unary_expr(nv::Checker* ch, Node* node) {
                 post_dec_expr->operand->kind != NodeType::AccessExpression) {
                 ch->error(post_dec_expr->operand.get(), 
                           "Post-decrement operand must be a variable or array access");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
             
             // Verificar tipo numérico
@@ -258,7 +258,7 @@ std::shared_ptr<nv::Type>& check_unary_expr(nv::Checker* ch, Node* node) {
                         ch->error(post_dec_expr->operand.get(), 
                                   "Post-decrement operand must be numeric (int or float), but got '" + 
                                   operand_type->toString() + "'");
-                        return ch->gettyptr("void");
+                        return ch->gettyptr("None");
                     }
                 }
             }
@@ -267,7 +267,7 @@ std::shared_ptr<nv::Type>& check_unary_expr(nv::Checker* ch, Node* node) {
                 ch->error(post_dec_expr->operand.get(), 
                           "Post-decrement operand must be numeric (int or float), but got '" + 
                           operand_type->toString() + "'");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
             
             temp_result = operand_type;
@@ -275,6 +275,6 @@ std::shared_ptr<nv::Type>& check_unary_expr(nv::Checker* ch, Node* node) {
         }
         
         default:
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
     }
 }

@@ -79,8 +79,7 @@ nv::Checker::Checker() {
     types["char"] = std::make_shared<nv::Char>();
     types["float"] = std::make_shared<nv::Float>();
     types["bool"] = std::make_shared<nv::Boolean>();
-    types["void"] = std::make_shared<nv::Void>();
-    types["None"] = types["void"]; // None is the user-facing name for void
+    types["None"] = std::make_shared<nv::None>();
 
     // Tipos low-level para funções @[abi(...)] e blocos asm
     auto make_ll = [](const std::string& n, bool s, int b) {
@@ -104,7 +103,7 @@ nv::Checker::Checker() {
     // Tipo function genérico (params desconhecidos, retorno desconhecido)
     types["function"] = std::make_shared<nv::Function>(
         std::vector<std::shared_ptr<nv::Type>>{}, 
-        types["void"]
+        types["None"]
     );
 
     // Agora que os objetos Type estão dentro de shared_ptr, inicializar seus prototypes
@@ -113,7 +112,7 @@ nv::Checker::Checker() {
     types["char"]->init_prototype();
     types["float"]->init_prototype();
     types["bool"]->init_prototype();
-    types["void"]->init_prototype();
+    types["None"]->init_prototype();
     
     // Registrar classe Error builtin
     auto error_class = std::make_shared<nv::Class>("Error");
@@ -292,7 +291,7 @@ std::shared_ptr<nv::Type>& nv::Checker::gettyptr(std::string ty, Node* error_nod
                       << ANSI_RED << "ERROR" << ANSI_RESET << ANSI_BOLD << ": "
                       << "Invalid function type: " << ty << " - " << e.what() << ANSI_RESET << "\n\n";
             err = true;
-            return types["void"];
+            return types["None"];
         }
     }
 
@@ -307,7 +306,7 @@ std::shared_ptr<nv::Type>& nv::Checker::gettyptr(std::string ty, Node* error_nod
                   << "Unknown type: '" << ty << "'" << ANSI_RESET << "\n\n";
         err = true;
     }
-    return types["void"];
+    return types["None"];
 }
 void nv::Checker::push_scope() {
     auto ns = std::make_shared<Namespace>(scope);

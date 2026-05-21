@@ -51,13 +51,13 @@ namespace nv {
         // Verificar se é realmente uma classe
         if (class_type->kind != Kind::CLASS) {
             checker->error(node, "'" + new_expr->class_name + "' is not a class");
-            return checker->gettyptr("void");
+            return checker->gettyptr("None");
         }
         
         auto class_obj = std::static_pointer_cast<Class>(class_type);
         if (class_obj->is_abstract) {
             checker->error(node, "Cannot instantiate abstract class '" + new_expr->class_name + "'");
-            return checker->gettyptr("void");
+            return checker->gettyptr("None");
         }
 
         auto ctor_type = class_obj->get_method("new");
@@ -73,7 +73,7 @@ namespace nv {
         ctor_type = checker->unify_ctx.resolve(ctor_type);
         if (ctor_type->kind != Kind::FUNCTION) {
             checker->error(node, "'" + new_expr->class_name + ".new' is not a constructor");
-            return checker->gettyptr("void");
+            return checker->gettyptr("None");
         }
 
         auto ctor_fn = std::static_pointer_cast<Function>(ctor_type);

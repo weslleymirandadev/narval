@@ -65,8 +65,8 @@ int main(int argc, char* argv[]) {
                                         inferred_type = poly->instantiate(next_id);
                                         inferred_type = checker.unify_ctx.resolve(inferred_type);
                                     }
-                                    // Se o tipo resolvido for Void, tentar inferir do value diretamente
-                                    if (!inferred_type || inferred_type->kind == nv::Kind::VOID) {
+                                    // Se o tipo resolvido for None, tentar inferir do value diretamente
+                                    if (!inferred_type || inferred_type->kind == nv::Kind::NONE) {
                                         if (decl->value) {
                                             inferred_type = checker.infer_expr(decl->value.get());
                                             inferred_type = checker.unify_ctx.resolve(inferred_type);

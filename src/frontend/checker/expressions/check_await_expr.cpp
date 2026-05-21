@@ -7,7 +7,7 @@ std::shared_ptr<nv::Type> check_await_expr(nv::Checker* checker, Node* node) {
 
     if (checker->no_std_attr_node) {
         checker->no_std_error(node, "await");
-        return checker->gettyptr("void");
+        return checker->gettyptr("None");
     }
 
     auto operand_ty = checker->check_node(expr->operand.get());
@@ -19,5 +19,5 @@ std::shared_ptr<nv::Type> check_await_expr(nv::Checker* checker, Node* node) {
     }
 
     // await sem Future — aceitar como passthrough (para flexibilidade)
-    return operand_ty ? operand_ty : checker->gettyptr("void");
+    return operand_ty ? operand_ty : checker->gettyptr("None");
 }

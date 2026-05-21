@@ -30,7 +30,7 @@ std::shared_ptr<nv::Type>& check_for_stmt(nv::Checker* ch, Node* node) {
                 ch->error(for_stmt->range_start.get(), 
                           "Range start and end types must be compatible");
                 ch->pop_scope();
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
             
             // Verificar que são tipos iteráveis (int ou string)
@@ -41,7 +41,7 @@ std::shared_ptr<nv::Type>& check_for_stmt(nv::Checker* ch, Node* node) {
                 ch->error(for_stmt->range_start.get(), 
                           "Range bounds must be integers or strings");
                 ch->pop_scope();
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
             
             // Adicionar bindings ao escopo com tipo inferido do range
@@ -68,7 +68,7 @@ std::shared_ptr<nv::Type>& check_for_stmt(nv::Checker* ch, Node* node) {
                 ch->error(for_stmt->iterable.get(), 
                           "For loop iterable must be an array, vector, string, map, tuple, or integer");
                 ch->pop_scope();
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
             
             // Inferir tipo dos elementos do iterable
@@ -111,7 +111,7 @@ std::shared_ptr<nv::Type>& check_for_stmt(nv::Checker* ch, Node* node) {
         } else {
             ch->error(node, "For loop requires either a range or an iterable");
             ch->pop_scope();
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
     } else if (for_stmt->iterable) {
         // Modo 2: for iterable (sem bindings explícitos)
@@ -130,12 +130,12 @@ std::shared_ptr<nv::Type>& check_for_stmt(nv::Checker* ch, Node* node) {
             ch->error(for_stmt->iterable.get(), 
                       "For loop iterable must be an array, vector, string, map, tuple, or integer");
             ch->pop_scope();
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
     } else {
         ch->error(node, "For loop requires bindings or an iterable");
         ch->pop_scope();
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
     
     // Verificar corpo do loop
@@ -149,5 +149,5 @@ std::shared_ptr<nv::Type>& check_for_stmt(nv::Checker* ch, Node* node) {
     }
     
     ch->pop_scope();
-    return ch->gettyptr("void");
+    return ch->gettyptr("None");
 }

@@ -246,7 +246,7 @@ std::shared_ptr<Type> check_closure_expr(ClosureExprNode* node, Checker& ch) {
     // Permissive return type so ReturnStmtNode validation doesn't false-positive
     ch.current_return_type = ch.unify_ctx.new_type_var();
 
-    std::shared_ptr<nv::Type> return_type = ch.gettyptr("void");
+    std::shared_ptr<nv::Type> return_type = ch.gettyptr("None");
     for (const auto& stmt : node->body) {
         if (stmt) {
             auto t = ch.check_node(stmt.get());
@@ -260,7 +260,7 @@ std::shared_ptr<Type> check_closure_expr(ClosureExprNode* node, Checker& ch) {
         : ch.gettyptr(node->return_type, node);
     
     // Verificar se o tipo de retorno inferido é compatível com o declarado
-    if (return_type && return_type->kind != nv::Kind::VOID) {
+    if (return_type && return_type->kind != nv::Kind::NONE) {
         try {
             ch.unify_ctx.unify(return_type, closure_return_type);
         } catch (std::runtime_error& e) {

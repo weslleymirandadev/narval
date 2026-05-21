@@ -131,7 +131,7 @@ std::shared_ptr<nv::Type>& check_decl_stmt(nv::Checker* ch, Node* node) {
                           "Array size mismatch: type requires exactly " +
                           std::to_string(declared_size) + " element(s), but " +
                           std::to_string(actual_elements) + " were provided.");
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
         }
         
@@ -141,7 +141,7 @@ std::shared_ptr<nv::Type>& check_decl_stmt(nv::Checker* ch, Node* node) {
         } catch (std::runtime_error& e) {
             ch->error(decl->value.get(), std::string("Expected type '") + dtype->toString() + 
                                    "', but got '" + vtype->toString() + "'. " + e.what());
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
         
         // Resolver tipo após unificação

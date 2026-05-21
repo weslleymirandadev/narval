@@ -8,7 +8,7 @@ std::shared_ptr<nv::Type>& check_range_expr(nv::Checker* ch, Node* node) {
     
     if (!range_expr->start || !range_expr->end) {
         ch->error(node, "Range expression requires both start and end");
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
     
     // Verificar tipos dos limites
@@ -27,13 +27,13 @@ std::shared_ptr<nv::Type>& check_range_expr(nv::Checker* ch, Node* node) {
     if ((start_is_int && !end_is_int) || (start_is_string && !end_is_string)) {
         ch->error(range_expr->end.get(), 
                   "Range bounds must have compatible types");
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
     
     if (!start_is_int && !start_is_string) {
         ch->error(range_expr->start.get(), 
                   "Range bounds must be integers or strings");
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
     
     // Unificar tipos
@@ -42,10 +42,10 @@ std::shared_ptr<nv::Type>& check_range_expr(nv::Checker* ch, Node* node) {
     } catch (std::runtime_error& e) {
         ch->error(range_expr->end.get(), 
                   "Range bounds have incompatible types");
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
     
     // Range expression não retorna um tipo diretamente (é usado em for/match)
     // Retornar void por enquanto
-    return ch->gettyptr("void");
+    return ch->gettyptr("None");
 }

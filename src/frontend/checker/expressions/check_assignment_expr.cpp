@@ -27,7 +27,7 @@ std::shared_ptr<nv::Type>& check_assignment_expr(nv::Checker* ch, Node* node) {
         ch->unify_ctx.unify(left_type, right_type);
     } catch (std::runtime_error& e) {
         ch->error(node, "Assignment type error: " + std::string(e.what()));
-        result = ch->gettyptr("void");
+        result = ch->gettyptr("None");
         return result;
     }
 

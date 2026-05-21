@@ -12,5 +12,5 @@ std::shared_ptr<nv::Type>& check_defer_stmt(nv::Checker* checker, Node* node) {
         if (stmt) checker->check_node(stmt.get());
     checker->pop_scope();
 
-    return checker->gettyptr("void");
+    return checker->gettyptr("None");
 }

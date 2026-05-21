@@ -26,14 +26,14 @@ std::shared_ptr<nv::Type> check_binary_expr(nv::Checker* ch, Node* node) {
 
     // Se há erros, parar imediatamente
     if (ch->err) {
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
 
     auto right_type = ch->infer_expr(bin->right.get());
 
     // Se há erros, parar imediatamente
     if (ch->err) {
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
 
     // Resolver tipos antes de unificar
@@ -56,11 +56,11 @@ std::shared_ptr<nv::Type> check_binary_expr(nv::Checker* ch, Node* node) {
                 if (resolved && resolved->kind == nv::Kind::FUNCTION) {
                     return static_cast<nv::Function*>(resolved.get())->returntype;
                 }
-                return resolved ? resolved : ch->gettyptr("void");
+                return resolved ? resolved : ch->gettyptr("None");
             }
             ch->error(node, "Class '" + cls->name + "' does not implement operator '" +
                       bin->op + "' (method " + dunder + " not found)");
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
     }
 
@@ -117,7 +117,7 @@ std::shared_ptr<nv::Type> check_binary_expr(nv::Checker* ch, Node* node) {
     } catch (std::runtime_error& e) {
         // Usar error() ao invés de throw para evitar duplicação de erros
         ch->error(node, "Binary expression type error: " + std::string(e.what()));
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
     
     // Resolver tipos após unificação

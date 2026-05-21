@@ -16,7 +16,7 @@ namespace nv {
             for (const auto& [pname, ptype] : method.params) {
                 param_types.push_back(checker->gettyptr(ptype, node));
             }
-            auto ret_type = method.return_type.empty() ? checker->gettyptr("void")
+            auto ret_type = method.return_type.empty() ? checker->gettyptr("None")
                                                        : checker->gettyptr(method.return_type, node);
             iface_type->add_method(method.name, std::make_shared<Function>(param_types, ret_type));
         }

@@ -289,7 +289,7 @@ std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
         if (import_stmt->is_wildcard) {
             // Para wildcards, verificar se já está no namespace ou no scope
             if (!import_stmt->wildcard_alias.empty()) {
-                try { ch->scope->get_key(import_stmt->wildcard_alias); return ch->gettyptr("void"); }
+                try { ch->scope->get_key(import_stmt->wildcard_alias); return ch->gettyptr("None"); }
                 catch (std::runtime_error&) {}
             } else {
                 // Flat wildcard: não há como checar facilmente, re-executar
@@ -309,7 +309,7 @@ std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
 
             // Se todos os símbolos já estão registrados, retornar
             if (all_registered) {
-                return ch->gettyptr("void");
+                return ch->gettyptr("None");
             }
         }
         // Caso contrário, continuar para registrar os símbolos novamente
@@ -356,7 +356,7 @@ std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
             std::ostringstream oss;
             oss << "Failed to open file " << ANSI_BOLD << ANSI_WHITE << module_path << ANSI_RESET;
             report_import_error(ch, import_stmt, oss.str());
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
         std::string source((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
         file.close();
@@ -373,7 +373,7 @@ std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
             std::ostringstream oss;
             oss << "Failed to parse module " << ANSI_BOLD << ANSI_WHITE << module_path << ANSI_RESET;
             report_import_error(ch, import_stmt, oss.str());
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
         
         auto* program = static_cast<Program*>(module_ast.get());
@@ -389,7 +389,7 @@ std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
         if (module_checker.err) {
             // Não reportar erro aqui, apenas não registrar os símbolos
             // O erro já foi reportado pelo checker do módulo
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
         
         // --- Wildcard import: "import *" ou "import * as ALIAS" ---
@@ -427,9 +427,9 @@ std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
             if (!import_stmt->wildcard_alias.empty()) {
                 // Registra o alias no scope com tipo void como placeholder (evita "identifier not found")
                 // A resolução de membros via ALIAS.foo é feita via ch->import_namespaces, não por tipo
-                ch->scope->put_key(import_stmt->wildcard_alias, ch->gettyptr("void"), false);
+                ch->scope->put_key(import_stmt->wildcard_alias, ch->gettyptr("None"), false);
             }
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
 
         // Verificar se cada símbolo importado existe no módulo e registrar no escopo
@@ -548,5 +548,5 @@ std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
         report_import_error(ch, import_stmt, oss.str());
     }
     
-    return ch->gettyptr("void");
+    return ch->gettyptr("None");
 }

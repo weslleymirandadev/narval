@@ -17,7 +17,7 @@ std::shared_ptr<nv::Type>& check_extern_stmt(nv::Checker* checker, Node* node) {
         }
 
         std::shared_ptr<nv::Type> ret_type;
-        try { ret_type = checker->gettyptr(decl.return_type); } catch (...) { ret_type = checker->gettyptr("void"); }
+        try { ret_type = checker->gettyptr(decl.return_type); } catch (...) { ret_type = checker->gettyptr("None"); }
 
         auto func_type = std::make_shared<nv::Function>(param_types, ret_type);
         checker->scope->put_key(decl.name, func_type, true);
@@ -38,5 +38,5 @@ std::shared_ptr<nv::Type>& check_extern_stmt(nv::Checker* checker, Node* node) {
         }
     }
 
-    return checker->gettyptr("void");
+    return checker->gettyptr("None");
 }

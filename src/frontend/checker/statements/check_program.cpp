@@ -310,5 +310,5 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
         }
     }
 
-    return ch->gettyptr("void");
+    return ch->gettyptr("None");
 }

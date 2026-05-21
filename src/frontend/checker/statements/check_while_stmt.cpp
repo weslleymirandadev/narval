@@ -9,7 +9,7 @@ std::shared_ptr<nv::Type>& check_while_stmt(nv::Checker* ch, Node* node) {
     // Verificar condição
     if (!while_stmt->condition) {
         ch->error(node, "While statement requires a condition");
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
     
     auto cond_type = ch->infer_expr(while_stmt->condition.get());
@@ -21,7 +21,7 @@ std::shared_ptr<nv::Type>& check_while_stmt(nv::Checker* ch, Node* node) {
     } catch (std::runtime_error& e) {
         ch->error(while_stmt->condition.get(), 
                   "While condition must be of type 'bool', but got '" + cond_type->toString() + "'");
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
     
     // Verificar corpo do loop
@@ -31,5 +31,5 @@ std::shared_ptr<nv::Type>& check_while_stmt(nv::Checker* ch, Node* node) {
     }
     ch->pop_scope();
     
-    return ch->gettyptr("void");
+    return ch->gettyptr("None");
 }

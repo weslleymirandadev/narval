@@ -9,12 +9,12 @@ std::shared_ptr<nv::Type>& check_conditional_expr(nv::Checker* ch, Node* node) {
     
     if (!cond_expr->condition) {
         ch->error(node, "Conditional expression requires a condition");
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
     
     if (!cond_expr->true_expr || !cond_expr->false_expr) {
         ch->error(node, "Conditional expression requires both true and false branches");
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
     
     // Verificar condição
@@ -27,7 +27,7 @@ std::shared_ptr<nv::Type>& check_conditional_expr(nv::Checker* ch, Node* node) {
     } catch (std::runtime_error& e) {
         ch->error(cond_expr->condition.get(), 
                   "Conditional expression condition must be of type 'bool', but got '" + cond_type->toString() + "'");
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
     
     // Verificar tipos das branches
@@ -56,7 +56,7 @@ std::shared_ptr<nv::Type>& check_conditional_expr(nv::Checker* ch, Node* node) {
         ch->error(cond_expr->true_expr.get(), 
                   "Conditional expression branches have incompatible types: '" + 
                   true_type->toString() + "' and '" + false_type->toString() + "'");
-        return ch->gettyptr("void");
+        return ch->gettyptr("None");
     }
     
     // Retornar tipo unificado

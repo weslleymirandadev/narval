@@ -127,7 +127,7 @@ namespace nv {
 
         for (const auto& method : class_stmt->methods) {
             std::vector<std::shared_ptr<Type>> param_types;
-            std::shared_ptr<Type> ret_type = std::make_shared<Void>();
+            std::shared_ptr<Type> ret_type = std::make_shared<None>();
 
             if (method->method_def) {
                 auto* function = static_cast<FunctionStmtNode*>(method->method_def.get());
@@ -136,7 +136,7 @@ namespace nv {
                         param_types.push_back(checker->gettyptr(kv.second, node));
                     }
                 }
-                if (!function->return_type.empty() && function->return_type != "void" &&
+                if (!function->return_type.empty() && function->return_type != "None" &&
                     function->return_type != "None" && function->return_type != "automatic") {
                     ret_type = checker->gettyptr(function->return_type, node);
                 }

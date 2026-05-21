@@ -10,13 +10,13 @@ std::shared_ptr<nv::Type>& check_extern_from_import_stmt(nv::Checker* checker, N
     auto* stmt = static_cast<ExternFromImportStmtNode*>(node);
 
     auto register_dynamic = [&](const std::string& sym) {
-        checker->scope->put_key(sym, checker->gettyptr("void"), false);
+        checker->scope->put_key(sym, checker->gettyptr("None"), false);
         checker->python_namespaces.insert(sym);
     };
 
     if (stmt->is_wildcard && !stmt->wildcard_alias.empty()) {
         register_dynamic(stmt->wildcard_alias);
-        return checker->gettyptr("void");
+        return checker->gettyptr("None");
     }
 
     for (auto& item : stmt->imports) {
@@ -24,5 +24,5 @@ std::shared_ptr<nv::Type>& check_extern_from_import_stmt(nv::Checker* checker, N
         register_dynamic(sym);
     }
 
-    return checker->gettyptr("void");
+    return checker->gettyptr("None");
 }

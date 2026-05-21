@@ -67,7 +67,7 @@ std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
         if (param.parameter.size() != 1) {
             ch->error(node, "Invalid parameter format");
             ch->pop_scope();
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
         
         // Extrair nome e tipo do map
@@ -79,7 +79,7 @@ std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
         if (param_name.empty()) {
             ch->error(node, "Parameter name is required");
             ch->pop_scope();
-            return ch->gettyptr("void");
+            return ch->gettyptr("None");
         }
         
         // Obter tipo do parâmetro
@@ -102,7 +102,7 @@ std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
     if (function_stmt->return_type.empty() || function_stmt->return_type == "automatic") {
         // Inferir tipo de retorno do corpo da função
         // Por enquanto, usar void como padrão se não houver return
-        return_type = ch->gettyptr("void");
+        return_type = ch->gettyptr("None");
     } else {
         return_type = ch->gettyptr(function_stmt->return_type, node);
     }

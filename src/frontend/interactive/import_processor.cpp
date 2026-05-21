@@ -275,7 +275,7 @@ bool ImportProcessor::process_single_import(
                         } else if (function_stmt->return_type == "bool") {
                             return_type = std::make_shared<Boolean>();
                         } else {
-                            return_type = std::make_shared<Void>();
+                            return_type = std::make_shared<None>();
                         }
                         
                         auto func_type = std::make_shared<Function>(param_types, return_type);

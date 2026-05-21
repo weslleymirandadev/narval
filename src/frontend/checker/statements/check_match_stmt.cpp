@@ -119,7 +119,7 @@ std::shared_ptr<nv::Type>& check_match_stmt(nv::Checker* checker, Node* node) {
     
     if (!match_stmt->target) {
         checker->error(match_stmt, "Match statement requires a target expression");
-        return checker->gettyptr("void");
+        return checker->gettyptr("None");
     }
     
     // Inferir tipo do target
@@ -151,5 +151,5 @@ std::shared_ptr<nv::Type>& check_match_stmt(nv::Checker* checker, Node* node) {
         // (será verificado em runtime durante a comparação)
     }
     
-    return checker->gettyptr("void");
+    return checker->gettyptr("None");
 }
