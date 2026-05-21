@@ -155,6 +155,12 @@ Token Parser::next_token() const {
     return tokens[index + 1];
 }
 
+Token Parser::peek_at(size_t offset) const {
+    size_t target = index + offset;
+    if (target >= token_count) return tokens[token_count - 1]; // EOF
+    return tokens[target];
+}
+
 Token Parser::expect(TokenType expected_type, const std::string& error_msg) {
     Token prev = consume_token();
 

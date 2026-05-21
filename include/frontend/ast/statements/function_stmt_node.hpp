@@ -26,6 +26,9 @@ public:
     // async def NAME — body runs in a fiber, returns Future<T>
     bool is_async = false;
 
+    // Generic type parameters: def foo<T, E>(...)
+    std::vector<std::string> type_params;
+
     FunctionStmtNode(
         std::string function_name,
         std::vector<ParamNode> parameters,
@@ -53,6 +56,7 @@ public:
         node->is_naked_asm  = is_naked_asm;
         node->naked_asm_body = naked_asm_body;
         node->is_async      = is_async;
+        node->type_params   = type_params;
         if (position) {
             node->position = std::make_unique<PositionData>(*position);
         }

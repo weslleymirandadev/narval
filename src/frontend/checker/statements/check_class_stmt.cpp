@@ -65,6 +65,19 @@ namespace nv {
     std::shared_ptr<Type> check_class_stmt(Checker* checker, Node* node) {
         auto* class_stmt = static_cast<ClassStmtNode*>(node);
 
+        // Registrar parâmetros de tipo genérico como TypeVars (ex: class Box<T>)
+        // Salvar valores anteriores para restaurar ao fim e evitar vazamento global.
+        std::vector<int> type_param_ids;
+        std::vector<std::pair<std::string, std::shared_ptr<Type>>> saved_type_params;
+        for (const auto& tp_name : class_stmt->type_params) {
+            auto prev_it = checker->types.find(tp_name);
+            saved_type_params.push_back({tp_name,
+                prev_it != checker->types.end() ? prev_it->second : nullptr});
+            auto tv = checker->unify_ctx.new_type_var();
+            checker->types[tp_name] = tv;
+            type_param_ids.push_back(tv->id);
+        }
+
         auto class_type = std::make_shared<Class>(class_stmt->name);
         class_type->is_abstract = class_stmt->is_abstract;
 
@@ -105,7 +118,7 @@ namespace nv {
         }
 
         for (const auto& field : class_stmt->fields) {
-            auto field_type = checker->gettyptr(field->type);
+            auto field_type = checker->gettyptr(field->type, node);
             class_type->add_field(field->name, field_type, field->is_mutable);
         }
 
@@ -120,12 +133,12 @@ namespace nv {
                 auto* function = static_cast<FunctionStmtNode*>(method->method_def.get());
                 for (const auto& pn : function->parameters) {
                     for (const auto& kv : pn.parameter) {
-                        param_types.push_back(checker->gettyptr(kv.second));
+                        param_types.push_back(checker->gettyptr(kv.second, node));
                     }
                 }
                 if (!function->return_type.empty() && function->return_type != "void" &&
                     function->return_type != "None" && function->return_type != "automatic") {
-                    ret_type = checker->gettyptr(function->return_type);
+                    ret_type = checker->gettyptr(function->return_type, node);
                 }
             }
 
@@ -185,6 +198,21 @@ namespace nv {
         }
 
         class_type->init_prototype();
+
+        // Armazenar template de classe genérica para instanciação posterior (Box<int>, etc.)
+        if (!class_stmt->type_params.empty()) {
+            GenericClassDef def;
+            def.type_param_names = class_stmt->type_params;
+            def.type_param_ids   = type_param_ids;
+            def.class_type       = class_type;
+            checker->generic_class_defs[class_stmt->name] = std::move(def);
+        }
+
+        // Restaurar type params no mapa global (remove os que não existiam antes)
+        for (const auto& [name, prev] : saved_type_params) {
+            if (prev) checker->types[name] = prev;
+            else      checker->types.erase(name);
+        }
 
         return class_type;
     }

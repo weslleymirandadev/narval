@@ -588,7 +588,12 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
                     while (defining && defining->methods.find(method) == defining->methods.end()) {
                         defining = defining->parent_class.get();
                     }
-                    std::string fn_name = "__method_" + (defining ? defining->name : cls->name) + "_" + method;
+                    // Para classes genéricas "Box<int>", usar nome base "Box" no lookup LLVM
+                    auto strip_generics = [](const std::string& n) {
+                        auto lt = n.find('<');
+                        return lt != std::string::npos ? n.substr(0, lt) : n;
+                    };
+                    std::string fn_name = "__method_" + strip_generics(defining ? defining->name : cls->name) + "_" + method;
                     auto* method_fn = ctx.get_module().getFunction(fn_name);
                     if (method_fn) {
                         auto* ValueTy  = ir_utils::get_value_struct(ctx);

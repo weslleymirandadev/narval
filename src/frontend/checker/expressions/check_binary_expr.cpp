@@ -58,8 +58,8 @@ std::shared_ptr<nv::Type> check_binary_expr(nv::Checker* ch, Node* node) {
                 }
                 return resolved ? resolved : ch->gettyptr("void");
             }
-            ch->error(node, "Classe '" + cls->name + "' não implementa o operador '" +
-                      bin->op + "' (método " + dunder + " não encontrado)");
+            ch->error(node, "Class '" + cls->name + "' does not implement operator '" +
+                      bin->op + "' (method " + dunder + " not found)");
             return ch->gettyptr("void");
         }
     }

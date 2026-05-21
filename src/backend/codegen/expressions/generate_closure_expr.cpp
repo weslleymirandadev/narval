@@ -142,25 +142,38 @@ void ClosureExprNode::codegen(nv::IRGenerationContext& ctx) {
     
     // Entrar no escopo da closure
     ctx.enter_scope();
-    
+
+    // Re-registrar type params (<T, E>) no checker durante o codegen.
+    // O checker os remove após a fase de checking para evitar vazamento, mas o codegen
+    // ainda os precisa para resolver nomes de tipo nos parâmetros/retorno.
+    nv::Checker* checker_ptr = ctx.get_type_checker()
+        ? static_cast<nv::Checker*>(ctx.get_type_checker()) : nullptr;
+    std::vector<std::pair<std::string, std::shared_ptr<nv::Type>>> saved_codegen_tp;
+    if (checker_ptr) {
+        for (const auto& tp_name : type_params) {
+            auto prev_it = checker_ptr->types.find(tp_name);
+            saved_codegen_tp.push_back({tp_name,
+                prev_it != checker_ptr->types.end() ? prev_it->second : nullptr});
+            checker_ptr->types[tp_name] = checker_ptr->unify_ctx.new_type_var();
+        }
+    }
+
     // Extrair e registrar parâmetros da closure
     for (size_t i = 0; i < parameters.size(); ++i) {
         const auto& param = parameters[i];
         const std::string& param_name = param.first;
-        
+
         // Carregar argumento do array args
         auto* index = llvm::ConstantInt::get(I32, i);
         auto* arg_ptr = builder.CreateGEP(ValueTy, args_ptr, {index}, "arg_ptr");
         auto* param_value = builder.CreateLoad(ValueTy, arg_ptr, param_name);
-        
+
         // Criar alloca para o parâmetro e registrar
         auto* param_alloca = ctx.create_alloca(ValueTy, param_name);
         builder.CreateStore(param_value, param_alloca);
-        
+
         // Registrar na tabela de símbolos
-        auto param_type = ctx.get_type_checker() ? 
-            static_cast<nv::Checker*>(ctx.get_type_checker())->gettyptr(param.second) :
-            nullptr;
+        auto param_type = checker_ptr ? checker_ptr->gettyptr(param.second) : nullptr;
         nv::SymbolInfo info(param_alloca, ValueTy, param_type, true, false);
         ctx.get_symbol_table().define_symbol(param_name, info);
     }
@@ -276,6 +289,14 @@ void ClosureExprNode::codegen(nv::IRGenerationContext& ctx) {
         builder.CreateCall(create_fn, {closure_alloca, func_ptr, captures_array, captures_count});
     }
     
+    // Restaurar type params no checker (remove os que não existiam antes)
+    if (checker_ptr) {
+        for (const auto& [name, prev] : saved_codegen_tp) {
+            if (prev) checker_ptr->types[name] = prev;
+            else      checker_ptr->types.erase(name);
+        }
+    }
+
     // Carregar e retornar o objeto closure
     auto* closure_value = builder.CreateLoad(ValueTy, closure_alloca, "closure");
     ctx.push_value(closure_value);

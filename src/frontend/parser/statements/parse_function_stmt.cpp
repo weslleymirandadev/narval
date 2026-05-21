@@ -21,6 +21,19 @@ std::unique_ptr<Node> parse_function_stmt(Parser* parser) {
         std::vector<std::unique_ptr<Stmt>>{}
     );
 
+    // Parse generic type parameters: def foo<T, E>(...)
+    if (parser->current_token().type == TokenType::LT) {
+        parser->consume_token(); // <
+        while (parser->not_eof() && parser->current_token().type != TokenType::GT) {
+            auto tp = parser->expect(TokenType::IDENTIFIER, "Expected type parameter name");
+            function_node->type_params.push_back(tp.lexeme);
+            if (parser->current_token().type == TokenType::COMMA)
+                parser->consume_token();
+            else if (parser->current_token().type != TokenType::GT)
+                break;
+        }
+        parser->expect(TokenType::GT, "Expected '>' after type parameters");
+    }
 
     if (parser->current_token().type == TokenType::COLON) {
         parser->consume_token();
@@ -84,10 +97,6 @@ std::unique_ptr<Node> parse_function_stmt(Parser* parser) {
     function_node->body = parse_body(parser);
     parser->expect(TokenType::CBRACE, "Expected '}'.");
 
-    if (function_node && function_node->position) {
-        pos->col[1] = function_node->position->col[1];
-        pos->pos[1] = function_node->position->pos[1];
-    }
-
+    function_node->position = std::move(pos);
     return function_node;
 }

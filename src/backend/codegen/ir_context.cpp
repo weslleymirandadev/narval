@@ -47,12 +47,11 @@ std::shared_ptr<Type> IRGenerationContext::resolve_type(std::shared_ptr<Type> nv
             resolved = checker->unify_ctx.resolve(resolved);
         }
         
-        // Se ainda for variável de tipo não resolvida, usar tipo padrão (int)
-        // Isso pode acontecer se a inferência não foi completa
+        // TypeVar ainda não resolvida = parâmetro de tipo genérico.
+        // Em LLVM todos os valores Narval são boxed como Value* — usar Class como proxy.
         if (resolved->kind == Kind::TYPE_VAR) {
-            // Em produção, isso deveria ser um erro, mas para compatibilidade
-            // retornamos int como fallback
-            return std::make_shared<Int>();
+            static auto generic_placeholder = std::make_shared<Class>("__generic__");
+            return generic_placeholder;
         }
         
         return resolved;
@@ -194,6 +193,8 @@ llvm::Type* IRGenerationContext::nv_type_to_llvm(std::shared_ptr<Type> nv_type) 
         case Kind::OPTION:
         case Kind::RESULT:
         case Kind::FUTURE:
+        case Kind::TYPE_VAR:
+        case Kind::POLY_TYPE:
             return ir_utils::get_value_struct(*this);
 
         case Kind::LOW_LEVEL: {

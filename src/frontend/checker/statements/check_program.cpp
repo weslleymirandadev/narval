@@ -18,6 +18,7 @@
 #include "frontend/ast/statements/match_stmt_node.hpp"
 #include "frontend/ast/expressions/or_expr_node.hpp"
 #include <stdexcept>
+#include <unordered_set>
 
 namespace {
     bool identifier_exists(nv::Checker* checker, const std::string& symbol) {
@@ -237,7 +238,22 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
     for (auto& el : program->body) {
         if (el->kind == NodeType::FunctionStatement) {
             auto* function_stmt = static_cast<FunctionStmtNode*>(el.get());
-            
+            Node* prev_cn = ch->current_node;
+            ch->current_node = el.get();
+
+            // Registrar type params genéricos como TypeVars para resolver a assinatura.
+            // Salvar e restaurar ao fim para evitar vazamento para o escopo global.
+            std::vector<int> tp_ids;
+            std::vector<std::pair<std::string, std::shared_ptr<nv::Type>>> saved_tp;
+            for (const auto& tp_name : function_stmt->type_params) {
+                auto prev_it = ch->types.find(tp_name);
+                saved_tp.push_back({tp_name,
+                    prev_it != ch->types.end() ? prev_it->second : nullptr});
+                auto tv = ch->unify_ctx.new_type_var();
+                ch->types[tp_name] = tv;
+                tp_ids.push_back(tv->id);
+            }
+
             // Process parameters to obtain the function type
             std::vector<std::shared_ptr<nv::Type>> param_types;
             for (const auto& param : function_stmt->parameters) {
@@ -247,31 +263,43 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
                     param_name = key;
                     param_type_str = value;
                 }
-                
+
                 std::shared_ptr<nv::Type> param_type;
                 if (param_type_str.empty() || param_type_str == "automatic") {
-                    param_type = std::make_shared<nv::TypeVar>(ch->unify_ctx.get_next_var_id());
+                    param_type = ch->unify_ctx.new_type_var();
                 } else {
-                    param_type = ch->gettyptr(param_type_str);
+                    param_type = ch->gettyptr(param_type_str, el.get());
                 }
                 param_types.push_back(param_type);
             }
-            
+
             std::shared_ptr<nv::Type> return_type;
             if (function_stmt->return_type.empty() || function_stmt->return_type == "automatic") {
-                return_type = std::make_shared<nv::TypeVar>(ch->unify_ctx.get_next_var_id());
+                return_type = ch->unify_ctx.new_type_var();
             } else {
-                return_type = ch->gettyptr(function_stmt->return_type);
+                return_type = ch->gettyptr(function_stmt->return_type, el.get());
             }
             if (function_stmt->is_async && return_type->kind != nv::Kind::FUTURE) {
                 return_type = std::make_shared<nv::Future>(return_type);
             }
-            
-            auto func_type = std::make_shared<nv::Function>(param_types, return_type);
-            
+
+            std::shared_ptr<nv::Type> func_type = std::make_shared<nv::Function>(param_types, return_type);
+
+            // Para funções genéricas: generalizar em PolyType com os type params declarados
+            if (!tp_ids.empty()) {
+                std::unordered_set<int> bound(tp_ids.begin(), tp_ids.end());
+                func_type = std::make_shared<nv::PolyType>(bound, func_type);
+            }
+
             // Register function in scope WITHOUT checking the body yet
-            // We pass false so the symbol is not locked
             ch->scope->put_key(function_stmt->name, func_type, false);
+
+            // Restaurar type params (remover os que não existiam antes)
+            for (const auto& [name, prev] : saved_tp) {
+                if (prev) ch->types[name] = prev;
+                else      ch->types.erase(name);
+            }
+            ch->current_node = prev_cn;
         }
     }
 

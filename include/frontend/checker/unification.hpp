@@ -210,6 +210,15 @@ namespace nv {
             }
         }
         
+        // Instanciar tipo polimórfico com variáveis de tipo frescas
+        std::shared_ptr<Type> instantiate(std::shared_ptr<PolyType> poly) {
+            std::unordered_map<int, std::shared_ptr<Type>> subst;
+            for (int var : poly->bound_vars) {
+                subst[var] = new_type_var();
+            }
+            return poly->body->substitute(subst);
+        }
+
         // Generalizar tipo (criar tipo polimórfico)
         std::shared_ptr<Type> generalize(std::shared_ptr<Type> t, 
                                          const std::unordered_set<int>& free_in_env) {

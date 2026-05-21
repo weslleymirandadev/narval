@@ -176,6 +176,19 @@ std::shared_ptr<Type> check_closure_expr(ClosureExprNode* node, Checker& ch) {
         return node->cached_type;
     }
 
+    // Registrar type params explícitos (<T, E>|x: T|: E { })
+    // Salvar valores anteriores para restaurar ao fim — evita vazamento global.
+    std::vector<int> explicit_tp_ids;
+    std::vector<std::pair<std::string, std::shared_ptr<nv::Type>>> saved_type_params;
+    for (const auto& tp_name : node->type_params) {
+        auto prev_it = ch.types.find(tp_name);
+        saved_type_params.push_back({tp_name,
+            prev_it != ch.types.end() ? prev_it->second : nullptr});
+        auto tv = ch.unify_ctx.new_type_var();
+        ch.types[tp_name] = tv;
+        explicit_tp_ids.push_back(tv->id);
+    }
+
     std::vector<std::shared_ptr<nv::Type>> param_types;
 
     // PRIMEIRA PASSAGEM: Detectar variáveis capturadas (antes de entrar no escopo)
@@ -200,7 +213,7 @@ std::shared_ptr<Type> check_closure_expr(ClosureExprNode* node, Checker& ch) {
     for (const auto& param : node->parameters) {
         // Parâmetros são obrigatoriamente tipados
         std::string type_str = param.second;
-        auto param_type = ch.gettyptr(type_str);
+        auto param_type = ch.gettyptr(type_str, node);
         param_types.push_back(param_type);
         ch.scope->put_key(param.first, param_type, true);
         ch.closure_fallback_symbols[param.first] = param_type;
@@ -244,7 +257,7 @@ std::shared_ptr<Type> check_closure_expr(ClosureExprNode* node, Checker& ch) {
     // Usar tipo de retorno especificado na closure (ou inferido se auto)
     auto closure_return_type = (node->return_type == "auto")
         ? ch.unify_ctx.new_type_var()
-        : ch.gettyptr(node->return_type);
+        : ch.gettyptr(node->return_type, node);
     
     // Verificar se o tipo de retorno inferido é compatível com o declarado
     if (return_type && return_type->kind != nv::Kind::VOID) {
@@ -272,14 +285,27 @@ std::shared_ptr<Type> check_closure_expr(ClosureExprNode* node, Checker& ch) {
     // Isso causa problemas com parâmetros de closures internas
 
     auto function_type = std::make_shared<Function>(param_types, closure_return_type);
-    
-    // Registrar o tipo função para que possa ser usado como parâmetro em outras closures
+
+    // Para closures genéricas: generalizar como PolyType
+    std::shared_ptr<Type> final_type = function_type;
+    if (!explicit_tp_ids.empty()) {
+        std::unordered_set<int> bound(explicit_tp_ids.begin(), explicit_tp_ids.end());
+        final_type = std::make_shared<PolyType>(bound, function_type);
+    }
+
+    // Registrar o tipo função
     std::string type_name = create_function_type_string(node->parameters, node->return_type);
-    ch.scope->put_key(type_name, function_type, false);
+    ch.scope->put_key(type_name, final_type, false);
 
     node->type_checked = true;
-    node->cached_type = function_type;
-    
-    return function_type;
+    node->cached_type = final_type;
+
+    // Restaurar type params no mapa global
+    for (const auto& [name, prev] : saved_type_params) {
+        if (prev) ch.types[name] = prev;
+        else      ch.types.erase(name);
+    }
+
+    return final_type;
 }
 }

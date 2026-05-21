@@ -1,4 +1,6 @@
 #include "frontend/parser/expressions/parse_closure_expr.hpp"
+#include "frontend/parser/expressions/parse_type.hpp"
+#include <cctype>
 #include "frontend/ast/expressions/closure_expr_node.hpp"
 #include "frontend/ast/statements/return_stmt_node.hpp"
 #include "frontend/parser/statements/parse_stmt.hpp"
@@ -53,105 +55,92 @@ static bool body_returns_closure(const CodeBlock& body) {
     return false;
 }
 
-// Parse type identifier: int, str, |a: int|: int, etc.
-static std::string parse_type_identifier(Parser* parser) {
-    std::string type_str = "";
-    
-    if (parser->current_token().type == TokenType::BITWISE_OR) {
-        // Function type: |params|: return_type
-        type_str = "|";
-        parser->consume_token(); // consume |
-        
-        // Parse parameters
-        while (parser->current_token().type != TokenType::BITWISE_OR && parser->not_eof()) {
-            std::string param_name = parser->expect(TokenType::IDENTIFIER, "Expected parameter name").lexeme;
-            parser->expect(TokenType::COLON, "Expected ':' after parameter name");
-            std::string param_type = parse_type_identifier(parser);
-            
-            type_str += param_name + ":" + param_type;
-            
-            if (parser->current_token().type == TokenType::COMMA) {
-                type_str += ", ";
-                parser->consume_token();
-            }
-        }
-        
-        parser->expect(TokenType::BITWISE_OR, "Expected '|' to close function type parameters");
-        type_str += "|";
-        
-        // Parse return type
-        parser->expect(TokenType::COLON, "Expected ':' after '|' in function type");
-        std::string return_type = parse_type_identifier(parser);
-        type_str += ":" + return_type;
-        
-        return type_str;
-    } else {
-        // Simple type: int, str, etc.
-        type_str = parser->consume_token().lexeme;
-        
-        // Array type: int[10]
-        if (parser->current_token().type == TokenType::OBRACKET) {
-            parser->consume_token(); // [
-            type_str += "[" + parser->consume_token().lexeme;
-            parser->expect(TokenType::CBRACKET, "Expected ']' to close array type");
-            type_str += "]";
-        }
-        
-        return type_str;
+// Lookahead: verifica se tokens à frente formam <T, E>| (início de generic closure)
+// Usa peek_at para não consumir nada.
+bool is_generic_closure_start(Parser* parser) {
+    if (parser->current_token().type != TokenType::LT) return false;
+    size_t off = 1; // após '<'
+    // Precisa de ao menos um IDENTIFIER
+    if (parser->peek_at(off).type != TokenType::IDENTIFIER) return false;
+    ++off;
+    // Opcionalmente: ', IDENTIFIER' repetido
+    while (parser->peek_at(off).type == TokenType::COMMA &&
+           parser->peek_at(off + 1).type == TokenType::IDENTIFIER) {
+        off += 2;
     }
+    // Deve terminar com '>'
+    if (parser->peek_at(off).type != TokenType::GT) return false;
+    ++off;
+    // Próximo token deve ser '|'
+    return parser->peek_at(off).type == TokenType::BITWISE_OR;
 }
 
 std::unique_ptr<Node> parse_closure_expr(Parser* parser) {
     auto node = std::make_unique<ClosureExprNode>();
-    
-    // Always start with |
+
+    // Capturar posição de início (| ou < para generic closures)
+    Token start_tok = parser->current_token();
+    node->position = std::make_unique<PositionData>(
+        start_tok.line,
+        start_tok.column_start, start_tok.column_end,
+        start_tok.position_start, start_tok.position_end,
+        start_tok.filename
+    );
+
+    // Suporte a generic closures: <T, E>|x: T|: E { }
+    if (parser->current_token().type == TokenType::LT) {
+        parser->consume_token(); // <
+        while (parser->not_eof() && parser->current_token().type != TokenType::GT) {
+            auto tp = parser->expect(TokenType::IDENTIFIER, "Expected type parameter name");
+            node->type_params.push_back(tp.lexeme);
+            if (parser->current_token().type == TokenType::COMMA)
+                parser->consume_token();
+            else if (parser->current_token().type != TokenType::GT)
+                break;
+        }
+        parser->expect(TokenType::GT, "Expected '>' after type parameters");
+    }
+
+    // Sempre começa com |
     parser->expect(TokenType::BITWISE_OR, "Expected '|' to start closure");
-    
-    // Parse parameters (types are mandatory)
+
+    // Parâmetros (tipos obrigatórios)
     while (parser->current_token().type != TokenType::BITWISE_OR && parser->not_eof()) {
         std::string param_name = parser->expect(TokenType::IDENTIFIER, "Expected parameter name").lexeme;
-        
-        // Type is mandatory: |x: int|
-        parser->expect(TokenType::COLON, "Expected ':' after parameter name (types are mandatory in closures)");
-        std::string param_type = parse_type_identifier(parser);
-        
+        parser->expect(TokenType::COLON, "Expected ':' after parameter name");
+        // Usa parse_type real: suporta Box<int>, Option<T>, etc.
+        std::string param_type = parse_type(parser);
         node->parameters.emplace_back(param_name, param_type);
-        
-        if (parser->current_token().type == TokenType::COMMA) {
+
+        if (parser->current_token().type == TokenType::COMMA)
             parser->consume_token();
-        } else if (parser->current_token().type != TokenType::BITWISE_OR) {
+        else if (parser->current_token().type != TokenType::BITWISE_OR) {
             parser->error("Expected ',' or '|' in closure parameters");
             return nullptr;
         }
     }
-    
-    // Close parameters
+
     parser->expect(TokenType::BITWISE_OR, "Expected '|' to close closure parameters");
-    
-    // Parse return type (optional: |x| body or |x|: int body)
-    node->return_type = "auto"; // default: inferred
-    
+
+    // Tipo de retorno (opcional)
+    node->return_type = "auto";
     if (parser->current_token().type == TokenType::COLON) {
-        parser->consume_token(); // consume :
-        node->return_type = parse_type_identifier(parser);
+        parser->consume_token();
+        node->return_type = parse_type(parser);
     }
-    
-    // Parse body
+
+    // Corpo
     if (parser->current_token().type == TokenType::OBRACE) {
-        // Block body
         parser->consume_token();
         node->body = parse_body(parser);
         parser->expect(TokenType::CBRACE, "Expected '}' to close closure body");
     } else {
-        // Expression body
         auto expr = parse_expr(parser);
         auto expr_ptr = std::unique_ptr<Expr>(static_cast<Expr*>(expr.release()));
         node->body.push_back(std::make_unique<ReturnStmtNode>(std::move(expr_ptr)));
     }
 
-    // Sugar for currying:
-    // |a: int|: |b: int|: int { return a + b; }
-    // becomes |a: int| { return |b: int|: int { return a + b; }; }
+    // Sugar de currying: |a: int|: |b: int|: int { } → nested closures
     if (node->return_type != "auto" && node->body.size() == 1 && !body_returns_closure(node->body)) {
         std::vector<std::pair<std::string, std::string>> nested_params;
         std::string nested_return_type;
@@ -166,6 +155,6 @@ std::unique_ptr<Node> parse_closure_expr(Parser* parser) {
             node->body.push_back(std::move(return_stmt));
         }
     }
-    
+
     return node;
 }

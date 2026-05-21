@@ -46,7 +46,7 @@ namespace nv {
         auto* new_expr = static_cast<NewExprNode*>(node);
         
         // Obter o tipo da classe
-        auto class_type = checker->gettyptr(new_expr->class_name);
+        auto class_type = checker->gettyptr(new_expr->class_name, node);
         
         // Verificar se é realmente uma classe
         if (class_type->kind != Kind::CLASS) {

@@ -40,7 +40,18 @@ static bool stmts_have_propagate(const std::vector<std::unique_ptr<Stmt>>& stmts
 
 std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
     auto* function_stmt = static_cast<FunctionStmtNode*>(node);
-    
+
+    // Registrar parâmetros de tipo genérico como TypeVars no mapa de tipos.
+    // Salvar valores anteriores para restaurar ao fim — evita que nomes como T, A, B
+    // vazem para o escopo global e sejam aceitos em closures não-genéricas.
+    std::vector<std::pair<std::string, std::shared_ptr<nv::Type>>> saved_type_params;
+    for (const auto& tp_name : function_stmt->type_params) {
+        auto prev_it = ch->types.find(tp_name);
+        saved_type_params.push_back({tp_name,
+            prev_it != ch->types.end() ? prev_it->second : nullptr});
+        ch->types[tp_name] = ch->unify_ctx.new_type_var();
+    }
+
     // Criar novo escopo para a função
     ch->push_scope();
     
@@ -78,7 +89,7 @@ std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
             int next_id = ch->unify_ctx.get_next_var_id();
             param_type = std::make_shared<nv::TypeVar>(next_id);
         } else {
-            param_type = ch->gettyptr(param_type_str);
+            param_type = ch->gettyptr(param_type_str, node);
         }
         
         // Adicionar parâmetro ao escopo da função
@@ -93,7 +104,7 @@ std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
         // Por enquanto, usar void como padrão se não houver return
         return_type = ch->gettyptr("void");
     } else {
-        return_type = ch->gettyptr(function_stmt->return_type);
+        return_type = ch->gettyptr(function_stmt->return_type, node);
     }
 
     auto body_return_type = return_type;
@@ -229,6 +240,12 @@ std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
     
     ch->pop_scope();
     ch->scope->put_key(function_stmt->name, generalized_func, false);
-    
+
+    // Restaurar type params no mapa global (remove os que não existiam antes)
+    for (const auto& [name, prev] : saved_type_params) {
+        if (prev) ch->types[name] = prev;
+        else      ch->types.erase(name);
+    }
+
     return ch->scope->get_key(function_stmt->name);
 }

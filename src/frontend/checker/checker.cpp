@@ -145,7 +145,7 @@ nv::Type& nv::Checker::getty(std::string ty) {
     return *types.at(ty);
 }
 
-std::shared_ptr<nv::Type>& nv::Checker::gettyptr(std::string ty){
+std::shared_ptr<nv::Type>& nv::Checker::gettyptr(std::string ty, Node* error_node){
         // Verificar se já existe no cache
     auto it = types.find(ty);
     if (it != types.end()) {
@@ -174,7 +174,7 @@ std::shared_ptr<nv::Type>& nv::Checker::gettyptr(std::string ty){
                 int size = std::stoi(size_str);
                 if (size > 0) {
                     // Obter tipo base
-                    auto& base_type = gettyptr(base_type_str);
+                    auto& base_type = gettyptr(base_type_str, error_node);
                     auto arr_type = std::make_shared<nv::Array>(base_type, size);
                     arr_type->init_prototype();
                     types[ty] = arr_type;
@@ -189,7 +189,7 @@ std::shared_ptr<nv::Type>& nv::Checker::gettyptr(std::string ty){
     // Option<T>
     if (ty.size() > 8 && ty.substr(0, 7) == "Option<" && ty.back() == '>') {
         std::string inner = ty.substr(7, ty.size() - 8);
-        auto& elem = gettyptr(inner);
+        auto& elem = gettyptr(inner, error_node);
         auto opt = std::make_shared<nv::Option>(elem);
         types[ty] = opt;
         return types[ty];
@@ -202,8 +202,8 @@ std::shared_ptr<nv::Type>& nv::Checker::gettyptr(std::string ty){
         if (comma != std::string::npos) {
             auto ok_s  = inner.substr(0, comma);
             auto err_s = inner.substr(comma + 2);
-            auto& ok_t  = gettyptr(ok_s);
-            auto& err_t = gettyptr(err_s);
+            auto& ok_t  = gettyptr(ok_s, error_node);
+            auto& err_t = gettyptr(err_s, error_node);
             auto res = std::make_shared<nv::Result>(ok_t, err_t);
             types[ty] = res;
             return types[ty];
@@ -213,10 +213,69 @@ std::shared_ptr<nv::Type>& nv::Checker::gettyptr(std::string ty){
     // Future<T>
     if (ty.size() > 8 && ty.substr(0, 7) == "Future<" && ty.back() == '>') {
         std::string inner = ty.substr(7, ty.size() - 8);
-        auto& elem = gettyptr(inner);
+        auto& elem = gettyptr(inner, error_node);
         auto fut = std::make_shared<nv::Future>(elem);
         types[ty] = fut;
         return types[ty];
+    }
+
+    // Classe genérica instanciada: Box<int>, Container<str, int>, etc.
+    // Formato: Name<T1, T2, ...>  — Name não é nenhum tipo builtin acima
+    {
+        auto lt = ty.find('<');
+        if (lt != std::string::npos && ty.back() == '>') {
+            std::string base_name = ty.substr(0, lt);
+            // Extrair argumentos de tipo (respeitando aninhamento)
+            std::string args_str = ty.substr(lt + 1, ty.size() - lt - 2);
+            std::vector<std::string> arg_strs;
+            int depth = 0;
+            std::string cur;
+            for (char c : args_str) {
+                if (c == '<') { depth++; cur += c; }
+                else if (c == '>') { depth--; cur += c; }
+                else if (c == ',' && depth == 0) {
+                    // trim
+                    size_t s = cur.find_first_not_of(' ');
+                    size_t e = cur.find_last_not_of(' ');
+                    if (s != std::string::npos) arg_strs.push_back(cur.substr(s, e - s + 1));
+                    cur.clear();
+                } else {
+                    cur += c;
+                }
+            }
+            if (!cur.empty()) {
+                size_t s = cur.find_first_not_of(' ');
+                size_t e = cur.find_last_not_of(' ');
+                if (s != std::string::npos) arg_strs.push_back(cur.substr(s, e - s + 1));
+            }
+
+            auto def_it = generic_class_defs.find(base_name);
+            if (def_it != generic_class_defs.end()) {
+                const auto& def = def_it->second;
+                if (arg_strs.size() == def.type_param_ids.size()) {
+                    // Construir substituição: TypeVar id → tipo concreto
+                    std::unordered_map<int, std::shared_ptr<nv::Type>> subst;
+                    for (size_t i = 0; i < def.type_param_ids.size(); i++) {
+                        subst[def.type_param_ids[i]] = gettyptr(arg_strs[i], error_node);
+                    }
+                    // Criar classe concreta com campos substituídos
+                    auto inst = std::make_shared<nv::Class>(ty);
+                    inst->parent_class   = def.class_type->parent_class;
+                    inst->is_abstract    = def.class_type->is_abstract;
+                    inst->is_builtin_derived = def.class_type->is_builtin_derived;
+                    for (auto& [fname, ftype] : def.class_type->fields) {
+                        inst->fields[fname] = ftype->substitute(subst);
+                    }
+                    for (auto& [mname, mtype] : def.class_type->methods) {
+                        inst->methods[mname] = mtype->substitute(subst);
+                    }
+                    inst->method_access  = def.class_type->method_access;
+                    inst->init_prototype();
+                    types[ty] = inst;
+                    return types[ty];
+                }
+            }
+        }
     }
 
     // Tipo função: |param1: type1, param2: type2|: return_type
@@ -237,14 +296,17 @@ std::shared_ptr<nv::Type>& nv::Checker::gettyptr(std::string ty){
         }
     }
 
-    // Tipo não encontrado
-    // Não temos Node aqui, então usar erro genérico
-    std::string abs_filename = to_absolute_path(current_filename);
-    std::cerr << ANSI_BOLD << abs_filename << ": "
-              << ANSI_RED << "ERROR" << ANSI_RESET << ANSI_BOLD << ": "
-              << "Unknown type: " << ty << ANSI_RESET << "\n\n";
-    err = true;
-    // Retornar void como fallback
+    // Tipo não encontrado — usar nó explícito, senão o nó corrente como fallback
+    Node* report_node = error_node ? error_node : current_node;
+    if (report_node) {
+        error(report_node, "Unknown type: '" + ty + "'");
+    } else {
+        std::string abs_filename = to_absolute_path(current_filename);
+        std::cerr << ANSI_BOLD << abs_filename << ": "
+                  << ANSI_RED << "ERROR" << ANSI_RESET << ANSI_BOLD << ": "
+                  << "Unknown type: '" << ty << "'" << ANSI_RESET << "\n\n";
+        err = true;
+    }
     return types["void"];
 }
 void nv::Checker::push_scope() {

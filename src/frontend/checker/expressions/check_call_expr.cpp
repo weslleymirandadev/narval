@@ -252,7 +252,16 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
     }
     
     func_type = ch->unify_ctx.resolve(func_type);
-    
+
+    // Instanciar função genérica: PolyType → Function com TypeVars frescas
+    bool is_generic_call = false;
+    if (func_type->kind == nv::Kind::POLY_TYPE) {
+        auto poly = std::static_pointer_cast<nv::PolyType>(func_type);
+        func_type = ch->unify_ctx.instantiate(poly);
+        func_type = ch->unify_ctx.resolve(func_type);
+        is_generic_call = true;
+    }
+
     // Se não for função, criar tipo de função com variáveis de tipo
     if (func_type->kind != nv::Kind::FUNCTION) {
         // Tentar unificar com tipo de função
@@ -421,9 +430,14 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
                 }
             }
         }
+        // Para chamadas genéricas, resolver o tipo de retorno (TypeVar → tipo concreto)
+        if (is_generic_call) {
+            temp_result = ch->unify_ctx.resolve(function->returntype);
+            return temp_result;
+        }
         return function->returntype;
     }
-    
+
     // Fallback: se não conseguimos determinar o tipo da função, retornar void
     // Isso não deveria acontecer em código válido, mas serve como fallback seguro
     return ch->gettyptr("void");

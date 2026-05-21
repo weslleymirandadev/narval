@@ -13,11 +13,87 @@
 #include "frontend/parser/expressions/parse_vector_expr.hpp"
 #include "frontend/parser/expressions/parse_array_map_expr.hpp"
 #include "frontend/parser/expressions/parse_closure_expr.hpp"
+#include "frontend/parser/expressions/parse_type.hpp"
+#include "frontend/parser/expressions/parse_generic_ctor.hpp"
 #include "frontend/ast/expressions/assignment_expr_node.hpp"
+#include "frontend/ast/expressions/new_expr_node.hpp"
+
+// Lookahead: returns true if the current position looks like ClassName<TypeArgs>(
+// e.g. Box<int>(42) or Pair<int, str>(a, b)
+bool is_generic_ctor_start(Parser* p) {
+    if (p->current_token().type != TokenType::IDENTIFIER) return false;
+    if (p->peek_at(1).type != TokenType::LT) return false;
+    int depth = 1;
+    size_t i = 2;
+    while (true) {
+        auto tok = p->peek_at(i);
+        if (tok.type == TokenType::EOF_TOKEN) return false;
+        if (tok.type == TokenType::LT) { depth++; i++; continue; }
+        if (tok.type == TokenType::GT) {
+            i++;
+            if (--depth == 0) break;
+            continue;
+        }
+        if (tok.type == TokenType::IDENTIFIER || tok.type == TokenType::COMMA ||
+            tok.type == TokenType::NONE_KW) { i++; continue; }
+        return false;
+    }
+    return p->peek_at(i).type == TokenType::OPAREN;
+}
+
+// Parses ClassName<TypeArgs>(args) as a NewExprNode (constructor call without 'new')
+std::unique_ptr<Node> parse_generic_ctor_call(Parser* parser) {
+    auto class_name_token = parser->consume_token(); // ClassName
+    std::string base_name = class_name_token.lexeme;
+    std::string class_name = base_name;
+
+    parser->consume_token(); // <
+    std::vector<std::string> type_args;
+    bool first = true;
+    while (parser->not_eof() && parser->current_token().type != TokenType::GT) {
+        if (!first) parser->expect(TokenType::COMMA, "Expected ',' in type arguments");
+        first = false;
+        type_args.push_back(parse_type(parser));
+    }
+    parser->expect(TokenType::GT, "Expected '>' after type arguments");
+
+    class_name += "<";
+    for (size_t i = 0; i < type_args.size(); i++) {
+        if (i > 0) class_name += ", ";
+        class_name += type_args[i];
+    }
+    class_name += ">";
+
+    auto new_expr = std::make_unique<NewExprNode>(class_name, base_name);
+    new_expr->position = std::make_unique<PositionData>(
+        class_name_token.line,
+        class_name_token.column_start, class_name_token.column_end,
+        class_name_token.position_start, class_name_token.position_end,
+        class_name_token.filename
+    );
+
+    if (parser->current_token().type == TokenType::OPAREN) {
+        parser->consume_token(); // (
+        while (parser->current_token().type != TokenType::CPAREN &&
+               parser->current_token().type != TokenType::EOF_TOKEN) {
+            auto arg = parse_expr(parser);
+            new_expr->arguments.push_back(std::unique_ptr<Expr>(static_cast<Expr*>(arg.release())));
+            if (parser->current_token().type == TokenType::COMMA)
+                parser->consume_token();
+            else
+                break;
+        }
+        parser->expect(TokenType::CPAREN, "Expected ')' after constructor arguments");
+    }
+
+    return new_expr;
+}
 
 std::unique_ptr<Node> parse_expr(Parser* parser) {
     // Closures têm a precedência mais alta
-    if (parser->current_token().type == TokenType::BITWISE_OR || parser->current_token().type == TokenType::OR) {
+    if (parser->current_token().type == TokenType::BITWISE_OR ||
+        parser->current_token().type == TokenType::OR ||
+        is_generic_closure_start(parser)) {
         return parse_closure_expr(parser);
     }
     
@@ -81,6 +157,11 @@ std::unique_ptr<Node> parse_expr(Parser* parser) {
 
     if (parser->next_token().type == TokenType::COLON) {
         return parse_declaration_stmt(parser, false);
+    }
+
+    // Generic constructor call without 'new': ClassName<T>(args)
+    if (is_generic_ctor_start(parser)) {
+        return parse_generic_ctor_call(parser);
     }
 
     switch (parser->next_token().type) {

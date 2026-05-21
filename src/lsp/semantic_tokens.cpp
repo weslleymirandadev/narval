@@ -166,9 +166,12 @@ std::optional<size_t> matching_close_paren(const std::vector<Token>& tokens, siz
 }
 
 bool is_function_like_parameter_list(const std::vector<Token>& tokens, size_t open_paren) {
-    if (open_paren == 0 ||
-        (tokens[open_paren - 1].type != TokenType::IDENTIFIER &&
-         tokens[open_paren - 1].type != TokenType::NEW)) {
+    if (open_paren == 0) return false;
+    const TokenType prev_type = tokens[open_paren - 1].type;
+    // GT handles def foo<T>(...) where token before ( is >
+    if (prev_type != TokenType::IDENTIFIER &&
+        prev_type != TokenType::NEW &&
+        prev_type != TokenType::GT) {
         return false;
     }
 
@@ -349,6 +352,29 @@ bool is_parameter_reference(const std::vector<Token>& tokens, size_t index) {
     return false;
 }
 
+// Retorna true se o token em `index` está dentro de <...> que precede ( ou | ou {
+// Ex: def foo<T, E>  class Box<T>  <T>|...|
+bool is_inside_angle_brackets(const std::vector<Token>& tokens, size_t index) {
+    // Procurar '<' antes de index sem cruzar boundares fortes
+    for (size_t i = index; i > 0; --i) {
+        const TokenType t = tokens[i - 1].type;
+        if (t == TokenType::LT) {
+            // Verificar que depois do index há '>'
+            for (size_t j = index + 1; j < tokens.size(); ++j) {
+                if (tokens[j].type == TokenType::GT) return true;
+                if (tokens[j].type == TokenType::SEMICOLON ||
+                    tokens[j].type == TokenType::OBRACE ||
+                    tokens[j].type == TokenType::CBRACE) return false;
+            }
+            return false;
+        }
+        if (t == TokenType::SEMICOLON || t == TokenType::OBRACE ||
+            t == TokenType::CBRACE   || t == TokenType::OPAREN) return false;
+        if (t != TokenType::IDENTIFIER && t != TokenType::COMMA) return false;
+    }
+    return false;
+}
+
 bool is_inheritance_type(const std::vector<Token>& tokens, size_t index) {
     if (index == 0) {
         return false;
@@ -434,6 +460,16 @@ std::optional<SemanticToken> classify_token(const std::vector<Token>& tokens, si
                            prev->type == TokenType::INTERFACE || prev->type == TokenType::ENUM)) {
             type = prev->type == TokenType::DEF ? Function : Type;
             modifiers = 1;
+        } else if (prev && prev->type == TokenType::NEW) {
+            // new Box<int>(...) — class name being instantiated
+            type = Type;
+        } else if (prev && prev->type == TokenType::LT) {
+            // T in def foo<T>, class Box<T>, <T>|...|, or Box<int>
+            type = Type;
+        } else if (prev && prev->type == TokenType::COMMA &&
+                   is_inside_angle_brackets(tokens, index)) {
+            // E in <T, E> — segundo+ type param ou type arg
+            type = Type;
         } else if (prev && prev->type == TokenType::COLON) {
             type = Type;
         } else if (is_parameter_declaration(tokens, index)) {

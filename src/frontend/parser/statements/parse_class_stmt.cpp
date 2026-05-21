@@ -27,7 +27,21 @@ std::unique_ptr<Node> parse_class_stmt(Parser* parser) {
         class_name_token.position_end,
         class_name_token.filename
     );
-    
+
+    // Parse generic type parameters: class Box<T, E>
+    if (parser->current_token().type == TokenType::LT) {
+        parser->consume_token(); // <
+        while (parser->not_eof() && parser->current_token().type != TokenType::GT) {
+            auto tp = parser->expect(TokenType::IDENTIFIER, "Expected type parameter name");
+            class_node->type_params.push_back(tp.lexeme);
+            if (parser->current_token().type == TokenType::COMMA)
+                parser->consume_token();
+            else if (parser->current_token().type != TokenType::GT)
+                break;
+        }
+        parser->expect(TokenType::GT, "Expected '>' after type parameters");
+    }
+
     // Verificar herança
     if (parser->current_token().type == TokenType::EXTENDS) {
         parser->consume_token();
@@ -123,6 +137,9 @@ std::unique_ptr<Node> parse_class_stmt(Parser* parser) {
                 parser->consume_token();
             }
             
+            // 'new' é sempre público (construtor)
+            if (member_name == "new") access_modifier = "public";
+
             // Campo
             if (parser->current_token().type == TokenType::COLON) {
                 parser->consume_token();

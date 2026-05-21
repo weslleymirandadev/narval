@@ -105,7 +105,7 @@ std::shared_ptr<nv::Type>& check_decl_stmt(nv::Checker* ch, Node* node) {
             }
         }
         
-        auto& dtype = ch->gettyptr(decl->typ);
+        auto& dtype = ch->gettyptr(decl->typ, node);
         auto vtype = ch->infer_expr(decl->value.get());
         
         // Resolver tipo declarado antes de verificar tamanho (pode haver variáveis de tipo)

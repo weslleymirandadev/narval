@@ -60,15 +60,18 @@ void NewExprNode::codegen(nv::IRGenerationContext& ctx) {
         ctor_args.push_back(box_into_value(ctx, raw)); // each is a Value*
     }
 
+    // Para classes genéricas Box<int>, o ctor e métodos são registrados como __ctor_Box
+    const std::string& impl_name = base_class_name.empty() ? class_name : base_class_name;
+
     // Call constructor if one was compiled
-    std::string ctor_name = "__ctor_" + class_name;
+    std::string ctor_name = "__ctor_" + impl_name;
     auto* ctor_fn = ctx.get_module().getFunction(ctor_name);
     if (ctor_fn) {
         B.CreateCall(ctor_fn, ctor_args);
     }
 
     // Register __str__ method if defined, so nv_str_convert can call it at runtime
-    std::string str_fn_name = "__method_" + class_name + "___str__";
+    std::string str_fn_name = "__method_" + impl_name + "___str__";
     auto* str_fn = ctx.get_module().getFunction(str_fn_name);
     if (str_fn) {
         auto* I8P    = nv::ir_utils::get_i8_ptr(ctx);

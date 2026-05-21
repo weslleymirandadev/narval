@@ -67,12 +67,10 @@ std::string parse_type(Parser* parser) {
         }
         // 3. Vector type: vector (sem generics, lista heterogênea)
         else if (type_str == "vector") {
-            // vector é um tipo simples, sem modificadores
             type_str = "vector";
         }
         // 4. Array type: int[10], string[5] (tamanho fixo > 0)
         else if (parser->current_token().type == TokenType::OBRACKET) {
-            // Verificar se é array com tamanho: int[10]
             parser->consume_token(); // [
             Token num = parser->consume_token();
             if (num.type != TokenType::NUMBER) {
@@ -84,6 +82,19 @@ std::string parse_type(Parser* parser) {
             }
             parser->expect(TokenType::CBRACKET, "Expected ']' after array size.");
             type_str = type_str + "[" + num.lexeme + "]";
+        }
+        // 5. Generic user type: Box<T>, Container<K, V>, etc.
+        else if (parser->current_token().type == TokenType::LT) {
+            parser->consume_token(); // <
+            std::vector<std::string> type_args;
+            bool first = true;
+            while (parser->not_eof() && parser->current_token().type != TokenType::GT) {
+                if (!first) parser->expect(TokenType::COMMA, "Expected ',' in type arguments");
+                first = false;
+                type_args.push_back(parse_type(parser));
+            }
+            parser->expect(TokenType::GT, "Expected '>' after type arguments");
+            type_str += "<" + join(type_args, ", ") + ">";
         }
     }
     else if (curr.type == TokenType::OBRACKET) {

@@ -84,7 +84,7 @@ std::shared_ptr<nv::Type>& check_primary_expr(nv::Checker* ch, Node* node) {
             
             // `err` é reservado: só pode ser usado dentro de blocos `or { }`
             if (id->symbol == "err" && ch->or_block_depth == 0) {
-                ch->error(node, "'err' pode ser usado apenas dentro de expressões 'or'");
+                ch->error(node, "'err' can only be used inside 'or' expressions");
                 return ch->gettyptr("void");
             }
             // Verificar se o identificador existe antes de tentar acessá-lo

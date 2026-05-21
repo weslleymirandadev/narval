@@ -234,7 +234,18 @@ void generate_ir(
         if (program->body[i]->kind == NodeType::FunctionStatement) {
             auto* def_stmt = static_cast<FunctionStmtNode*>(program->body[i].get());
             auto* checker = static_cast<nv::Checker*>(context.get_type_checker());
-            
+
+            // Re-registrar type params genéricos para que gettyptr(T/A/B) resolva corretamente.
+            std::vector<std::pair<std::string, std::shared_ptr<nv::Type>>> saved_ir_tp;
+            if (checker) {
+                for (const auto& tp_name : def_stmt->type_params) {
+                    auto prev_it = checker->types.find(tp_name);
+                    saved_ir_tp.push_back({tp_name,
+                        prev_it != checker->types.end() ? prev_it->second : nullptr});
+                    checker->types[tp_name] = checker->unify_ctx.new_type_var();
+                }
+            }
+
             std::vector<llvm::Type*> param_types;
             for (auto& p : def_stmt->parameters) {
                 for (auto& kv : p.parameter) {
@@ -294,6 +305,14 @@ void generate_ir(
             // Registrar o símbolo da função na tabela de símbolos do contexto
             nv::SymbolInfo fn_info(fn, fn->getType(), nullptr, false, true);
             context.get_symbol_table().define_symbol(def_stmt->name, fn_info);
+
+            // Restaurar type params
+            if (checker) {
+                for (const auto& [name, prev] : saved_ir_tp) {
+                    if (prev) checker->types[name] = prev;
+                    else      checker->types.erase(name);
+                }
+            }
         }
     }
 

@@ -31,6 +31,9 @@
 #include <memory>
 
 std::shared_ptr<nv::Type> nv::Checker::check_node(Node* node) {
+  Node* prev_node = current_node;
+  if (node) current_node = node;
+  struct NodeGuard { nv::Checker* ch; Node* prev; ~NodeGuard() { ch->current_node = prev; } } guard{this, prev_node};
   try {
     switch (node->kind) {
         case NodeType::NumericLiteral:

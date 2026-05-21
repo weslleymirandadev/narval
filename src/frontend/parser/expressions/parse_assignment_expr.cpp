@@ -7,6 +7,7 @@
 #include "frontend/parser/expressions/parse_or_expr.hpp"
 #include "frontend/parser/expressions/parse_closure_expr.hpp"
 #include "frontend/parser/expressions/parse_expr.hpp"
+#include "frontend/parser/expressions/parse_generic_ctor.hpp"
 #include "frontend/parser/statements/parse_declaration_stmt.hpp"
 
 std::unique_ptr<Node> parse_assignment_expr(Parser* parser) {
@@ -46,8 +47,11 @@ std::unique_ptr<Node> parse_assignment_expr(Parser* parser) {
         target = parse_array_map_expr(parser);
     } else if (parser->current_token().type == TokenType::OBRACKET) {
         target = parse_vector_expr(parser);
-    } else if (parser->current_token().type == TokenType::BITWISE_OR) {
+    } else if (parser->current_token().type == TokenType::BITWISE_OR ||
+               is_generic_closure_start(parser)) {
         target = parse_closure_expr(parser);
+    } else if (is_generic_ctor_start(parser)) {
+        target = parse_generic_ctor_call(parser);
     } else {
         target = parse_logical_expr(parser);
     }
@@ -87,6 +91,13 @@ std::unique_ptr<Node> parse_assignment_expr(Parser* parser) {
             } break;
             case TokenType::BITWISE_OR: {
                 value = parse_closure_expr(parser);
+            } break;
+            case TokenType::LT: {
+                if (is_generic_closure_start(parser)) {
+                    value = parse_closure_expr(parser);
+                } else {
+                    value = parse_logical_expr(parser);
+                }
             } break;
             default: {
                 value = parse_logical_expr(parser);

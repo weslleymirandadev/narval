@@ -53,6 +53,19 @@ void FunctionStmtNode::codegen(nv::IRGenerationContext& ctx) {
     std::vector<std::string> param_names;
     nv::Checker* checker = static_cast<nv::Checker*>(ctx.get_type_checker());
 
+    // Re-registrar type params genéricos no checker durante o codegen.
+    // O checker os remove após checking para evitar vazamento, mas o codegen
+    // ainda precisa deles para resolver nomes de tipo nos parâmetros/retorno.
+    std::vector<std::pair<std::string, std::shared_ptr<nv::Type>>> saved_fn_tp;
+    if (checker) {
+        for (const auto& tp_name : type_params) {
+            auto prev_it = checker->types.find(tp_name);
+            saved_fn_tp.push_back({tp_name,
+                prev_it != checker->types.end() ? prev_it->second : nullptr});
+            checker->types[tp_name] = checker->unify_ctx.new_type_var();
+        }
+    }
+
     for (auto& p : parameters) {
         for (auto& kv : p.parameter) {
             param_names.push_back(kv.first);
@@ -208,6 +221,14 @@ void FunctionStmtNode::codegen(nv::IRGenerationContext& ctx) {
             }
         } else {
             ctx.get_builder().CreateRet(llvm::UndefValue::get(ret_ty));
+        }
+    }
+
+    // Restaurar type params no checker
+    if (checker) {
+        for (const auto& [name, prev] : saved_fn_tp) {
+            if (prev) checker->types[name] = prev;
+            else      checker->types.erase(name);
         }
     }
 

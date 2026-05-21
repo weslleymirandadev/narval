@@ -41,6 +41,7 @@ public:
 class ClassStmtNode : public Stmt {
 public:
     std::string name;
+    std::vector<std::string> type_params; // generic type parameters: class Foo<T, E>
     std::string parent_class;
     std::unique_ptr<PositionData> parent_position;
     bool is_abstract = false;
@@ -54,6 +55,7 @@ public:
     
     Node* clone() const override {
         auto* node = new ClassStmtNode(name);
+        node->type_params = type_params;
         node->parent_class = parent_class;
         if (parent_position) {
             node->parent_position = std::make_unique<PositionData>(*parent_position);

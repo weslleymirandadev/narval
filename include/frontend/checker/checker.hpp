@@ -11,6 +11,14 @@
 #include <map>
 
 namespace nv {
+
+    // Template de classe genérica, armazenado quando `class Box<T> { }` é definida.
+    struct GenericClassDef {
+        std::vector<std::string> type_param_names; // ["T", "E"]
+        std::vector<int> type_param_ids;           // TypeVar IDs correspondentes
+        std::shared_ptr<Class> class_type;         // classe com campos TypeVar
+    };
+
     class Checker {
         private:
             std::vector<std::string> lines;
@@ -51,14 +59,18 @@ namespace nv {
             std::unordered_set<std::string> python_namespaces;
             // Namespace aliases de wildcard imports: alias -> (nome_membro -> tipo)
             std::unordered_map<std::string, std::map<std::string, std::shared_ptr<Type>>> import_namespaces;
+            // Templates de classes genéricas: "Box" → GenericClassDef
+            std::unordered_map<std::string, GenericClassDef> generic_class_defs;
             // Symbols seen while type-checking closure bodies. Some frontend
             // passes revisit cloned closure body nodes after the lexical scope
             // is gone; this lets those rechecks stay permissive.
             std::unordered_map<std::string, std::shared_ptr<Type>> closure_fallback_symbols;
+            // Nó atualmente sendo verificado — fallback de localização para gettyptr.
+            Node* current_node = nullptr;
             Checker();
             void apply_compilation_attributes(const CompilationAttributes& attrs);
             nv::Type& getty(std::string ty);
-            std::shared_ptr<nv::Type>& gettyptr(std::string ty);
+            std::shared_ptr<nv::Type>& gettyptr(std::string ty, Node* error_node = nullptr);
             void push_scope();
             void pop_scope();
             std::shared_ptr<nv::Type> check_node(Node* node);

@@ -234,6 +234,16 @@ bool looks_like_declared_variable(const std::string& source, size_t end) {
         ++next;
     }
     next = skip_spaces(source, next);
+    // Pular type args genéricos: Box<int>, Map<K, V>, Box<Option<int>>, etc.
+    if (next < source.size() && source[next] == '<') {
+        int depth = 0;
+        while (next < source.size()) {
+            if (source[next] == '<') ++depth;
+            else if (source[next] == '>') { --depth; if (depth == 0) { ++next; break; } }
+            ++next;
+        }
+        next = skip_spaces(source, next);
+    }
     while (next < source.size() && source[next] == '[') {
         ++next;
         while (next < source.size() && std::isdigit(static_cast<unsigned char>(source[next]))) {
@@ -304,6 +314,16 @@ std::string highlight_identifier(const std::string& source, size_t& pos) {
     }
     if (follows_inheritance_keyword(source, start)) {
         return color(TYPE, word);
+    }
+    // Identificador após '<' ou ',' dentro de <...>: type param/arg
+    if (prev != std::string::npos && (source[prev] == '<' || source[prev] == ',')) {
+        // Verificar que há '>' à frente antes de qualquer ';' ou '{'
+        size_t j = next;
+        while (j < source.size() && is_ident_char(source[j])) ++j;
+        j = skip_spaces(source, j);
+        if (j < source.size() && (source[j] == '>' || source[j] == ',')) {
+            return color(TYPE, word);
+        }
     }
     if (!word.empty() && std::isupper(static_cast<unsigned char>(word[0]))) {
         return color(TYPE, word);

@@ -35,6 +35,8 @@ class Parser {
         Token current_token() const;
         Token consume_token();
         Token next_token() const;
+        // Lookahead sem consumir: offset=0 → current, 1 → next, etc.
+        Token peek_at(size_t offset) const;
         Token expect(TokenType expectedType, const std::string& errorMsg);
 
 

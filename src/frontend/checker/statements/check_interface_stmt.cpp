@@ -14,10 +14,10 @@ namespace nv {
         for (const auto& method : iface_stmt->methods) {
             std::vector<std::shared_ptr<Type>> param_types;
             for (const auto& [pname, ptype] : method.params) {
-                param_types.push_back(checker->gettyptr(ptype));
+                param_types.push_back(checker->gettyptr(ptype, node));
             }
             auto ret_type = method.return_type.empty() ? checker->gettyptr("void")
-                                                       : checker->gettyptr(method.return_type);
+                                                       : checker->gettyptr(method.return_type, node);
             iface_type->add_method(method.name, std::make_shared<Function>(param_types, ret_type));
         }
 

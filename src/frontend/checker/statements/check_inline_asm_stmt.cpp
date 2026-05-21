@@ -21,7 +21,7 @@ std::shared_ptr<nv::Type>& check_inline_asm_stmt(nv::Checker* checker, Node* nod
 
     for (auto& in : asm_node->inputs) {
         if (!checker->scope->get_key(in.var_name)) {
-            checker->error(node, "variável '" + in.var_name + "' não declarada (usada em constraint de asm)");
+            checker->error(node, "variable '" + in.var_name + "' not declared (used in asm constraint)");
         }
     }
 
@@ -31,7 +31,7 @@ std::shared_ptr<nv::Type>& check_inline_asm_stmt(nv::Checker* checker, Node* nod
             if (in.var_name == out.from_var) { found = true; break; }
         }
         if (!found) {
-            checker->error(node, "'" + out.from_var + "' em output não aparece em 'input'");
+            checker->error(node, "'" + out.from_var + "' in output does not appear in 'input'");
         }
 
         // Tipo do result = tipo do from_var no escopo
