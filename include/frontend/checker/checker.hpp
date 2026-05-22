@@ -28,8 +28,8 @@ namespace nv {
             void print_error_context(const PositionData* pos);
             
         public:
-            std::vector<std::shared_ptr<nv::Namespace>> namespaces;
-            std::shared_ptr<nv::Namespace> scope;
+            std::vector<std::shared_ptr<Namespace>> namespaces;
+            std::shared_ptr<Namespace> scope;
             std::unordered_map<std::string, std::shared_ptr<Type>> types;
             // Map from function name to ordered list of parameter names (for keyword args)
             std::unordered_map<std::string, std::vector<std::string>> function_param_names;
@@ -69,11 +69,11 @@ namespace nv {
             Node* current_node = nullptr;
             Checker();
             void apply_compilation_attributes(const CompilationAttributes& attrs);
-            nv::Type& getty(std::string ty);
-            std::shared_ptr<nv::Type>& gettyptr(std::string ty, Node* error_node = nullptr);
+            Type& getty(std::string ty);
+            std::shared_ptr<Type>& gettyptr(std::string ty, Node* error_node = nullptr);
             void push_scope();
             void pop_scope();
-            std::shared_ptr<nv::Type> check_node(Node* node);
+            std::shared_ptr<Type> check_node(Node* node);
             
             // Inferência de tipos
             std::shared_ptr<Type> infer_type(Node* node);

@@ -26,12 +26,12 @@ namespace nv {
         public:
             Namespace(std::shared_ptr<Namespace> prnt) : parent(prnt) {};
             Namespace() : parent(nullptr) {};
-            std::shared_ptr<nv::Type>& get_key(const std::string& k);
+            std::shared_ptr<Type>& get_key(const std::string& k);
             bool has_key(std::string k);
             bool is_const(std::string k);
-            void put_key(const std::string& k, const std::shared_ptr<nv::Type>& v, bool ismutable);
-            void put_key(const std::string& k, const std::shared_ptr<nv::Type>& v);
-            void set_key(const std::string& k, const std::shared_ptr<nv::Type>& v);
+            void put_key(const std::string& k, const std::shared_ptr<Type>& v, bool ismutable);
+            void put_key(const std::string& k, const std::shared_ptr<Type>& v);
+            void set_key(const std::string& k, const std::shared_ptr<Type>& v);
             void erase_key(const std::string& k);
             void record_decl_pos(const std::string& k, const DeclPos& pos);
             const DeclPos* get_decl_pos(const std::string& k) const;
