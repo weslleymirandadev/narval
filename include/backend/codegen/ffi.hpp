@@ -4,23 +4,21 @@
 #include <string_view>
 #include <string>
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Tabela de tipos FFI
 //
 //  Centraliza todas as conversões Narval ↔ nativo em uma única struct.
 //  Adicionar suporte a um novo tipo = adicionar uma entrada em FFI_TYPE_TABLE.
-// ─────────────────────────────────────────────────────────────────────────────
 
 namespace nv::ffi {
 
 struct TypeDesc {
     std::string_view narval;      // "str", "int", "float", "bool", "void"
 
-    // LLVM wrapper (C-ABI backend) ─────────────────────────────────────────
+    // LLVM wrapper (C-ABI backend) 
     std::string_view extract_fn;  // Value* → nativo:  nv_extract_string_ptr, extract_int_from_value
     std::string_view box_fn;      // nativo → Value*:  create_str, create_int, create_option_none
 
-    // Bridge C genérico ───────────────────────────────────────────────────
+    // Bridge C genérico 
     std::string_view c_type;      // "const char*", "int32_t", "double"
 
     // Python C API  (formato: %s = expressão do valor nativo / PyObject*)
@@ -39,12 +37,10 @@ const TypeDesc& type_desc(std::string_view narval_type);
 // Retorna o tipo LLVM nativo correspondente a um tipo Narval.
 llvm::Type* llvm_native_type(std::string_view narval_type, llvm::LLVMContext& C);
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  Interface de backend FFI
 //
 //  Cada família de linguagem implementa esta interface.
 //  Adicionar suporte a uma nova linguagem = criar uma subclasse e registrá-la.
-// ─────────────────────────────────────────────────────────────────────────────
 
 class Backend {
 public:
@@ -62,9 +58,7 @@ public:
 // Para adicionar uma nova linguagem: crie um backend, registre aqui.
 Backend& backend_for(const std::string& language, const std::string& source_file);
 
-// ─────────────────────────────────────────────────────────────────────────────
 //  API para `from extern "lang:lib" import items`
-// ─────────────────────────────────────────────────────────────────────────────
 
 struct CLibFunc {
     std::string name;

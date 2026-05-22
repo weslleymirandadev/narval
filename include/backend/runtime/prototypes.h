@@ -476,7 +476,7 @@ void copy_value(Value* dest, const Value* src);
 // Comparar valores (legado)
 int compare_values(const Value* a, const Value* b);
 
-// ── Tensor runtime ────────────────────────────────────────────────────────────
+//  Tensor runtime 
 extern NvTypeObject* NVTensor_Type;
 int64_t nv_value_to_i64(Value* v);
 void   nv_tensor_init_type(void);
