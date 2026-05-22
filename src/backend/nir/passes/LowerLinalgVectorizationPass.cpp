@@ -41,10 +41,12 @@ struct NarvalLinalgVectorizePassImpl
             // (no applyPatternsGreedily) so it is safe with Threading::DISABLED.
             for (linalg::LinalgOp lop : to_vectorize) {
                 rewriter.setInsertionPoint(lop);
-                if (failed(linalg::vectorize(rewriter, lop))) {
-                    // Not vectorizable (e.g. dynamic shape) — will be lowered
-                    // to loops by createConvertLinalgToLoopsPass() fallback.
-                }
+                // vectorize() returns FailureOr<VectorizationResult>.
+                // Pass empty inputVectorSizes → MLIR infers from static shapes.
+                auto result = linalg::vectorize(rewriter, lop.getOperation(),
+                                                /*inputVectorSizes=*/{},
+                                                /*inputScalableVecDims=*/{});
+                (void)result;  // fallback to loops on failure (see pipeline)
             }
         }
     }
