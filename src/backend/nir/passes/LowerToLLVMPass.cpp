@@ -6,7 +6,10 @@
 #include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
+#include "mlir/Conversion/UBToLLVM/UBToLLVM.h"
+#include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
@@ -36,6 +39,8 @@ struct LowerNarvalToLLVMPassImpl
         populateFuncToLLVMConversionPatterns(type_converter, patterns);
         cf::populateControlFlowToLLVMConversionPatterns(type_converter, patterns);
         populateFinalizeMemRefToLLVMConversionPatterns(type_converter, patterns);
+        ub::populateUBToLLVMConversionPatterns(type_converter, patterns);
+        populateVectorToLLVMConversionPatterns(type_converter, patterns, false);
 
         if (failed(applyFullConversion(module, target, std::move(patterns)))) {
             module.emitError("lower-narval-to-llvm: full conversion to LLVM failed");
