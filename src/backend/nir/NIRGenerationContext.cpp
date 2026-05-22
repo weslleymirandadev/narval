@@ -9,6 +9,7 @@
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Conversion/LinalgToStandard/LinalgToStandard.h"
+#include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVMPass.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -43,7 +44,7 @@ void NIRSymbolTable::pop_scope() {
     if (scopes_.size() > 1) scopes_.pop_back();
 }
 void NIRSymbolTable::define(const std::string& name, mlir::Value val,
-                             std::shared_ptr<nv::Type> nv_type, bool is_comptime) {
+                             std::shared_ptr<Type> nv_type, bool is_comptime) {
     scopes_.back()[name] = {val, std::move(nv_type), is_comptime};
 }
 std::optional<NIRSymbolInfo> NIRSymbolTable::lookup(const std::string& name) const {
@@ -87,7 +88,7 @@ NIRGenerationContext::NIRGenerationContext(mlir::MLIRContext& ctx,
 //  Scope / symbol management 
 
 void NIRGenerationContext::define(const std::string& name, mlir::Value val,
-                                   std::shared_ptr<nv::Type> nv_type, bool is_comptime) {
+                                   std::shared_ptr<Type> nv_type, bool is_comptime) {
     symbols_.define(name, val, std::move(nv_type), is_comptime);
 }
 
@@ -119,20 +120,20 @@ mlir::narval::ValueType NIRGenerationContext::get_narval_value_type() {
     return mlir::narval::ValueType::get(&ctx_);
 }
 
-mlir::Type NIRGenerationContext::nv_type_to_mlir(std::shared_ptr<nv::Type> nv_type) {
+mlir::Type NIRGenerationContext::nv_type_to_mlir(std::shared_ptr<Type> nv_type) {
     if (!nv_type) return get_narval_value_type();
     auto nv_value = get_narval_value_type();
     switch (nv_type->kind) {
-    case nv::Kind::INT: case nv::Kind::FLOAT: case nv::Kind::BOOL:
-    case nv::Kind::STRING: case nv::Kind::CHAR: case nv::Kind::ARRAY:
-    case nv::Kind::VECTOR: case nv::Kind::MAP: case nv::Kind::TUPLE:
-    case nv::Kind::CLASS: case nv::Kind::INTERFACE: case nv::Kind::ENUM:
-    case nv::Kind::OPTION: case nv::Kind::RESULT: case nv::Kind::FUTURE:
+    case Kind::INT: case Kind::FLOAT: case Kind::BOOL:
+    case Kind::STRING: case Kind::CHAR: case Kind::ARRAY:
+    case Kind::VECTOR: case Kind::MAP: case Kind::TUPLE:
+    case Kind::CLASS: case Kind::INTERFACE: case Kind::ENUM:
+    case Kind::OPTION: case Kind::RESULT: case Kind::FUTURE:
         return nv_value;
-    case nv::Kind::NONE:
+    case Kind::NONE:
         // None is the void type in Narval — functions with no return value use this.
         return mlir::NoneType::get(&ctx_);
-    case nv::Kind::LOW_LEVEL: {
+    case Kind::LOW_LEVEL: {
         const std::string& name = nv_type->toString();
         if (name == "i8"  || name == "u8")  return builder_.getIntegerType(8);
         if (name == "i16" || name == "u16") return builder_.getIntegerType(16);
@@ -145,9 +146,9 @@ mlir::Type NIRGenerationContext::nv_type_to_mlir(std::shared_ptr<nv::Type> nv_ty
         if (name == "ptr")  return mlir::LLVM::LLVMPointerType::get(&ctx_);
         return nv_value;
     }
-    case nv::Kind::TYPE_VAR: case nv::Kind::POLY_TYPE: case nv::Kind::ERROR:
+    case Kind::TYPE_VAR: case Kind::POLY_TYPE: case Kind::ERROR:
         return nv_value;
-    case nv::Kind::FUNCTION: {
+    case Kind::FUNCTION: {
         std::vector<mlir::Type> param_types;
         for (auto& p : nv_type->params)
             param_types.push_back(nv_type_to_mlir(p));
@@ -253,16 +254,23 @@ NIRGenerationContext::lower_to_llvm_ir(llvm::LLVMContext& llvm_ctx) {
     //  Phase 1: Remaining narval.* → func/arith 
     pm.addPass(nv::createLowerNarvalToStandardPass());
 
-    //  Phase 8: GPU 
+    //  Phase 8: GPU — narval.gpu_* → gpu.func/launch_func/thread_id
     pm.addPass(nv::createLowerNarvalGPUPass());
 
-    //  SCF → control-flow 
+    //  Phase 5: Vectorisation — linalg.* → vector.* (AVX2/NEON)
+    pm.addPass(nv::createNarvalLinalgVectorizePass());
+    pm.addPass(mlir::createConvertLinalgToLoopsPass());
+
+    //  SCF → control-flow
     pm.addPass(mlir::createSCFToControlFlowPass());
 
-    //  Final: standard dialects → LLVM dialect 
+    //  Vector → LLVM (must be before func/arith → LLVM)
+    pm.addPass(mlir::createConvertVectorToLLVMPass());
+
+    //  Final: standard dialects → LLVM dialect
     pm.addPass(nv::createLowerNarvalToLLVMPass());
 
-    //  Reconcile unrealised casts 
+    //  Reconcile unrealised casts
     pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 
     if (mlir::failed(pm.run(*module_))) {
