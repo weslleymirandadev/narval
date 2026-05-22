@@ -28,6 +28,8 @@ file(GLOB_RECURSE NIR_SOURCES
 
 add_library(NarvalNirDialect ${NIR_SOURCES})
 
+target_compile_definitions(NarvalNirDialect PRIVATE NARVAL_USE_NIR=1)
+
 add_dependencies(NarvalNirDialect
     NarvalDialectIncGen
     NarvalTypesIncGen
