@@ -92,6 +92,10 @@ set(MLIR_DIALECT_LIBS
     MLIRVectorDialect
     MLIRVectorToLLVM
     MLIRVectorToLLVMPass
+    MLIRUBDialect
+    MLIRUBToLLVM
+    MLIRVectorToSCF
+    MLIRVectorTransforms
     MLIRLinalgTransforms
 )
 
