@@ -7,6 +7,7 @@
 
 #include "mlir/Conversion/LinalgToStandard/LinalgToStandard.h"
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVMPass.h"
+#include "mlir/Conversion/VectorToSCF/VectorToSCF.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
 #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
@@ -260,9 +261,9 @@ link_kernel(nv::IRGenerationContext& ctx, const std::string& fn_name,
 static llvm::Value*
 tensor_data_ptr(nv::IRGenerationContext& ctx, llvm::Value* val) {
     auto& B      = ctx.get_builder();
-    auto* ValTy  = nv::ir_utils::get_value_struct(ctx);
+    auto* ValTy  = ir_utils::get_value_struct(ctx);
     auto* PtrTy  = llvm::PointerType::getUnqual(ctx.get_context());
-    auto* vptr   = nv::ir_utils::get_value_ptr(ctx);
+    auto* vptr   = ir_utils::get_value_ptr(ctx);
 
     llvm::Value* slot;
     if (val->getType() == ValTy) {
@@ -284,7 +285,7 @@ alloc_out_tensor(nv::IRGenerationContext& ctx,
     auto* I32    = llvm::Type::getInt32Ty(ctx.get_context());
     auto* I64    = llvm::Type::getInt64Ty(ctx.get_context());
     auto* PtrTy  = llvm::PointerType::getUnqual(ctx.get_context());
-    auto* ValTy  = nv::ir_utils::get_value_struct(ctx);
+    auto* ValTy  = ir_utils::get_value_struct(ctx);
     int32_t ndim = static_cast<int32_t>(dims.size());
 
     // Build shape array on the stack
@@ -319,18 +320,16 @@ lower_kernel_module(mlir::MLIRContext& ctx, mlir::ModuleOp module,
     pm.enableVerifier(false);
 
     if (has_linalg) {
-        // 1a. Vectorize linalg ops → vector.contract + vector.transfer_read/write
-        //     (explicit SIMD: backend emits AVX2/NEON with -O2 -march=native)
         pm.addPass(nv::createNarvalLinalgVectorizePass());
-
-        // 1b. Convert any remaining (non-vectorized) linalg ops → scf loops
+        pm.addPass(nv::createNarvalVectorLoweringPass());
+        pm.addPass(mlir::createConvertVectorToSCFPass());
         pm.addPass(mlir::createConvertLinalgToLoopsPass());
     }
 
     // 2. Lower scf → cf basic blocks
     pm.addPass(mlir::createSCFToControlFlowPass());
 
-    // 3. Lower vector.* → LLVM dialect (AVX2/NEON vector ops)
+    // 3. Lower remaining vector ops (reduction, broadcast, etc.) → LLVM dialect
     if (has_linalg)
         pm.addPass(mlir::createConvertVectorToLLVMPass());
 
@@ -394,9 +393,9 @@ build_linalg_matmul_module(llvm::LLVMContext& llvm_ctx,
     mlir::Value B = fn.getArgument(1);
     mlir::Value C = fn.getArgument(2);
 
-    // Zero-fill C before accumulating
-    mlir::Value zero = mlir::arith::ConstantOp::create(b, loc, f64, b.getF64FloatAttr(0.0));
-    mlir::linalg::FillOp::create(b, loc, mlir::ValueRange{zero}, mlir::ValueRange{C});
+    // C is pre-zeroed by nv_tensor_zeros on the caller side.
+    // Do NOT emit linalg.fill here — the fill vectorizes incorrectly causing
+    // double-accumulation with the matmul vectorization.
 
     // linalg.matmul accumulates: C += A × B
     mlir::linalg::MatmulOp::create(b, loc,
@@ -455,7 +454,7 @@ llvm::Value* emit_tensor_matmul_nir(IRGenerationContext& ctx,
     int64_t M = lhs_dims[0], K = lhs_dims[1], N = rhs_dims[1];
 
     auto& B      = ctx.get_builder();
-    auto* ValTy  = nv::ir_utils::get_value_struct(ctx);
+    auto* ValTy  = ir_utils::get_value_struct(ctx);
 
     auto* A_data = tensor_data_ptr(ctx, lhs_v);
     auto* B_data = tensor_data_ptr(ctx, rhs_v);
