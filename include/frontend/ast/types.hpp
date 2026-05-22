@@ -6,6 +6,11 @@
 // Forward declarations to avoid circular dependencies
 namespace llvm { class Value; }
 namespace nv { class IRGenerationContext; }
+// NIRGenerationContext forward declared only in NARVAL_USE_NIR builds.
+// Included explicitly in nir_stmts.cpp and generate_ir_nir.cpp.
+#ifdef NARVAL_USE_NIR
+namespace nv { class NIRGenerationContext; }
+#endif
 
 template <typename T>
 using NvList = std::vector<T>;
@@ -96,7 +101,15 @@ public:
     explicit Node(NodeType k) : kind(k) {}
     virtual ~Node() = default;
     virtual Node* clone() const = 0;
+
+    // Primary codegen: emits LLVM IR directly (current path).
     virtual void codegen(nv::IRGenerationContext& ctx) = 0;
+
+#ifdef NARVAL_USE_NIR
+    // Fase 2: NIR codegen path — emits narval.* MLIR ops.
+    // Default: no-op (silently skipped until node is migrated).
+    virtual void nir_codegen(nv::NIRGenerationContext& ctx) {}
+#endif
 };
 
 class Stmt : public Node {
