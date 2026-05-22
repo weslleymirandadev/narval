@@ -12,7 +12,7 @@ namespace nv {
 class MethodHandler {
 public:
     virtual ~MethodHandler() = default;
-    virtual llvm::Value* handle(nv::IRGenerationContext& ctx, const std::string& method, const std::vector<std::unique_ptr<Node>>& args) = 0;
+    virtual llvm::Value* handle(IRGenerationContext& ctx, const std::string& method, const std::vector<std::unique_ptr<Node>>& args) = 0;
     virtual bool can_handle(const std::string& method) const = 0;
 };
 
