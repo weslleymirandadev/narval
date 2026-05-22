@@ -622,7 +622,7 @@ namespace nv {
         }
     };
 
-    // ── Tensor type ───────────────────────────────────────────────────────────
+    //  Tensor type 
     // Represents Tensor<float, [M, N]> — a statically-shaped dense tensor.
     // element can be Float, Int, or any numeric primitive.
     // dims: -1 means dynamic (unknown at compile time).
