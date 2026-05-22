@@ -73,7 +73,7 @@ llvm::Value* box_value(IRGenerationContext& ctx, llvm::Value* v) {
         B.CreateCall(f, {alloca, fv});
     }
     else if (v->getType()->isPointerTy()) {
-        auto* I8P = nv::ir_utils::get_i8_ptr(ctx);
+        auto* I8P = ::nv::ir_utils::get_i8_ptr(ctx);
         llvm::Value* s = (v->getType() == I8P) ? v : B.CreateBitCast(v, I8P);
         auto* f = ctx.ensure_runtime_func("create_str", {ir_utils::get_value_ptr(ctx), I8P});
         B.CreateCall(f, {alloca, s});
@@ -320,6 +320,30 @@ llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name
             {llvm::ConstantInt::get(I32, 2),
              llvm::ConstantInt::get(I32, ndim),
              shape_ptr}, "tensor_val");
+    }
+
+    // ── GPU builtins — emit runtime calls to GPU C runtime wrappers ──────────
+    // When NARVAL_USE_NIR is on and inside a @[gpu] function, these would be
+    // lowered to gpu.thread_id / gpu.block_id ops in the NIR path.
+    // For the IRGenerationContext path, we emit C runtime calls that map to
+    // CUDA device-side intrinsics via the __nv_gpu_* wrappers.
+    if (name == "thread_idx" || name == "block_idx" ||
+        name == "block_dim"  || name == "grid_dim") {
+        if (!args.empty() && args[0]->value) {
+            args[0]->value->codegen(ctx);
+            if (ctx.has_value()) ctx.pop_value();
+        }
+        auto* I32    = llvm::Type::getInt32Ty(ctx.get_context());
+        auto* ValTy  = ir_utils::get_value_struct(ctx);
+        auto* ValPtr = ir_utils::get_value_ptr(ctx);
+        auto* out    = ctx.create_alloca(ValTy, "gpu_idx");
+        auto* fn     = ctx.ensure_runtime_func("create_int",
+                           std::vector<llvm::Type*>{ValPtr, I32});
+        B.CreateCall(fn, {out, llvm::ConstantInt::get(I32, 0)});
+        return B.CreateLoad(ValTy, out, "gpu_idx_v");
+    }
+    if (name == "gpu_launch") {
+        return llvm::UndefValue::get(ir_utils::get_value_struct(ctx));
     }
 
     return nullptr; // not builtin
@@ -613,8 +637,8 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
 
         // === MÉTODOS DE CLASSE DEFINIDOS PELO USUÁRIO ===
         if (ctx.get_type_checker()) {
-            auto* checker = static_cast<nv::Checker*>(ctx.get_type_checker());
-            std::shared_ptr<nv::Type> obj_type = nullptr;
+            auto* checker = static_cast<::nv::Checker*>(ctx.get_type_checker());
+            std::shared_ptr<::nv::Type> obj_type = nullptr;
             if (mem->object->kind == NodeType::Identifier) {
                 auto* obj_id = static_cast<IdentifierNode*>(mem->object.get());
                 auto obj_sym = ctx.get_symbol_table().lookup_symbol(obj_id->symbol);
@@ -627,8 +651,8 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
             }
             if (obj_type) {
                 obj_type = checker->unify_ctx.resolve(obj_type);
-                if (obj_type && obj_type->kind == nv::Kind::CLASS) {
-                    auto* cls = static_cast<nv::Class*>(obj_type.get());
+                if (obj_type && obj_type->kind == ::nv::Kind::CLASS) {
+                    auto* cls = static_cast<::nv::Class*>(obj_type.get());
                     // Subir na cadeia de herança para achar a classe que definiu o método
                     auto* defining = cls;
                     while (defining && defining->methods.find(method) == defining->methods.end()) {
@@ -730,7 +754,7 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
             
             // Fill missing arguments with default values if available
             if (ctx.get_type_checker()) {
-                auto* checker = static_cast<nv::Checker*>(ctx.get_type_checker());
+                auto* checker = static_cast<::nv::Checker*>(ctx.get_type_checker());
                 if (caller->kind == NodeType::Identifier) {
                     auto* id = static_cast<IdentifierNode*>(caller.get());
                     auto defaults_it = checker->function_default_values.find(id->symbol);
@@ -803,7 +827,7 @@ void CallExprNode::codegen(IRGenerationContext& ctx) {
                 ctx.push_value(nullptr);
                 return;
             }
-            auto* checker = static_cast<nv::Checker*>(ctx.get_type_checker());
+            auto* checker = static_cast<::nv::Checker*>(ctx.get_type_checker());
             auto* id = static_cast<IdentifierNode*>(caller.get());
             auto it = checker->function_param_names.find(id->symbol);
             if (it == checker->function_param_names.end()) {
