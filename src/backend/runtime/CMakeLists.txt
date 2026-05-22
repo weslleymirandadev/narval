@@ -17,7 +17,7 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:NarvalRuntimeShared> ${LIB_DIR}/runtime.so
     COMMAND ${CMAKE_COMMAND} -E make_directory ${LIB_DIR}
     COMMAND ${CMAKE_LINKER} -r -o ${LIB_DIR}/runtime.o $<TARGET_OBJECTS:NarvalRuntimeObjs>
-    COMMENT "Atualizando runtime.so e runtime.o em lib/"
+    COMMENT "Updating runtime.so and runtime.o in lib/"
     COMMAND_EXPAND_LISTS
 )
 
@@ -29,7 +29,7 @@ add_custom_target(NarvalRuntimeNostdO ALL
     COMMAND ${CMAKE_COMMAND} -E make_directory ${LIB_DIR}
     COMMAND ${CMAKE_LINKER} -r -o ${LIB_DIR}/runtime_nostd.o $<TARGET_OBJECTS:NarvalRuntimeNostdObjs>
     DEPENDS NarvalRuntimeNostdObjs
-    COMMENT "Gerando runtime_nostd.o em lib/"
+    COMMENT "Generating runtime_nostd.o in lib/"
     COMMAND_EXPAND_LISTS
 )
 
@@ -37,6 +37,6 @@ add_custom_target(NarvalRuntimeO ALL
     COMMAND ${CMAKE_COMMAND} -E make_directory ${LIB_DIR}
     COMMAND ${CMAKE_LINKER} -r -o ${LIB_DIR}/runtime.o $<TARGET_OBJECTS:NarvalRuntimeObjs>
     DEPENDS NarvalRuntimeObjs NarvalRuntimeShared
-    COMMENT "Regenerando runtime.o em lib/"
+    COMMENT "Regenerating runtime.o in lib/"
     COMMAND_EXPAND_LISTS
 )
