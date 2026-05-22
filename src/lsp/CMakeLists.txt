@@ -43,16 +43,14 @@ set(NARVAL_LSP_CORE_SOURCES
     transport.cpp
 )
 
-add_library(narval_lsp_core STATIC ${NARVAL_LSP_CORE_SOURCES})
-target_include_directories(narval_lsp_core PUBLIC
+add_library(NarvalLspCore STATIC ${NARVAL_LSP_CORE_SOURCES})
+target_include_directories(NarvalLspCore PUBLIC
     ${PROJECT_SOURCE_DIR}/include
     ${NARVAL_NLOHMANN_JSON_INCLUDE_DIR}
 )
-target_link_libraries(narval_lsp_core PUBLIC narval_project_includes lexer parser checker)
-# O LSP não precisa de debug info — -g0 sobrescreve o -g do CMAKE_BUILD_TYPE=Debug.
-# Isso evita que o binário cresça 30 MB com .debug_* sections desnecessárias.
+target_link_libraries(NarvalLspCore PUBLIC NarvalProjectIncludes NarvalLexer NarvalParser NarvalChecker)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_compile_options(narval_lsp_core PRIVATE -g0 -O2)
+    target_compile_options(NarvalLspCore PRIVATE -g0 -O2)
 endif()
 
 function(narval_add_lsp_target target_name)
@@ -67,10 +65,7 @@ function(narval_add_lsp_target target_name)
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang" AND NOT WIN32)
         target_link_options(${target_name} PRIVATE -W -fPIE)
     endif()
-    target_link_libraries(${target_name} PRIVATE narval_lsp_core)
-    # Strip debug symbols from final LSP binary — lexer/parser/checker also carry
-    # -g info when built in Debug mode, and strip is the only reliable way to
-    # clean all of it from the linked executable.
+    target_link_libraries(${target_name} PRIVATE NarvalLspCore)
     if(CMAKE_STRIP AND NOT WIN32)
         add_custom_command(TARGET ${target_name} POST_BUILD
             COMMAND ${CMAKE_STRIP} --strip-debug $<TARGET_FILE:${target_name}>
@@ -80,14 +75,19 @@ function(narval_add_lsp_target target_name)
 endfunction()
 
 if(NARVAL_BUILD_LSP)
-    narval_add_lsp_target(narval-lsp)
+    narval_add_lsp_target(NarvalLsp)
 endif()
 
 function(narval_add_lsp_platform_target platform_name toolchain_file)
+    string(SUBSTRING "${platform_name}" 0 1 _first)
+    string(TOUPPER "${_first}" _first_upper)
+    string(SUBSTRING "${platform_name}" 1 -1 _rest)
+    set(_target "NarvalLsp${_first_upper}${_rest}")
+
     set(platform_build_dir "${CMAKE_BINARY_DIR}/lsp-${platform_name}")
 
     if(toolchain_file)
-        add_custom_target(narval-lsp_${platform_name}
+        add_custom_target(${_target}
             COMMAND ${CMAKE_COMMAND}
                 -S ${PROJECT_SOURCE_DIR}
                 -B ${platform_build_dir}
@@ -97,20 +97,20 @@ function(narval_add_lsp_platform_target platform_name toolchain_file)
                 -DCMAKE_TOOLCHAIN_FILE=${toolchain_file}
             COMMAND ${CMAKE_COMMAND}
                 --build ${platform_build_dir}
-                --target narval-lsp
+                --target NarvalLsp
             COMMENT "Building Narval LSP for ${platform_name}"
             VERBATIM
         )
-    elseif(platform_name STREQUAL NARVAL_HOST_PLATFORM AND TARGET narval-lsp)
-        add_custom_target(narval-lsp_${platform_name}
-            DEPENDS narval-lsp
-            COMMENT "Narval LSP for ${platform_name} is the native narval-lsp target"
+    elseif(platform_name STREQUAL NARVAL_HOST_PLATFORM AND TARGET NarvalLsp)
+        add_custom_target(${_target}
+            DEPENDS NarvalLsp
+            COMMENT "Narval LSP for ${platform_name} is the native NarvalLsp target"
         )
     else()
         string(TOUPPER "${platform_name}" platform_name_upper)
-        add_custom_target(narval-lsp_${platform_name}
+        add_custom_target(${_target}
             COMMAND ${CMAKE_COMMAND} -E echo
-                "Skipping narval-lsp_${platform_name}: set NARVAL_LSP_${platform_name_upper}_TOOLCHAIN to cross-build this platform."
+                "Skipping ${_target}: set NARVAL_LSP_${platform_name_upper}_TOOLCHAIN to cross-build this platform."
             VERBATIM
         )
     endif()
@@ -128,6 +128,6 @@ narval_add_lsp_platform_target(linux "${NARVAL_LSP_LINUX_TOOLCHAIN}")
 narval_add_lsp_platform_target(windows "${NARVAL_LSP_WINDOWS_TOOLCHAIN}")
 narval_add_lsp_platform_target(macos "${NARVAL_LSP_MACOS_TOOLCHAIN}")
 
-add_custom_target(narval-lsp_all_platforms
-    DEPENDS narval-lsp_linux narval-lsp_windows narval-lsp_macos
+add_custom_target(NarvalLspAllPlatforms
+    DEPENDS NarvalLspLinux NarvalLspWindows NarvalLspMacos
 )

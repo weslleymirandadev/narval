@@ -1,52 +1,42 @@
-# src/backend/runtime/CMakeLists.txt
-
 narval_collect_sources(RUNTIME_SOURCES
     PATTERNS "*.c"
     EXCLUDE_REGEXES ".*/nostd/.*"
 )
 
-add_library(runtime_objs OBJECT ${RUNTIME_SOURCES})
-target_include_directories(runtime_objs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/include)
-# Cada função em sua própria section: permite --gc-sections eliminar símbolos não usados
-target_compile_options(runtime_objs PRIVATE -ffunction-sections -fdata-sections)
+add_library(NarvalRuntimeObjs OBJECT ${RUNTIME_SOURCES})
+target_include_directories(NarvalRuntimeObjs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/include)
+target_compile_options(NarvalRuntimeObjs PRIVATE -ffunction-sections -fdata-sections)
 
-# Criar biblioteca compartilhada para uso no JIT
-add_library(runtime_shared SHARED ${RUNTIME_SOURCES})
-target_include_directories(runtime_shared PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/include)
-target_compile_options(runtime_shared PRIVATE -ffunction-sections -fdata-sections)
-set_target_properties(runtime_shared PROPERTIES OUTPUT_NAME "runtime" PREFIX "")
+add_library(NarvalRuntimeShared SHARED ${RUNTIME_SOURCES})
+target_include_directories(NarvalRuntimeShared PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/include)
+target_compile_options(NarvalRuntimeShared PRIVATE -ffunction-sections -fdata-sections)
+set_target_properties(NarvalRuntimeShared PROPERTIES OUTPUT_NAME "runtime" PREFIX "")
 
-# Copiar runtime.so para LIB_DIR e regenerar runtime.o a cada build
 add_custom_command(
-    TARGET runtime_shared POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:runtime_shared> ${LIB_DIR}/runtime.so
+    TARGET NarvalRuntimeShared POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:NarvalRuntimeShared> ${LIB_DIR}/runtime.so
     COMMAND ${CMAKE_COMMAND} -E make_directory ${LIB_DIR}
-    COMMAND ${CMAKE_LINKER} -r -o ${LIB_DIR}/runtime.o $<TARGET_OBJECTS:runtime_objs>
+    COMMAND ${CMAKE_LINKER} -r -o ${LIB_DIR}/runtime.o $<TARGET_OBJECTS:NarvalRuntimeObjs>
     COMMENT "Atualizando runtime.so e runtime.o em lib/"
     COMMAND_EXPAND_LISTS
 )
 
-# ── Minimal no_std runtime ──────────────────────────────────────────────────
-# Compiled separately so it never mixes with the full runtime.
-# Each function in its own section; --gc-sections strips unused ones.
-add_library(runtime_nostd_objs OBJECT nostd/runtime_nostd.c)
-target_include_directories(runtime_nostd_objs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/include)
-target_compile_options(runtime_nostd_objs PRIVATE -ffunction-sections -fdata-sections -ffreestanding)
+add_library(NarvalRuntimeNostdObjs OBJECT nostd/runtime_nostd.c)
+target_include_directories(NarvalRuntimeNostdObjs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/include)
+target_compile_options(NarvalRuntimeNostdObjs PRIVATE -ffunction-sections -fdata-sections -ffreestanding)
 
-add_custom_target(runtime_nostd_o ALL
+add_custom_target(NarvalRuntimeNostdO ALL
     COMMAND ${CMAKE_COMMAND} -E make_directory ${LIB_DIR}
-    COMMAND ${CMAKE_LINKER} -r -o ${LIB_DIR}/runtime_nostd.o $<TARGET_OBJECTS:runtime_nostd_objs>
-    DEPENDS runtime_nostd_objs
+    COMMAND ${CMAKE_LINKER} -r -o ${LIB_DIR}/runtime_nostd.o $<TARGET_OBJECTS:NarvalRuntimeNostdObjs>
+    DEPENDS NarvalRuntimeNostdObjs
     COMMENT "Gerando runtime_nostd.o em lib/"
     COMMAND_EXPAND_LISTS
 )
-# Alvo legado para compatibilidade com dependências externas.
-# Deve rodar sempre: o compilador procura build/lib/runtime.o em tempo de
-# execução, e apagar esse arquivo não força o POST_BUILD de runtime_shared.
-add_custom_target(runtime_o ALL
+
+add_custom_target(NarvalRuntimeO ALL
     COMMAND ${CMAKE_COMMAND} -E make_directory ${LIB_DIR}
-    COMMAND ${CMAKE_LINKER} -r -o ${LIB_DIR}/runtime.o $<TARGET_OBJECTS:runtime_objs>
-    DEPENDS runtime_objs runtime_shared
+    COMMAND ${CMAKE_LINKER} -r -o ${LIB_DIR}/runtime.o $<TARGET_OBJECTS:NarvalRuntimeObjs>
+    DEPENDS NarvalRuntimeObjs NarvalRuntimeShared
     COMMENT "Regenerando runtime.o em lib/"
     COMMAND_EXPAND_LISTS
 )
