@@ -69,4 +69,12 @@ void reset_feature_tracker();
 
 void generate_ir(std::unique_ptr<Node> node, IRGenerationContext& context, bool keep_result = false);
 
+#ifdef NARVAL_USE_NIR
+// Fase 2: emit the program into a NIRGenerationContext instead of LLVM IR.
+// Each AST node's nir_codegen() is called; unimplemented nodes are silently
+// skipped (they use the no-op default in types.hpp).
+namespace nv { class NIRGenerationContext; }
+void generate_ir_nir(std::unique_ptr<Node> node, nv::NIRGenerationContext& ctx);
+#endif
+
 } // namespace nv
