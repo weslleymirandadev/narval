@@ -32,6 +32,18 @@ namespace nv {
         // bool: aceita 1 argumento de qualquer tipo, retorna bool
         BuiltinFunction("bool", {}, std::make_shared<Boolean>(), false, true, 1, 1),
 
+        // GPU builtins — usable inside @[gpu] kernel functions
+        // thread_idx("x"|"y"|"z") → int  (gpu.thread_id)
+        BuiltinFunction("thread_idx", {std::make_shared<String>()}, std::make_shared<Int>(), false, false, 1, 1),
+        // block_idx("x"|"y"|"z") → int   (gpu.block_id)
+        BuiltinFunction("block_idx",  {std::make_shared<String>()}, std::make_shared<Int>(), false, false, 1, 1),
+        // block_dim("x"|"y"|"z") → int   (gpu.block_dim)
+        BuiltinFunction("block_dim",  {std::make_shared<String>()}, std::make_shared<Int>(), false, false, 1, 1),
+        // grid_dim("x"|"y"|"z") → int    (gpu.grid_dim)
+        BuiltinFunction("grid_dim",   {std::make_shared<String>()}, std::make_shared<Int>(), false, false, 1, 1),
+        // gpu_launch(kernel, grid_x, grid_y, grid_z, block_x, block_y, block_z, args...)
+        BuiltinFunction("gpu_launch", {}, std::make_shared<None>(), false, true, 7, 0),
+
         // Option/Result constructors
         BuiltinFunction("Some",   {}, std::make_shared<None>(), false, true, 1, 1),
         BuiltinFunction("Ok",     {}, std::make_shared<None>(), false, true, 1, 1),
