@@ -477,7 +477,7 @@ void create_any(Value* out) {
     out->obj = obj;
 }
 
-/* ─── Tuple element access ─── */
+/*  Tuple element access  */
 
 void tuple_set_impl(Value* self, int32_t index, Value* elem) {
     if (!self || !self->obj || !elem) return;

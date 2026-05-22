@@ -31,7 +31,7 @@ void ThrowStatementNode::codegen(nv::IRGenerationContext& ctx) {
     auto* exc_alloca = ctx.create_alloca(ValueTy, "throw_exc");
     bool created = false;
 
-    /* ── Caso 1: throw ExceptionType("msg") ── */
+    /*  Caso 1: throw ExceptionType("msg")  */
     if (exception->kind == NodeType::CallExpression) { auto* call = static_cast<CallExprNode*>(exception.get());
         if (call->caller->kind == NodeType::Identifier) { auto* id = static_cast<IdentifierNode*>(call->caller.get());
             const char* create_name = exc_create_fn(id->symbol);
@@ -65,7 +65,7 @@ void ThrowStatementNode::codegen(nv::IRGenerationContext& ctx) {
         }
     }
 
-    /* ── Caso 2: throw expr (variável ou expressão genérica) ── */
+    /*  Caso 2: throw expr (variável ou expressão genérica)  */
     if (!created && exception) {
         exception->codegen(ctx);
         if (ctx.has_value()) {
@@ -81,14 +81,14 @@ void ThrowStatementNode::codegen(nv::IRGenerationContext& ctx) {
         }
     }
 
-    /* ── Fallback: criar Error genérico ── */
+    /*  Fallback: criar Error genérico  */
     if (!created) {
         auto* create_fn = ctx.ensure_runtime_func("create_error", {ValuePtr, I8Ptr});
         auto* msg = B.CreateGlobalString("runtime exception", "default_exc_msg");
         B.CreateCall(create_fn, {exc_alloca, msg});
     }
 
-    /* ── Lançar a exceção ── */
+    /*  Lançar a exceção  */
     auto* throw_fn = ctx.ensure_runtime_func("nv_throw_exception", {ValuePtr});
     B.CreateCall(throw_fn, {exc_alloca});
     B.CreateUnreachable();

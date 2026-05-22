@@ -76,7 +76,7 @@ static void declare_runtime(IRGenerationContext& context) {
     // contém apenas o que o usuário definiu explicitamente.
     if (tracker.no_std) return;
 
-    // ── Núcleo sintático (padrão, sem no_std) ────────────────────────────────
+    //  Núcleo sintático (padrão, sem no_std) 
     // Criação de literais
     M.getOrInsertFunction("create_int",   llvm::FunctionType::get(VoidTy, {ValuePtr, I32}, false));
     M.getOrInsertFunction("create_char",  llvm::FunctionType::get(VoidTy, {ValuePtr, I8}, false));
@@ -98,7 +98,7 @@ static void declare_runtime(IRGenerationContext& context) {
     // memset usado internamente pelo codegen
     M.getOrInsertFunction("memset", llvm::FunctionType::get(I8Ptr, {I8Ptr, I32, I64}, false));
 
-    // ── Stdlib (disponível por padrão) ───────────────────────────────────────
+    //  Stdlib (disponível por padrão) 
     // Coleções
     M.getOrInsertFunction("create_map",    llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
     M.getOrInsertFunction("create_array",  llvm::FunctionType::get(VoidTy, {ValuePtr, I32}, false));

@@ -14,9 +14,9 @@ using namespace llvm;
 
 namespace nv::ffi {
 
-// ─────────────────────────────────────────────────────────────────────────────
+// 
 //  Tabela de tipos (única fonte de verdade para conversões FFI)
-// ─────────────────────────────────────────────────────────────────────────────
+// 
 
 static constexpr TypeDesc TYPE_TABLE[] = {
     //  narval   extract_fn                  box_fn               c_type
@@ -83,9 +83,9 @@ llvm::Type* llvm_native_type(std::string_view narval_type, llvm::LLVMContext& C)
     return llvm::PointerType::getUnqual(C);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// 
 //  Helpers livres compartilhados pelos backends e funções standalone
-// ─────────────────────────────────────────────────────────────────────────────
+// 
 
 // Executa um comando shell e retorna stdout sem trailing newline.
 static std::string shell_output(const std::string& cmd) {
@@ -105,9 +105,9 @@ static std::string python_ldflags() {
     return f.empty() ? "-lpython3" : f;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// 
 //  Helpers de geração de código — compartilhados pelos backends
-// ─────────────────────────────────────────────────────────────────────────────
+// 
 
 // Substitui o primeiro %s em `fmt` por `value`.
 static std::string fmt1(std::string_view fmt, std::string_view value) {
@@ -127,13 +127,13 @@ collect_params(const ExternFuncDecl& decl) {
     return out;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// 
 //  CABIBackend — C / C++ / Assembly / Rust / Go (e Python sem source_file)
 //
 //  Gera dois artefatos por declaração:
 //    1. Declaração externa LLVM da função C real (tipos nativos).
 //    2. Wrapper interno LLVM com parâmetros Value que extrai, chama e box.
-// ─────────────────────────────────────────────────────────────────────────────
+// 
 
 class CABIBackend final : public Backend {
 public:
@@ -153,7 +153,7 @@ public:
             // Coletar tipos dos parâmetros
             auto params = collect_params(decl);
 
-            // ── 1. Declarar a função C real com tipos nativos ──
+            //  1. Declarar a função C real com tipos nativos 
             if (!M.getFunction(real_name)) {
                 std::vector<llvm::Type*> native_params;
                 for (const auto& [_, t] : params)
@@ -164,7 +164,7 @@ public:
             }
             auto* real_fn = M.getFunction(real_name);
 
-            // ── 2. Gerar wrapper LLVM (se ainda não existir) ──
+            //  2. Gerar wrapper LLVM (se ainda não existir) 
             if (M.getFunction(wrapper_name)) {
                 register_symbol(wrapper_name, decl.name, M, ctx);
                 continue;
@@ -240,7 +240,7 @@ private:
     }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
+// 
 //  PythonBackend — `extern "Python" from "arquivo.py" { ... }`
 //
 //  Gera um arquivo C bridge que:
@@ -249,7 +249,7 @@ private:
 //
 //  O bridge é compilado com gcc e os artefatos adicionados ao link.
 //  Adicionar suporte a Lua/Ruby/etc.: copiar este backend e adaptar o template.
-// ─────────────────────────────────────────────────────────────────────────────
+// 
 
 class PythonBackend final : public Backend {
 public:
@@ -271,7 +271,7 @@ public:
     }
 
 private:
-    // ── Geração do código C bridge (data-driven via TYPE_TABLE) ─────────────
+    //  Geração do código C bridge (data-driven via TYPE_TABLE) 
 
     std::string build_bridge_source(const ExternStmtNode& node) const {
         std::string s;
@@ -322,7 +322,7 @@ private:
             "extern double      extract_float_from_value(NvValue*);\n"
             "extern void        vector_push_method(NvValue*, NvValue*, NvValue*);\n\n"
 
-            // ── Conversor genérico NvValue → PyObject* ──────────────────────
+            //  Conversor genérico NvValue → PyObject* 
             // Suporta: str, int, float, bool, vector/array (→ list), map (→ dict).
             // Chamado recursivamente para elementos de coleções.
             "static PyObject* _nv_to_pyobj(NvValue* v) {\n"
@@ -352,7 +352,7 @@ private:
             "    Py_RETURN_NONE;\n"
             "}\n\n"
 
-            // ── Conversor genérico PyObject* → NvValue ──────────────────────
+            //  Conversor genérico PyObject* → NvValue 
             // Suporta: str, int, float, bool, list/tuple (→ vector), dict (→ map).
             "static void _nv_from_pyobj(NvValue* out, PyObject* obj) {\n"
             "    if (!obj || obj == Py_None) { create_option_none(out); return; }\n"
@@ -476,7 +476,7 @@ private:
         return s;
     }
 
-    // ── Compilação e linking ─────────────────────────────────────────────────
+    //  Compilação e linking 
 
     bool compile_bridge(const std::string& src, const std::string& obj) const {
         std::string includes = shell_output("python3-config --includes 2>/dev/null");
@@ -489,7 +489,7 @@ private:
         return true;
     }
 
-    // ── Declaração dos wrappers no módulo LLVM ───────────────────────────────
+    //  Declaração dos wrappers no módulo LLVM 
 
     static void declare_wrappers(const ExternStmtNode& node, IRGenerationContext& ctx) {
         auto& M  = ctx.get_module();
@@ -512,14 +512,14 @@ private:
 
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
+// 
 //  Registry / factory
 //
 //  Para registrar uma nova linguagem:
 //    1. Crie um backend (ex: LuaBackend)
 //    2. Adicione um `static LuaBackend lua_backend;`
 //    3. Adicione a condição em backend_for()
-// ─────────────────────────────────────────────────────────────────────────────
+// 
 
 Backend& backend_for(const std::string& language, const std::string& source_file) {
     static PythonBackend python_backend;
@@ -532,12 +532,12 @@ Backend& backend_for(const std::string& language, const std::string& source_file
     return cabi_backend;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// 
 //  Registry de assinaturas de bibliotecas C padrão
 //
 //  Adicionar uma nova biblioteca: criar entrada em C_REGISTRY.
 //  Adicionar uma nova função: incluir no vetor da biblioteca correspondente.
-// ─────────────────────────────────────────────────────────────────────────────
+// 
 
 static const std::unordered_map<std::string, std::vector<CLibFunc>>& get_c_registry() {
     static const std::unordered_map<std::string, std::vector<CLibFunc>> C_REGISTRY = {
@@ -612,7 +612,7 @@ void emit_c_func(const CLibFunc& fn, IRGenerationContext& ctx) {
     backend_for("C", "").emit(tmp_node, ctx);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// 
 //  Python namespace: `from extern "Python:mod" import * as alias`
 //
 //  Gera bridge C com:
@@ -620,7 +620,7 @@ void emit_c_func(const CLibFunc& fn, IRGenerationContext& ctx) {
 //    NvValue _nv_py_ns_call_ALIAS(i8*, Value**, i32)  — dispatcher genérico
 //
 //  Declara o dispatcher no módulo LLVM e registra `alias` como py_namespace.
-// ─────────────────────────────────────────────────────────────────────────────
+// 
 
 void emit_python_namespace(const std::string& module, const std::string& alias,
                             IRGenerationContext& ctx) {
@@ -629,7 +629,7 @@ void emit_python_namespace(const std::string& module, const std::string& alias,
     const std::string bridge_o  = "narval_py_bridge_" + stem + ".o";
     const std::string disp_name = "_nv_py_ns_call_" + alias;
 
-    // ── Gerar bridge C ────────────────────────────────────────────────────────
+    //  Gerar bridge C 
     std::string src;
 
     // Reutilizar o header genérico do PythonBackend (types, converters, init)
@@ -748,7 +748,7 @@ void emit_python_namespace(const std::string& module, const std::string& alias,
         "    return _r;\n"
         "}\n";
 
-    // ── Compilar ─────────────────────────────────────────────────────────────
+    //  Compilar 
     { std::ofstream f(bridge_c); f << src; }
 
     std::string py_inc = shell_output("python3-config --includes 2>/dev/null");
@@ -763,7 +763,7 @@ void emit_python_namespace(const std::string& module, const std::string& alias,
     ctx.add_extra_link_item(bridge_o);
     ctx.add_extra_link_item(python_ldflags());
 
-    // ── Declarar dispatcher no módulo LLVM ────────────────────────────────────
+    //  Declarar dispatcher no módulo LLVM 
     auto& M   = ctx.get_module();
     auto& C   = ctx.get_context();
     auto* VT  = ir_utils::get_value_struct(ctx);

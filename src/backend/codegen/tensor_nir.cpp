@@ -49,7 +49,7 @@ lower_kernel_module(mlir::MLIRContext& ctx, mlir::ModuleOp module,
                     llvm::LLVMContext& llvm_ctx, bool has_linalg,
                     const std::string& dbg_name);
 
-// ── Naming ────────────────────────────────────────────────────────────────────
+//  Naming 
 
 static std::string ds(int64_t d) { return d < 0 ? "d" : std::to_string(d); }
 
@@ -60,7 +60,7 @@ static std::string elemwise_fn_name(const std::string& op, int64_t n) {
     return "__nv_ew_" + op + "_f64_" + ds(n);
 }
 
-// ── MLIR kernel builders ──────────────────────────────────────────────────────
+//  MLIR kernel builders 
 
 // Build matmul kernel: void fn(ptr A, ptr B, ptr C, i64 M, i64 K, i64 N)
 // C[i,j] = sum_k A[i*K+k] * B[k*N+j]   (row-major double arrays, C pre-zeroed)
@@ -240,7 +240,7 @@ build_elemwise_module(llvm::LLVMContext& llvm_ctx,
     return lower_kernel_module(mlir_ctx, nir.get_module(), llvm_ctx, true, fn_name);
 }
 
-// ── Shared IR helpers ─────────────────────────────────────────────────────────
+//  Shared IR helpers 
 
 // Link an MLIR-generated llvm::Module into the main module.
 // Returns the function pointer, or nullptr on failure.
@@ -305,7 +305,7 @@ alloc_out_tensor(nv::IRGenerationContext& ctx,
         "out_val");
 }
 
-// ── Shared: lower a tensor kernel module to llvm::Module ─────────────────────
+//  Shared: lower a tensor kernel module to llvm::Module 
 // Minimal pipeline: (optionally linalg→loops) → scf→cf → arith+func+cf→LLVM.
 // Avoids all narval-specific passes so plain SCF/linalg modules go through
 // cleanly without triggering "illegal op" errors from narval conversion targets.
@@ -317,16 +317,23 @@ lower_kernel_module(mlir::MLIRContext& ctx, mlir::ModuleOp module,
     mlir::PassManager pm(&ctx);
     pm.enableVerifier(false);
 
-    // 1. Lower linalg named ops → scf loops (handles matmul + fill)
-    if (has_linalg)
+    if (has_linalg) {
+        // 1a. Vectorize linalg ops → vector.contract + vector.transfer_read/write
+        //     (explicit SIMD: backend emits AVX2/NEON with -O2 -march=native)
+        pm.addPass(nv::createNarvalLinalgVectorizePass());
+
+        // 1b. Convert any remaining (non-vectorized) linalg ops → scf loops
         pm.addPass(mlir::createConvertLinalgToLoopsPass());
+    }
 
     // 2. Lower scf → cf basic blocks
     pm.addPass(mlir::createSCFToControlFlowPass());
 
-    // 3. Lower arith + func + cf + memref → LLVM dialect
-    // Reuse the existing narval LLVM lowering pass (in nir_dialect) which does
-    // exactly this: arith + func + cf + memref → LLVM via applyFullConversion.
+    // 3. Lower vector.* → LLVM dialect (AVX2/NEON vector ops)
+    if (has_linalg)
+        pm.addPass(mlir::createConvertVectorToLLVMPass());
+
+    // 4. Lower arith + func + cf + memref → LLVM dialect
     pm.addPass(nv::createLowerNarvalToLLVMPass());
 
     // 4. Clean up any unrealized casts left by the conversions
@@ -346,7 +353,7 @@ lower_kernel_module(mlir::MLIRContext& ctx, mlir::ModuleOp module,
     return llvm_mod;
 }
 
-// ── linalg.matmul kernel (AVX2 path) ─────────────────────────────────────────
+//  linalg.matmul kernel (AVX2 path) 
 //
 // Builds a function taking 21 i64/ptr args (3 × unpacked memref<MxKxf64>):
 //   base, aligned, offset, size0, size1, stride0, stride1   (×3 for A, B, C)
@@ -402,7 +409,7 @@ build_linalg_matmul_module(llvm::LLVMContext& llvm_ctx,
                                /*has_linalg=*/true, fn_name);
 }
 
-// ── Build and call the linalg matmul kernel from LLVM IR ─────────────────────
+//  Build and call the linalg matmul kernel from LLVM IR 
 //
 // MLIR unpacks memref<MxKxf64> into 7 args: ptr base, ptr aligned, i64 offset,
 // i64 size0, i64 size1, i64 stride0, i64 stride1.
@@ -435,7 +442,7 @@ call_linalg_matmul(nv::IRGenerationContext& ctx,
     return nullptr;  // caller returns C_val directly
 }
 
-// ── Public API ────────────────────────────────────────────────────────────────
+//  Public API 
 
 llvm::Value* emit_tensor_matmul_nir(IRGenerationContext& ctx,
                                      llvm::Value* lhs_v,
@@ -461,7 +468,7 @@ llvm::Value* emit_tensor_matmul_nir(IRGenerationContext& ctx,
     auto* C_data = tensor_data_ptr(ctx, C_slot);
     if (!C_data) return nullptr;
 
-    // ── Try linalg.matmul kernel (AVX2 path) ──────────────────────────────────
+    //  Try linalg.matmul kernel (AVX2 path) 
     // Static shapes only (all dims >= 0). Dynamic dims fall through to SCF kernel.
     if (M >= 0 && K >= 0 && N >= 0) {
         std::string lmm_name = linalg_mm_fn_name(M, K, N);
@@ -477,7 +484,7 @@ llvm::Value* emit_tensor_matmul_nir(IRGenerationContext& ctx,
         // Fall through to SCF kernel if linalg build failed
     }
 
-    // ── SCF loop kernel (fallback / dynamic shapes) ───────────────────────────
+    //  SCF loop kernel (fallback / dynamic shapes) 
     auto* I64 = llvm::Type::getInt64Ty(ctx.get_context());
     std::string fn_name = matmul_fn_name(M, K, N);
     llvm::Function* kernel = ctx.get_module().getFunction(fn_name);

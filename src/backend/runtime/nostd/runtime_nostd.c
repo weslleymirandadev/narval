@@ -13,12 +13,12 @@
 
 #include "backend/runtime/prototypes.h"
 
-/* ── Build-time configurable heap size ─────────────────────────── */
+/*  Build-time configurable heap size  */
 #ifndef NV_NS_HEAP_SIZE
 # define NV_NS_HEAP_SIZE 65536
 #endif
 
-/* ── Freestanding helpers (no <string.h> / <stdlib.h>) ─────────── */
+/*  Freestanding helpers (no <string.h> / <stdlib.h>)  */
 
 static size_t _ns_strlen(const char* s) {
     size_t n = 0;
@@ -34,7 +34,7 @@ static int _ns_strcmp(const char* a, const char* b) {
     return (unsigned char)*a - (unsigned char)*b;
 }
 
-/* ── Static bump allocator ─────────────────────────────────────── */
+/*  Static bump allocator  */
 
 static char   _nv_ns_heap[NV_NS_HEAP_SIZE];
 static size_t _nv_ns_top = 0;
@@ -50,7 +50,7 @@ static void* _nv_ns_alloc(size_t n) {
     return p;
 }
 
-/* ── Minimal static type objects ──────────────────────────────────
+/*  Minimal static type objects 
  * These live in BSS (zero-initialised at load time).
  * tp_name is the only field that needs a value for basic operation;
  * the rest (methods, bases, etc.) stay NULL / 0.
@@ -62,7 +62,7 @@ static NvTypeObject _ns_bool_type;
 static NvTypeObject _ns_char_type;
 static NvTypeObject _ns_str_type;
 
-/* ── Global type pointers — definitions (override nv_runtime.c) ── */
+/*  Global type pointers — definitions (override nv_runtime.c)  */
 
 NvTypeObject* NVInt_Type    = (NvTypeObject*)0;
 NvTypeObject* NVFloat_Type  = (NvTypeObject*)0;
@@ -95,7 +95,7 @@ void nv_ns_init_types(void) {
     NVStr_Type   = &_ns_str_type;
 }
 
-/* ── Type query ────────────────────────────────────────────────── */
+/*  Type query  */
 
 int32_t get_value_type(const Value* v) {
     if (!v || !v->obj) return 0;
@@ -109,7 +109,7 @@ int32_t get_value_type(const Value* v) {
     return NV_ANY_BASE;
 }
 
-/* ── Object creation ───────────────────────────────────────────── */
+/*  Object creation  */
 
 void create_int(Value* out, int32_t value) {
     if (!out) return;
@@ -173,7 +173,7 @@ void create_str(Value* out, const char* value) {
     out->obj = (NvObject*)obj;
 }
 
-/* ── Arithmetic ────────────────────────────────────────────────── */
+/*  Arithmetic  */
 
 static double _ns_extract_num(const Value* v, int32_t* is_float) {
     if (!v || !v->obj) { *is_float = 0; return 0.0; }
@@ -237,7 +237,7 @@ void nv_value_mod(Value* out, Value* a, Value* b) {
     out->obj = (NvObject*)0;
 }
 
-/* ── Comparison ────────────────────────────────────────────────── */
+/*  Comparison  */
 
 int32_t nv_value_cmp(Value* a, Value* b) {
     if (!a || !b || !a->obj || !b->obj) return 0;
@@ -280,7 +280,7 @@ int32_t nv_value_cmp(Value* a, Value* b) {
                       tb->tp_name ? tb->tp_name : "");
 }
 
-/* ── Bool conversion (used by if/while conditions) ─────────────── */
+/*  Bool conversion (used by if/while conditions)  */
 
 void nv_bool_convert(Value* out, Value* input) {
     if (!out) return;
@@ -298,7 +298,7 @@ void nv_bool_convert(Value* out, Value* input) {
     create_bool(out, input->obj != (NvObject*)0);
 }
 
-/* ── Value extraction (for return values / exit codes) ─────────── */
+/*  Value extraction (for return values / exit codes)  */
 
 int32_t extract_int_from_value(Value* v) {
     if (!v || !v->obj) return 0;
@@ -327,7 +327,7 @@ char* extract_string_from_value(Value* v) {
     return (char*)"";
 }
 
-/* ── Stubs for codegen symbols not valid in no_std ─────────────── */
+/*  Stubs for codegen symbols not valid in no_std  */
 /* The checker blocks these, but the codegen may still reference the   */
 /* symbol names. Providing weak no-op stubs prevents linker errors.   */
 
