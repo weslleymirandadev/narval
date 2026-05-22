@@ -9,6 +9,9 @@
 #include <sstream>
 #include <filesystem>
 #include <unordered_set>
+using nv::Checker;
+using nv::Type;
+using nv::Kind;
 
 // Conjunto estático para rastrear erros de identificador já reportados (evitar duplicação entre checkers/ASTs clonados)
 // Usa chave composta: filename:line:col:symbol
@@ -46,7 +49,7 @@ namespace nv { // Corrigido namespace
     }
 }
 
-std::shared_ptr<nv::Type>& check_primary_expr(nv::Checker* ch, Node* node) {
+std::shared_ptr<nv::Type>& check_primary_expr(Checker* ch, Node* node) {
     static thread_local std::shared_ptr<nv::Type> temp_result;
     auto ensure_proto = [](std::shared_ptr<nv::Type>& t){
         if (t && !t->prototype) {

@@ -16,12 +16,17 @@
 #include "frontend/ast/statements/while_stmt_node.hpp"
 #include <unordered_set>
 
+// Bring nv::Checker and nv::Type into global scope for the static helpers below
+// (which are at global scope, before the `namespace nv { }` block).
+using nv::Checker;
+using nv::Type;
+
 // Coleta todas as variáveis livres (não-locais) usadas no corpo da closure
 static void collect_free_variables(const CodeBlock& body, 
                                    const std::vector<std::pair<std::string, std::string>>& params,
                                    std::unordered_set<std::string>& local_vars,
                                    std::unordered_set<std::string>& free_vars,
-                                   nv::Checker& ch) {
+                                   Checker& ch) {
     std::unordered_set<std::string> param_names;
     for (const auto& p : params) {
         param_names.insert(p.first);
@@ -135,7 +140,7 @@ static void collect_free_variables(const CodeBlock& body,
 }
 
 // Mirrors the logic in check_program.cpp:process_codeblock but scoped to the
-static void closure_prepass(CodeBlock& body, nv::Checker& ch) {
+static void closure_prepass(CodeBlock& body, Checker& ch) {
     for (auto& stmt : body) {
         if (!stmt || stmt->kind != NodeType::AssignmentExpression) continue;
         auto* assign = static_cast<AssignmentExprNode*>(stmt.get());
@@ -179,7 +184,7 @@ std::shared_ptr<Type> check_closure_expr(ClosureExprNode* node, Checker& ch) {
     // Registrar type params explícitos (<T, E>|x: T|: E { })
     // Salvar valores anteriores para restaurar ao fim — evita vazamento global.
     std::vector<int> explicit_tp_ids;
-    std::vector<std::pair<std::string, std::shared_ptr<nv::Type>>> saved_type_params;
+    std::vector<std::pair<std::string, std::shared_ptr<Type>>> saved_type_params;
     for (const auto& tp_name : node->type_params) {
         auto prev_it = ch.types.find(tp_name);
         saved_type_params.push_back({tp_name,
@@ -189,7 +194,7 @@ std::shared_ptr<Type> check_closure_expr(ClosureExprNode* node, Checker& ch) {
         explicit_tp_ids.push_back(tv->id);
     }
 
-    std::vector<std::shared_ptr<nv::Type>> param_types;
+    std::vector<std::shared_ptr<Type>> param_types;
 
     // PRIMEIRA PASSAGEM: Detectar variáveis capturadas (antes de entrar no escopo)
     auto saved_outer_scope = ch.scope;
@@ -246,7 +251,7 @@ std::shared_ptr<Type> check_closure_expr(ClosureExprNode* node, Checker& ch) {
     // Permissive return type so ReturnStmtNode validation doesn't false-positive
     ch.current_return_type = ch.unify_ctx.new_type_var();
 
-    std::shared_ptr<nv::Type> return_type = ch.gettyptr("None");
+    std::shared_ptr<Type> return_type = ch.gettyptr("None");
     for (const auto& stmt : node->body) {
         if (stmt) {
             auto t = ch.check_node(stmt.get());
@@ -260,7 +265,7 @@ std::shared_ptr<Type> check_closure_expr(ClosureExprNode* node, Checker& ch) {
         : ch.gettyptr(node->return_type, node);
     
     // Verificar se o tipo de retorno inferido é compatível com o declarado
-    if (return_type && return_type->kind != nv::Kind::NONE) {
+    if (return_type && return_type->kind != Kind::NONE) {
         try {
             ch.unify_ctx.unify(return_type, closure_return_type);
         } catch (std::runtime_error& e) {
@@ -269,7 +274,7 @@ std::shared_ptr<Type> check_closure_expr(ClosureExprNode* node, Checker& ch) {
     }
     
     // Se o tipo de retorno é uma função (closure aninhada), aceitar como válido
-    // if (closure_return_type->kind == nv::Kind::FUNCTION) {
+    // if (closure_return_type->kind == Kind::FUNCTION) {
     //     Closures que retornam closures são válidas
     //     Aceitar sem verificação de unificação
     //     return function_type;

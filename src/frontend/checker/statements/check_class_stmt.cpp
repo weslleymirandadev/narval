@@ -5,6 +5,9 @@
 #include "frontend/ast/ast.hpp"
 #include <string>
 #include <sstream>
+using nv::Checker;
+using nv::Type;
+using nv::Kind;
 
 namespace {
 const PositionData* class_parent_position_or_class(const ClassStmtNode* class_stmt) {
@@ -17,7 +20,7 @@ const PositionData* class_parent_position_or_class(const ClassStmtNode* class_st
     return nullptr;
 }
 
-void report_parent_error(nv::Checker* checker, Node* node, const ClassStmtNode* class_stmt,
+void report_parent_error(Checker* checker, Node* node, const ClassStmtNode* class_stmt,
                          const std::string& message) {
     const auto* pos = class_parent_position_or_class(class_stmt);
     if (pos) {
@@ -37,7 +40,7 @@ const PositionData* class_implements_position_or_class(const ClassStmtNode* clas
     return nullptr;
 }
 
-void report_implements_error(nv::Checker* checker, Node* node, const ClassStmtNode* class_stmt,
+void report_implements_error(Checker* checker, Node* node, const ClassStmtNode* class_stmt,
                              size_t index, const std::string& message) {
     const auto* pos = class_implements_position_or_class(class_stmt, index);
     if (pos) {
@@ -47,7 +50,7 @@ void report_implements_error(nv::Checker* checker, Node* node, const ClassStmtNo
     }
 }
 
-bool method_signature_matches(nv::Checker* checker,
+bool method_signature_matches(Checker* checker,
                               std::shared_ptr<nv::Type> inherited_type,
                               std::shared_ptr<nv::Type> method_type) {
     inherited_type = checker->unify_ctx.resolve(inherited_type);
@@ -62,13 +65,13 @@ bool method_signature_matches(nv::Checker* checker,
 }
 
 namespace nv {
-    std::shared_ptr<Type> check_class_stmt(Checker* checker, Node* node) {
+    std::shared_ptr<nv::Type> check_class_stmt(Checker* checker, Node* node) {
         auto* class_stmt = static_cast<ClassStmtNode*>(node);
 
         // Registrar parâmetros de tipo genérico como TypeVars (ex: class Box<T>)
         // Salvar valores anteriores para restaurar ao fim e evitar vazamento global.
         std::vector<int> type_param_ids;
-        std::vector<std::pair<std::string, std::shared_ptr<Type>>> saved_type_params;
+        std::vector<std::pair<std::string, std::shared_ptr<nv::Type>>> saved_type_params;
         for (const auto& tp_name : class_stmt->type_params) {
             auto prev_it = checker->types.find(tp_name);
             saved_type_params.push_back({tp_name,
@@ -95,16 +98,16 @@ namespace nv {
             } else {
                 auto parent_type = parent_it->second;
 
-                if (parent_type->kind == Kind::CLASS) {
+                if (parent_type->kind == nv::Kind::CLASS) {
                     class_type->parent_class = std::static_pointer_cast<Class>(parent_type);
-                } else if (parent_type->kind == Kind::INT ||
-                           parent_type->kind == Kind::FLOAT ||
-                           parent_type->kind == Kind::STRING ||
-                           parent_type->kind == Kind::BOOL ||
-                           parent_type->kind == Kind::ARRAY ||
-                           parent_type->kind == Kind::VECTOR ||
-                           parent_type->kind == Kind::MAP ||
-                           parent_type->kind == Kind::TUPLE) {
+                } else if (parent_type->kind == nv::Kind::INT ||
+                           parent_type->kind == nv::Kind::FLOAT ||
+                           parent_type->kind == nv::Kind::STRING ||
+                           parent_type->kind == nv::Kind::BOOL ||
+                           parent_type->kind == nv::Kind::ARRAY ||
+                           parent_type->kind == nv::Kind::VECTOR ||
+                           parent_type->kind == nv::Kind::MAP ||
+                           parent_type->kind == nv::Kind::TUPLE) {
                     class_type->parent_builtin_type = parent_type;
                     class_type->is_builtin_derived = true;
                 } else {
@@ -126,8 +129,8 @@ namespace nv {
         checker->current_class_name = class_stmt->name;
 
         for (const auto& method : class_stmt->methods) {
-            std::vector<std::shared_ptr<Type>> param_types;
-            std::shared_ptr<Type> ret_type = std::make_shared<None>();
+            std::vector<std::shared_ptr<nv::Type>> param_types;
+            std::shared_ptr<nv::Type> ret_type = std::make_shared<None>();
 
             if (method->method_def) {
                 auto* function = static_cast<FunctionStmtNode*>(method->method_def.get());
@@ -171,7 +174,7 @@ namespace nv {
         for (size_t iface_index = 0; iface_index < class_stmt->implements_interfaces.size(); ++iface_index) {
             const auto& iface_name = class_stmt->implements_interfaces[iface_index];
             auto it = checker->types.find(iface_name);
-            if (it == checker->types.end() || it->second->kind != Kind::INTERFACE) {
+            if (it == checker->types.end() || it->second->kind != nv::Kind::INTERFACE) {
                 report_implements_error(
                     checker,
                     node,

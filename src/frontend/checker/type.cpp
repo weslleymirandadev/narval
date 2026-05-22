@@ -4,8 +4,10 @@
 #include <functional>
 #include <algorithm>
 #include <sstream>
+using nv::Type;
+using nv::Kind;
 
-std::shared_ptr<nv::Type> nv::Type::get_method(const std::string& name) const {
+std::shared_ptr<nv::Type> Type::get_method(const std::string& name) const {
     if (!prototype) return nullptr;
     return prototype->get_key(name);
 }
@@ -20,9 +22,9 @@ std::string nv::Function::toString() {
     return s;
 }
 
-bool nv::Function::equals(const nv::Type &other) const {
+bool nv::Function::equals(const Type &other) const {
     if (this->kind != other.kind) return false;
-    if (other.kind != Kind::FUNCTION) return false;
+    if (other.kind != nv::Kind::FUNCTION) return false;
 
     auto other_function = static_cast<const Function*>(&other);
     
@@ -38,13 +40,13 @@ bool nv::Function::equals(const nv::Type &other) const {
     return true;
 }
 
-bool nv::Array::equals(const nv::Type& other) const {
+bool nv::Array::equals(const Type& other) const {
     if (other.kind != nv::Kind::ARRAY) return false;
     auto other_array = static_cast<const Array*>(&other);
     return size == other_array->size && element_type->equals(*other_array->element_type);
 }
 
-bool nv::Tuple::equals(const nv::Type& other) const {
+bool nv::Tuple::equals(const Type& other) const {
     if (other.kind != nv::Kind::TUPLE) return false;
     auto other_tuple = static_cast<const Tuple*>(&other);
     if (size != other_tuple->size) return false;
@@ -64,7 +66,7 @@ namespace nv {
     }
     
     // Parse de tipo função: |param1: type1, param2: type2|: return_type
-    std::shared_ptr<Type> parse_function_type(const std::string& type_str, std::function<std::shared_ptr<Type>(const std::string&)> type_resolver) {
+    std::shared_ptr<nv::Type> parse_function_type(const std::string& type_str, std::function<std::shared_ptr<nv::Type>(const std::string&)> type_resolver) {
         if (!is_function_type(type_str)) {
             throw std::runtime_error("Not a function type: " + type_str);
         }
@@ -87,7 +89,7 @@ namespace nv {
         std::string return_type_str = return_part.substr(1); // Remover ':'
         
         // Parsear parâmetros
-        std::vector<std::shared_ptr<Type>> param_types;
+        std::vector<std::shared_ptr<nv::Type>> param_types;
         if (!params_str.empty()) {
             std::stringstream ss(params_str);
             std::string param;
@@ -135,9 +137,9 @@ namespace nv {
 //--- PROTOTYPES
 
 namespace nv { 
-    static std::shared_ptr<Type> make_native_def(
-        const std::vector<std::shared_ptr<Type>>& params,
-        const std::shared_ptr<Type>& ret
+    static std::shared_ptr<nv::Type> make_native_def(
+        const std::vector<std::shared_ptr<nv::Type>>& params,
+        const std::shared_ptr<nv::Type>& ret
     ) {
         return std::make_shared<Function>(params, ret);
     }

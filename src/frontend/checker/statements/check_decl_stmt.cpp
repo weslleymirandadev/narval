@@ -5,6 +5,9 @@
 #include "frontend/ast/expressions/vector_expr_node.hpp"
 #include <stdexcept>
 #include <cstdio>
+using nv::Checker;
+using nv::Type;
+using nv::Kind;
 
 namespace nv {
     // Converte ArrayExpression para VectorExpression
@@ -34,7 +37,7 @@ namespace nv {
     }
 }
 
-static void record_and_check_redecl(nv::Checker* ch, Node* node,
+static void record_and_check_redecl(Checker* ch, Node* node,
                                      IdentifierNode* name,
                                      const std::string& typ) {
     // Declarações automáticas não participam do rastreamento de redeclaração
@@ -71,7 +74,7 @@ static void record_and_check_redecl(nv::Checker* ch, Node* node,
     }
 }
 
-std::shared_ptr<nv::Type>& check_decl_stmt(nv::Checker* ch, Node* node) {
+std::shared_ptr<nv::Type>& check_decl_stmt(Checker* ch, Node* node) {
     auto* decl = static_cast<DeclarationStmtNode*>(node);
     auto* name = static_cast<IdentifierNode*>(decl->target.get());
 

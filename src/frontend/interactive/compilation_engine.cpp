@@ -171,9 +171,9 @@ bool CompilationEngine::compile_and_execute(const std::string& input, const std:
         IRGenerationContext context(*state->llvm_context, *temp_module, *temp_builder, state->checker.get());
 
         auto& C = *state->llvm_context;
-        auto* ValueTy = nv::ir_utils::get_value_struct(context);
+        auto* ValueTy = ir_utils::get_value_struct(context);
         auto* VoidTy  = llvm::Type::getVoidTy(C);
-        auto* ValuePtr= nv::ir_utils::get_value_ptr(context);
+        auto* ValuePtr= ir_utils::get_value_ptr(context);
 
         temp_module->getOrInsertFunction("nv_write", llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
         temp_module->getOrInsertFunction("create_str", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::PointerType::getUnqual(C)}, false));
@@ -183,11 +183,11 @@ bool CompilationEngine::compile_and_execute(const std::string& input, const std:
 
         std::vector<std::string> slot_names;
         for (const std::string& name : defined_this_line) {
-            std::shared_ptr<nv::Type> nv_type;
+            std::shared_ptr<Type> nv_type;
             try { nv_type = state->checker->scope->get_key(name); } catch (...) { continue; }
             if (!nv_type) continue;
             nv_type = context.resolve_type(nv_type);
-            if (nv_type->kind == nv::Kind::FUNCTION) continue;
+            if (nv_type->kind == Kind::FUNCTION) continue;
             slot_names.push_back(name);
             if (state->repl_var_values.find(name) == state->repl_var_values.end()) {
                 state->repl_var_values[name] = Value{};
@@ -196,11 +196,11 @@ bool CompilationEngine::compile_and_execute(const std::string& input, const std:
         for (const std::string& name : used_this_line) {
             if (defined_this_line.count(name)) continue;
             if (!state->repl_global_names.count(name)) continue;
-            std::shared_ptr<nv::Type> nv_type;
+            std::shared_ptr<Type> nv_type;
             try { nv_type = state->checker->scope->get_key(name); } catch (...) { continue; }
             if (!nv_type) continue;
             nv_type = context.resolve_type(nv_type);
-            if (nv_type->kind == nv::Kind::FUNCTION) {
+            if (nv_type->kind == Kind::FUNCTION) {
                 auto* function = std::static_pointer_cast<nv::Function>(nv_type).get();
                 if (!function) continue;
                 std::vector<llvm::Type*> param_tys;
@@ -382,23 +382,23 @@ bool CompilationEngine::compile_expression(std::unique_ptr<Node>& ast,
     
     IRGenerationContext context(*state->llvm_context, *temp_module, *temp_builder, state->checker.get());
     auto& C = *state->llvm_context;
-    auto* ValueTy = nv::ir_utils::get_value_struct(context);
+    auto* ValueTy = ir_utils::get_value_struct(context);
     auto* VoidTy = llvm::Type::getVoidTy(C);
-    auto* ValuePtr = nv::ir_utils::get_value_ptr(context);
+    auto* ValuePtr = ir_utils::get_value_ptr(context);
 
     temp_module->getOrInsertFunction("nv_write", llvm::FunctionType::get(VoidTy, {ValuePtr}, false));
-    temp_module->getOrInsertFunction("create_str", llvm::FunctionType::get(VoidTy, {ValuePtr, nv::ir_utils::get_i8_ptr(context)}, false));
+    temp_module->getOrInsertFunction("create_str", llvm::FunctionType::get(VoidTy, {ValuePtr, ir_utils::get_i8_ptr(context)}, false));
     temp_module->getOrInsertFunction("create_int", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::Type::getInt32Ty(C)}, false));
     temp_module->getOrInsertFunction("create_float", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::Type::getDoubleTy(C)}, false));
     temp_module->getOrInsertFunction("create_bool", llvm::FunctionType::get(VoidTy, {ValuePtr, llvm::Type::getInt32Ty(C)}, false));
 
     // Setup global variables and functions (missing part)
     for (const std::string& name : state->repl_global_names) {
-        std::shared_ptr<nv::Type> nv_type;
+        std::shared_ptr<Type> nv_type;
         try { nv_type = state->checker->scope->get_key(name); } catch (...) { continue; }
         if (!nv_type) continue;
         nv_type = context.resolve_type(nv_type);
-        if (nv_type->kind != nv::Kind::FUNCTION) continue;
+        if (nv_type->kind != Kind::FUNCTION) continue;
         auto* function = std::static_pointer_cast<nv::Function>(nv_type).get();
         if (!function) continue;
         std::vector<llvm::Type*> param_tys;
@@ -456,7 +456,7 @@ bool CompilationEngine::compile_expression(std::unique_ptr<Node>& ast,
             llvm::Value* global_ptr = temp_builder->CreatePointerCast(global_var, ValuePtr);
             llvm::Value* val_from_host = temp_builder->CreateLoad(ValueTy, slot, name + "_load");
             temp_builder->CreateStore(val_from_host, global_var);
-            std::shared_ptr<nv::Type> nv_type;
+            std::shared_ptr<Type> nv_type;
             try { nv_type = state->checker->scope->get_key(name); } catch (...) { continue; }
             if (nv_type) nv_type = context.resolve_type(nv_type);
             nv::SymbolInfo info(global_ptr, ValueTy, nv_type, false, false);
@@ -514,7 +514,7 @@ bool CompilationEngine::compile_expression(std::unique_ptr<Node>& ast,
                     temp_builder->CreateCall(create_float, {boxed, fv});
                     to_store = temp_builder->CreateLoad(ValueTy, boxed, "repl_float_result");
                 } else if (result->getType()->isPointerTy()) {
-                    auto* I8P = nv::ir_utils::get_i8_ptr(context);
+                    auto* I8P = ir_utils::get_i8_ptr(context);
                     auto* create_str = context.ensure_runtime_func("create_str", {ValuePtr, I8P});
                     llvm::Value* sv = result->getType() == I8P
                         ? result
