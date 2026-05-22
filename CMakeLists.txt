@@ -84,16 +84,16 @@ if(NARVAL_USE_NIR)
     add_subdirectory(src/backend/nir)
 endif()
 
-add_executable(NarvalCompiler src/main.cpp src/frontend/module_manager.cpp)
-set_target_properties(NarvalCompiler PROPERTIES OUTPUT_NAME narval)
-target_link_options(NarvalCompiler PRIVATE -W -fPIE)
-target_include_directories(NarvalCompiler PRIVATE ${PROJECT_SOURCE_DIR}/include)
-target_link_libraries(NarvalCompiler PRIVATE NarvalAllCommon NarvalLexer NarvalParser NarvalChecker NarvalCodegen NarvalInteractive NarvalRuntimeObjs NarvalRuntimeShared)
+add_executable(Narval src/main.cpp src/frontend/module_manager.cpp)
+set_target_properties(Narval PROPERTIES OUTPUT_NAME narval)
+target_link_options(Narval PRIVATE -W -fPIE)
+target_include_directories(Narval PRIVATE ${PROJECT_SOURCE_DIR}/include)
+target_link_libraries(Narval PRIVATE NarvalAllCommon NarvalLexer NarvalParser NarvalChecker NarvalCodegen NarvalInteractive NarvalRuntimeObjs NarvalRuntimeShared)
 
 if(NARVAL_USE_NIR)
-    target_link_libraries(NarvalCompiler PRIVATE NarvalNirDialect)
-    target_compile_definitions(NarvalCompiler PRIVATE NARVAL_USE_NIR=1)
-    target_include_directories(NarvalCompiler PRIVATE ${CMAKE_BINARY_DIR}/src/backend/nir)
+    target_link_libraries(Narval PRIVATE NarvalNirDialect)
+    target_compile_definitions(Narval PRIVATE NARVAL_USE_NIR=1)
+    target_include_directories(Narval PRIVATE ${CMAKE_BINARY_DIR}/src/backend/nir)
 
     target_compile_definitions(NarvalCodegen PRIVATE NARVAL_USE_NIR=1)
     target_link_libraries(NarvalCodegen PRIVATE NarvalNirDialect)
@@ -104,16 +104,16 @@ if(NARVAL_USE_NIR)
     )
 endif()
 
-add_dependencies(NarvalCompiler NarvalRuntimeO NarvalRuntimeNostdO)
+add_dependencies(Narval NarvalRuntimeO NarvalRuntimeNostdO)
 if(NARVAL_BUILD_LSP)
-    add_dependencies(NarvalCompiler NarvalLsp)
+    add_dependencies(Narval NarvalLsp)
 endif()
 if(NARVAL_BUILD_LSP_ALL_PLATFORMS)
-    add_dependencies(NarvalCompiler NarvalLspAllPlatforms)
+    add_dependencies(Narval NarvalLspAllPlatforms)
 endif()
 
-if(TARGET NarvalCompiler)
-    target_compile_definitions(NarvalCompiler PRIVATE
+if(TARGET Narval)
+    target_compile_definitions(Narval PRIVATE
         NARVAL_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
         NARVAL_INCLUDE_DIR="${PROJECT_SOURCE_DIR}/include"
         NARVAL_INSTALL_RUNTIME_DIR="${NARVAL_INSTALL_RUNTIME_DIR}"
@@ -121,7 +121,7 @@ if(TARGET NarvalCompiler)
     )
 endif()
 
-install(TARGETS NarvalCompiler
+install(TARGETS Narval
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
