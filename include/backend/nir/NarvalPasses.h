@@ -16,6 +16,8 @@ std::unique_ptr<mlir::Pass> createLowerNarvalToStandardPass();
 std::unique_ptr<mlir::Pass> createLowerNarvalTensorPass();
 std::unique_ptr<mlir::Pass> createLowerNarvalGPUPass();
 std::unique_ptr<mlir::Pass> createLowerNarvalToLLVMPass();
+std::unique_ptr<mlir::Pass> createNarvalLinalgVectorizePass();   // Fase 5: linalg→vector
+std::unique_ptr<mlir::Pass> createNarvalVectorLoweringPass();    // Fase 5: vector chain lowering
 
 void apply_transform_annotations(mlir::ModuleOp module, mlir::PassManager& pm);
 
