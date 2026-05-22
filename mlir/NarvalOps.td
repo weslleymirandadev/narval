@@ -289,6 +289,25 @@ def Narval_TensorFillOp : Narval_Op<"tensor_fill"> {
 
 // GPU ops
 
+// Marks a function as a GPU kernel.
+// The body is lowered to gpu.func inside a gpu.module named $module_name.
+// Target: "cuda" | "rocm" | "spirv" (default "cuda").
+def Narval_GPUKernelOp : Narval_Op<"gpu_kernel"> {
+    let summary = "Declare a Narval function as a GPU kernel";
+    let description = [{
+        Marks a function body as a GPU kernel. Lowered to gpu.func inside a
+        gpu.module by LowerGPUKernelsPass. Target: "cuda" | "rocm" | "spirv".
+    }];
+    let arguments = (ins
+        StrAttr:$sym_name,
+        TypeAttrOf<FunctionType>:$function_type,
+        DefaultValuedAttr<StrAttr, "\"cuda\"">:$target,
+        DefaultValuedAttr<StrAttr, "\"gpu_module\"">:$module_name
+    );
+    let regions = (region AnyRegion:$body);
+    let hasCustomAssemblyFormat = 0;
+}
+
 def Narval_GPULaunchOp : Narval_Op<"gpu_launch"> {
     let summary = "Launch a GPU kernel function";
     let description = [{
