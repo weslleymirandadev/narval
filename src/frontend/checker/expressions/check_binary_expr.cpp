@@ -64,6 +64,76 @@ std::shared_ptr<nv::Type> check_binary_expr(nv::Checker* ch, Node* node) {
         }
     }
 
+    //  Tensor operations 
+    bool left_is_tensor  = left_type->kind  == nv::Kind::TENSOR;
+    bool right_is_tensor = right_type->kind == nv::Kind::TENSOR;
+
+    if (left_is_tensor || right_is_tensor) {
+        auto* lt = left_is_tensor
+                   ? static_cast<nv::TensorType*>(left_type.get()) : nullptr;
+        auto* rt = right_is_tensor
+                   ? static_cast<nv::TensorType*>(right_type.get()) : nullptr;
+
+        auto* mut_bin = const_cast<BinaryExprNode*>(bin);
+
+        // Matmul: Tensor<T,[M,K]> @ Tensor<T,[K,N]> → Tensor<T,[M,N]>
+        if (bin->op == "@") {
+            if (!lt || !rt) {
+                ch->error(node, "Operator '@' requires two tensor operands");
+                return ch->gettyptr("None");
+            }
+            auto result = lt->matmul_result(*rt);
+            if (!result) {
+                ch->error(node, "Shape mismatch in '@': "
+                          + lt->toString() + " @ " + rt->toString());
+                return ch->gettyptr("None");
+            }
+            mut_bin->tensor_op      = "matmul";
+            mut_bin->lhs_tensor_dims = lt->dims;
+            mut_bin->rhs_tensor_dims = rt->dims;
+            ch->types[result->toString()] = result;
+            return ch->types[result->toString()];
+        }
+
+        // Element-wise arithmetic: +, -, *, /
+        if (bin->op == "+" || bin->op == "-" || bin->op == "*" || bin->op == "/") {
+            // Scalar broadcast: Tensor op scalar
+            if (lt && !rt) {
+                mut_bin->tensor_op      = "scalar_mul";
+                mut_bin->lhs_tensor_dims = lt->dims;
+                auto res = std::make_shared<nv::TensorType>(lt->element, lt->dims);
+                ch->types[res->toString()] = res;
+                return ch->types[res->toString()];
+            }
+            if (rt && !lt) {
+                mut_bin->tensor_op      = "scalar_mul";
+                mut_bin->lhs_tensor_dims = rt->dims;
+                auto res = std::make_shared<nv::TensorType>(rt->element, rt->dims);
+                ch->types[res->toString()] = res;
+                return ch->types[res->toString()];
+            }
+            // Both tensors: shapes must match (or broadcast)
+            if (lt && rt) {
+                if (!lt->equals(*rt)) {
+                    ch->error(node, "Shape mismatch in '" + bin->op + "': "
+                              + lt->toString() + " vs " + rt->toString());
+                    return ch->gettyptr("None");
+                }
+                mut_bin->tensor_op      = (bin->op == "+") ? "add"
+                                        : (bin->op == "-") ? "sub"
+                                        : (bin->op == "*") ? "mul" : "div";
+                mut_bin->lhs_tensor_dims = lt->dims;
+                mut_bin->rhs_tensor_dims = rt->dims;
+                auto res = std::make_shared<nv::TensorType>(lt->element, lt->dims);
+                ch->types[res->toString()] = res;
+                return ch->types[res->toString()];
+            }
+        }
+
+        ch->error(node, "Unsupported operator '" + bin->op + "' for tensor types");
+        return ch->gettyptr("None");
+    }
+
     // Verificar casos especiais antes de unificar
     bool left_is_int = left_type->kind == nv::Kind::INT;
     bool left_is_float = left_type->kind == nv::Kind::FLOAT;

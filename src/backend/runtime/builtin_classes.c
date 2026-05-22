@@ -1,11 +1,8 @@
 #include "backend/runtime/nv_runtime.h"
+#include "backend/runtime/prototypes.h"
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-
-/* ============================================================= */
-/*                    MÉTODOS BUILTIN NUMÉRICOS                  */
-/* ============================================================= */
 
 static Value* builtin_add(Value* a, Value* b) {
     if (!a || !b || !a->obj || !b->obj) return NULL;
@@ -202,10 +199,6 @@ static Value* builtin_divide(Value* a, Value* b) {
     return NULL;
 }
 
-/* ============================================================= */
-/*                    ARITMÉTICA PÚBLICA TYPE-AWARE               */
-/* ============================================================= */
-
 static void copy_and_free(Value* out, Value* result) {
     if (result) { *out = *result; free(result); } else { out->obj = NULL; }
 }
@@ -247,10 +240,6 @@ void nv_value_mod(Value* out, Value* a, Value* b) {
         create_float(out, fmod(va, vb));
     }
 }
-
-/* ============================================================= */
-/*                    MÉTODOS BUILTIN DE STRING                   */
-/* ============================================================= */
 
 static int builtin_str_length(Value* obj) {
     if (!obj || !obj->obj) return 0;
@@ -294,10 +283,6 @@ static Value* builtin_str_upper(Value* obj) {
     free(upper_str);
     return result;
 }
-
-/* ============================================================= */
-/*                    FUNÇÕES HELPER DE CRIAÇÃO                  */
-/* ============================================================= */
 
 static NvTypeObject* create_builtin_numeric_class(const char* name, int base_id) {
     TypeBuilder* builder = type_builder_new(name);
@@ -380,10 +365,6 @@ static NvTypeObject* create_builtin_mapping_class(const char* name, int base_id)
     return type;
 }
 
-/* ============================================================= */
-/*                    FUNÇÃO PRINCIPAL DE INICIALIZAÇÃO            */
-/* ============================================================= */
-
 void initialize_builtin_classes(void) {
     // Criar tipos builtin como classes completas
     NVInt_Type = create_builtin_numeric_class("int", NV_INT_BASE);
@@ -397,6 +378,9 @@ void initialize_builtin_classes(void) {
     NVTuple_Type = create_builtin_sequence_class("tuple", NV_TUPLE_BASE);
     
     NVMap_Type = create_builtin_mapping_class("map", NV_MAP_BASE);
+
+    // Tensor type (dense N-D array, MLIR-accelerated)
+    nv_tensor_init_type();
     
     // Object e Type já são criados normalmente
     NVObject_Type = nv_type_new("object", NULL, 0);
@@ -420,10 +404,6 @@ void initialize_builtin_classes(void) {
     // Criar tipos Option/Result
     initialize_option_result_types();
 }
-
-/* ============================================================= */
-/*                    INICIALIZAÇÃO DE EXCEÇÕES                  */
-/* ============================================================= */
 
 // Definições globais dos tipos de exceção
 NvTypeObject* NVError_Type = NULL;

@@ -84,6 +84,9 @@ typedef struct NvTypeObject {
 #define NV_CHAR_BASE        26
 #define NV_FUTURE_BASE      27
 
+// Tensor (dense N-dimensional array, lowered via MLIR/linalg)
+#define NV_TENSOR_BASE      28
+
 // Estrutura Value simplificada - agora é apenas um wrapper para NvObject
 typedef struct {
     NvObject* obj;                  // Ponteiro para o objeto real
@@ -472,6 +475,27 @@ void copy_value(Value* dest, const Value* src);
 
 // Comparar valores (legado)
 int compare_values(const Value* a, const Value* b);
+
+// ── Tensor runtime ────────────────────────────────────────────────────────────
+extern NvTypeObject* NVTensor_Type;
+int64_t nv_value_to_i64(Value* v);
+void   nv_tensor_init_type(void);
+Value  nv_tensor_zeros(int32_t dtype, int32_t ndim, const int64_t* shape);
+Value  nv_tensor_ones(int32_t dtype, int32_t ndim, const int64_t* shape);
+Value  nv_tensor_from_data(int32_t dtype, int32_t ndim, const int64_t* shape, const void* data);
+Value  nv_tensor_scalar_f(double x);
+Value  nv_tensor_matmul(Value* a, Value* b);
+Value  nv_tensor_add(Value* a, Value* b);
+Value  nv_tensor_sub(Value* a, Value* b);
+Value  nv_tensor_mul(Value* a, Value* b);
+Value  nv_tensor_scalar_mul(Value* a, double scalar);
+int32_t nv_tensor_ndim(Value* v);
+int64_t nv_tensor_dim(Value* v, int32_t axis);
+int64_t nv_tensor_nelem(Value* v);
+void*   nv_tensor_data_ptr(Value* v);
+double  nv_tensor_get_f(Value* v, int32_t ndim, const int64_t* idx);
+void    nv_tensor_set_f(Value* v, int32_t ndim, const int64_t* idx, double val);
+void    nv_tensor_print(Value* v);
 
 // Verificar se valor é nulo (legado)
 int is_null_value(const Value* v);

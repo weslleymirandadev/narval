@@ -160,6 +160,12 @@ llvm::Type* IRGenerationContext::nv_type_to_llvm(std::shared_ptr<Type> nv_type) 
             return ir_utils::get_value_struct(*this);
         }
 
+        case Kind::TENSOR: {
+            // Tensors are boxed as Value (NVTensor wrapped in NvObject*).
+            // The actual data buffer lives on the heap inside NVTensor.
+            return ir_utils::get_value_struct(*this);
+        }
+
         case Kind::CLASS: {
             // Instâncias de classe são objetos dinâmicos encapsulados em Value.
             return ir_utils::get_value_struct(*this);

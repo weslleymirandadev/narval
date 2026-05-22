@@ -368,6 +368,8 @@ void nv_write(Value* v) {
         } else {
             printf("<map object>\n");
         }
+    } else if (type == NVTensor_Type) {
+        nv_tensor_print(v);
     } else {
         printf("<object:%s>\n", type->tp_name ? type->tp_name : "object");
     }
