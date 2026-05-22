@@ -22,7 +22,7 @@ namespace nv {
 // Sem isso o weak stub do checker "satisfaz" o símbolo e o strong codegen nunca é linkado.
 void _register_inline_asm_codegen_module();
 static void* _inline_asm_anchor __attribute__((used)) =
-    reinterpret_cast<void*>(&nv::_register_inline_asm_codegen_module);
+    reinterpret_cast<void*>(&::nv::_register_inline_asm_codegen_module);
 
 // Tracker global - será atualizado pelos arquivos de generate
 static FeatureTracker g_feature_tracker;
@@ -233,10 +233,10 @@ void generate_ir(
     for (size_t i = 0; i < program->body.size(); ++i) {
         if (program->body[i]->kind == NodeType::FunctionStatement) {
             auto* def_stmt = static_cast<FunctionStmtNode*>(program->body[i].get());
-            auto* checker = static_cast<nv::Checker*>(context.get_type_checker());
+            auto* checker = static_cast<Checker*>(context.get_type_checker());
 
             // Re-registrar type params genéricos para que gettyptr(T/A/B) resolva corretamente.
-            std::vector<std::pair<std::string, std::shared_ptr<nv::Type>>> saved_ir_tp;
+            std::vector<std::pair<std::string, std::shared_ptr<Type>>> saved_ir_tp;
             if (checker) {
                 for (const auto& tp_name : def_stmt->type_params) {
                     auto prev_it = checker->types.find(tp_name);
@@ -259,7 +259,7 @@ void generate_ir(
                         }
                     }
                     if (!param_ty) {
-                        param_ty = nv::ir_utils::llvm_type_from_string(context, kv.second);
+                        param_ty = ir_utils::llvm_type_from_string(context, kv.second);
                     }
                     // Tipos compostos Narval: sempre usar Value struct (evitar mismatch com ptr)
                     {
@@ -269,7 +269,7 @@ void generate_ir(
                         if (composite.count(kv.second) ||
                             !param_ty || param_ty->isVoidTy() ||
                             (param_ty->isPointerTy() && kv.second != "str" && kv.second != "void" && kv.second != "None")) {
-                            param_ty = nv::ir_utils::get_value_struct(context);
+                            param_ty = ir_utils::get_value_struct(context);
                         }
                     }
                     param_types.push_back(param_ty);
@@ -285,14 +285,14 @@ void generate_ir(
                 }
             }
             if (!ret_ty) {
-                ret_ty = nv::ir_utils::llvm_type_from_string(context, def_stmt->return_type);
+                ret_ty = ir_utils::llvm_type_from_string(context, def_stmt->return_type);
             }
             if (!ret_ty) {
                 ret_ty = llvm::Type::getVoidTy(context.get_context());
             }
             // Funções falíveis retornam Value (Result::Ok ou Result::Err)
             if (def_stmt->is_fallible || def_stmt->is_async) {
-                ret_ty = nv::ir_utils::get_value_struct(context);
+                ret_ty = ir_utils::get_value_struct(context);
             }
             auto* fn_ty = llvm::FunctionType::get(ret_ty, param_types, false);
 
@@ -303,7 +303,7 @@ void generate_ir(
             }
             
             // Registrar o símbolo da função na tabela de símbolos do contexto
-            nv::SymbolInfo fn_info(fn, fn->getType(), nullptr, false, true);
+            SymbolInfo fn_info(fn, fn->getType(), nullptr, false, true);
             context.get_symbol_table().define_symbol(def_stmt->name, fn_info);
 
             // Restaurar type params
