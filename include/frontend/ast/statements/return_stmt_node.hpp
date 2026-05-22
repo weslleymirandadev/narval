@@ -21,5 +21,8 @@ public:
     }
 
     void codegen(nv::IRGenerationContext& ctx) override;
+#ifdef NARVAL_USE_NIR
+    void nir_codegen(nv::NIRGenerationContext& ctx) override;
+#endif
 };
 
