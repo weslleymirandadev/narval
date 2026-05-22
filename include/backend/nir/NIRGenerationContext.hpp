@@ -29,7 +29,7 @@ namespace nv {
 
 struct NIRSymbolInfo {
     mlir::Value        value;    // MLIR SSA value for this symbol
-    std::shared_ptr<nv::Type> nv_type; // Narval type (from checker)
+    std::shared_ptr<Type> nv_type; // Narval type (from checker)
     bool               is_comptime = false;
 };
 
@@ -38,7 +38,7 @@ public:
     void push_scope();
     void pop_scope();
     void define(const std::string& name, mlir::Value val,
-                std::shared_ptr<nv::Type> nv_type = nullptr,
+                std::shared_ptr<Type> nv_type = nullptr,
                 bool is_comptime = false);
     // Returns nullptr-value optional if not found
     std::optional<NIRSymbolInfo> lookup(const std::string& name) const;
@@ -70,7 +70,7 @@ public:
     void pop_scope()  { symbols_.pop_scope(); }
 
     void define(const std::string& name, mlir::Value val,
-                std::shared_ptr<nv::Type> nv_type = nullptr,
+                std::shared_ptr<Type> nv_type = nullptr,
                 bool is_comptime = false);
 
     mlir::Value lookup(const std::string& name);
@@ -94,7 +94,7 @@ public:
 
     // Map a Narval checker type to an MLIR type.
     // Most types map to !narval.value; LOW_LEVEL types map to concrete LLVM types.
-    mlir::Type nv_type_to_mlir(std::shared_ptr<nv::Type> nv_type);
+    mlir::Type nv_type_to_mlir(std::shared_ptr<Type> nv_type);
 
     //  Location helper 
     mlir::Location loc(const PositionData* pos = nullptr);
