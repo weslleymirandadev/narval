@@ -1,6 +1,11 @@
 #include "frontend/ast/expressions/binary_expr_node.hpp"
 #include "backend/codegen/ir_context.hpp"
 #include "backend/codegen/ir_utils.hpp"
+#include "frontend/checker/type.hpp"
+#include "backend/runtime/prototypes.h"
+#ifdef NARVAL_USE_NIR
+#  include "backend/codegen/tensor_nir.hpp"
+#endif
 
 // Box a raw LLVM value into a Value* alloca (mesmo padrão de generate_call_expr.cpp)
 static llvm::Value* box_for_op(nv::IRGenerationContext& ctx, llvm::Value* v) {
@@ -67,6 +72,80 @@ void BinaryExprNode::codegen(nv::IRGenerationContext& ctx) {
                 : static_cast<llvm::Value*>(call));
             return;
         }
+    }
+
+    //  Tensor operations 
+    // The type-checker annotated tensor_op if either operand is a tensor.
+    if (!tensor_op.empty()) {
+        if (left)  left->codegen(ctx);
+        auto* lhs_v2 = ctx.pop_value();
+        if (right) right->codegen(ctx);
+        auto* rhs_v2 = ctx.pop_value();
+        if (!lhs_v2 || !rhs_v2) { ctx.push_value(nullptr); return; }
+
+        auto& B       = ctx.get_builder();
+        auto* ValueTy  = nv::ir_utils::get_value_struct(ctx);
+        auto* ValuePtr = nv::ir_utils::get_value_ptr(ctx);
+        auto* F64      = llvm::Type::getDoubleTy(ctx.get_context());
+
+        // Helper: store a Value struct onto the stack and get its address.
+        auto box = [&](llvm::Value* v, const char* name) -> llvm::Value* {
+            auto* a = ctx.create_alloca(ValueTy, name);
+            if (v->getType() == ValueTy)         B.CreateStore(v, a);
+            else if (v->getType()->isPointerTy()) B.CreateStore(B.CreateLoad(ValueTy, v), a);
+            return a;
+        };
+
+        if (tensor_op == "matmul") {
+            llvm::Value* result_v = nullptr;
+#ifdef NARVAL_USE_NIR
+            result_v = nv::emit_tensor_matmul_nir(ctx, lhs_v2, rhs_v2,
+                                                   lhs_tensor_dims, rhs_tensor_dims);
+#endif
+            if (!result_v) {
+                auto* fn = ctx.ensure_runtime_func("nv_tensor_matmul",
+                               {ValuePtr, ValuePtr}, ValueTy);
+                result_v = B.CreateCall(fn, {box(lhs_v2, "tm_a"), box(rhs_v2, "tm_b")}, "tmat");
+            }
+            ctx.push_value(result_v);
+            return;
+        }
+
+        if (tensor_op == "add" || tensor_op == "sub" || tensor_op == "mul") {
+            llvm::Value* result_v = nullptr;
+#ifdef NARVAL_USE_NIR
+            result_v = nv::emit_tensor_elemwise_nir(ctx, lhs_v2, rhs_v2,
+                                                     lhs_tensor_dims, tensor_op);
+#endif
+            if (!result_v) {
+                const char* rt_fn = (tensor_op == "sub") ? "nv_tensor_sub"
+                                  : (tensor_op == "mul") ? "nv_tensor_mul"
+                                  :                        "nv_tensor_add";
+                auto* fn = ctx.ensure_runtime_func(rt_fn, {ValuePtr, ValuePtr}, ValueTy);
+                result_v = B.CreateCall(fn, {box(lhs_v2, "ta_a"), box(rhs_v2, "ta_b")}, "tew");
+            }
+            ctx.push_value(result_v);
+            return;
+        }
+
+        if (tensor_op == "scalar_mul") {
+            auto* fn = ctx.ensure_runtime_func("nv_tensor_scalar_mul",
+                           {ValuePtr, F64}, ValueTy);
+            llvm::Value* tensor_a = lhs_v2, *scalar = rhs_v2;
+            if (rhs_v2->getType() == ValueTy) { tensor_a = rhs_v2; scalar = lhs_v2; }
+            auto* sf = scalar->getType()->isDoubleTy() ? scalar
+                     : B.CreateSIToFP(scalar, F64, "smul_f");
+            ctx.push_value(B.CreateCall(fn, {box(tensor_a, "tsm_a"), sf}, "tsmul"));
+            return;
+        }
+
+        // Fallback for any other annotated tensor op.
+        {
+            auto* fn = ctx.ensure_runtime_func("nv_tensor_add",
+                           {ValuePtr, ValuePtr}, ValueTy);
+            ctx.push_value(B.CreateCall(fn, {box(lhs_v2, "tf_a"), box(rhs_v2, "tf_b")}, "tfb"));
+        }
+        return;
     }
 
     if (left) left->codegen(ctx);

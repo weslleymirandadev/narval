@@ -276,6 +276,52 @@ llvm::Value* try_lower_builtin(IRGenerationContext& ctx, const std::string& name
         return B.CreateLoad(ValueTy, out, "err.val");
     }
 
+    // tensor_zeros(d0, d1, ...) / tensor_ones(d0, d1, ...)
+    if (name == "tensor_zeros" || name == "tensor_ones") {
+        auto* I32    = llvm::Type::getInt32Ty(ctx.get_context());
+        auto* I64    = llvm::Type::getInt64Ty(ctx.get_context());
+        auto* I64Ptr = llvm::PointerType::getUnqual(ctx.get_context());
+        auto* ValuePtr = ir_utils::get_value_ptr(ctx);
+        int32_t ndim = static_cast<int32_t>(args.size());
+        // Build shape array on the stack: int64_t shape[ndim]
+        auto* shape_arr = ctx.create_alloca(
+            llvm::ArrayType::get(I64, ndim ? ndim : 1), "tensor_shape");
+        for (int i = 0; i < ndim; ++i) {
+            if (args[i]->value) args[i]->value->codegen(ctx);
+            llvm::Value* dim_v = ctx.has_value() ? ctx.pop_value() : llvm::ConstantInt::get(I64, 0);
+            // Coerce to i64
+            if (dim_v->getType() == ValueTy) {
+                auto* tmp = ctx.create_alloca(ValueTy, "dim_box");
+                B.CreateStore(dim_v, tmp);
+                auto* to_int = ctx.ensure_runtime_func("nv_int_convert", {ValuePtr, ValuePtr});
+                auto* out = ctx.create_alloca(ValueTy, "dim_int");
+                B.CreateCall(to_int, {out, tmp});
+                // Extract int field from Value struct (field 0 is NvObject*)
+                auto* fn_e = ctx.ensure_runtime_func("nv_value_to_i64", {ValuePtr}, I64);
+                dim_v = B.CreateCall(fn_e, {out}, "dim_i64");
+            } else if (dim_v->getType()->isIntegerTy()) {
+                dim_v = B.CreateSExtOrTrunc(dim_v, I64, "dim_i64");
+            } else {
+                dim_v = llvm::ConstantInt::get(I64, 0);
+            }
+            auto* gep = B.CreateGEP(llvm::ArrayType::get(I64, ndim ? ndim : 1), shape_arr,
+                                    {llvm::ConstantInt::get(I64, 0),
+                                     llvm::ConstantInt::get(I64, i)}, "dim_ptr");
+            B.CreateStore(dim_v, gep);
+        }
+        // shape_ptr: ptr to first element
+        auto* shape_ptr = B.CreateGEP(llvm::ArrayType::get(I64, ndim ? ndim : 1), shape_arr,
+                                      {llvm::ConstantInt::get(I64, 0),
+                                       llvm::ConstantInt::get(I64, 0)}, "shape_ptr");
+        const char* rt_fn = (name == "tensor_zeros") ? "nv_tensor_zeros" : "nv_tensor_ones";
+        auto* fn = ctx.ensure_runtime_func(rt_fn, {I32, I32, I64Ptr}, ValueTy);
+        // dtype=2 (NV_FLOAT_BASE), ndim, shape*
+        return B.CreateCall(fn,
+            {llvm::ConstantInt::get(I32, 2),
+             llvm::ConstantInt::get(I32, ndim),
+             shape_ptr}, "tensor_val");
+    }
+
     return nullptr; // not builtin
 }
 
