@@ -36,6 +36,15 @@ namespace nv {
         BuiltinFunction("Some",   {}, std::make_shared<None>(), false, true, 1, 1),
         BuiltinFunction("Ok",     {}, std::make_shared<None>(), false, true, 1, 1),
         BuiltinFunction("Err",    {}, std::make_shared<None>(), false, true, 1, 1),
+
+        // tensor_zeros(d0, d1, ...) / tensor_ones(d0, d1, ...)
+        // Return type: Tensor<float, [-1]> (dynamic; user annotates the real shape)
+        BuiltinFunction("tensor_zeros", {},
+            std::make_shared<TensorType>(std::make_shared<Float>(), std::vector<int64_t>{-1}),
+            false, true, 0, 0),
+        BuiltinFunction("tensor_ones", {},
+            std::make_shared<TensorType>(std::make_shared<Float>(), std::vector<int64_t>{-1}),
+            false, true, 0, 0),
     };
     
     // Variáveis globais builtin (não são funções, mas objetos especiais)
@@ -79,6 +88,7 @@ namespace nv {
         
         // Registrar o tipo json no scope
         checker.scope->put_key("json", json_type, true);
+
     }
     
     bool builtin_accepts_args(const BuiltinFunction& builtin, size_t arg_count) {

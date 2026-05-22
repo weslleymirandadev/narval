@@ -1,4 +1,5 @@
 #include "frontend/checker/checker.hpp"
+#include <sstream>
 #include "frontend/checker/type.hpp"
 #include "frontend/checker/unification.hpp"
 #include "frontend/checker/builtins.hpp"
@@ -161,6 +162,38 @@ std::shared_ptr<nv::Type>& nv::Checker::gettyptr(std::string ty, Node* error_nod
         return types[ty];
     }
     
+    // Tensor<elem_type, [d0, d1, ...]> — must be before the array bracket check
+    // because "Tensor<float, [2, 3]>" contains '[' which would fool the array check.
+    if (ty.size() > 8 && ty.substr(0, 7) == "Tensor<" && ty.back() == '>') {
+        std::string inner = ty.substr(7, ty.size() - 8);
+        auto bracket = inner.find(", [");
+        if (bracket != std::string::npos) {
+            std::string elem_str  = inner.substr(0, bracket);
+            std::string shape_str = inner.substr(bracket + 3);
+            if (!shape_str.empty() && shape_str.back() == ']')
+                shape_str.pop_back();
+            std::vector<int64_t> dims;
+            std::istringstream iss(shape_str);
+            std::string tok;
+            while (std::getline(iss, tok, ',')) {
+                size_t s = tok.find_first_not_of(" \t");
+                size_t e = tok.find_last_not_of(" \t");
+                if (s == std::string::npos) continue;
+                tok = tok.substr(s, e - s + 1);
+                if (tok == "?" || tok == "-1")
+                    dims.push_back(-1);
+                else {
+                    try { dims.push_back(std::stoll(tok)); }
+                    catch (...) { dims.push_back(-1); }
+                }
+            }
+            auto& elem_type = gettyptr(elem_str, error_node);
+            auto tensor = std::make_shared<nv::TensorType>(elem_type, dims);
+            types[ty] = tensor;
+            return types[ty];
+        }
+    }
+
     // Tipo array: int[10], str[5], etc.
     // Formato: base_type[size]
     size_t bracket_pos = ty.find('[');

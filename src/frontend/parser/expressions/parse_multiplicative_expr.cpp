@@ -13,7 +13,8 @@ std::unique_ptr<Node> parse_multiplicative_expr(Parser* parser) {
         parser->current_token().type == TokenType::MUL ||
         parser->current_token().type == TokenType::DIV ||
         parser->current_token().type == TokenType::MOD ||
-        parser->current_token().type == TokenType::INTEGER_DIV
+        parser->current_token().type == TokenType::INTEGER_DIV ||
+        parser->current_token().type == TokenType::AT  // @ = matrix multiply
     ) {
         std::string opToken = parser->consume_token().lexeme;
         auto right = parse_power_expr(parser);

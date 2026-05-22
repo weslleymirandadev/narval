@@ -31,7 +31,8 @@ namespace nv {
         TYPE_VAR,
         POLY_TYPE,
         ERROR,
-        LOW_LEVEL
+        LOW_LEVEL,
+        TENSOR    // Tensor<float, [M, N]> — lowered via MLIR/linalg pipeline
     };
     struct Type : public std::enable_shared_from_this<Type> {
         Kind kind;
@@ -618,6 +619,55 @@ namespace nv {
         
         std::shared_ptr<Type> substitute(const std::unordered_map<int, std::shared_ptr<Type>>& subst) const override {
             return std::make_shared<Map>(key_type->substitute(subst), value_type->substitute(subst));
+        }
+    };
+
+    // ── Tensor type ───────────────────────────────────────────────────────────
+    // Represents Tensor<float, [M, N]> — a statically-shaped dense tensor.
+    // element can be Float, Int, or any numeric primitive.
+    // dims: -1 means dynamic (unknown at compile time).
+    // Lowered through the MLIR/linalg pipeline via llvm::Linker bridge.
+    struct TensorType : public Type {
+        std::shared_ptr<Type>  element;   // float, int, etc.
+        std::vector<int64_t>   dims;      // e.g. {32, 128}; -1 = dynamic
+
+        TensorType(std::shared_ptr<Type> elem, std::vector<int64_t> dims)
+            : Type(Kind::TENSOR), element(std::move(elem)), dims(std::move(dims)) {}
+
+        std::string toString() override {
+            std::string s = "Tensor<" + element->toString() + ", [";
+            for (size_t i = 0; i < dims.size(); ++i) {
+                if (i) s += ", ";
+                s += (dims[i] == -1 ? "?" : std::to_string(dims[i]));
+            }
+            return s + "]>";
+        }
+
+        bool equals(const Type& other) const override {
+            if (other.kind != Kind::TENSOR) return false;
+            const auto& o = static_cast<const TensorType&>(other);
+            if (!element->equals(*o.element)) return false;
+            if (dims.size() != o.dims.size()) return false;
+            for (size_t i = 0; i < dims.size(); ++i)
+                if (dims[i] != -1 && o.dims[i] != -1 && dims[i] != o.dims[i])
+                    return false;
+            return true;
+        }
+
+        int64_t total_elements() const {
+            int64_t n = 1;
+            for (auto d : dims) { if (d == -1) return -1; n *= d; }
+            return n;
+        }
+
+        // Result of matmul: [M,K] @ [K,N] → [M,N]
+        // Returns nullptr if shapes are incompatible.
+        std::shared_ptr<TensorType> matmul_result(const TensorType& rhs) const {
+            if (dims.size() != 2 || rhs.dims.size() != 2) return nullptr;
+            int64_t K1 = dims[1], K2 = rhs.dims[0];
+            if (K1 != -1 && K2 != -1 && K1 != K2) return nullptr;
+            return std::make_shared<TensorType>(element,
+                                                 std::vector<int64_t>{dims[0], rhs.dims[1]});
         }
     };
 

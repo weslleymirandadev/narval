@@ -56,6 +56,41 @@ std::string parse_type(Parser* parser) {
             return "Future<" + inner + ">";
         }
 
+        // Tensor<elem_type, [d0, d1, ...]>
+        // Example: Tensor<float, [32, 128]>  or  Tensor<float, [-1, -1]>
+        if (type_str == "Tensor") {
+            parser->expect(TokenType::LT, "Expected '<' after Tensor");
+            std::string elem = parse_type(parser);
+            parser->expect(TokenType::COMMA, "Expected ',' in Tensor<T, [...]>");
+            parser->expect(TokenType::OBRACKET, "Expected '[' for Tensor shape");
+            // Parse comma-separated dimension list
+            std::string shape_str;
+            while (parser->current_token().type != TokenType::CBRACKET) {
+                Token dim_tok = parser->current_token();
+                if (dim_tok.type == TokenType::NUMBER) {
+                    shape_str += dim_tok.lexeme;
+                    parser->consume_token();
+                } else if (dim_tok.type == TokenType::MINUS) {
+                    parser->consume_token(); // consume '-'
+                    Token n = parser->consume_token(); // consume '1'
+                    shape_str += "-" + n.lexeme;
+                } else if (dim_tok.type == TokenType::IDENTIFIER && dim_tok.lexeme == "?") {
+                    shape_str += "-1";
+                    parser->consume_token();
+                } else {
+                    parser->error("Expected integer dimension in Tensor shape");
+                    break;
+                }
+                if (parser->current_token().type == TokenType::COMMA) {
+                    shape_str += ", ";
+                    parser->consume_token();
+                }
+            }
+            parser->expect(TokenType::CBRACKET, "Expected ']' after Tensor shape");
+            parser->expect(TokenType::GT, "Expected '>' after Tensor<T,[...]>");
+            return "Tensor<" + elem + ", [" + shape_str + "]>";
+        }
+
         // 2. Generics: map<K,V>
         if (type_str == "map") {
             parser->expect(TokenType::LT, "Expected '<' after map.");

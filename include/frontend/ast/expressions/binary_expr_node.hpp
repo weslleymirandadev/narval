@@ -2,6 +2,7 @@
 #include "../types.hpp"
 #include <string>
 #include <memory>
+#include <vector>
 
 class BinaryExprNode : public Expr {
 public:
@@ -13,6 +14,15 @@ public:
     // Vazio quando é operação primitiva normal.
     std::string overload_class;  // nome da classe (ex: "Vec2")
     std::string overload_dunder; // nome do método (ex: "__add__")
+
+    // Preenchido pelo type-checker quando o operador é tensorial.
+    // "matmul", "add", "sub", "scalar_mul" ou "" (não tensor).
+    std::string tensor_op;
+
+    // Dims dos operandos tensoriais (usados pelo codegen NIR para selecionar o kernel).
+    // Preenchido pelo checker junto com tensor_op.
+    std::vector<int64_t> lhs_tensor_dims;
+    std::vector<int64_t> rhs_tensor_dims;
 
     BinaryExprNode(std::string operator_, std::unique_ptr<Expr> lhs, std::unique_ptr<Expr> rhs)
         : Expr(NodeType::BinaryExpression), op(std::move(operator_)), left(std::move(lhs)), right(std::move(rhs)) {}
