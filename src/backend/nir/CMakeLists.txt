@@ -89,6 +89,10 @@ set(MLIR_DIALECT_LIBS
     MLIRMemRefToLLVM
     MLIRControlFlowToLLVM
     MLIRLinalgToStandard
+    MLIRVectorDialect
+    MLIRVectorToLLVM
+    MLIRVectorToLLVMPass
+    MLIRLinalgTransforms
 )
 
 target_link_libraries(NarvalNirDialect
