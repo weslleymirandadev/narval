@@ -8,13 +8,13 @@ namespace nv {
 
 class BuiltinHandler : public MethodHandler {
 public:
-    llvm::Value* handle(nv::IRGenerationContext& ctx, const std::string& method, const std::vector<std::unique_ptr<Node>>& args) override {
+    llvm::Value* handle(IRGenerationContext& ctx, const std::string& method, const std::vector<std::unique_ptr<Node>>& args) override {
         auto& b = ctx.get_builder();
-        auto* ValueTy = nv::ir_utils::get_value_struct(ctx);
-        auto* ValuePtr = nv::ir_utils::get_value_ptr(ctx);
+        auto* ValueTy = ir_utils::get_value_struct(ctx);
+        auto* ValuePtr = ir_utils::get_value_ptr(ctx);
         
         if (method == "write") {
-            nv::register_feature("write");
+            register_feature("write");
             
             // TEMP: Testar printf com string literal fixa primeiro
             auto& ctx_module = ctx.get_context();
@@ -34,7 +34,7 @@ public:
             return nullptr; // write retorna void
             
         } else if (method == "read") {
-            nv::register_feature("read");
+            register_feature("read");
             
             auto* read_fn = ctx.get_module().getFunction("read");
             if (!read_fn) return nullptr;
@@ -43,7 +43,7 @@ public:
             return result;
             
         } else if (method == "str") {
-            nv::register_feature("str");
+            register_feature("str");
             
             if (args.empty()) return nullptr;
             args[0]->codegen(ctx);
@@ -60,7 +60,7 @@ public:
             return b.CreateLoad(ValueTy, out_box, "str.result");
             
         } else if (method == "int") {
-            nv::register_feature("int");
+            register_feature("int");
             
             if (args.empty()) return nullptr;
             args[0]->codegen(ctx);
@@ -77,7 +77,7 @@ public:
             return b.CreateLoad(ValueTy, out_box, "int.result");
             
         } else if (method == "float") {
-            nv::register_feature("float");
+            register_feature("float");
             
             if (args.empty()) return nullptr;
             args[0]->codegen(ctx);
@@ -94,7 +94,7 @@ public:
             return b.CreateLoad(ValueTy, out_box, "float.result");
             
         } else if (method == "bool") {
-            nv::register_feature("bool");
+            register_feature("bool");
             
             if (args.empty()) return nullptr;
             args[0]->codegen(ctx);
