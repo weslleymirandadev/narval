@@ -4,7 +4,7 @@
 #include "frontend/checker/type.hpp"
 #include "backend/runtime/prototypes.h"
 #ifdef NARVAL_USE_NIR
-#  include "backend/codegen/tensor_nir.hpp"
+#  include "backend/nir/tensor_nir.hpp"
 #endif
 
 // Box a raw LLVM value into a Value* alloca (mesmo padrão de generate_call_expr.cpp)
