@@ -58,11 +58,17 @@ static Value str_ptr(ModuleOp module, OpBuilder& builder, Location loc,
     if (!module.lookupSymbol(gname)) {
         OpBuilder::InsertionGuard g(builder);
         builder.setInsertionPointToStart(module.getBody());
+        // Build the null-terminated string via std::string so the null byte is
+        // included in the StringRef length (StringRef(const char*) uses strlen
+        // and would strip a bare "\0" appended via Twine).
+        std::string with_null(content.str());
+        with_null.push_back('\0');
         auto arr = LLVM::LLVMArrayType::get(builder.getIntegerType(8),
-                                             content.size() + 1);
+                                             with_null.size());
         LLVM::GlobalOp::create(builder, loc, arr, true,
                                LLVM::Linkage::Internal, gname,
-                               builder.getStringAttr((content + "\0").str()));
+                               builder.getStringAttr(
+                                   llvm::StringRef(with_null.data(), with_null.size())));
     }
     return LLVM::AddressOfOp::create(builder, loc, ptr, gname);
 }
@@ -139,6 +145,18 @@ struct LowerCallRuntimeOp : public OpConversionPattern<CallRuntimeOp> {
         SmallVector<Type> rt;
         if (failed(typeConverter->convertTypes(op.getResultTypes(), rt)))
             return failure();
+
+        // Collect the converted argument types from the adapted operands.
+        SmallVector<Type> arg_types;
+        for (auto v : a.getOperands()) arg_types.push_back(v.getType());
+
+        // Re-declare the function with the fully-converted signature so the
+        // resulting func::CallOp doesn't need a !narval.value → !llvm.ptr
+        // materialization at the call site.
+        auto mod = op->getParentOfType<ModuleOp>();
+        auto ft  = FunctionType::get(r.getContext(), arg_types, rt);
+        ensure_decl(mod, r, op.getCallee().str(), ft);
+
         r.replaceOpWithNewOp<func::CallOp>(op, rt, op.getCallee(), a.getOperands());
         return success();
     }
@@ -160,11 +178,11 @@ struct LowerGetFieldOp : public OpConversionPattern<GetFieldOp> {
         auto loc = op.getLoc(); auto* ctx = r.getContext();
         auto ptr = LLVM::LLVMPointerType::get(ctx);
         auto mod = op->getParentOfType<ModuleOp>();
-        ensure_decl(mod, r, "nv_object_get_field",
+        ensure_decl(mod, r, "nv_get_field",
                     FunctionType::get(ctx,{ptr,ptr},{ptr}));
         auto key = str_ptr(mod, r, loc, op.getFieldName());
         r.replaceOp(op, func::CallOp::create(r, loc, TypeRange{ptr},
-                                              "nv_object_get_field",
+                                              "nv_get_field",
                                               ValueRange{a.getObject(), key})
                            .getResult(0));
         return success();
@@ -178,10 +196,10 @@ struct LowerSetFieldOp : public OpConversionPattern<SetFieldOp> {
         auto loc = op.getLoc(); auto* ctx = r.getContext();
         auto ptr = LLVM::LLVMPointerType::get(ctx);
         auto mod = op->getParentOfType<ModuleOp>();
-        ensure_decl(mod, r, "nv_object_set_field",
+        ensure_decl(mod, r, "nv_set_field",
                     FunctionType::get(ctx,{ptr,ptr,ptr},{}));
         auto key = str_ptr(mod, r, loc, op.getFieldName());
-        func::CallOp::create(r, loc, TypeRange{}, "nv_object_set_field",
+        func::CallOp::create(r, loc, TypeRange{}, "nv_set_field",
                               ValueRange{a.getObject(), key, a.getValue()});
         r.eraseOp(op); return success();
     }
@@ -211,9 +229,39 @@ struct LowerConstantOp : public OpConversionPattern<ConstantOp> {
     using OpConversionPattern::OpConversionPattern;
     LogicalResult matchAndRewrite(ConstantOp op, OpAdaptor,
                                   ConversionPatternRewriter& r) const override {
-        if (mlir::isa<IntegerAttr, FloatAttr>(op.getValue())) {
-            r.replaceOpWithNewOp<arith::ConstantOp>(
-                op, mlir::cast<TypedAttr>(op.getValue()));
+        auto loc = op.getLoc();
+        auto* ctx = r.getContext();
+        auto ptr = LLVM::LLVMPointerType::get(ctx);
+        auto mod = op->getParentOfType<ModuleOp>();
+
+        if (auto ia = mlir::dyn_cast<IntegerAttr>(op.getValue())) {
+            auto i64 = r.getI64Type();
+            ensure_decl(mod, r, "nv_box_int", FunctionType::get(ctx, {i64}, {ptr}));
+            auto raw = arith::ConstantOp::create(r, loc,
+                IntegerAttr::get(i64, ia.getInt()));
+            r.replaceOp(op, func::CallOp::create(r, loc, TypeRange{ptr},
+                                                  "nv_box_int",
+                                                  ValueRange{raw.getResult()})
+                               .getResult(0));
+            return success();
+        }
+        if (auto fa = mlir::dyn_cast<FloatAttr>(op.getValue())) {
+            auto f64 = r.getF64Type();
+            ensure_decl(mod, r, "nv_box_float", FunctionType::get(ctx, {f64}, {ptr}));
+            auto raw = arith::ConstantOp::create(r, loc,
+                FloatAttr::get(f64, fa.getValueAsDouble()));
+            r.replaceOp(op, func::CallOp::create(r, loc, TypeRange{ptr},
+                                                  "nv_box_float",
+                                                  ValueRange{raw.getResult()})
+                               .getResult(0));
+            return success();
+        }
+        if (auto sa = mlir::dyn_cast<StringAttr>(op.getValue())) {
+            ensure_decl(mod, r, "nv_box_str", FunctionType::get(ctx, {ptr}, {ptr}));
+            auto s = str_ptr(mod, r, loc, sa.getValue());
+            r.replaceOp(op, func::CallOp::create(r, loc, TypeRange{ptr},
+                                                  "nv_box_str", ValueRange{s})
+                               .getResult(0));
             return success();
         }
         return failure();
@@ -224,9 +272,31 @@ struct LowerComptimeConstOp : public OpConversionPattern<ComptimeConstOp> {
     using OpConversionPattern::OpConversionPattern;
     LogicalResult matchAndRewrite(ComptimeConstOp op, OpAdaptor,
                                   ConversionPatternRewriter& r) const override {
-        if (mlir::isa<IntegerAttr, FloatAttr>(op.getValue())) {
-            r.replaceOpWithNewOp<arith::ConstantOp>(
-                op, mlir::cast<TypedAttr>(op.getValue()));
+        auto loc = op.getLoc();
+        auto* ctx = r.getContext();
+        auto ptr = LLVM::LLVMPointerType::get(ctx);
+        auto mod = op->getParentOfType<ModuleOp>();
+
+        if (auto ia = mlir::dyn_cast<IntegerAttr>(op.getValue())) {
+            auto i64 = r.getI64Type();
+            ensure_decl(mod, r, "nv_box_int", FunctionType::get(ctx, {i64}, {ptr}));
+            auto raw = arith::ConstantOp::create(r, loc,
+                IntegerAttr::get(i64, ia.getInt()));
+            r.replaceOp(op, func::CallOp::create(r, loc, TypeRange{ptr},
+                                                  "nv_box_int",
+                                                  ValueRange{raw.getResult()})
+                               .getResult(0));
+            return success();
+        }
+        if (auto fa = mlir::dyn_cast<FloatAttr>(op.getValue())) {
+            auto f64 = r.getF64Type();
+            ensure_decl(mod, r, "nv_box_float", FunctionType::get(ctx, {f64}, {ptr}));
+            auto raw = arith::ConstantOp::create(r, loc,
+                FloatAttr::get(f64, fa.getValueAsDouble()));
+            r.replaceOp(op, func::CallOp::create(r, loc, TypeRange{ptr},
+                                                  "nv_box_float",
+                                                  ValueRange{raw.getResult()})
+                               .getResult(0));
             return success();
         }
         return failure();

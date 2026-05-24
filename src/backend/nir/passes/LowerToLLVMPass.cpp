@@ -1,4 +1,5 @@
 #include "backend/nir/NarvalPasses.h"
+#include "backend/nir/NarvalTypes.h"
 
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
 #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
@@ -31,6 +32,13 @@ struct LowerNarvalToLLVMPassImpl
         MLIRContext* ctx = &getContext();
 
         LLVMTypeConverter type_converter(ctx);
+        // Teach the LLVM converter how to handle residual !narval.value types
+        // (e.g. in function declarations not yet converted by the std pass).
+        auto ptr_ty = LLVM::LLVMPointerType::get(ctx);
+        type_converter.addConversion([ptr_ty](narval::ValueType)   -> Type { return ptr_ty; });
+        type_converter.addConversion([ptr_ty](narval::RefType)     -> Type { return ptr_ty; });
+        type_converter.addConversion([ptr_ty](narval::MutRefType)  -> Type { return ptr_ty; });
+
         LLVMConversionTarget target(*ctx);
         target.addLegalOp<ModuleOp>();
 
