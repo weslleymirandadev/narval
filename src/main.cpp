@@ -6,8 +6,11 @@
 #include "frontend/module_manager.hpp"
 #include "frontend/checker/checker.hpp"
 #include "frontend/attributes/attribute_mapper.hpp"
-#include "backend/codegen/generate_ir.hpp"
-#include "backend/codegen/ir_utils.hpp"
+#include "backend/nir/NIRGenerationContext.hpp"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "llvm/Support/Error.h"
 
 // Implemented REPL system
 #include "frontend/interactive/repl.hpp"
@@ -28,9 +31,7 @@
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Verifier.h>
-#include <llvm/IR/InlineAsm.h>
 #include <llvm/Support/CodeGen.h>
-#include <llvm/IR/DIBuilder.h>
 #include <sstream>
 #include <vector>
 #include <map>
@@ -426,356 +427,160 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
             return 1;
         }
 
-        llvm::LLVMContext Context;
-        llvm::Module Mod("narval_module", Context);
-        llvm::IRBuilder<llvm::NoFolder> Builder(Context);
-        nv::IRGenerationContext context(Context, Mod, Builder, &checker);
-        context.set_source_file(filename);
+        mlir::MLIRContext mlir_ctx;
+        nv::NIRGenerationContext nir_ctx(mlir_ctx, filename);
+        nir_ctx.set_type_checker(&checker);
 
-        // === Debug info setup (same as main.cpp) ===
-        llvm::DIBuilder DIB(Mod);
-        Mod.addModuleFlag(llvm::Module::Warning, "Debug Info Version", llvm::DEBUG_METADATA_VERSION);
-
-        llvm::DIFile* diFile = DIB.createFile(
-            filename,
-            std::filesystem::path(filename).parent_path().string()
-        );
-
-        llvm::DICompileUnit* cu = DIB.createCompileUnit(
-            llvm::dwarf::DW_LANG_C, // placeholder language id
-            diFile,
-            "narval-compiler-test",
-            false,
-            "",
-            0
-        );
-
-        context.set_debug_info(&DIB, cu, diFile, cu);
-
-        auto* i32_ty      = llvm::Type::getInt32Ty(Context);
-        llvm::Function* main_start = nullptr;
-
-        // Attach DISubprogram to main.start for better function-level debug info
-        if (!no_std) {
-        auto* main_sig    = llvm::FunctionType::get(llvm::Type::getVoidTy(Context), false);
-        main_start = llvm::Function::Create(
-            main_sig,
-            llvm::Function::ExternalLinkage,
-            "main.start",
-            Mod
-        );
-        {
-            auto* sub_ty = DIB.createSubroutineType(DIB.getOrCreateTypeArray({}));
-            auto* subp = DIB.createFunction(
-                cu,
-                "main.start",
-                llvm::StringRef(),
-                diFile,
-                1,
-                sub_ty,
-                1,
-                llvm::DINode::FlagZero,
-                llvm::DISubprogram::SPFlagDefinition
-            );
-            main_start->setSubprogram(subp);
-            context.set_debug_scope(subp);
-        }
-
-        llvm::BasicBlock* entry_bb = llvm::BasicBlock::Create(Context, "entry", main_start);
-        context.get_builder().SetInsertPoint(entry_bb);
-        context.set_current_function(main_start);
-        context.set_program_function(main_start);
-        }
-
-        // x86 only: align RSP to 16 bytes at the entry point.
-        // movaps inside variadic functions (printf) requires RSP % 16 == 0.
-        // On aarch64 the ABI already guarantees alignment, so asm is not needed.
-#if defined(__x86_64__) || defined(_M_X64)
-        if (!no_std && is_x86_64_target(target_triple)) {
-            auto* AsmTy = llvm::FunctionType::get(llvm::Type::getVoidTy(Context), false);
-            auto* Asm   = llvm::InlineAsm::get(
-                AsmTy,
-                "and $$-16, %rsp",
-                "~{rsp},~{dirflag},~{fpsr},~{flags}",
-                /*hasSideEffects=*/true
-            );
-            context.get_builder().CreateCall(Asm, {});
-        }
-#endif
-
-        // Call register_global_init first to initialize types
-        if (!no_std) {
-        auto* register_init_fn = Mod.getFunction("register_global_init");
-        if (!register_init_fn) {
-            auto* void_ty = llvm::Type::getVoidTy(Context);
-            auto* fn_ty = llvm::FunctionType::get(void_ty, false);
-            register_init_fn = llvm::Function::Create(
-                fn_ty,
-                llvm::Function::ExternalLinkage,
-                "register_global_init",
-                &Mod
-            );
-        }
-        context.get_builder().CreateCall(register_init_fn, {});
-        }
-
-        nv::generate_ir(std::move(ast), context);
-
-        // @[no_std]: sem wrapper — o usuário define o entry point directamente.
-        // O linker receberá -Wl,-e,<no_std_entry> na secção de linkagem abaixo.
-
-        // IMPORTANT: finalize global initializations AFTER generating the main code.
-        // This guarantees that every declaration has been processed.
-        if (!no_std) {
-        context.finalize_global_inits(65535);
-        
-        // Explicitly call the initialization function at the beginning of main.start.
-        // This guarantees globals are initialized even if @llvm.global_ctors does not work
-        // because of -nostartfiles and -Wl,-e,main.start.
-        auto* init_func_name = "nv.global.init.65535";
-        auto* init_func = Mod.getFunction(init_func_name);
-        if (init_func) {
-            // Save the current insertion point
-            auto* saved_insert_point = context.get_builder().GetInsertBlock();
-            auto saved_insert_iter = context.get_builder().GetInsertPoint();
-            
-            // Insert the call at the beginning of the entry block, before any other instruction
-            auto* entry_block = &main_start->getEntryBlock();
-            context.get_builder().SetInsertPoint(entry_block, entry_block->begin());
-            context.get_builder().CreateCall(init_func);
-            
-            // Restore the original insertion point; never use back() on an empty block, e.g. a for after_bb
-            if (saved_insert_point) {
-                if (saved_insert_iter != saved_insert_point->end()) {
-                    context.get_builder().SetInsertPoint(saved_insert_iter);
-                } else {
-                    context.get_builder().SetInsertPoint(saved_insert_point);
-                }
-            }
-        }
-        }
+        // Build main.start as the program entry point
+        auto& b  = nir_ctx.get_builder();
+        auto  ul = b.getUnknownLoc();
+        auto  void_fn_ty = mlir::FunctionType::get(&mlir_ctx, {}, {});
+        auto  main_fn = mlir::func::FuncOp::create(b, ul, "main.start", void_fn_ty);
+        main_fn.setPublic();
+        auto* entry_blk = main_fn.addEntryBlock();
+        b.setInsertionPointToStart(entry_blk);
+        nir_ctx.set_current_func(main_fn);
 
         if (!no_std) {
-        llvm::Value* return_value = nullptr;
-        if (context.has_value()) {
-            return_value = context.pop_value();
-        }
-        if (!return_value) {
-            return_value = llvm::ConstantInt::get(i32_ty, 0);
+            auto reg_fn = nir_ctx.ensure_runtime_func("register_global_init", void_fn_ty);
+            mlir::func::CallOp::create(b, ul, reg_fn, mlir::ValueRange{});
         }
 
-        if (return_value->getType() != i32_ty) {
-            auto* ValueTy = nv::ir_utils::get_value_struct(context);
-            auto* ValuePtr = nv::ir_utils::get_value_ptr(context);
-            // Check if it's a Value struct - extract the value manually
-            if (return_value->getType() == ValueTy) {
-                // For the new structure, declare the function manually
-                auto* funcType = llvm::FunctionType::get(i32_ty, {ValuePtr}, false);
-                auto* extract_func = llvm::cast<llvm::Function>(Mod.getOrInsertFunction("extract_int_from_value", funcType).getCallee());
-                
-                auto* tmp_alloca = context.get_builder().CreateAlloca(ValueTy, nullptr, "return_val_tmp");
-                context.get_builder().CreateStore(return_value, tmp_alloca);
-                return_value = context.get_builder().CreateCall(extract_func, {tmp_alloca}, "exit_code");
-            } else if (return_value->getType()->isIntegerTy()) {
-                return_value = context.get_builder().CreateIntCast(return_value, i32_ty, true);
-            } else if (return_value->getType()->isFloatingPointTy()) {
-                return_value = context.get_builder().CreateFPToSI(return_value, i32_ty);
-            } else {
-                return_value = llvm::ConstantInt::get(i32_ty, 0);
-            }
+        nv::generate_ir_nir(std::move(ast), nir_ctx);
+
+        // Finalize main.start: add _exit(0) and a return terminator
+        if (!no_std) {
+            auto i32_ty = b.getI32Type();
+            auto exit_fn_ty = mlir::FunctionType::get(&mlir_ctx, {i32_ty}, {});
+            auto exit_fn = nir_ctx.ensure_runtime_func("_exit", exit_fn_ty);
+            auto zero = mlir::arith::ConstantIntOp::create(b, ul, 0, 32);
+            mlir::func::CallOp::create(b, ul, exit_fn, mlir::ValueRange{zero.getResult()});
         }
-
-        // declare _exit(int);
-        auto* exit_ty = llvm::FunctionType::get(llvm::Type::getVoidTy(Context), {i32_ty}, false);
-        llvm::FunctionCallee exit_fn = Mod.getOrInsertFunction("_exit", exit_ty);
-
-        // call _exit(retcode); no return
-        context.get_builder().CreateCall(exit_fn, {return_value});
-        context.get_builder().CreateUnreachable();
+        if (entry_blk->empty() ||
+            !entry_blk->back().hasTrait<mlir::OpTrait::IsTerminator>()) {
+            mlir::func::ReturnOp::create(b, ul);
         }
-
-        DIB.finalize();
+        // Lower NIR -> LLVM IR
+        llvm::LLVMContext nir_llvm_ctx;
+        auto mod_or_err = nir_ctx.lower_to_llvm_ir(nir_llvm_ctx);
+        if (!mod_or_err) {
+            llvm::errs() << "NIR lowering error: "
+                         << llvm::toString(mod_or_err.takeError()) << "\n";
+            return 1;
+        }
+        auto& nir_mod = **mod_or_err;
 
         initialize_llvm_targets_once();
+        nir_mod.setTargetTriple(target_triple);
 
-        Mod.setTargetTriple(target_triple);
-
-        std::string error;
-        const llvm::Target* target = llvm::TargetRegistry::lookupTarget("", target_triple, error);
-        if (!target) {
-            llvm::errs() << "Error with target '" << build_target.name << "' ("
-                         << build_target.triple << "): " << error << "\n";
-            llvm::errs() << "This LLVM needs the corresponding backend enabled.\n";
+        std::string nir_err;
+        const llvm::Target* nir_target =
+            llvm::TargetRegistry::lookupTarget("", target_triple, nir_err);
+        if (!nir_target) {
+            llvm::errs() << "NIR: target error: " << nir_err << "\n";
             return 1;
         }
-
-        llvm::TargetOptions opt;
-        std::unique_ptr<llvm::TargetMachine> target_machine(
-            target->createTargetMachine(target_triple, build_target.cpu, "", opt, llvm::Reloc::PIC_)
-        );
-        if (!target_machine) {
-            llvm::errs() << "Failed to create TargetMachine for " << build_target.triple << "\n";
-            return 1;
-        }
-
-        Mod.setDataLayout(target_machine->createDataLayout());
+        llvm::TargetOptions nir_opt;
+        std::unique_ptr<llvm::TargetMachine> nir_tm(
+            nir_target->createTargetMachine(
+                target_triple, build_target.cpu, "", nir_opt, llvm::Reloc::PIC_));
+        nir_mod.setDataLayout(nir_tm->createDataLayout());
 
         std::string stem = std::filesystem::path(filename).stem().string();
-        // .o file: final name in --object mode, temporary name in other modes
-        const bool cross_build = build_target.triple != llvm::sys::getDefaultTargetTriple();
-        std::string obj_path;
-        if (cross_build) {
-            obj_path = stem + "-" + build_target.name + ".o";
-        } else if (object_only) {
-            obj_path = stem + ".o";
-        } else {
-            obj_path = "narval_tmp_" + stem + ".o";
-        }
+        std::string obj_path = object_only ? stem + ".o"
+                                           : "narval_nir_tmp_" + stem + ".o";
 
-        std::error_code EC;
-        llvm::raw_fd_ostream dest(obj_path, EC, llvm::sys::fs::OF_None);
-        if (EC) {
-            llvm::errs() << "Failed to open .o: " << EC.message() << "\n";
+        std::error_code nir_ec;
+        llvm::raw_fd_ostream dest(obj_path, nir_ec, llvm::sys::fs::OF_None);
+        if (nir_ec) {
+            llvm::errs() << "NIR: cannot open .o: " << nir_ec.message() << "\n";
             return 1;
         }
-
-        if (llvm::verifyModule(Mod, &llvm::errs())) {
-            llvm::errs() << "IR verification failed\n";
+        if (llvm::verifyModule(nir_mod, &llvm::errs())) {
+            nir_mod.print(llvm::errs(), nullptr);
+            llvm::errs() << "NIR module verification failed\n";
             return 1;
         }
-
-        llvm::legacy::PassManager pass;
-        if (target_machine->addPassesToEmitFile(pass, dest, nullptr, llvm::CodeGenFileType::ObjectFile)) {
-            llvm::errs() << "TargetMachine does not support object emission\n";
+        llvm::legacy::PassManager nir_pm;
+        if (nir_tm->addPassesToEmitFile(
+                nir_pm, dest, nullptr, llvm::CodeGenFileType::ObjectFile)) {
+            llvm::errs() << "NIR: cannot emit object file\n";
             return 1;
         }
-        pass.run(Mod);
+        nir_pm.run(nir_mod);
         dest.flush();
 
-        // --object mode and cross-target builds: only generate the .o, without linking the native runtime.
-        if (object_only || cross_build) {
-            if (cross_build && build_only) {
-                std::cout << "Object generated for " << build_target.name
-                          << " (" << build_target.triple << "): " << obj_path << "\n";
-            }
-            return 0;
-        }
+        if (object_only) return 0;
 
         // Resolve runtime path
-        std::string runtime_path;
-        std::string runtime_nostd_path;
-        const char* narval_home = std::getenv("NARVAL_HOME");
-        if (narval_home) {
-            runtime_path       = std::string(narval_home) + "/runtime.o";
-            runtime_nostd_path = std::string(narval_home) + "/runtime_nostd.o";
+        std::string nir_runtime_path, nir_runtime_nostd_path;
+        const char* narval_home_nir = std::getenv("NARVAL_HOME");
+        if (narval_home_nir) {
+            nir_runtime_path       = std::string(narval_home_nir) + "/runtime.o";
+            nir_runtime_nostd_path = std::string(narval_home_nir) + "/runtime_nostd.o";
         } else {
-            const std::string local_runtime = std::string(NARVAL_SOURCE_DIR) + "/build/lib/runtime.o";
-            const std::string local_nostd   = std::string(NARVAL_SOURCE_DIR) + "/build/lib/runtime_nostd.o";
-            if (std::filesystem::exists(local_runtime)) {
-                runtime_path = local_runtime;
-            } else if (!nv_executable_path_storage.empty()) {
-                auto installed_runtime = std::filesystem::path(nv_executable_path_storage)
-                    .parent_path()
-                    .parent_path()
-                    / "lib"
-                    / "narval"
-                    / "runtime.o";
-                if (std::filesystem::exists(installed_runtime)) {
-                    runtime_path = installed_runtime.string();
-                } else {
-                    runtime_path = std::string(NARVAL_INSTALL_RUNTIME_DIR) + "/runtime.o";
-                }
-            } else {
-                runtime_path = std::string(NARVAL_INSTALL_RUNTIME_DIR) + "/runtime.o";
-            }
-            if (std::filesystem::exists(local_nostd)) {
-                runtime_nostd_path = local_nostd;
-            } else {
-                runtime_nostd_path = std::string(NARVAL_INSTALL_RUNTIME_DIR) + "/runtime_nostd.o";
-            }
+            const std::string lr = std::string(NARVAL_SOURCE_DIR) + "/build/lib/runtime.o";
+            const std::string ln = std::string(NARVAL_SOURCE_DIR) + "/build/lib/runtime_nostd.o";
+            nir_runtime_path       = std::filesystem::exists(lr) ? lr
+                : std::string(NARVAL_INSTALL_RUNTIME_DIR) + "/runtime.o";
+            nir_runtime_nostd_path = std::filesystem::exists(ln) ? ln
+                : std::string(NARVAL_INSTALL_RUNTIME_DIR) + "/runtime_nostd.o";
         }
 
-        // Binary name: source stem in --build mode, temporary in run mode
-        std::string bin_path = build_only ? stem : ("narval_tmp_" + stem);
-
-        // aarch64 (Termux/Android) requires PIE; x86-64 uses -no-pie to avoid
-        // conflicts with the custom main.start entry point without CRT.
+        std::string bin_path = build_only ? stem : ("narval_nir_tmp_" + stem);
 #if defined(__aarch64__) || defined(_M_ARM64)
-        const char* pie_flag = "-pie";
+        const char* nir_pie = "-pie";
 #else
-        const char* pie_flag = "-no-pie";
+        const char* nir_pie = "-no-pie";
 #endif
-        // Extra libraries: items generated by codegen (Python bridges, etc.) +
-        // CLI flag (-L) + NARVAL_LINK_EXTRA variable
-        std::string link_extra = extra_libs;
-        if (link_extra.empty()) {
-            const char* env_extra = std::getenv("NARVAL_LINK_EXTRA");
-            if (env_extra) link_extra = env_extra;
+        std::string nir_link_extra = extra_libs;
+        if (nir_link_extra.empty()) {
+            const char* env_x = std::getenv("NARVAL_LINK_EXTRA");
+            if (env_x) nir_link_extra = env_x;
         }
-        // Add items generated during codegen (ex: narval_py_bridge_X.o)
-        for (const auto& item : context.get_extra_link_items())
-            link_extra += " " + item;
+        for (const auto& item : nir_ctx.get_extra_link_items())
+            nir_link_extra += " " + item;
 
         const auto& ft = nv::get_feature_tracker();
-        std::string link_cmd;
+        std::string nir_link_cmd;
         if (no_std) {
-            // Include the minimal runtime (provides create_int, arithmetic, etc.)
-            // only when the file actually exists; pure-asm programs can skip it.
-            std::string nostd_rt = std::filesystem::exists(runtime_nostd_path)
-                ? runtime_nostd_path + " " : "";
-            link_cmd =
-                std::string("gcc ") + obj_path + " " + nostd_rt + "-o " + bin_path + " " +
-                "-nostdlib -nostartfiles " +
-                std::string(pie_flag) + " " +
-                "-Wl,-e," + no_std_entry + " " +
-                "-Wl,--gc-sections " +
+            std::string nostd_rt = std::filesystem::exists(nir_runtime_nostd_path)
+                ? nir_runtime_nostd_path + " " : "";
+            nir_link_cmd =
+                std::string("gcc ") + obj_path + " " + nostd_rt + "-o " + bin_path +
+                " -nostdlib -nostartfiles " + nir_pie +
+                " -Wl,-e," + no_std_entry +
+                " -Wl,--gc-sections " +
                 (ft.strip ? "-Wl,--strip-all " : "") +
                 (ft.lto   ? "-flto "           : "") +
-                link_extra;
+                nir_link_extra;
         } else {
-            link_cmd =
-                std::string("gcc -g ") + runtime_path + " " +
-                obj_path + " -pthread -ldl -lm -o " + bin_path + " " +
-                "-Wl,-e,main.start " +
-                "-nostartfiles " +
-                std::string(pie_flag) + " " +
-                "-lc -w " +
-                "-Wl,--gc-sections " +
+            nir_link_cmd =
+                std::string("gcc ") + nir_runtime_path + " " +
+                obj_path + " -pthread -ldl -lm -o " + bin_path +
+                " -Wl,-e,_narval_entry -nostartfiles " + nir_pie +
+                " -lc -w -Wl,--gc-sections " +
                 (ft.strip ? "-Wl,--strip-all " : "") +
                 (ft.lto   ? "-flto "           : "") +
-                link_extra;
+                nir_link_extra;
         }
-
-        if (system(link_cmd.c_str()) != 0) {
+        if (system(nir_link_cmd.c_str()) != 0) {
             std::filesystem::remove(obj_path);
-            llvm::errs() << "Failed to link\n";
+            llvm::errs() << "NIR: link failed\n";
             return 1;
         }
-
-        // Remove the main program .o
         std::filesystem::remove(obj_path);
-
-        // Remove temporary .o files generated by codegen (Python bridges, etc.)
-        for (const auto& item : context.get_extra_link_items()) {
-            // Remove only .o files generated by us (names start with narval_py_bridge_)
-            if (item.size() > 2 && item.substr(item.size() - 2) == ".o" &&
-                item.find("narval_py_bridge_") != std::string::npos) {
-                std::filesystem::remove(item);
-            }
-        }
 
         if (build_only) return 0;
 
+        // Run the produced binary
+        int nir_exit = system(("./" + bin_path).c_str());
+        std::filesystem::remove(bin_path);
+        return nir_exit;
     } catch (const std::exception& e) {
         std::cerr << "Error during compilation: " << e.what() << "\n";
         return 1;
     }
-
-    std::string stem = std::filesystem::path(filename).stem().string();
-    std::string bin_path = "narval_tmp_" + stem;
-    int exit_code = system(("./" + bin_path).c_str());
-    std::filesystem::remove(bin_path);
-    return exit_code;
 }
 
 int run_repl_mode() {
