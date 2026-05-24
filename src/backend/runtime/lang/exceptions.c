@@ -166,6 +166,12 @@ const char* nv_extract_string_ptr(Value* v) {
 /*                    LANCAMENTO DE EXCECOES                     */
 /* ============================================================= */
 
+void nv_save_exception(Value* exception) {
+    if (!exception || !exception->obj) return;
+    nv_current_exception = *exception;
+    nv_has_exception = 1;
+}
+
 void nv_throw_exception(Value* exception) {
     if (!exception || !exception->obj) return;
 

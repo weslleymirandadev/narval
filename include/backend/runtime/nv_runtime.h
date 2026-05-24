@@ -92,6 +92,8 @@ void create_assertion_error(Value* out, const char* message);
 
 // Lançar exceções (para uso no throw)
 void nv_throw_exception(Value* exception);
+// Salvar exceção sem longjmp nem exit (para o modo NIR flag-based)
+void nv_save_exception(Value* exception);
 
 // API de exception handler baseada em setjmp/longjmp
 // Empurra um handler e retorna ponteiro para o jmp_buf interno (chamar setjmp nele)
