@@ -28,4 +28,5 @@ public:
 
     Node* clone() const override; // implementado em check_inline_asm_stmt.cpp (key function para vtable)
     void codegen(nv::IRGenerationContext& ctx) override;
+    void nir_codegen(nv::NIRGenerationContext& ctx) override;
 };

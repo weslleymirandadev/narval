@@ -19,4 +19,6 @@ public:
         );
         return node;
     }
+
+    void nir_codegen(nv::NIRGenerationContext& ctx) override;
 };
