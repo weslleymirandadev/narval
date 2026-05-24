@@ -12,6 +12,11 @@ mlir_tablegen(NarvalTypes.h.inc   -gen-typedef-decls --typedefs-dialect=narval -
 mlir_tablegen(NarvalTypes.cpp.inc -gen-typedef-defs  --typedefs-dialect=narval -I ${NIR_TD_DIR})
 add_public_tablegen_target(NarvalTypesIncGen)
 
+set(LLVM_TARGET_DEFINITIONS ${NIR_TD_DIR}/NarvalAttrs.td)
+mlir_tablegen(NarvalAttrs.h.inc   -gen-attrdef-decls --attrdefs-dialect=narval -I ${NIR_TD_DIR})
+mlir_tablegen(NarvalAttrs.cpp.inc -gen-attrdef-defs  --attrdefs-dialect=narval -I ${NIR_TD_DIR})
+add_public_tablegen_target(NarvalAttrsIncGen)
+
 set(LLVM_TARGET_DEFINITIONS ${NIR_TD_DIR}/NarvalOps.td)
 mlir_tablegen(NarvalOps.h.inc   -gen-op-decls --dialect=narval -I ${NIR_TD_DIR})
 mlir_tablegen(NarvalOps.cpp.inc -gen-op-defs  --dialect=narval -I ${NIR_TD_DIR})
@@ -33,6 +38,7 @@ target_compile_definitions(NarvalNirDialect PRIVATE NARVAL_USE_NIR=1)
 add_dependencies(NarvalNirDialect
     NarvalDialectIncGen
     NarvalTypesIncGen
+    NarvalAttrsIncGen
     NarvalOpsIncGen
     NarvalPassesIncGen
 )

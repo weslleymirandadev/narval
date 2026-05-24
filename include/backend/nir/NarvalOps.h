@@ -11,6 +11,7 @@
 
 #include "backend/nir/NarvalDialect.h"
 #include "backend/nir/NarvalTypes.h"
+#include "backend/nir/NarvalAttrs.h"
 
 #define GET_OP_CLASSES
 #include "NarvalOps.h.inc"

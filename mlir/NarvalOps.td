@@ -11,6 +11,7 @@ include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "NarvalDialect.td"
 include "NarvalTypes.td"
+include "NarvalAttrs.td"
 
 class Narval_Op<string mnemonic, list<Trait> traits = []>
     : Op<Narval_Dialect, mnemonic, traits>;
@@ -427,6 +428,297 @@ def Narval_WhileOp : Narval_Op<"while", [RecursiveMemoryEffects]> {
     let regions   = (region SizedRegion<1>:$condition_region,
                             SizedRegion<1>:$body_region);
     let hasCustomAssemblyFormat = 0;
+}
+
+//===----------------------------------------------------------------------===//
+// narval.func — Narval function definition with language metadata
+//
+// Analogous to func.func but carries Narval-specific attributes:
+//   abi         — calling convention ("sysv64", "win64", "C", "")
+//   is_fallible — body contains propagate → return is wrapped in Ok(...)
+//   is_async    — return type is implicitly Future<T>
+//   is_comptime — evaluated at compile time by ComptimeEvaluator
+//   optimize    — optimization hints from @optimize { } blocks
+//
+// Note: CallableOpInterface must be implemented in NarvalOps.cpp.
+//===----------------------------------------------------------------------===//
+
+def Narval_FuncOp : Narval_Op<"func", [
+    IsolatedFromAbove, Symbol
+]> {
+    let summary = "Narval function definition with language metadata";
+    let description = [{
+        Defines a Narval function. Carries metadata not present in func.func:
+        the calling convention (abi), whether the function is fallible
+        (is_fallible — its return value is automatically wrapped in Ok/Err),
+        whether it is async (is_async), and whether it should be evaluated at
+        compile time (is_comptime).
+
+        Lowering: LowerNarvalToStandardPass converts narval.func to func.func,
+        inserting Ok/Err wrapping for fallible functions.
+    }];
+    let arguments = (ins
+        SymbolNameAttr:$sym_name,
+        TypeAttrOf<FunctionType>:$function_type,
+        DefaultValuedAttr<StrAttr, "\"\"">:$abi,
+        UnitAttr:$is_fallible,
+        UnitAttr:$is_async,
+        UnitAttr:$is_comptime,
+        OptionalAttr<Narval_OptimizeAttr>:$optimize
+    );
+    let regions = (region AnyRegion:$body);
+    let hasCustomAssemblyFormat = 0;
+}
+
+//===----------------------------------------------------------------------===//
+// narval.for_in — collection iteration (non-range)
+//
+// Iterates over the elements of an arbitrary !narval.value collection
+// (vector, array, map). The body block receives the current element as
+// its first argument (%elem: !narval.value).
+// Lowers to a call to runtime iteration helpers + scf.for.
+//===----------------------------------------------------------------------===//
+
+def Narval_ForInOp : Narval_Op<"for_in", [RecursiveMemoryEffects, SingleBlock]> {
+    let summary = "Iterate over a Narval collection (vector, array, map)";
+    let description = [{
+        for x in collection { ... }
+
+        The body block has a single block argument (%elem: !narval.value)
+        bound to the current iteration element. Loop-carried values are
+        forwarded via narval.yield.
+
+        Lowers to runtime length + index queries wrapped in scf.for.
+    }];
+    let arguments = (ins
+        Narval_ValueType:$iterable,
+        StrAttr:$loop_var           // loop variable name (debug info)
+    );
+    let results = (outs Variadic<AnyType>:$results);
+    let regions  = (region SizedRegion<1>:$body);
+    let hasCustomAssemblyFormat = 0;
+}
+
+//===----------------------------------------------------------------------===//
+// narval.match — pattern matching
+//
+// Each arm is a separate region whose entry block begins with a pattern-check
+// terminator (narval.yield with i1 condition) followed by the arm body.
+// Lowers to a chain of scf.if ops.
+//===----------------------------------------------------------------------===//
+
+def Narval_MatchOp : Narval_Op<"match", [RecursiveMemoryEffects]> {
+    let summary = "Pattern match over a Narval value";
+    let description = [{
+        match subject {
+            pattern_1 => { ... }
+            pattern_2 => { ... }
+            _ => { ... }
+        }
+
+        Each arm is a region terminated by narval.yield carrying the arm
+        result values. The entry block of each arm begins with a condition
+        check; if the check fails, control falls through to the next arm.
+
+        Lowers to a chain of scf.if + scf.yield.
+    }];
+    let arguments = (ins Narval_ValueType:$subject);
+    let results   = (outs Variadic<AnyType>:$results);
+    let regions   = (region VariadicRegion<AnyRegion>:$arms);
+    let hasCustomAssemblyFormat = 0;
+}
+
+//===----------------------------------------------------------------------===//
+// Error handling ops
+//===----------------------------------------------------------------------===//
+
+// narval.try_region — try/catch/finally.
+// try_body     — the guarded code block
+// catch_arms   — one region per catch clause (variadic)
+// finally_body — always-executed cleanup region
+// Lowers using setjmp/longjmp via the existing runtime mechanism.
+def Narval_TryRegionOp : Narval_Op<"try_region", [RecursiveMemoryEffects]> {
+    let summary = "try / catch / finally region";
+    let description = [{
+        Implements Narval's try/catch/finally using setjmp/longjmp:
+          - try_body runs under a registered exception handler.
+          - On throw, the matching catch_arm region is entered.
+          - finally_body is always executed before leaving the op.
+
+        Lowers to the same setjmp/longjmp pattern as the legacy codegen.
+    }];
+    let results = (outs Variadic<AnyType>:$results);
+    let regions = (region
+        AnyRegion:$try_body,
+        VariadicRegion<AnyRegion>:$catch_arms,
+        AnyRegion:$finally_body
+    );
+    let hasCustomAssemblyFormat = 0;
+}
+
+// narval.throw — longjmp to the nearest active handler.
+def Narval_ThrowOp : Narval_Op<"throw", [Terminator]> {
+    let summary = "Throw a Narval error (longjmp to active handler)";
+    let description = [{
+        Throws an error value, transferring control to the nearest enclosing
+        narval.try_region handler. Implemented via longjmp.
+        Lowers to a call to the runtime throw helper.
+    }];
+    let arguments = (ins Narval_ValueType:$error);
+    let assemblyFormat = "$error attr-dict";
+}
+
+// narval.result_wrap — wrap a value in Ok(...) or Err(...).
+// Used by fallible function lowering to box the return value.
+def Narval_ResultWrapOp : Narval_Op<"result_wrap", [Pure]> {
+    let summary = "Wrap a value as Ok(...) or Err(...)";
+    let description = [{
+        Wraps a value in the Result runtime representation.
+        is_ok = true  → nv_make_ok(value)  (NV_RESULT_OK_BASE)
+        is_ok = false → nv_make_err(value) (NV_RESULT_ERR_BASE)
+
+        Inserted by LowerNarvalToStandardPass for fallible functions.
+    }];
+    let arguments = (ins
+        Narval_ValueType:$value,
+        BoolAttr:$is_ok
+    );
+    let results = (outs Narval_ValueType:$result);
+    let hasCustomAssemblyFormat = 0;
+}
+
+// narval.propagate — re-throw if Err, unwrap if Ok.
+// Implements the `propagate` keyword in fallible functions.
+def Narval_PropagateOp : Narval_Op<"propagate"> {
+    let summary = "Re-throw if Err, unwrap and continue if Ok";
+    let description = [{
+        Checks whether the input is an Err value. If so, re-throws it via
+        longjmp (same mechanism as narval.throw). If Ok, yields the inner
+        value as the result.
+
+        Only valid inside fallible functions (narval.func with is_fallible).
+        Lowers to: check NV_RESULT_ERR_BASE tag → conditional narval.throw.
+    }];
+    let arguments = (ins Narval_ValueType:$value);
+    let results   = (outs Narval_ValueType:$unwrapped);
+    let assemblyFormat = "$value attr-dict `:` type($unwrapped)";
+}
+
+//===----------------------------------------------------------------------===//
+// Remaining tensor ops (Fase 4)
+//===----------------------------------------------------------------------===//
+
+// narval.tensor_map — apply a closure to each element.
+// body region: single block, argument = one element, yield = mapped element.
+// Lowers to linalg.generic with identity indexing maps.
+def Narval_TensorMapOp : Narval_Op<"tensor_map", [Pure]> {
+    let summary = "Apply an element-wise closure to a tensor";
+    let description = [{
+        tensor.map(|x| f(x))
+
+        The mapper region has one block argument (the current element) and
+        must terminate with narval.yield carrying the result element.
+
+        Lowers to linalg.generic with identity indexing maps so that the
+        closure body is inlined into each iteration of the linalg op.
+    }];
+    let arguments = (ins AnyRankedTensor:$input);
+    let results   = (outs AnyRankedTensor:$result);
+    let regions   = (region AnyRegion:$mapper);
+    let hasCustomAssemblyFormat = 0;
+}
+
+// narval.tensor_reduce — reduce a tensor along one dimension.
+// combiner region: two block args (accumulator, element), yield = new acc.
+// Lowers to linalg.reduce.
+def Narval_TensorReduceOp : Narval_Op<"tensor_reduce", [Pure]> {
+    let summary = "Reduce a tensor along one axis";
+    let description = [{
+        tensor.reduce(init, |acc, x| f(acc, x), axis: N)
+
+        The combiner region has two block arguments (accumulator, element)
+        and must terminate with narval.yield carrying the updated accumulator.
+
+        dimension: axis index to reduce (0-based).
+        Lowers to linalg.reduce.
+    }];
+    let arguments = (ins
+        AnyRankedTensor:$input,
+        AnyType:$init,
+        I64Attr:$dimension
+    );
+    let results = (outs AnyType:$result);
+    let regions = (region AnyRegion:$combiner);
+    let hasCustomAssemblyFormat = 0;
+}
+
+// narval.tensor_slice — extract a slice/view from a tensor.
+// offsets, sizes, strides are Index SSA values (one per dimension).
+// Lowers to tensor.extract_slice.
+def Narval_TensorSliceOp : Narval_Op<"tensor_slice", [Pure]> {
+    let summary = "Extract a slice or view from a tensor";
+    let description = [{
+        Creates a view of a sub-region of a tensor without copying data.
+        offsets, sizes, and strides are Index-typed SSA values (one per
+        source dimension). Lowers to tensor.extract_slice.
+    }];
+    let arguments = (ins
+        AnyRankedTensor:$source,
+        Variadic<Index>:$offsets,
+        Variadic<Index>:$sizes,
+        Variadic<Index>:$strides
+    );
+    let results = (outs AnyRankedTensor:$result);
+    let hasCustomAssemblyFormat = 0;
+}
+
+//===----------------------------------------------------------------------===//
+// Object model — narval.new
+//===----------------------------------------------------------------------===//
+
+// narval.new — instantiate a Narval class.
+// Calls nv_alloc_object + __ctor_ClassName(this, ctor_args...).
+// Result type is !narval.value (the NVMap-backed instance).
+def Narval_NewOp : Narval_Op<"new"> {
+    let summary = "Instantiate a Narval class";
+    let description = [{
+        Allocates and initializes a new class instance by calling:
+          1. nv_alloc_object() to create the NVMap-backed !narval.value.
+          2. __ctor_ClassName(this, ctor_args...) to run the constructor.
+
+        Lowers in LowerNarvalToStandardPass to the two runtime calls above.
+    }];
+    let arguments = (ins
+        StrAttr:$class_name,
+        Variadic<Narval_ValueType>:$ctor_args
+    );
+    let results = (outs Narval_ValueType:$instance);
+    let hasCustomAssemblyFormat = 0;
+}
+
+//===----------------------------------------------------------------------===//
+// Comptime — narval.comptime_call
+//===----------------------------------------------------------------------===//
+
+// narval.comptime_call — compile-time function invocation.
+// Always folded to narval.comptime_const during canonicalization
+// (the result is already known at IR-build time).
+def Narval_ComptimeCallOp : Narval_Op<"comptime_call", [Pure]> {
+    let summary = "Compile-time function call (folded to comptime_const)";
+    let description = [{
+        Represents a call to a comptime function whose result is already
+        evaluated by the ComptimeEvaluator. The canonicalizer folds this op
+        into narval.comptime_const so it disappears before LLVM lowering.
+    }];
+    let arguments = (ins
+        FlatSymbolRefAttr:$callee,
+        Variadic<AnyType>:$args
+    );
+    let results = (outs Variadic<AnyType>:$results);
+    let hasCanonicalizer = 1;
+    let assemblyFormat = [{
+        $callee `(` $args `)` attr-dict `:` functional-type($args, results)
+    }];
 }
 
 #endif // NARVAL_OPS_TD
