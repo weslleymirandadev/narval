@@ -310,49 +310,6 @@ std::shared_ptr<nv::Type>& nv::Checker::gettyptr(std::string ty, Node* error_nod
         }
     }
 
-    // Tipo função estilo posicional: (type1, type2): return_type
-    // Usado em anotações de decorators e callbacks: fn: (int): int
-    if (ty.size() >= 4 && ty.front() == '(') {
-        // Find the matching ')': may contain nested parens (tuples/generics).
-        int depth = 0;
-        size_t close_paren = std::string::npos;
-        for (size_t i = 0; i < ty.size(); i++) {
-            if (ty[i] == '(') depth++;
-            else if (ty[i] == ')') { depth--; if (depth == 0) { close_paren = i; break; } }
-        }
-        if (close_paren != std::string::npos &&
-            close_paren + 1 < ty.size() && ty[close_paren + 1] == ':') {
-            // Extract param types and return type.
-            std::string params_str = ty.substr(1, close_paren - 1);
-            std::string ret_str    = ty.substr(close_paren + 2); // skip ': '
-            if (!ret_str.empty() && ret_str.front() == ' ') ret_str = ret_str.substr(1);
-
-            std::vector<std::shared_ptr<nv::Type>> param_types;
-            if (!params_str.empty()) {
-                // Split on top-level commas.
-                int d = 0; std::string cur;
-                for (char c : params_str) {
-                    if (c == '<' || c == '(') d++;
-                    else if (c == '>' || c == ')') d--;
-                    if (c == ',' && d == 0) {
-                        std::string t = cur;
-                        size_t s = t.find_first_not_of(' '), e = t.find_last_not_of(' ');
-                        if (s != std::string::npos) param_types.push_back(gettyptr(t.substr(s, e-s+1)));
-                        cur.clear();
-                    } else { cur += c; }
-                }
-                if (!cur.empty()) {
-                    size_t s = cur.find_first_not_of(' '), e = cur.find_last_not_of(' ');
-                    if (s != std::string::npos) param_types.push_back(gettyptr(cur.substr(s, e-s+1)));
-                }
-            }
-            auto ret_type = gettyptr(ret_str);
-            auto fn_type = std::make_shared<nv::Function>(param_types, ret_type);
-            types[ty] = fn_type;
-            return types[ty];
-        }
-    }
-
     // Tipo função: |param1: type1, param2: type2|: return_type
     if (nv::is_function_type(ty)) {
         try {
@@ -583,7 +540,6 @@ std::shared_ptr<nv::Type> nv::Checker::infer_expr(Node* node) {
     switch (node->kind) {
         case NodeType::NumericLiteral:
         case NodeType::StringLiteral:
-        case NodeType::CharLiteral:
         case NodeType::BooleanLiteral:
         case NodeType::Identifier: {
             auto& result = check_primary_expr(this, node);

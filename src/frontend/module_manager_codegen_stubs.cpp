@@ -5,7 +5,6 @@
 #include "frontend/ast/expressions/binary_expr_node.hpp"
 #include "frontend/ast/expressions/boolean_literal_node.hpp"
 #include "frontend/ast/expressions/call_expr_node.hpp"
-#include "frontend/ast/expressions/char_literal_node.hpp"
 #include "frontend/ast/expressions/closure_expr_node.hpp"
 #include "frontend/ast/expressions/conditional_expr_node.hpp"
 #include "frontend/ast/expressions/decrement_expr_node.hpp"
@@ -66,7 +65,6 @@ FRONTEND_ONLY_CODEGEN_STUB(BinaryExprNode)
 FRONTEND_ONLY_CODEGEN_STUB(BooleanLiteralNode)
 FRONTEND_ONLY_CODEGEN_STUB(BreakStmtNode)
 FRONTEND_ONLY_CODEGEN_STUB(CallExprNode)
-FRONTEND_ONLY_CODEGEN_STUB(CharLiteralNode)
 FRONTEND_ONLY_CODEGEN_STUB(ClassStmtNode)
 FRONTEND_ONLY_CODEGEN_STUB(ClosureExprNode)
 FRONTEND_ONLY_CODEGEN_STUB(ConditionalExprNode)

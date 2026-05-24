@@ -5,7 +5,6 @@
 #include <memory>
 #include "expressions/identifier_node.hpp"
 #include "expressions/numeric_literal_node.hpp"
-#include "expressions/char_literal_node.hpp"
 #include "expressions/string_literal_node.hpp"
 #include "expressions/binary_expr_node.hpp"
 #include "expressions/assignment_expr_node.hpp"
@@ -103,11 +102,6 @@ public:
             case NodeType::NumericLiteral: {
                 const auto* numLit = static_cast<const NumericLiteralNode*>(stmt);
                 std::cout << indent << "NumericLiteral: " << numLit->value << "\n";
-                break;
-            }
-            case NodeType::CharLiteral: {
-                const auto* charLit = static_cast<const CharLiteralNode*>(stmt);
-                std::cout << indent << "CharLiteral: '" << charLit->value << "'\n";
                 break;
             }
             case NodeType::StringLiteral: {

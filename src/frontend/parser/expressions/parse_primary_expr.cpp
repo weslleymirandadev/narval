@@ -10,7 +10,6 @@
 #include "frontend/parser/expressions/parse_closure_expr.hpp"
 #include "frontend/parser/expressions/parse_await_expr.hpp"
 #include "frontend/ast/expressions/binary_expr_node.hpp"
-#include "frontend/ast/expressions/char_literal_node.hpp"
 #include <cctype>
 
 std::unique_ptr<Node> parse_primary_expr(Parser* parser) {
@@ -72,7 +71,8 @@ std::unique_ptr<Node> parse_primary_expr(Parser* parser) {
         case TokenType::STRING: {
             Token strToken = parser->consume_token();
             if (strToken.delimiter == '\'') {
-                auto node = std::make_unique<CharLiteralNode>(strToken.lexeme[0]);
+                // char literals ('a') are just 1-character strings
+                auto node = std::make_unique<StringLiteralNode>(strToken.lexeme.substr(0, 1));
                 node->position = std::move(pos);
                 expr = std::move(node);
                 break;
