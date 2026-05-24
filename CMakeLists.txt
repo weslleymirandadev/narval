@@ -6,6 +6,10 @@ include(cmake/NarvalSources.cmake)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+
 set(LIB_DIR ${CMAKE_CURRENT_BINARY_DIR}/lib)
 file(MAKE_DIRECTORY ${LIB_DIR})
 set(LIB_DIR ${LIB_DIR} CACHE INTERNAL "Pasta de arquivos gerados")
@@ -49,8 +53,9 @@ add_library(NarvalAllCommon INTERFACE)
 target_link_libraries(NarvalAllCommon INTERFACE NarvalProjectIncludes NarvalCommon m)
 
 function(narval_add_test target_name)
-    add_executable(${target_name} ${ARGN})
-    target_link_libraries(${target_name} PRIVATE NarvalAllCommon NarvalLexer NarvalParser NarvalChecker NarvalCodegen NarvalRuntimeObjs)
+    add_executable(${target_name} ${ARGN}
+        ${PROJECT_SOURCE_DIR}/src/frontend/module_manager_codegen_stubs.cpp)
+    target_link_libraries(${target_name} PRIVATE NarvalAllCommon NarvalLexer NarvalParser NarvalChecker NarvalRuntimeObjs NarvalNirDialect)
     target_include_directories(${target_name} PRIVATE ${PROJECT_SOURCE_DIR}/include)
     target_link_options(${target_name} PRIVATE -W -fPIE)
 endfunction()
@@ -60,49 +65,32 @@ add_subdirectory(src/frontend/parser)
 add_subdirectory(src/frontend/checker)
 add_subdirectory(src/frontend/interactive)
 add_subdirectory(src/backend/runtime)
-add_subdirectory(src/backend/codegen)
 add_subdirectory(src/lsp)
 
-option(NARVAL_USE_NIR "Enable MLIR-based NIR pipeline (narval dialect + lowering)" OFF)
+find_package(MLIR REQUIRED CONFIG HINTS /usr/local/lib/cmake/mlir)
+message(STATUS "MLIR found: ${MLIR_DIR}")
+list(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
 
-if(NARVAL_USE_NIR)
-    find_package(MLIR REQUIRED CONFIG HINTS /usr/local/lib/cmake/mlir)
-    message(STATUS "MLIR found: ${MLIR_DIR}")
-    list(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
-
-    if(NOT COMMAND get_subproject_title)
-        macro(get_subproject_title result)
-            set(${result} "Narval")
-        endmacro()
-    endif()
-
-    include(AddMLIR)
-    include(HandleLLVMOptions)
-
-    include_directories(${MLIR_INCLUDE_DIRS})
-
-    add_subdirectory(src/backend/nir)
+if(NOT COMMAND get_subproject_title)
+    macro(get_subproject_title result)
+        set(${result} "Narval")
+    endmacro()
 endif()
+
+include(AddMLIR)
+include(HandleLLVMOptions)
+
+include_directories(${MLIR_INCLUDE_DIRS})
+
+add_subdirectory(src/backend/nir)
 
 add_executable(Narval src/main.cpp src/frontend/module_manager.cpp)
 set_target_properties(Narval PROPERTIES OUTPUT_NAME narval)
 target_link_options(Narval PRIVATE -W -fPIE)
 target_include_directories(Narval PRIVATE ${PROJECT_SOURCE_DIR}/include)
-target_link_libraries(Narval PRIVATE NarvalAllCommon NarvalLexer NarvalParser NarvalChecker NarvalCodegen NarvalInteractive NarvalRuntimeObjs NarvalRuntimeShared)
-
-if(NARVAL_USE_NIR)
-    target_link_libraries(Narval PRIVATE NarvalNirDialect)
-    target_compile_definitions(Narval PRIVATE NARVAL_USE_NIR=1)
-    target_include_directories(Narval PRIVATE ${CMAKE_BINARY_DIR}/src/backend/nir)
-
-    target_compile_definitions(NarvalCodegen PRIVATE NARVAL_USE_NIR=1)
-    target_link_libraries(NarvalCodegen PRIVATE NarvalNirDialect)
-    target_include_directories(NarvalCodegen PRIVATE
-        ${MLIR_INCLUDE_DIRS}
-        ${LLVM_INCLUDE_DIRS}
-        ${CMAKE_BINARY_DIR}/src/backend/nir
-    )
-endif()
+target_link_libraries(Narval PRIVATE NarvalAllCommon NarvalLexer NarvalParser NarvalChecker NarvalInteractive NarvalRuntimeObjs NarvalRuntimeShared NarvalNirDialect)
+target_compile_definitions(Narval PRIVATE NARVAL_USE_NIR=1)
+target_include_directories(Narval PRIVATE ${CMAKE_BINARY_DIR}/src/backend/nir)
 
 add_dependencies(Narval NarvalRuntimeO NarvalRuntimeNostdO)
 if(NARVAL_BUILD_LSP)
