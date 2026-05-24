@@ -52,6 +52,9 @@ namespace nv {
             int or_block_depth = 0;
             // Rastrear se a função atual é falível (usa propagate → retorna Result<T>)
             bool in_fallible_function = false;
+            // Profundidade de aninhamento de funções (0 = escopo de módulo).
+            // Usado para rejeitar closures fora de um corpo de função.
+            int function_depth = 0;
             // Quando não-nulo, o módulo declarou [no_std] — usado para reportar violações.
             Node* no_std_attr_node = nullptr;
             // Símbolos registrados como namespaces Python dinâmicos (from extern "Python" import ...).

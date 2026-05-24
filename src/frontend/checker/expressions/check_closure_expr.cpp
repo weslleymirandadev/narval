@@ -181,6 +181,11 @@ std::shared_ptr<Type> check_closure_expr(ClosureExprNode* node, Checker& ch) {
         return node->cached_type;
     }
 
+    if (ch.function_depth == 0) {
+        ch.error(node, "closures cannot appear at module scope — use 'def' for top-level functions");
+        return ch.gettyptr("None");
+    }
+
     // Registrar type params explícitos (<T, E>|x: T|: E { })
     // Salvar valores anteriores para restaurar ao fim — evita vazamento global.
     std::vector<int> explicit_tp_ids;

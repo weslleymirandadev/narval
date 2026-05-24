@@ -53,6 +53,7 @@ std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
     }
 
     // Criar novo escopo para a função
+    ch->function_depth++;
     ch->push_scope();
     
     // Processar parâmetros e adicionar ao escopo
@@ -66,18 +67,20 @@ std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
         // O map tem apenas uma entrada: nome -> tipo
         if (param.parameter.size() != 1) {
             ch->error(node, "Invalid parameter format");
+            ch->function_depth--;
             ch->pop_scope();
             return ch->gettyptr("None");
         }
-        
+
         // Extrair nome e tipo do map
         for (const auto& [key, value] : param.parameter) {
             param_name = key;  // A chave é o nome do parâmetro
             param_type_str = value;  // O valor é o tipo
         }
-        
+
         if (param_name.empty()) {
             ch->error(node, "Parameter name is required");
+            ch->function_depth--;
             ch->pop_scope();
             return ch->gettyptr("None");
         }
@@ -238,6 +241,7 @@ std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
         ch->function_default_values[function_stmt->name] = std::move(default_values);
     }
     
+    ch->function_depth--;
     ch->pop_scope();
     ch->scope->put_key(function_stmt->name, generalized_func, false);
 
