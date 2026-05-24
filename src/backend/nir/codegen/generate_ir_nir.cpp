@@ -1,12 +1,11 @@
-#ifdef NARVAL_USE_NIR
-
-#include "backend/codegen/generate_ir.hpp"
 #include "backend/nir/NIRGenerationContext.hpp"
 #include "frontend/ast/ast.hpp"
 #include "frontend/ast/program.hpp"
 #include "frontend/ast/statements/module_attr_node.hpp"
 
-void generate_ir_nir(std::unique_ptr<Node> node, nv::NIRGenerationContext& ctx) {
+namespace nv {
+
+void generate_ir_nir(std::unique_ptr<Node> node, NIRGenerationContext& ctx) {
     if (!node) return;
 
     Node* raw = node.release();
@@ -31,4 +30,4 @@ void generate_ir_nir(std::unique_ptr<Node> node, nv::NIRGenerationContext& ctx) 
     ctx.pop_scope();
 }
 
-#endif // NARVAL_USE_NIR
+} // namespace nv
