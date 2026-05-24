@@ -3,6 +3,9 @@ option(BUILD_NOTEBOOK_MODE "Build Jupyter-like notebook support" ON)
 option(ENABLE_INTERACTIVE_DEBUG "Enable debug features for interactive mode" OFF)
 
 narval_collect_sources(INTERACTIVE_SOURCES)
+list(APPEND INTERACTIVE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/compilation_engine_nir_stub.cpp
+)
 
 add_library(NarvalInteractive ${INTERACTIVE_SOURCES})
 target_include_directories(NarvalInteractive PRIVATE ${PROJECT_SOURCE_DIR}/include)
@@ -70,9 +73,12 @@ endif()
 target_link_libraries(NarvalInteractive PRIVATE
     NarvalAllCommon
     NarvalChecker
-    NarvalCodegen
+    NarvalNirDialect
     ${LLVM_LIBS}
     ${LLVM_SYS_LIBS}
+)
+target_sources(NarvalInteractive PRIVATE
+    ${PROJECT_SOURCE_DIR}/src/frontend/module_manager_codegen_stubs.cpp
 )
 
 if(BUILD_REPL_MODE)
@@ -110,6 +116,7 @@ target_compile_definitions(NarvalInteractive PRIVATE
     INTERACTIVE_MODE=1
     JIT_OPTIMIZATION_LEVEL=1
     FAST_EXPRESSION_EVAL=1
+    NARVAL_USE_NIR=1
 )
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
