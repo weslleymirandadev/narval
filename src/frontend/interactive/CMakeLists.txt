@@ -77,9 +77,6 @@ target_link_libraries(NarvalInteractive PRIVATE
     ${LLVM_LIBS}
     ${LLVM_SYS_LIBS}
 )
-target_sources(NarvalInteractive PRIVATE
-    ${PROJECT_SOURCE_DIR}/src/frontend/module_manager_codegen_stubs.cpp
-)
 
 if(BUILD_REPL_MODE)
     target_compile_definitions(NarvalInteractive PRIVATE ENABLE_REPL_MODE)

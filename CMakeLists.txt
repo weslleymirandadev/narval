@@ -53,8 +53,7 @@ add_library(NarvalAllCommon INTERFACE)
 target_link_libraries(NarvalAllCommon INTERFACE NarvalProjectIncludes NarvalCommon m)
 
 function(narval_add_test target_name)
-    add_executable(${target_name} ${ARGN}
-        ${PROJECT_SOURCE_DIR}/src/frontend/module_manager_codegen_stubs.cpp)
+    add_executable(${target_name} ${ARGN})
     target_link_libraries(${target_name} PRIVATE NarvalAllCommon NarvalLexer NarvalParser NarvalChecker NarvalRuntimeObjs NarvalNirDialect)
     target_include_directories(${target_name} PRIVATE ${PROJECT_SOURCE_DIR}/include)
     target_link_options(${target_name} PRIVATE -W -fPIE)

@@ -98,17 +98,13 @@ public:
     virtual ~Node() = default;
     virtual Node* clone() const = 0;
 
-    // Primary codegen: emits LLVM IR directly (current path).
-    virtual void codegen(nv::IRGenerationContext& ctx) = 0;
-
+    virtual void codegen(nv::IRGenerationContext&) {}
     virtual void nir_codegen(nv::NIRGenerationContext& ctx) {}
 };
 
 class Stmt : public Node {
 public:
     explicit Stmt(NodeType k) : Node(k) {}
-    // Statements não retornam valores; geração é por efeito no contexto
-    virtual void codegen(nv::IRGenerationContext& ctx) override {}
 };
 
 using CodeBlock = NvList<std::unique_ptr<Stmt>>;

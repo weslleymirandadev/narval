@@ -69,7 +69,7 @@ struct LowerGPULaunch : public OpConversionPattern<GPULaunchOp> {
                                   ConversionPatternRewriter& r) const override {
         auto sym = SymbolRefAttr::get(r.getContext(), "gpu_module",
             {FlatSymbolRefAttr::get(r.getContext(), op.getKernel())});
-        r.create<gpu::LaunchFuncOp>(op.getLoc(), sym,
+        gpu::LaunchFuncOp::create(r, op.getLoc(), sym,
             gpu::KernelDim3{adaptor.getGridX(),  adaptor.getGridY(),  adaptor.getGridZ()},
             gpu::KernelDim3{adaptor.getBlockX(), adaptor.getBlockY(), adaptor.getBlockZ()},
             /*dynamicSharedMemorySize=*/nullptr,

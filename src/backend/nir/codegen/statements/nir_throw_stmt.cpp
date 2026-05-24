@@ -3,7 +3,6 @@
 
 void ThrowStatementNode::nir_codegen(nv::NIRGenerationContext& ctx) {
     auto loc = ctx.loc(position.get());
-    auto vt  = ctx.get_narval_value_type();
 
     mlir::Value exc;
     if (exception) {

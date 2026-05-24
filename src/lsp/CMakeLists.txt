@@ -56,7 +56,6 @@ endif()
 function(narval_add_lsp_target target_name)
     add_executable(${target_name}
         ${CMAKE_CURRENT_SOURCE_DIR}/narval-lsp.cpp
-        ${PROJECT_SOURCE_DIR}/src/frontend/module_manager_codegen_stubs.cpp
     )
     set_target_properties(${target_name} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
