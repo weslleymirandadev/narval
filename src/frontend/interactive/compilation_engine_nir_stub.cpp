@@ -22,26 +22,20 @@ namespace nv {
 CompilationEngine::CompilationEngine(REPLState* s, ModuleManager& mm)
     : state(s), module_manager(mm) {}
 
-// Build and JIT-execute a snippet of Narval source code via the NIR pipeline.
-// Does not call _exit() so the host REPL process keeps running.
+
 bool CompilationEngine::compile_and_execute(const std::string& input,
                                              const std::string& source_name) {
     try {
-        // ── 1. Lex ──────────────────────────────────────────────────────────
         Lexer lexer(input, source_name);
         auto tokens = lexer.tokenize();
 
-        // ── 2. Parse ─────────────────────────────────────────────────────────
-        Parser parser(std::move(tokens));
-        auto ast = parser.parse();
+        Parser parser;
+        auto ast = parser.produce_ast(tokens);
         if (!ast) return false;
 
-        // ── 3. Type-check ────────────────────────────────────────────────────
         nv::Checker checker;
         checker.set_source_file(source_name);
         if (state && state->checker) {
-            // Carry forward the known scope from the persistent REPL checker
-            // so previously-defined names resolve correctly.
             checker.scope = state->checker->scope;
         }
         checker.set_emit_diagnostics(true);
@@ -55,11 +49,9 @@ bool CompilationEngine::compile_and_execute(const std::string& input,
             return false;
         }
 
-        // Persist the updated scope back so the next line sees new names.
         if (state && state->checker)
             state->checker->scope = checker.scope;
 
-        // ── 4. Build NIR module ───────────────────────────────────────────────
         mlir::MLIRContext mlir_ctx;
         nv::NIRGenerationContext nir_ctx(mlir_ctx, source_name);
         nir_ctx.set_type_checker(&checker);
@@ -68,23 +60,19 @@ bool CompilationEngine::compile_and_execute(const std::string& input,
         auto  ul = b.getUnknownLoc();
         auto  void_fn_ty = mlir::FunctionType::get(&mlir_ctx, {}, {});
 
-        // main.start — JIT entry point (no _exit call; returns normally)
         auto main_fn = mlir::func::FuncOp::create(b, ul, "main.start", void_fn_ty);
         main_fn.setPublic();
         auto* entry_blk = main_fn.addEntryBlock();
         b.setInsertionPointToStart(entry_blk);
         nir_ctx.set_current_func(main_fn);
 
-        // ── 5. Generate NIR ───────────────────────────────────────────────────
         nv::generate_ir_nir(std::move(ast), nir_ctx);
 
-        // Ensure the entry block is terminated
         if (entry_blk->empty() ||
             !entry_blk->back().hasTrait<mlir::OpTrait::IsTerminator>()) {
             mlir::func::ReturnOp::create(b, ul);
         }
 
-        // ── 6. JIT-execute via LLJIT ──────────────────────────────────────────
         auto result = nir_ctx.jit_execute();
         if (!result) {
             llvm::errs() << "NIR JIT error: "
