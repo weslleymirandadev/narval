@@ -213,7 +213,6 @@ def Narval_CallMethodOp : Narval_Op<"call_method"> {
         Variadic<Narval_ValueType>:$args
     );
     let results = (outs Narval_ValueType:$result);
-    // Use generic assembly form — custom printer/parser deferred to Phase 2.
     let hasCustomAssemblyFormat = 0;
 }
 
@@ -320,7 +319,6 @@ def Narval_GPULaunchOp : Narval_Op<"gpu_launch"> {
         Index:$block_x, Index:$block_y, Index:$block_z,
         Variadic<AnyType>:$kernel_operands
     );
-    // Generic form for Phase 1; custom printer deferred.
     let hasCustomAssemblyFormat = 0;
 }
 
@@ -337,10 +335,6 @@ def Narval_GPUBlockIdOp : Narval_Op<"gpu_block_id", [Pure]> {
     let results = (outs Index:$result);
     let assemblyFormat = "$dimension attr-dict";
 }
-
-//===----------------------------------------------------------------------===//
-// Phase 2 — Control Flow ops
-//===----------------------------------------------------------------------===//
 
 // narval.yield — terminator for control-flow regions (if / for_range / while)
 // Analogous to scf.yield. Function returns use narval.return instead.

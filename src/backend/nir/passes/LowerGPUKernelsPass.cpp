@@ -124,7 +124,6 @@ struct LowerNarvalGPUPassImpl
         ModuleOp module = getOperation();
         MLIRContext* ctx = &getContext();
 
-        // Phase A: lower narval.gpu_kernel ops.
         // Collect first (erasing modifies the op list).
         // Use getOps<> on the module body (not walk — safe with Threading::DISABLED).
         SmallVector<GPUKernelOp> kernels;
@@ -133,7 +132,6 @@ struct LowerNarvalGPUPassImpl
         for (GPUKernelOp k : kernels)
             lower_gpu_kernel(k, module);
 
-        // Phase B: dialect conversion for launch/thread_id/block_id.
         TypeConverter tc;
         tc.addConversion([](Type t) { return t; });
 

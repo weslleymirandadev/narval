@@ -26,7 +26,6 @@ def Narval_ValueType : Narval_Type<"Value", "value"> {
 
 // !narval.ref<T> — immutable borrowed reference
 
-// Phase 1: non-parametric. Parametric <T> version comes in Phase 3.
 // Both types lower to ptr (same as !narval.value) for now.
 def Narval_RefType : Narval_Type<"Ref", "ref"> {
     let summary = "Immutable borrowed reference (Phase 1: ptr alias)";

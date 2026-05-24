@@ -11,7 +11,6 @@
 // decorators are recorded in the module as private symbols so the lowering
 // passes can query them.
 //
-// Phase 2 will add a proper decorator table to NIRGenerationContext.
 void DecoratorStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
     // Nothing to emit for unknown decorators yet – they will be handled
     // once the decorator table is added to NIRGenerationContext.

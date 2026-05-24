@@ -19,11 +19,7 @@ def NarvalCanonicalizationPass : Pass<"narval-canonicalize", "::mlir::ModuleOp">
     let constructor = "nv::createNarvalCanonicalizationPass()";
 }
 
-//===----------------------------------------------------------------------===//
-// Lowering: Narval → Standard Dialects
-//===----------------------------------------------------------------------===//
 
-// Phase 3: ownership analysis — inserts narval.drop at last-use points
 def NarvalOwnershipPass : Pass<"narval-ownership", "::mlir::ModuleOp"> {
     let summary = "Insert narval.drop at last-use points of owned values";
     let description = [{
@@ -36,7 +32,6 @@ def NarvalOwnershipPass : Pass<"narval-ownership", "::mlir::ModuleOp"> {
     let constructor = "nv::createNarvalOwnershipPass()";
 }
 
-// Phase 2: control-flow lowering (must run before lower-narval-to-std)
 def LowerNarvalControlFlowPass : Pass<"lower-narval-cf", "::mlir::ModuleOp"> {
     let summary = "Lower narval control-flow ops to scf/affine dialects";
     let description = [{
@@ -49,7 +44,6 @@ def LowerNarvalControlFlowPass : Pass<"lower-narval-cf", "::mlir::ModuleOp"> {
     }];
     let dependentDialects = [
         "::mlir::scf::SCFDialect"
-        // affine::AffineDialect added in Phase 4 (affine loop optimizations)
     ];
     let constructor = "nv::createLowerNarvalControlFlowPass()";
 }
