@@ -148,18 +148,28 @@ std::string parse_type(Parser* parser) {
         type_str = "[" + num.lexeme + "]" + elem;
     }
     else if (curr.type == TokenType::OPAREN) {
-        // Tuple: (int, str, int)
+        // Could be:
+        //   tuple type : (int, str)
+        //   function type: (int, str): bool  — disambiguated by the ':' after ')'
         parser->consume_token(); // (
         std::vector<std::string> elems;
         bool first = true;
-        while (parser->current_token().type != TokenType::CPAREN) {
-            if (!first) parser->expect(TokenType::COMMA, "Expected ',' in tuple.");
+        while (parser->current_token().type != TokenType::CPAREN &&
+               parser->current_token().type != TokenType::EOF_TOKEN) {
+            if (!first) parser->expect(TokenType::COMMA, "Expected ',' in type list.");
             first = false;
-            std::string elem_type = parse_type(parser);
-            elems.push_back(elem_type);
+            elems.push_back(parse_type(parser));
         }
-        parser->expect(TokenType::CPAREN, "Expected ')' to close tuple.");
-        type_str = "(" + join(elems, ", ") + ")";
+        parser->expect(TokenType::CPAREN, "Expected ')' to close type.");
+
+        // '(params): ret' → function type
+        if (parser->current_token().type == TokenType::COLON) {
+            parser->consume_token(); // ':'
+            std::string ret = parse_type(parser);
+            type_str = "(" + join(elems, ", ") + "): " + ret;
+        } else {
+            type_str = "(" + join(elems, ", ") + ")";
+        }
     }
     else {
         parser->error("Invalid type start: expected identifier, '[', or '('");
