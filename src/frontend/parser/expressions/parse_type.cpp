@@ -148,31 +148,48 @@ std::string parse_type(Parser* parser) {
         type_str = "[" + num.lexeme + "]" + elem;
     }
     else if (curr.type == TokenType::OPAREN) {
-        // Could be:
-        //   tuple type : (int, str)
-        //   function type: (int, str): bool  — disambiguated by the ':' after ')'
+        // Tuple type: (int, str)
         parser->consume_token(); // (
         std::vector<std::string> elems;
         bool first = true;
         while (parser->current_token().type != TokenType::CPAREN &&
                parser->current_token().type != TokenType::EOF_TOKEN) {
-            if (!first) parser->expect(TokenType::COMMA, "Expected ',' in type list.");
+            if (!first) parser->expect(TokenType::COMMA, "Expected ',' in tuple type.");
             first = false;
             elems.push_back(parse_type(parser));
         }
-        parser->expect(TokenType::CPAREN, "Expected ')' to close type.");
-
-        // '(params): ret' → function type
-        if (parser->current_token().type == TokenType::COLON) {
-            parser->consume_token(); // ':'
-            std::string ret = parse_type(parser);
-            type_str = "(" + join(elems, ", ") + "): " + ret;
-        } else {
-            type_str = "(" + join(elems, ", ") + ")";
+        parser->expect(TokenType::CPAREN, "Expected ')' to close tuple type.");
+        type_str = "(" + join(elems, ", ") + ")";
+    }
+    else if (curr.type == TokenType::BITWISE_OR) {
+        // Function type: |name: type, ...|: ret
+        // Use the same string format as create_function_type_string so the checker can parse it.
+        parser->consume_token(); // '|'
+        std::vector<std::pair<std::string, std::string>> params;
+        while (parser->current_token().type != TokenType::BITWISE_OR &&
+               parser->current_token().type != TokenType::EOF_TOKEN) {
+            std::string pname = parser->expect(TokenType::IDENTIFIER, "Expected parameter name in function type").lexeme;
+            parser->expect(TokenType::COLON, "Expected ':' after parameter name in function type");
+            std::string ptype = parse_type(parser);
+            params.emplace_back(pname, ptype);
+            if (parser->current_token().type == TokenType::COMMA)
+                parser->consume_token();
+            else if (parser->current_token().type != TokenType::BITWISE_OR)
+                break;
         }
+        parser->expect(TokenType::BITWISE_OR, "Expected '|' to close function type parameters");
+        parser->expect(TokenType::COLON, "Expected ':' after '|' in function type");
+        std::string ret = parse_type(parser);
+        std::string result = "|";
+        for (size_t i = 0; i < params.size(); ++i) {
+            result += params[i].first + ":" + params[i].second;
+            if (i + 1 < params.size()) result += ", ";
+        }
+        result += "|:" + ret;
+        type_str = result;
     }
     else {
-        parser->error("Invalid type start: expected identifier, '[', or '('");
+        parser->error("Invalid type start: expected identifier, '[', '(', or '|name: type|: ret' for function types");
     }
 
     return type_str;
