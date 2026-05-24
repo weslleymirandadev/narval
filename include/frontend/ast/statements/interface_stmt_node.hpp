@@ -26,5 +26,4 @@ public:
         return node;
     }
 
-    void codegen(nv::IRGenerationContext&) override {}
 };

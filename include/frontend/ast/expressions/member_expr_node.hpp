@@ -22,7 +22,6 @@ public:
         return node;
     }
 
-    void codegen(nv::IRGenerationContext& ctx) override;
     void nir_codegen(nv::NIRGenerationContext& ctx) override;
 };
 

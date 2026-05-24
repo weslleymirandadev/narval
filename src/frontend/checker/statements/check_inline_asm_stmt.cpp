@@ -2,10 +2,6 @@
 #include "frontend/ast/statements/inline_asm_stmt_node.hpp"
 #include "frontend/checker/type.hpp"
 
-// Stub weak: permite linkar sem libgenerator (ex: narval-lsp).
-// A implementação real em generate_inline_asm_stmt.cpp sobrescreve este símbolo.
-__attribute__((weak)) void InlineAsmStmtNode::codegen(nv::IRGenerationContext&) {}
-
 // out-of-line clone — key function: a vtable de InlineAsmStmtNode fica neste TU (libchecker)
 Node* InlineAsmStmtNode::clone() const {
     auto* n = new InlineAsmStmtNode();

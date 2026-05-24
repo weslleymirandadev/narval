@@ -4,7 +4,6 @@
 #include <string>
 #include <memory>
 
-namespace nv { class IRGenerationContext; }
 
 struct AttrArg {
     std::string value;
@@ -42,6 +41,5 @@ struct AttributeStmtNode : public Stmt {
         return nd;
     }
 
-    void codegen(nv::IRGenerationContext& ctx) override;
     void nir_codegen(nv::NIRGenerationContext& ctx) override;
 };

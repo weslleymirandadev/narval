@@ -5,7 +5,6 @@
 
 // Forward declarations to avoid circular dependencies
 namespace llvm { class Value; }
-namespace nv { class IRGenerationContext; }
 namespace nv { class NIRGenerationContext; }
 
 template <typename T>
@@ -98,7 +97,6 @@ public:
     virtual ~Node() = default;
     virtual Node* clone() const = 0;
 
-    virtual void codegen(nv::IRGenerationContext&) {}
     virtual void nir_codegen(nv::NIRGenerationContext& ctx) {}
 };
 

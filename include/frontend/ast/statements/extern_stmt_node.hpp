@@ -5,7 +5,6 @@
 #include <string>
 #include <memory>
 
-namespace nv { class IRGenerationContext; }
 
 // Declaração de função externa em um bloco `extern "<lang>"`.
 struct ExternFuncDecl {
@@ -38,6 +37,5 @@ struct ExternStmtNode : public Stmt {
         return n;
     }
 
-    void codegen(nv::IRGenerationContext& ctx) override;
     void nir_codegen(nv::NIRGenerationContext& ctx) override;
 };

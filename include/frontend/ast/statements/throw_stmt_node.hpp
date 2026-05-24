@@ -2,7 +2,6 @@
 #include "frontend/ast/types.hpp"
 #include <memory>
 
-namespace nv { class IRGenerationContext; }
 
 class ThrowStatementNode : public Stmt {
 public:
@@ -23,6 +22,5 @@ public:
         return node;
     }
     
-    void codegen(nv::IRGenerationContext& ctx) override;
     void nir_codegen(nv::NIRGenerationContext& ctx) override;
 };

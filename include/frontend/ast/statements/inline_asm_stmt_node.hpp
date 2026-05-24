@@ -4,7 +4,6 @@
 #include <vector>
 #include <memory>
 
-namespace nv { class IRGenerationContext; }
 
 enum class AsmConstraintKind { Reg };
 
@@ -27,6 +26,5 @@ public:
     InlineAsmStmtNode() : Stmt(NodeType::InlineAsmStatement) {}
 
     Node* clone() const override; // implementado em check_inline_asm_stmt.cpp (key function para vtable)
-    void codegen(nv::IRGenerationContext& ctx) override;
     void nir_codegen(nv::NIRGenerationContext& ctx) override;
 };

@@ -4,7 +4,6 @@
 #include <string>
 #include <memory>
 
-namespace nv { class IRGenerationContext; }
 
 // A single argument to a decorator: @decorator(key=value) or @decorator(value)
 struct DecoratorArg {
@@ -44,6 +43,5 @@ struct DecoratorStmtNode : public Stmt {
         return n;
     }
 
-    void codegen(nv::IRGenerationContext& ctx) override;
     void nir_codegen(nv::NIRGenerationContext& ctx) override;
 };

@@ -44,6 +44,5 @@ public:
         return node;
     }
 
-    void codegen(nv::IRGenerationContext& ctx) override;
 };
 

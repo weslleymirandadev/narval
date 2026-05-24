@@ -2,7 +2,6 @@
 #include "frontend/ast/types.hpp"
 #include <memory>
 
-namespace nv { class IRGenerationContext; }
 
 // `await expr` — suspende a fiber atual até que o Future<T> esteja resolvido,
 // retornando o valor interno T.
@@ -20,6 +19,5 @@ struct AwaitExprNode : public Expr {
         return n;
     }
 
-    void codegen(nv::IRGenerationContext& ctx) override;
     void nir_codegen(nv::NIRGenerationContext& ctx) override;
 };

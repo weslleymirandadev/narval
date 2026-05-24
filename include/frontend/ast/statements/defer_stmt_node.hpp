@@ -3,7 +3,6 @@
 #include <vector>
 #include <memory>
 
-namespace nv { class IRGenerationContext; }
 
 // `defer { body }` — executa body ao sair do escopo (normal ou por exceção, com re-throw).
 // remaining_body é preenchido pelo parse_body() do bloco pai.
@@ -32,6 +31,5 @@ struct DeferStmtNode : public Stmt {
         return n;
     }
 
-    void codegen(nv::IRGenerationContext& ctx) override;
     void nir_codegen(nv::NIRGenerationContext& ctx) override;
 };

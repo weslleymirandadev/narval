@@ -26,7 +26,4 @@ public:
         return node;
     }
 
-    void codegen(nv::IRGenerationContext& ctx) override {
-        if (value) value->codegen(ctx);
-    }
 };

@@ -4,7 +4,6 @@
 #include <memory>
 
 namespace nv {
-class IRGenerationContext;
 struct Type;
 }
 
@@ -34,6 +33,5 @@ public:
         return n;
     }
 
-    void codegen(nv::IRGenerationContext& ctx) override;
     void nir_codegen(nv::NIRGenerationContext& ctx) override;
 };

@@ -3,7 +3,6 @@
 #include <string>
 #include <vector>
 
-namespace nv { class IRGenerationContext; }
 
 struct ExternFromImportItem {
     std::string name;   // nome original: "pyplot", "sin"
@@ -42,6 +41,5 @@ public:
         return n;
     }
 
-    void codegen(nv::IRGenerationContext& ctx) override;
     void nir_codegen(nv::NIRGenerationContext& ctx) override;
 };

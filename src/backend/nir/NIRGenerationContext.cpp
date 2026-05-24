@@ -29,7 +29,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/ExecutionEngine/Orc/LLJIT.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
-#include "llvm/ExecutionEngine/Orc/DynamicLibrarySearchGenerator.h"
+#include "llvm/ExecutionEngine/Orc/ExecutionUtils.h"
 #include "llvm/Support/TargetSelect.h"
 
 // MLIR 17+ uses free-function isa<>/cast<>/dyn_cast<> instead of method form.

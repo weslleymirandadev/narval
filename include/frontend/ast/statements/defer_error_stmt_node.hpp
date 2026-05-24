@@ -3,7 +3,6 @@
 #include <vector>
 #include <memory>
 
-namespace nv { class IRGenerationContext; }
 
 // `defer error { handler }` — intercepta qualquer erro que ocorra nos statements
 // restantes do bloco envolvente (remaining_body), executando o handler se houver erro.
@@ -33,6 +32,5 @@ struct DeferErrorStmtNode : public Stmt {
         return n;
     }
 
-    void codegen(nv::IRGenerationContext& ctx) override;
     void nir_codegen(nv::NIRGenerationContext& ctx) override;
 };

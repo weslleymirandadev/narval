@@ -3,7 +3,6 @@
 #include <vector>
 #include <memory>
 
-namespace nv { class IRGenerationContext; }
 
 struct CatchClause {
     std::string exception_type;
@@ -57,6 +56,5 @@ public:
         return node;
     }
 
-    void codegen(nv::IRGenerationContext& ctx) override;
     void nir_codegen(nv::NIRGenerationContext& ctx) override;
 };
