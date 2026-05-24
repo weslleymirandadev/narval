@@ -305,6 +305,46 @@ NvObject* nv_slice(NvObject* base_obj, NvObject* s_obj, NvObject* e_obj,
 
 // ── None / Option / Result ────────────────────────────────────────────────────
 
+// ── Result wrapping ──────────────────────────────────────────────────────────
+// Used by narval.result_wrap lowering and LowerNarvalErrorHandlingPass.
+
+NvObject* nv_make_ok(NvObject* val) {
+    Value inner = {val}, out = {NULL};
+    create_result_ok(&out, &inner);
+    return out.obj;
+}
+
+NvObject* nv_make_err(NvObject* val) {
+    Value inner = {val}, out = {NULL};
+    create_result_err(&out, &inner);
+    return out.obj;
+}
+
+// Unwrap Ok/Some inner value. Returns NULL if the value is not Ok/Some.
+NvObject* nv_unwrap_result(NvObject* obj) {
+    if (!obj) return NULL;
+    Value out = {NULL};
+    Value v = {obj};
+    nv_unwrap_inner(&out, &v);
+    return out.obj;
+}
+
+// ── Class instantiation ──────────────────────────────────────────────────────
+// Used by narval.new lowering (LowerNarvalClassesPass).
+// Creates an empty NVMap-backed object and stamps __class_name__ = class_name.
+
+NvObject* nv_alloc_object(const char* class_name) {
+    Value out = {NULL};
+    create_map(&out);
+    if (!out.obj) return NULL;
+    Value cn_val = {NULL};
+    create_str(&cn_val, class_name);
+    nv_object_set_field(&out, "__class_name__", &cn_val);
+    return out.obj;
+}
+
+// ── None / Option / Result ────────────────────────────────────────────────────
+
 NvObject* nv_make_none(void) {
     Value out = {NULL};
     create_option_none(&out);
@@ -431,6 +471,27 @@ NvObject* nv_had_error(void) {
 
 void nv_propagate(void) {
     nv_rethrow_current_exception();
+}
+
+int nv_had_error_i1(void) {
+    Value tmp = {NULL};
+    nv_get_current_exception_into(&tmp);
+    return tmp.obj != NULL;
+}
+
+void nv_clear_error(void) {
+    nv_clear_current_exception();
+}
+
+int nv_is_result_err_i1(NvObject* obj) {
+    if (!obj) return 0;
+    return obj->ob_type == NVResultErr_Type;
+}
+
+int nv_is_truthy_i1(NvObject* obj) {
+    if (!obj) return 0;
+    if (obj->ob_type == NVBool_Type) return ((NVBool*)obj)->value;
+    return 1;
 }
 
 // ── Async / await ─────────────────────────────────────────────────────────────

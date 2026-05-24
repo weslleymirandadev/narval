@@ -79,6 +79,55 @@ std::unique_ptr<Node> parse_decorator_stmt(Parser* parser) {
 
         if (parser->current_token().type == TokenType::CPAREN)
             parser->consume_token();  // ')'
+
+    // Block syntax: @name { cmd(args); cmd; ... }
+    // Each statement is either `cmd_name(args)` or a bare `cmd_name`.
+    // Equivalent to @name(cmd_name=args, cmd_name2, ...).
+    } else if (parser->current_token().type == TokenType::OBRACE) {
+        parser->consume_token();  // '{'
+
+        while (parser->current_token().type != TokenType::CBRACE &&
+               parser->current_token().type != TokenType::EOF_TOKEN) {
+            if (parser->current_token().type != TokenType::IDENTIFIER) {
+                parser->consume_token();
+                continue;
+            }
+
+            DecoratorArg arg;
+            std::string cmd = parser->consume_token().lexeme;
+
+            if (parser->current_token().type == TokenType::OPAREN) {
+                // cmd(arg0, arg1, ...) — store args as comma-joined value
+                parser->consume_token();  // '('
+                std::string val;
+                while (parser->current_token().type != TokenType::CPAREN &&
+                       parser->current_token().type != TokenType::EOF_TOKEN) {
+                    if (parser->current_token().type != TokenType::COMMA)
+                        val += parser->current_token().lexeme;
+                    else
+                        val += ",";
+                    parser->consume_token();
+                }
+                if (parser->current_token().type == TokenType::CPAREN)
+                    parser->consume_token();  // ')'
+                arg.key   = cmd;
+                arg.value = val;
+            } else {
+                // bare keyword — e.g. `vectorize`
+                arg.key   = "";
+                arg.value = cmd;
+            }
+
+            entry.args.push_back(arg);
+
+            // Skip optional ';' or ','
+            if (parser->current_token().type == TokenType::SEMICOLON ||
+                parser->current_token().type == TokenType::COMMA)
+                parser->consume_token();
+        }
+
+        if (parser->current_token().type == TokenType::CBRACE)
+            parser->consume_token();  // '}'
     }
 
     node->entries.push_back(entry);

@@ -253,16 +253,7 @@ NIRGenerationContext::lower_to_llvm_ir(llvm::LLVMContext& llvm_ctx) {
     // Phase A: narval-dialect cleanup + CF/std lowering
     {
         mlir::PassManager pm(&ctx_);
-        pm.enableVerifier(false);
-        pm.addPass(nv::createNarvalCanonicalizationPass());
-        pm.addPass(mlir::createCSEPass());
-        pm.addPass(mlir::createSymbolDCEPass());
-        nv::apply_transform_annotations(*module_, pm);
-        pm.addPass(nv::createNarvalOwnershipPass());
-        pm.addPass(nv::createLowerNarvalTensorPass());
-        pm.addPass(nv::createLowerNarvalControlFlowPass());
-        pm.addPass(nv::createLowerNarvalToStandardPass());
-        pm.addPass(nv::createLowerNarvalGPUPass());
+        nv::build_narval_pass_pipeline_phase_a(pm, *module_);
         if (!run(pm))
             return llvm::createStringError(llvm::inconvertibleErrorCode(),
                                            "NIR phase A failed");
@@ -271,13 +262,7 @@ NIRGenerationContext::lower_to_llvm_ir(llvm::LLVMContext& llvm_ctx) {
     // Phase B: linalg/scf/vector → LLVM dialect
     {
         mlir::PassManager pm(&ctx_);
-        pm.enableVerifier(false);
-        pm.addPass(nv::createNarvalLinalgVectorizePass());
-        pm.addPass(mlir::createConvertLinalgToLoopsPass());
-        pm.addPass(mlir::createSCFToControlFlowPass());
-        pm.addPass(mlir::createConvertVectorToLLVMPass());
-        pm.addPass(nv::createLowerNarvalToLLVMPass());
-        pm.addPass(mlir::createReconcileUnrealizedCastsPass());
+        nv::build_narval_pass_pipeline_phase_b(pm);
         if (!run(pm))
             return llvm::createStringError(llvm::inconvertibleErrorCode(),
                                            "NIR phase B failed");

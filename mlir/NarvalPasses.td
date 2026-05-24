@@ -99,6 +99,49 @@ def LowerNarvalTensorPass : Pass<"lower-narval-tensor", "::mlir::ModuleOp"> {
 }
 
 //===----------------------------------------------------------------------===//
+// Lowering: Classes / Object model
+//===----------------------------------------------------------------------===//
+
+def LowerNarvalClassesPass : Pass<"lower-narval-classes", "::mlir::ModuleOp"> {
+    let summary = "Lower narval object model ops to runtime calls";
+    let description = [{
+        Converts Narval class/object operations to direct C runtime calls:
+          - narval.new         → nv_alloc_object() + __ctor_ClassName(this, args...)
+          - narval.get_field   → nv_get_field(obj, key_str)
+          - narval.set_field   → nv_set_field(obj, key_str, val)
+          - narval.call_method → __method_ClassName_name(this, args...)
+        Runs before LowerNarvalToStandardPass.
+    }];
+    let dependentDialects = [
+        "::mlir::func::FuncDialect",
+        "::mlir::LLVM::LLVMDialect"
+    ];
+    let constructor = "nv::createLowerNarvalClassesPass()";
+}
+
+//===----------------------------------------------------------------------===//
+// Lowering: Error handling
+//===----------------------------------------------------------------------===//
+
+def LowerNarvalErrorHandlingPass : Pass<"lower-narval-error-handling", "::mlir::ModuleOp"> {
+    let summary = "Lower narval error handling ops to setjmp/longjmp runtime calls";
+    let description = [{
+        Converts Narval error handling operations to runtime calls:
+          - narval.throw       → nv_throw(error)           (longjmp to handler)
+          - narval.result_wrap → nv_make_ok(v)/nv_make_err(v)
+          - narval.propagate   → check Err tag + conditional nv_throw
+          - narval.try_region  → nv_try_push + try body + nv_try_pop + catch dispatch
+        Runs before LowerNarvalToStandardPass.
+    }];
+    let dependentDialects = [
+        "::mlir::func::FuncDialect",
+        "::mlir::scf::SCFDialect",
+        "::mlir::LLVM::LLVMDialect"
+    ];
+    let constructor = "nv::createLowerNarvalErrorHandlingPass()";
+}
+
+//===----------------------------------------------------------------------===//
 // Lowering: GPU
 //===----------------------------------------------------------------------===//
 

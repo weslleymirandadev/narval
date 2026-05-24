@@ -8,10 +8,12 @@
 
 namespace nv {
 
-//  Pass creation functions 
+//  Pass creation functions
 std::unique_ptr<mlir::Pass> createNarvalCanonicalizationPass();
 std::unique_ptr<mlir::Pass> createNarvalOwnershipPass();
 std::unique_ptr<mlir::Pass> createLowerNarvalControlFlowPass();
+std::unique_ptr<mlir::Pass> createLowerNarvalClassesPass();
+std::unique_ptr<mlir::Pass> createLowerNarvalErrorHandlingPass();
 std::unique_ptr<mlir::Pass> createLowerNarvalToStandardPass();
 std::unique_ptr<mlir::Pass> createLowerNarvalTensorPass();
 std::unique_ptr<mlir::Pass> createLowerNarvalGPUPass();
@@ -20,6 +22,10 @@ std::unique_ptr<mlir::Pass> createNarvalLinalgVectorizePass();   // Fase 5: lina
 std::unique_ptr<mlir::Pass> createNarvalVectorLoweringPass();    // Fase 5: vector chain lowering
 
 void apply_transform_annotations(mlir::ModuleOp module, mlir::PassManager& pm);
+
+//  Pipeline builders (NarvalPassPipeline.cpp)
+void build_narval_pass_pipeline_phase_a(mlir::PassManager& pm, mlir::ModuleOp module);
+void build_narval_pass_pipeline_phase_b(mlir::PassManager& pm);
 
 } // namespace nv
 

@@ -171,60 +171,6 @@ struct LowerReturnOp : public OpConversionPattern<ReturnOp> {
     }
 };
 
-struct LowerGetFieldOp : public OpConversionPattern<GetFieldOp> {
-    using OpConversionPattern::OpConversionPattern;
-    LogicalResult matchAndRewrite(GetFieldOp op, OpAdaptor a,
-                                  ConversionPatternRewriter& r) const override {
-        auto loc = op.getLoc(); auto* ctx = r.getContext();
-        auto ptr = LLVM::LLVMPointerType::get(ctx);
-        auto mod = op->getParentOfType<ModuleOp>();
-        ensure_decl(mod, r, "nv_get_field",
-                    FunctionType::get(ctx,{ptr,ptr},{ptr}));
-        auto key = str_ptr(mod, r, loc, op.getFieldName());
-        r.replaceOp(op, func::CallOp::create(r, loc, TypeRange{ptr},
-                                              "nv_get_field",
-                                              ValueRange{a.getObject(), key})
-                           .getResult(0));
-        return success();
-    }
-};
-
-struct LowerSetFieldOp : public OpConversionPattern<SetFieldOp> {
-    using OpConversionPattern::OpConversionPattern;
-    LogicalResult matchAndRewrite(SetFieldOp op, OpAdaptor a,
-                                  ConversionPatternRewriter& r) const override {
-        auto loc = op.getLoc(); auto* ctx = r.getContext();
-        auto ptr = LLVM::LLVMPointerType::get(ctx);
-        auto mod = op->getParentOfType<ModuleOp>();
-        ensure_decl(mod, r, "nv_set_field",
-                    FunctionType::get(ctx,{ptr,ptr,ptr},{}));
-        auto key = str_ptr(mod, r, loc, op.getFieldName());
-        func::CallOp::create(r, loc, TypeRange{}, "nv_set_field",
-                              ValueRange{a.getObject(), key, a.getValue()});
-        r.eraseOp(op); return success();
-    }
-};
-
-struct LowerCallMethodOp : public OpConversionPattern<CallMethodOp> {
-    using OpConversionPattern::OpConversionPattern;
-    LogicalResult matchAndRewrite(CallMethodOp op, OpAdaptor a,
-                                  ConversionPatternRewriter& r) const override {
-        auto loc = op.getLoc(); auto* ctx = r.getContext();
-        auto ptr = LLVM::LLVMPointerType::get(ctx);
-        auto mod = op->getParentOfType<ModuleOp>();
-        auto name = ("__method_" + op.getClassName() + "_"
-                     + op.getMethodName()).str();
-        SmallVector<Type> params(a.getOperands().size(), ptr);
-        ensure_decl(mod, r, name, FunctionType::get(ctx, params, {ptr}));
-        SmallVector<Value> args;
-        args.push_back(a.getReceiver());
-        for (auto v : a.getArgs()) args.push_back(v);
-        r.replaceOp(op, func::CallOp::create(r, loc, TypeRange{ptr}, name, args)
-                           .getResult(0));
-        return success();
-    }
-};
-
 struct LowerConstantOp : public OpConversionPattern<ConstantOp> {
     using OpConversionPattern::OpConversionPattern;
     LogicalResult matchAndRewrite(ConstantOp op, OpAdaptor,
@@ -322,8 +268,9 @@ struct LowerNarvalToStandardPassImpl
         target.addLegalOp<ModuleOp>();
         target.addIllegalOp<AllocOp, DropOp, MoveOp, BorrowOp, BorrowMutOp,
                             CallOp, CallRuntimeOp, ReturnOp,
-                            GetFieldOp, SetFieldOp, CallMethodOp,
                             ConstantOp, ComptimeConstOp>();
+        // Class ops handled by LowerNarvalClassesPass (runs before this pass).
+        target.addLegalOp<NewOp, GetFieldOp, SetFieldOp, CallMethodOp>();
         // Tensor and GPU stay for later passes.
         target.addLegalOp<TensorMatmulOp, TensorAddOp, TensorMulOp,
                           TensorTransposeOp, TensorFillOp,
@@ -334,8 +281,7 @@ struct LowerNarvalToStandardPassImpl
         RewritePatternSet patterns(ctx);
         patterns.add<LowerAllocOp, LowerDropOp, LowerMoveOp, LowerBorrowOp,
                      LowerBorrowMutOp, LowerCallOp, LowerCallRuntimeOp,
-                     LowerReturnOp, LowerGetFieldOp, LowerSetFieldOp,
-                     LowerCallMethodOp, LowerConstantOp, LowerComptimeConstOp>(
+                     LowerReturnOp, LowerConstantOp, LowerComptimeConstOp>(
             tc, ctx);
 
         if (failed(applyPartialConversion(module, target, std::move(patterns)))) {

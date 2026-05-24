@@ -443,9 +443,7 @@ def Narval_WhileOp : Narval_Op<"while", [RecursiveMemoryEffects]> {
 // Note: CallableOpInterface must be implemented in NarvalOps.cpp.
 //===----------------------------------------------------------------------===//
 
-def Narval_FuncOp : Narval_Op<"func", [
-    IsolatedFromAbove, Symbol
-]> {
+def Narval_FuncOp : Narval_Op<"func", [IsolatedFromAbove]> {
     let summary = "Narval function definition with language metadata";
     let description = [{
         Defines a Narval function. Carries metadata not present in func.func:
@@ -550,8 +548,8 @@ def Narval_TryRegionOp : Narval_Op<"try_region", [RecursiveMemoryEffects]> {
     let results = (outs Variadic<AnyType>:$results);
     let regions = (region
         AnyRegion:$try_body,
-        VariadicRegion<AnyRegion>:$catch_arms,
-        AnyRegion:$finally_body
+        AnyRegion:$finally_body,
+        VariadicRegion<AnyRegion>:$catch_arms
     );
     let hasCustomAssemblyFormat = 0;
 }
@@ -655,7 +653,7 @@ def Narval_TensorReduceOp : Narval_Op<"tensor_reduce", [Pure]> {
 // narval.tensor_slice — extract a slice/view from a tensor.
 // offsets, sizes, strides are Index SSA values (one per dimension).
 // Lowers to tensor.extract_slice.
-def Narval_TensorSliceOp : Narval_Op<"tensor_slice", [Pure]> {
+def Narval_TensorSliceOp : Narval_Op<"tensor_slice", [Pure, SameVariadicOperandSize]> {
     let summary = "Extract a slice or view from a tensor";
     let description = [{
         Creates a view of a sub-region of a tensor without copying data.

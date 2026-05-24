@@ -42,13 +42,10 @@ def Narval_OptimizeAttr : Narval_Attr<"Optimize", "optimize"> {
         OptionalParameter<"::mlir::DenseI64ArrayAttr",
                           "tile sizes for each loop dimension">:$tile_sizes,
         DefaultValuedParameter<"bool", "false">:$vectorize,
-        OptionalParameter<"std::optional<int64_t>",
-                          "loop unroll factor">:$unroll_factor,
-        OptionalParameter<"std::optional<int64_t>",
-                          "axis to parallelize over">:$parallelize_axis
+        DefaultValuedParameter<"int64_t", "-1">:$unroll_factor,
+        DefaultValuedParameter<"int64_t", "-1">:$parallelize_axis
     );
-    // Generic MLIR attribute format: #narval.optimize<...>
-    let hasCustomAssemblyFormat = 0;
+    let hasCustomAssemblyFormat = 1;
 }
 
 #endif // NARVAL_ATTRS_TD
