@@ -58,6 +58,7 @@ set(MLIR_DIALECT_LIBS
     MLIRTransformDialect
     MLIRTransforms
     MLIRTransformUtils
+    MLIRLinalgTransformOps
     MLIRPass
     MLIRIR
     MLIRSupport
@@ -105,6 +106,11 @@ target_link_libraries(NarvalNirDialect
     PUBLIC
         NarvalProjectIncludes
         ${MLIR_DIALECT_LIBS}
+        LLVMOrcJIT
+        LLVMJITLink
+        LLVMExecutionEngine
+        LLVMOrcTargetProcess
+        LLVMOrcShared
 )
 
 target_compile_options(NarvalNirDialect PRIVATE -fexceptions -fno-rtti -fPIE)

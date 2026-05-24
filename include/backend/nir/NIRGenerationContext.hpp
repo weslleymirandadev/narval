@@ -111,13 +111,27 @@ public:
         return extra_link_items_;
     }
 
-    //  Python namespace tracking (mirrors IRGenerationContext) 
+    //  Python namespace tracking (mirrors IRGenerationContext)
     std::unordered_set<std::string> py_namespaces;
     void register_py_namespace(const std::string& alias) {
         py_namespaces.insert(alias);
     }
     bool is_py_namespace(const std::string& name) const {
         return py_namespaces.count(name) > 0;
+    }
+
+    //  FFI call remap (from extern "C:lib" import fn [as alias])
+    // Maps user-visible name → actual MLIR symbol (the nv_ffi_* bridge name).
+    // Used by nir_call_expr to redirect calls without emitting a wrapper function
+    // that would conflict with C library symbols of the same name.
+    void register_ffi_remap(const std::string& user_name,
+                             const std::string& bridge_name) {
+        ffi_remaps_[user_name] = bridge_name;
+    }
+    // Returns the bridge name, or the empty string if no remap is registered.
+    std::string get_ffi_remap(const std::string& name) const {
+        auto it = ffi_remaps_.find(name);
+        return it != ffi_remaps_.end() ? it->second : "";
     }
 
     //  Runtime function declaration 
@@ -148,15 +162,39 @@ public:
                                       mlir::TypeRange result_types,
                                       mlir::ValueRange init_args);
 
-    //  NIR dump 
+    //  @optimize attribute staging
+    // When AttributeStmtNode::nir_codegen() sees @[optimize(...)], it stores
+    // the entries here. The next FunctionStmtNode picks them up and attaches
+    // a narval.optimize DictionaryAttr to the emitted func.func, then clears.
+    struct OptimizeHints {
+        llvm::SmallVector<int64_t> tile_sizes;  // tile(M,N,K)
+        bool vectorize  = false;
+        bool parallelize = false;
+        int  unroll     = 0;
+    };
+    std::optional<OptimizeHints> pending_optimize;
+
+    //  Expression value stack (mirrors IRGenerationContext::push_value / pop_value)
+    void         push_value(mlir::Value v) { value_stack_.push_back(v); }
+    mlir::Value  pop_value();
+    bool         has_value()  const { return !value_stack_.empty(); }
+    mlir::Value  peek_value() const { return value_stack_.empty() ? mlir::Value{} : value_stack_.back(); }
+
+    //  NIR dump
     void dump_nir();
     void print_nir(llvm::raw_ostream& os);
 
-    //  Pipeline: lower NIR → LLVM IR 
+    //  Pipeline: lower NIR → LLVM IR
     // Runs the full pass pipeline (narval → std → llvm dialect → LLVM IR).
     // Returns ownership of the resulting llvm::Module.
     llvm::Expected<std::unique_ptr<llvm::Module>>
     lower_to_llvm_ir(llvm::LLVMContext& llvm_ctx);
+
+    //  JIT execution
+    // Lowers and JIT-executes main.start in-process via llvm::orc::LLJIT.
+    // Runtime symbols are resolved from the host process (DynamicLibrarySearchGenerator).
+    // Returns 0 on success, or an llvm::Error on JIT/lowering failure.
+    llvm::Expected<int> jit_execute();
 
 private:
     mlir::MLIRContext&                   ctx_;
@@ -169,6 +207,14 @@ private:
     void*                                checker_          = nullptr;
     std::string                          source_file_;
     std::vector<std::string>             extra_link_items_;
+    std::vector<mlir::Value>             value_stack_;
+    std::unordered_map<std::string, std::string> ffi_remaps_;
 };
 
+} // namespace nv
+
+// Top-level NIR entry point: walks the AST and emits narval dialect ops.
+class Node;
+namespace nv {
+void generate_ir_nir(std::unique_ptr<Node> node, NIRGenerationContext& ctx);
 } // namespace nv

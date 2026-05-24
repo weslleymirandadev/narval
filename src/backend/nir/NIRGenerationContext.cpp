@@ -27,6 +27,10 @@
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/ExecutionEngine/Orc/LLJIT.h"
+#include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
+#include "llvm/ExecutionEngine/Orc/DynamicLibrarySearchGenerator.h"
+#include "llvm/Support/TargetSelect.h"
 
 // MLIR 17+ uses free-function isa<>/cast<>/dyn_cast<> instead of method form.
 using mlir::isa;
@@ -193,7 +197,11 @@ mlir::func::FuncOp NIRGenerationContext::ensure_runtime_func(
 mlir::narval::IfOp NIRGenerationContext::emit_if(mlir::Location loc,
                                                    mlir::Value condition,
                                                    mlir::TypeRange result_types) {
-    return mlir::narval::IfOp::create(builder_, loc, result_types, condition);
+    auto op = mlir::narval::IfOp::create(builder_, loc, result_types, condition);
+    // Auto-generated builder leaves regions empty; populate with entry blocks.
+    if (op.getThenRegion().empty()) op.getThenRegion().emplaceBlock();
+    if (op.getElseRegion().empty()) op.getElseRegion().emplaceBlock();
+    return op;
 }
 
 mlir::narval::YieldOp NIRGenerationContext::emit_yield(mlir::Location loc,
@@ -217,7 +225,14 @@ mlir::narval::WhileOp NIRGenerationContext::emit_while(
     return mlir::narval::WhileOp::create(builder_, loc, result_types, init_args);
 }
 
-//  Dump / print 
+mlir::Value NIRGenerationContext::pop_value() {
+    if (value_stack_.empty()) return mlir::Value{};
+    mlir::Value v = value_stack_.back();
+    value_stack_.pop_back();
+    return v;
+}
+
+//  Dump / print
 
 void NIRGenerationContext::dump_nir() {
     module_->print(llvm::errs());
@@ -231,60 +246,46 @@ void NIRGenerationContext::print_nir(llvm::raw_ostream& os) {
 
 llvm::Expected<std::unique_ptr<llvm::Module>>
 NIRGenerationContext::lower_to_llvm_ir(llvm::LLVMContext& llvm_ctx) {
-    mlir::PassManager pm(&ctx_);
-    pm.enableVerifier(false);
+    auto run = [&](mlir::PassManager& p) -> bool {
+        return mlir::succeeded(p.run(*module_));
+    };
 
-    //  Canonicalise narval.* 
-    pm.addPass(nv::createNarvalCanonicalizationPass());
-
-    //  Phase 7: @optimize transform annotations 
-    nv::apply_transform_annotations(*module_, pm);
-
-    //  Phase 3: Ownership — insert narval.drop at last-use 
-    pm.addPass(nv::createNarvalOwnershipPass());
-
-    //  Phase 4: Tensor → Linalg 
-    // (addNestedPass<func::FuncOp> avoided: uses TypeID lookup that may hang.
-    //  Tensor pass is also registered as ModuleOp-level for robustness.)
-    pm.addPass(nv::createLowerNarvalTensorPass());
-
-    //  Phase 2: Control flow → scf 
-    pm.addPass(nv::createLowerNarvalControlFlowPass());
-
-    //  Phase 1: Remaining narval.* → func/arith 
-    pm.addPass(nv::createLowerNarvalToStandardPass());
-
-    //  Phase 8: GPU — narval.gpu_* → gpu.func/launch_func/thread_id
-    pm.addPass(nv::createLowerNarvalGPUPass());
-
-    //  Phase 5: Vectorisation — linalg.* → vector.* (AVX2/NEON)
-    pm.addPass(nv::createNarvalLinalgVectorizePass());
-    pm.addPass(mlir::createConvertLinalgToLoopsPass());
-
-    //  SCF → control-flow
-    pm.addPass(mlir::createSCFToControlFlowPass());
-
-    //  Vector → LLVM (must be before func/arith → LLVM)
-    pm.addPass(mlir::createConvertVectorToLLVMPass());
-
-    //  Final: standard dialects → LLVM dialect
-    pm.addPass(nv::createLowerNarvalToLLVMPass());
-
-    //  Reconcile unrealised casts
-    pm.addPass(mlir::createReconcileUnrealizedCastsPass());
-
-    if (mlir::failed(pm.run(*module_))) {
-        return llvm::createStringError(
-            llvm::inconvertibleErrorCode(),
-            "NIR lowering pipeline failed");
+    // Phase A: narval-dialect cleanup + CF/std lowering
+    {
+        mlir::PassManager pm(&ctx_);
+        pm.enableVerifier(false);
+        pm.addPass(nv::createNarvalCanonicalizationPass());
+        pm.addPass(mlir::createCSEPass());
+        pm.addPass(mlir::createSymbolDCEPass());
+        nv::apply_transform_annotations(*module_, pm);
+        pm.addPass(nv::createNarvalOwnershipPass());
+        pm.addPass(nv::createLowerNarvalTensorPass());
+        pm.addPass(nv::createLowerNarvalControlFlowPass());
+        pm.addPass(nv::createLowerNarvalToStandardPass());
+        pm.addPass(nv::createLowerNarvalGPUPass());
+        if (!run(pm))
+            return llvm::createStringError(llvm::inconvertibleErrorCode(),
+                                           "NIR phase A failed");
     }
 
-    // Register LLVM IR translation interfaces for the dialects we use.
-    // Must be called before translateModuleToLLVMIR.
+    // Phase B: linalg/scf/vector → LLVM dialect
+    {
+        mlir::PassManager pm(&ctx_);
+        pm.enableVerifier(false);
+        pm.addPass(nv::createNarvalLinalgVectorizePass());
+        pm.addPass(mlir::createConvertLinalgToLoopsPass());
+        pm.addPass(mlir::createSCFToControlFlowPass());
+        pm.addPass(mlir::createConvertVectorToLLVMPass());
+        pm.addPass(nv::createLowerNarvalToLLVMPass());
+        pm.addPass(mlir::createReconcileUnrealizedCastsPass());
+        if (!run(pm))
+            return llvm::createStringError(llvm::inconvertibleErrorCode(),
+                                           "NIR phase B failed");
+    }
+
     mlir::registerBuiltinDialectTranslation(ctx_);
     mlir::registerLLVMDialectTranslation(ctx_);
 
-    // Translate LLVM dialect → llvm::Module.
     auto llvm_module = mlir::translateModuleToLLVMIR(*module_, llvm_ctx,
                                                       source_file_);
     if (!llvm_module)
@@ -292,6 +293,48 @@ NIRGenerationContext::lower_to_llvm_ir(llvm::LLVMContext& llvm_ctx) {
                                        "MLIR → LLVM IR translation failed");
 
     return std::move(llvm_module);
+}
+
+//  JIT execution
+
+llvm::Expected<int> NIRGenerationContext::jit_execute() {
+    // Lower NIR -> LLVM IR (same pipeline as batch mode)
+    auto llvm_ctx = std::make_unique<llvm::LLVMContext>();
+    auto mod_or_err = lower_to_llvm_ir(*llvm_ctx);
+    if (!mod_or_err)
+        return mod_or_err.takeError();
+
+    // Initialize native JIT targets (idempotent after first call)
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+
+    // Build the JIT instance
+    auto jit_or_err = llvm::orc::LLJITBuilder().create();
+    if (!jit_or_err)
+        return jit_or_err.takeError();
+    auto& jit = *jit_or_err;
+
+    // Expose all symbols already loaded in the host process so the JIT can
+    // call Narval runtime functions (nv_write, create_int, …) directly.
+    auto gen = llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
+        jit->getDataLayout().getGlobalPrefix());
+    if (!gen)
+        return gen.takeError();
+    jit->getMainJITDylib().addGenerator(std::move(*gen));
+
+    // Add the lowered LLVM module
+    auto tsm = llvm::orc::ThreadSafeModule(std::move(*mod_or_err), std::move(llvm_ctx));
+    if (auto err = jit->addIRModule(std::move(tsm)))
+        return std::move(err);
+
+    // Look up and invoke main.start
+    auto sym = jit->lookup("main.start");
+    if (!sym)
+        return sym.takeError();
+
+    auto fn = reinterpret_cast<void(*)()>(sym->getValue());
+    fn();
+    return 0;
 }
 
 } // namespace nv
