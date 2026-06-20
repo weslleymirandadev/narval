@@ -64,7 +64,6 @@ add_subdirectory(src/frontend/parser)
 add_subdirectory(src/frontend/checker)
 add_subdirectory(src/frontend/interactive)
 add_subdirectory(src/backend/runtime)
-add_subdirectory(src/lsp)
 
 find_package(MLIR REQUIRED CONFIG HINTS /usr/local/lib/cmake/mlir)
 message(STATUS "MLIR found: ${MLIR_DIR}")
@@ -82,6 +81,7 @@ include(HandleLLVMOptions)
 include_directories(${MLIR_INCLUDE_DIRS})
 
 add_subdirectory(src/backend/nir)
+add_subdirectory(src/lsp)
 
 add_executable(Narval src/main.cpp src/frontend/module_manager.cpp)
 set_target_properties(Narval PROPERTIES OUTPUT_NAME narval)
