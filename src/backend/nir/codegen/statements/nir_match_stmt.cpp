@@ -22,6 +22,7 @@ void MatchStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
 
     // Emit a chain of if/else for each arm.
     // After building each narval.if, the next arm goes into its else region.
+    mlir::Operation* outer_if = nullptr;
     for (size_t i = 0; i < cases.size() && i < bodies.size(); ++i) {
         cases[i]->nir_codegen(ctx);
         mlir::Value case_val = ctx.pop_value();
@@ -30,6 +31,7 @@ void MatchStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
             {subject, case_val}).getResult(0);
 
         auto if_op = ctx.emit_if(loc, matched, {});
+        if (!outer_if) outer_if = if_op.getOperation();
 
         // Then: arm body.
         {
@@ -51,4 +53,7 @@ void MatchStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         // Continue inserting into the else block for chaining.
         b.setInsertionPointToStart(&if_op.getElseRegion().front());
     }
+
+    if (outer_if)
+        b.setInsertionPointAfter(outer_if);
 }
