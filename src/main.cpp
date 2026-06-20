@@ -389,7 +389,6 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
     try {
         module_manager.compile_module(module_name, filename, true);
         auto ast = module_manager.get_combined_ast(module_name);
-        nv::reset_feature_tracker();
         nv::CompilationAttributes attrs = nv::map_compilation_attributes(ast.get());
         const bool no_std = attrs.no_std;
 
@@ -541,7 +540,6 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
         for (const auto& item : nir_ctx.get_extra_link_items())
             nir_link_extra += " " + item;
 
-        const auto& ft = nv::get_feature_tracker();
         std::string nir_link_cmd;
         if (no_std) {
             std::string nostd_rt = std::filesystem::exists(nir_runtime_nostd_path)
@@ -551,8 +549,8 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
                 " -nostdlib -nostartfiles " + nir_pie +
                 " -Wl,-e," + no_std_entry +
                 " -Wl,--gc-sections " +
-                (ft.strip ? "-Wl,--strip-all " : "") +
-                (ft.lto   ? "-flto "           : "") +
+                (attrs.strip ? "-Wl,--strip-all " : "") +
+                (attrs.lto   ? "-flto "           : "") +
                 nir_link_extra;
         } else {
             nir_link_cmd =
@@ -560,8 +558,8 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
                 obj_path + " -pthread -ldl -lm -o " + bin_path +
                 " -Wl,-e,_narval_entry -nostartfiles " + nir_pie +
                 " -lc -w -Wl,--gc-sections " +
-                (ft.strip ? "-Wl,--strip-all " : "") +
-                (ft.lto   ? "-flto "           : "") +
+                (attrs.strip ? "-Wl,--strip-all " : "") +
+                (attrs.lto   ? "-flto "           : "") +
                 nir_link_extra;
         }
         if (system(nir_link_cmd.c_str()) != 0) {
