@@ -106,6 +106,11 @@ NvObject* nv_value_eq(NvObject* a, NvObject* b) {
     return out.obj;
 }
 
+int nv_value_eq_bool(NvObject* a, NvObject* b) {
+    Value va = {a}, vb = {b};
+    return nv_value_cmp(&va, &vb) == 0 ? 1 : 0;
+}
+
 NvObject* nv_value_ne(NvObject* a, NvObject* b) {
     Value va = {a}, vb = {b}, out = {NULL};
     create_bool(&out, nv_value_cmp(&va, &vb) != 0);
@@ -268,6 +273,12 @@ NvObject* nv_index_to_value(size_t idx) {
     Value out = {NULL};
     create_int(&out, (int32_t)idx);
     return out.obj;
+}
+
+// Select between two values based on a boolean condition.
+// Used by ternary expressions to avoid narval.if with result types.
+NvObject* nv_select(int cond, NvObject* a, NvObject* b) {
+    return cond ? a : b;
 }
 
 // ── Range ─────────────────────────────────────────────────────────────────────
