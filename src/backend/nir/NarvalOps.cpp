@@ -72,6 +72,37 @@ void ComptimeConstOp::getCanonicalizationPatterns(RewritePatternSet& patterns,
 }
 
 //===----------------------------------------------------------------------===//
+// ComptimeCallOp — canonicalizer
+//===----------------------------------------------------------------------===//
+
+namespace {
+struct FoldComptimeCallWithValue : public OpRewritePattern<ComptimeCallOp> {
+    using OpRewritePattern::OpRewritePattern;
+
+    LogicalResult matchAndRewrite(ComptimeCallOp op,
+                                  PatternRewriter& rewriter) const override {
+        if (op.getNumResults() != 1)
+            return failure();
+
+        Attribute value = op->getAttr("value");
+        if (!value)
+            value = op->getAttr("result");
+        if (!value)
+            return failure();
+
+        rewriter.replaceOpWithNewOp<ComptimeConstOp>(
+            op, op.getResult(0).getType(), value);
+        return success();
+    }
+};
+} // namespace
+
+void ComptimeCallOp::getCanonicalizationPatterns(RewritePatternSet& patterns,
+                                                  MLIRContext* ctx) {
+    patterns.add<FoldComptimeCallWithValue>(ctx);
+}
+
+//===----------------------------------------------------------------------===//
 // MoveOp — canonicalizer
 //===----------------------------------------------------------------------===//
 
