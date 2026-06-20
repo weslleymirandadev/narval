@@ -16,6 +16,10 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
+#define GEN_PASS_DEF_NARVALLINALGVECTORIZEPASS
+#define GEN_PASS_DEF_NARVALVECTORLOWERINGPASS
+#include "NarvalPasses.h.inc"
+
 using namespace mlir;
 using namespace mlir::vector;
 
@@ -27,15 +31,8 @@ namespace {
 //===----------------------------------------------------------------------===//
 
 struct NarvalLinalgVectorizePass
-    : public PassWrapper<NarvalLinalgVectorizePass, OperationPass<ModuleOp>> {
-
-    MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(NarvalLinalgVectorizePass)
-
-    StringRef getName() const override { return "narval-linalg-vectorize"; }
-
-    void getDependentDialects(DialectRegistry& registry) const override {
-        registry.insert<vector::VectorDialect>();
-    }
+    : public ::impl::NarvalLinalgVectorizePassBase<
+          NarvalLinalgVectorizePass> {
 
     void runOnOperation() override {
         ModuleOp module = getOperation();
@@ -82,15 +79,7 @@ struct NarvalLinalgVectorizePass
 // Uses applyPartialConversion so unhandled ops stay legal.
 
 struct NarvalVectorLoweringPass
-    : public PassWrapper<NarvalVectorLoweringPass, OperationPass<ModuleOp>> {
-
-    MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(NarvalVectorLoweringPass)
-
-    StringRef getName() const override { return "narval-vector-lowering"; }
-
-    void getDependentDialects(DialectRegistry& registry) const override {
-        registry.insert<vector::VectorDialect, arith::ArithDialect>();
-    }
+    : public ::impl::NarvalVectorLoweringPassBase<NarvalVectorLoweringPass> {
 
     void runOnOperation() override {
         ModuleOp module = getOperation();
