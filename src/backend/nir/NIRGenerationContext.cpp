@@ -32,6 +32,8 @@
 #include "llvm/ExecutionEngine/Orc/ExecutionUtils.h"
 #include "llvm/Support/TargetSelect.h"
 
+#include <iostream>
+
 // MLIR 17+ uses free-function isa<>/cast<>/dyn_cast<> instead of method form.
 using mlir::isa;
 using mlir::cast;
@@ -246,11 +248,24 @@ void NIRGenerationContext::print_nir(llvm::raw_ostream& os) {
 
 llvm::Expected<std::unique_ptr<llvm::Module>>
 NIRGenerationContext::lower_to_llvm_ir(llvm::LLVMContext& llvm_ctx) {
+    std::cerr << "NIR: entering lower_to_llvm_ir" << std::endl;
+
+    // Verify the module first
+    std::cerr << "NIR: verifying module..." << std::endl;
+    mlir::LogicalResult verify_result = mlir::verify(*module_);
+    if (mlir::failed(verify_result)) {
+        std::cerr << "NIR: module verification FAILED" << std::endl;
+        module_->print(llvm::errs());
+    } else {
+        std::cerr << "NIR: module verification OK" << std::endl;
+    }
+
     auto run = [&](mlir::PassManager& p) -> bool {
         return mlir::succeeded(p.run(*module_));
     };
 
     // Phase A: narval-dialect cleanup + CF/std lowering
+    std::cerr << "NIR: running phase A..." << std::endl;
     {
         mlir::PassManager pm(&ctx_);
         nv::build_narval_pass_pipeline_phase_a(pm, *module_);
@@ -260,6 +275,7 @@ NIRGenerationContext::lower_to_llvm_ir(llvm::LLVMContext& llvm_ctx) {
     }
 
     // Phase B: linalg/scf/vector → LLVM dialect
+    std::cerr << "NIR: running phase B..." << std::endl;
     {
         mlir::PassManager pm(&ctx_);
         nv::build_narval_pass_pipeline_phase_b(pm);
