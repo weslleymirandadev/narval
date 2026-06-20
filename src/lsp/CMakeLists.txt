@@ -48,7 +48,13 @@ target_include_directories(NarvalLspCore PUBLIC
     ${PROJECT_SOURCE_DIR}/include
     ${NARVAL_NLOHMANN_JSON_INCLUDE_DIR}
 )
-target_link_libraries(NarvalLspCore PUBLIC NarvalProjectIncludes NarvalLexer NarvalParser NarvalChecker)
+target_link_libraries(NarvalLspCore PUBLIC
+    NarvalProjectIncludes
+    NarvalLexer
+    NarvalParser
+    NarvalChecker
+    NarvalNirDialect
+)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(NarvalLspCore PRIVATE -g0 -O2)
 endif()
