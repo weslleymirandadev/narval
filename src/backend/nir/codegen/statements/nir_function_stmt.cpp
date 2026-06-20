@@ -1,6 +1,5 @@
 #include "../nir_codegen_utils.hpp"
 #include "frontend/ast/statements/function_stmt_node.hpp"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 
 void FunctionStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
     auto& b   = ctx.get_builder();
@@ -16,10 +15,18 @@ void FunctionStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
     mlir::TypeRange ret_types = is_void ? mlir::TypeRange{} : mlir::TypeRange{vt};
 
     auto fn_type = mlir::FunctionType::get(&ctx.get_mlir_context(), param_types, ret_types);
-    auto fn = mlir::func::FuncOp::create(b, loc, name, fn_type);
-    fn.setPublic();
 
-    auto* entry = fn.addEntryBlock();
+    // Move builder to module level before creating the function so it isn't
+    // nested inside main.start. Save and restore the caller's insertion point.
+    mlir::OpBuilder::InsertionGuard guard2(b);
+    b.setInsertionPointToEnd(ctx.get_module().getBody());
+    auto fn = mlir::narval::FuncOp::create(b, loc, name, fn_type, "",
+                                           false, false, false, nullptr);
+
+    auto* entry = new mlir::Block();
+    fn.getBody().push_back(entry);
+    llvm::SmallVector<mlir::Location> arg_locs(param_types.size(), loc);
+    entry->addArguments(param_types, arg_locs);
     b.setInsertionPointToStart(entry);
 
     ctx.push_scope();
@@ -27,8 +34,8 @@ void FunctionStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
     size_t idx = 0;
     for (const auto& param : parameters) {
         for (const auto& [pname, _] : param.parameter) {
-            if (idx < fn.getNumArguments())
-                ctx.define(pname, fn.getArgument(idx));
+            if (idx < entry->getNumArguments())
+                ctx.define(pname, entry->getArgument(idx));
             ++idx;
         }
     }
@@ -37,17 +44,15 @@ void FunctionStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
 
     if (entry->empty() || !entry->back().hasTrait<mlir::OpTrait::IsTerminator>()) {
         if (is_void) {
-            mlir::func::ReturnOp::create(b, loc);
+            mlir::narval::ReturnOp::create(b, loc, mlir::ValueRange{});
         } else {
             auto zero = mlir::narval::ConstantOp::create(b, loc, vt,
                 b.getI64IntegerAttr(0)).getResult();
-            mlir::func::ReturnOp::create(b, loc, mlir::ValueRange{zero});
+            mlir::narval::ReturnOp::create(b, loc, mlir::ValueRange{zero});
         }
     }
 
     ctx.pop_scope();
-    ctx.set_current_func(fn);
-    ctx.get_module().push_back(fn);
 
     // Apply any pending @optimize hints as a narval.optimize DictionaryAttr.
     if (ctx.pending_optimize.has_value()) {
