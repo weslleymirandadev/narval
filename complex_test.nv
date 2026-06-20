@@ -1,0 +1,28 @@
+# Comprehensive test
+write("--- if/else ---");
+x = 5;
+if x > 3 {
+    write("maior");
+} else {
+    write("menor");
+}
+
+write("--- ternary ---");
+r = "sim" if x > 3 else "nao";
+write(r);
+
+write("--- match ---");
+match 2 {
+    1 => write("one");
+    2 => write("two");
+    _ => write("other");
+}
+
+write("--- match default ---");
+match 99 {
+    1 => write("one");
+    2 => write("two");
+    _ => write("default");
+}
+
+write("all ok");
