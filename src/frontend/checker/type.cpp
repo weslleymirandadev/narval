@@ -218,19 +218,35 @@ namespace nv {
         prototype = std::make_shared<nv::Namespace>();
         auto self_type = std::const_pointer_cast<Type>(shared_from_this());
 
-        // Static methods: Tensor.zeros(dims), Tensor.ones(dims)
+        // Tensor.zeros(ndim, ...) → Tensor
         prototype->put_key("zeros", make_native_def({}, self_type), true);
+        // Tensor.ones(ndim, ...) → Tensor
         prototype->put_key("ones", make_native_def({}, self_type), true);
 
-        // Fields (getters): .shape, .ndim, .dtype, .T, .size
-        prototype->put_key("shape",  std::make_shared<nv::Array>(std::make_shared<Int>(), 0), true);
-        prototype->put_key("ndim",   std::make_shared<Int>(), true);
-        prototype->put_key("dtype",  std::make_shared<String>(), true);
-        prototype->put_key("T",      self_type, true);
-        prototype->put_key("size",   std::make_shared<Int>(), true);
+        // Instance properties (returned by nv_tensor_*_bridge)
+        auto int_type = std::make_shared<nv::Int>();
+        auto str_type = std::make_shared<nv::String>();
+        // Direct property types (not wrapped in Function)
+        // ndim → int
+        prototype->put_key("ndim",   int_type, true);
+        // dtype → str
+        prototype->put_key("dtype",  str_type, true);
+        // nelem → int
+        prototype->put_key("nelem",  int_type, true);
+        // size → int
+        prototype->put_key("size",   int_type, true);
 
-        // Methods: .item() -> int/float, .tolist() -> array
-        prototype->put_key("item", make_native_def({}, std::make_shared<Int>()), true);
-        prototype->put_key("tolist", make_native_def({}, std::make_shared<Array>(std::make_shared<Int>(), 0)), true);
+        // shape → Array<int, ndim>
+        auto int_arr = std::make_shared<nv::Array>(int_type, -1);
+        prototype->put_key("shape",  int_arr, true);
+
+        // T (transpose) → Tensor
+        prototype->put_key("T",      self_type, true);
+
+        // Methods: item(), tolist(), reshape()
+        prototype->put_key("item", make_native_def({}, int_type), true);
+        prototype->put_key("tolist", make_native_def({}, int_arr), true);
+        prototype->put_key("reshape", make_native_def({}, self_type), true);
     }
 }
+

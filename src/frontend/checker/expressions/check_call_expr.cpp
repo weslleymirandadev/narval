@@ -1,6 +1,7 @@
 #include "frontend/checker/expressions/check_call_expr.hpp"
 #include "frontend/ast/ast.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
+#include "frontend/ast/expressions/array_expr_node.hpp"
 #include "frontend/ast/expressions/numeric_literal_node.hpp"
 #include "frontend/checker/checker.hpp"
 #include "frontend/checker/builtins.hpp"
@@ -82,28 +83,113 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
                 temp_result = result;
                 return temp_result;
             }
+
+            // ── obj.reshape(d0, d1, ...) — reshape method on tensor value ─
+            if (prop_id->symbol == "reshape") {
+                std::vector<int64_t> dims;
+                for (const auto& arg : call->args) {
+                    auto val = arg->value.get();
+                    if (val && val->kind == NodeType::NumericLiteral) {
+                        auto* num = static_cast<NumericLiteralNode*>(val);
+                        if (num->value.find('.') == std::string::npos) {
+                            dims.push_back(std::stoll(num->value));
+                            continue;
+                        }
+                    }
+                    ch->error(val ? val : (Node*)node, "reshape dimensions must be integer literals");
+                    return ch->gettyptr("None");
+                }
+                auto obj_type = ch->infer_expr(member_expr->object.get());
+                if (obj_type->kind == nv::Kind::TENSOR) {
+                    auto* ot = static_cast<nv::TensorType*>(obj_type.get());
+                    temp_result = std::make_shared<nv::TensorType>(ot->element, dims);
+                    return temp_result;
+                }
+                ch->error(member_expr->object.get(), "reshape: object is not a tensor");
+                return ch->gettyptr("None");
+            }
         }
     }
 
-    // ── Tensor(d0, d1, ...) — constructor call ─────────────────────────
+    // ── Tensor(args...) — constructor (PyTorch-style) ─────────────────
+    // Creates a tensor FROM the given values:
+    //   Tensor(3)          → 0-D scalar tensor, value=3,  shape=[]
+    //   Tensor(1, 2, 3)    → 1-D tensor, values=[1,2,3], shape=[3]
+    //   Tensor({1,2},{3,4}) → 2-D tensor, values=[[1,2],[3,4]], shape=[2,2]
+    //
+    // To create zeros/ones with a shape, use Tensor.zeros(dims) / Tensor.ones(dims).
     if (call->caller->kind == NodeType::Identifier) {
         auto* id = static_cast<IdentifierNode*>(call->caller.get());
         if (id->symbol == "Tensor") {
-            std::vector<int64_t> dims;
+            std::vector<int64_t> shape;
+            std::shared_ptr<nv::Type> elem_type;
+
+            // Case 1: Single array literal → infer shape from nesting
+            if (call->args.size() == 1 && call->args[0] && call->args[0]->value &&
+                call->args[0]->value->kind == NodeType::ArrayExpression) {
+                auto* arr = static_cast<ArrayExprNode*>(call->args[0]->value.get());
+
+                std::function<bool(ArrayExprNode*, int)> compute_shape =
+                    [&](ArrayExprNode* node, int depth) -> bool {
+                    if ((int)shape.size() <= depth)
+                        shape.push_back((int64_t)node->elements.size());
+                    else if (shape[depth] != (int64_t)node->elements.size())
+                        return false;
+
+                    for (auto& el : node->elements) {
+                        if (!el) continue;
+                        if (el->kind == NodeType::ArrayExpression) {
+                            if (!compute_shape(static_cast<ArrayExprNode*>(el.get()), depth + 1))
+                                return false;
+                        } else if (el->kind == NodeType::NumericLiteral) {
+                            auto* num = static_cast<NumericLiteralNode*>(el.get());
+                            bool is_float = num->value.find('.') != std::string::npos;
+                            if (!elem_type) {
+                                if (is_float)
+                                    elem_type = std::make_shared<nv::Float>();
+                                else
+                                    elem_type = std::make_shared<nv::Int>();
+                            }
+                        } else {
+                            return false;
+                        }
+                    }
+                    return true;
+                };
+
+                if (!compute_shape(arr, 0) || !elem_type) {
+                    ch->error(call->args[0]->value.get(),
+                              "Tensor: invalid array literal (must be numeric, non-ragged)");
+                    return ch->gettyptr("None");
+                }
+                temp_result = std::make_shared<nv::TensorType>(elem_type, shape);
+                return temp_result;
+            }
+
+            // Case 2: Numeric literals → 0-D (single) or 1-D (multiple)
             for (const auto& arg : call->args) {
                 auto val = arg->value.get();
-                if (val && val->kind == NodeType::NumericLiteral) {
-                    auto* num = static_cast<NumericLiteralNode*>(val);
-                    if (num->value.find('.') == std::string::npos) {
-                        dims.push_back(std::stoll(num->value));
-                        continue;
-                    }
+                if (!val || val->kind != NodeType::NumericLiteral) {
+                    ch->error(val ? val : (Node*)node,
+                              "Tensor arguments must be numeric literals or a nested array");
+                    return ch->gettyptr("None");
                 }
-                ch->error(val ? val : (Node*)node, "Tensor dimensions must be integer literals");
-                return ch->gettyptr("None");
+                auto* num = static_cast<NumericLiteralNode*>(val);
+                bool is_float = num->value.find('.') != std::string::npos;
+                if (!elem_type) {
+                    if (is_float)
+                        elem_type = std::make_shared<nv::Float>();
+                    else
+                        elem_type = std::make_shared<nv::Int>();
+                }
             }
-            temp_result = std::make_shared<nv::TensorType>(
-                std::make_shared<nv::Float>(), dims);
+
+            // Single numeric literal → 0-D tensor (shape=[])
+            // Multiple numeric literals → 1-D tensor (shape=[count])
+            if (call->args.size() > 1)
+                shape.push_back((int64_t)call->args.size());
+            // else shape stays empty for 0-D
+            temp_result = std::make_shared<nv::TensorType>(elem_type, shape);
             return temp_result;
         }
     }
