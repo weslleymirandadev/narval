@@ -16,13 +16,13 @@ void BinaryExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         mlir::Value result;
         auto& b = ctx.get_builder();
         if (tensor_op == "matmul")
-            result = mlir::narval::TensorMatmulOp::create(b, loc, vt, lhs, rhs).getResult();
+            result = nir_call_runtime(ctx, loc, "nv_tensor_matmul_bridge", {lhs, rhs}, {vt});
         else if (tensor_op == "add")
-            result = mlir::narval::TensorAddOp::create(b, loc, vt, lhs, rhs).getResult();
+            result = nir_call_runtime(ctx, loc, "nv_tensor_add_bridge", {lhs, rhs}, {vt});
         else if (tensor_op == "mul" || tensor_op == "scalar_mul")
-            result = mlir::narval::TensorMulOp::create(b, loc, vt, lhs, rhs).getResult();
+            result = nir_call_runtime(ctx, loc, "nv_tensor_mul_bridge", {lhs, rhs}, {vt});
         else
-            result = nir_call_runtime(ctx, loc, "nv_add", {lhs, rhs}, {vt});
+            result = nir_call_runtime(ctx, loc, "nv_tensor_add_bridge", {lhs, rhs}, {vt});
 
         ctx.push_value(result);
         return;
