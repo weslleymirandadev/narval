@@ -497,6 +497,11 @@ double  nv_tensor_get_f(Value* v, int32_t ndim, const int64_t* idx);
 void    nv_tensor_set_f(Value* v, int32_t ndim, const int64_t* idx, double val);
 void    nv_tensor_print(Value* v);
 
+// Tensor attribute getters (for MemberExpr nir_codegen)
+Value  nv_tensor_transpose(Value* v);
+Value  nv_tensor_item(Value* v);
+Value  nv_tensor_tolist(Value* v);
+
 // Verificar se valor é nulo (legado)
 int is_null_value(const Value* v);
 

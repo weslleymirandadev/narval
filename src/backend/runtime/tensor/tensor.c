@@ -359,3 +359,86 @@ void nv_tensor_print(Value* v) {
     if (t->ndim == 0 || t->nelem == 0) { printf("[]\n"); return; }
     tensor_print_dim(t, 0, 0, 0, 1);
 }
+
+// ── Tensor attribute getters ──────────────────────────────────────────────
+
+// Transpose 2-D tensor (swap dims 0 and 1).
+Value nv_tensor_transpose(Value* v) {
+    NVTensor* t = unwrap_tensor(v);
+    Value bad; bad.obj = NULL;
+    if (!t || t->ndim != 2) return bad;
+
+    int64_t new_shape[2] = {t->shape[1], t->shape[0]};
+    NVTensor* out = tensor_alloc(t->dtype, 2, new_shape);
+    if (!out) return bad;
+
+    int64_t M = t->shape[0], N = t->shape[1];
+    size_t elem_sz = (t->dtype == NV_FLOAT_BASE) ? sizeof(double) : sizeof(int32_t);
+    for (int64_t i = 0; i < M; ++i)
+        for (int64_t j = 0; j < N; ++j)
+            memcpy((char*)out->data + (j * M + i) * elem_sz,
+                   (char*)t->data  + (i * N + j) * elem_sz,
+                   elem_sz);
+    return tensor_to_value(out);
+}
+
+// Return the first element as a scalar Value.
+Value nv_tensor_item(Value* v) {
+    NVTensor* t = unwrap_tensor(v);
+    Value bad; bad.obj = NULL;
+    if (!t || t->nelem == 0) return bad;
+
+    if (t->dtype == NV_FLOAT_BASE) {
+        double val = ((double*)t->data)[0];
+        Value r = {NULL};
+        create_float(&r, val);
+        return r;
+    } else {
+        int32_t val = ((int32_t*)t->data)[0];
+        Value r = {NULL};
+        create_int(&r, val);
+        return r;
+    }
+}
+
+// Recursive helper for nv_tensor_tolist.
+static Value tensor_to_list_impl(NVTensor* t, int64_t* idx, int dim) {
+    if (dim == t->ndim - 1) {
+        // Last dimension: create an array of elements
+        Value arr = {NULL};
+        create_array(&arr, (int32_t)t->shape[dim]);
+        if (!arr.obj) return arr;
+        NVArray* a = (NVArray*)arr.obj;
+        for (int64_t j = 0; j < t->shape[dim]; ++j) {
+            idx[dim] = j;
+            int64_t offset = 0;
+            for (int d = 0; d < t->ndim; ++d) offset += idx[d] * t->strides[d];
+            Value v = {NULL};
+            if (t->dtype == NV_FLOAT_BASE)
+                create_float(&v, ((double*)t->data)[offset]);
+            else
+                create_int(&v, ((int32_t*)t->data)[offset]);
+            a->elements[j] = v;
+        }
+        return arr;
+    }
+
+    Value arr = {NULL};
+    create_array(&arr, (int32_t)t->shape[dim]);
+    if (!arr.obj) return arr;
+    NVArray* a = (NVArray*)arr.obj;
+    for (int64_t j = 0; j < t->shape[dim]; ++j) {
+        idx[dim] = j;
+        a->elements[j] = tensor_to_list_impl(t, idx, dim + 1);
+    }
+    return arr;
+}
+
+// Convert tensor to nested Narval arrays/lists.
+Value nv_tensor_tolist(Value* v) {
+    NVTensor* t = unwrap_tensor(v);
+    Value bad; bad.obj = NULL;
+    if (!t || t->ndim == 0) return bad;
+    int64_t idx[8] = {0};
+    return tensor_to_list_impl(t, idx, 0);
+}
