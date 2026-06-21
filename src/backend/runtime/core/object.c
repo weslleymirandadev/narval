@@ -1,7 +1,20 @@
 #include "backend/runtime/nv_runtime.h"
+#include "backend/runtime/prototypes.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+
+// Forward-declare NVTensor layout for field access in nv_object_get_field.
+// The real definition lives in tensor/tensor.c.
+typedef struct {
+    NvObject_HEAD;
+    int32_t  dtype;
+    int32_t  ndim;
+    int64_t* shape;
+    int64_t* strides;
+    void*    data;
+    int64_t  nelem;
+} NVTensor;
 
 // Definição real de NVType_Type para resolver undefined references
 NvTypeObject* NVType_Type = NULL;
@@ -140,6 +153,39 @@ void nv_object_get_field(Value* out, Value* self, const char* key) {
         if (is_error) {
             NVError* err_obj = (NVError*)self->obj;
             create_str(out, err_obj->message ? err_obj->message : "");
+            return;
+        }
+    }
+
+    /* Tensor field access (attributes like .shape, .ndim, .dtype) */
+    if (self->obj->ob_type == NVTensor_Type) {
+        NVTensor* t = (NVTensor*)self->obj;
+        if (strcmp(key, "ndim") == 0) {
+            create_int(out, t->ndim);
+            return;
+        }
+        if (strcmp(key, "shape") == 0) {
+            create_array(out, t->ndim);
+            if (out->obj) {
+                NVArray* arr = (NVArray*)out->obj;
+                for (int i = 0; i < t->ndim; i++) {
+                    Value v = {NULL};
+                    create_int(&v, (int32_t)t->shape[i]);
+                    arr->elements[i] = v;
+                }
+            }
+            return;
+        }
+        if (strcmp(key, "dtype") == 0) {
+            create_str(out, (t->dtype == NV_FLOAT_BASE) ? "float32" : "int32");
+            return;
+        }
+        if (strcmp(key, "size") == 0 || strcmp(key, "nelem") == 0) {
+            create_int(out, (int32_t)t->nelem);
+            return;
+        }
+        if (strcmp(key, "T") == 0) {
+            *out = nv_tensor_transpose(self);
             return;
         }
     }
