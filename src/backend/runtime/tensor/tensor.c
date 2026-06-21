@@ -356,7 +356,15 @@ static void tensor_print_dim(const NVTensor* t, int dim,
 void nv_tensor_print(Value* v) {
     NVTensor* t = unwrap_tensor(v);
     if (!t) { printf("<invalid tensor>\n"); return; }
-    if (t->ndim == 0 || t->nelem == 0) { printf("[]\n"); return; }
+    if (t->ndim == 0 && t->nelem == 1) {
+        // 0-D scalar tensor: print the single value
+        if (t->dtype == NV_FLOAT_BASE)
+            printf("%f\n", ((double*)t->data)[0]);
+        else
+            printf("%d\n", ((int32_t*)t->data)[0]);
+        return;
+    }
+    if (t->nelem == 0) { printf("[]\n"); return; }
     tensor_print_dim(t, 0, 0, 0, 1);
 }
 
