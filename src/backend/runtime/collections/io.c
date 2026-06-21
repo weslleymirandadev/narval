@@ -25,9 +25,19 @@ void nv_write(Value* v) {
         printf("%c\n", ((NVChar*)v->obj)->value);
     } else if (type == NVArray_Type) {
         NVArray* arr = (NVArray*)v->obj;
-        const char* tn = (arr->size > 0 && arr->elements[0].obj && arr->elements[0].obj->ob_type)
-            ? arr->elements[0].obj->ob_type->tp_name : "?";
-        printf("<%s[%d]>\n", tn, arr->size);
+        // Print array contents when small (< 10 elements)
+        if (arr->size <= 10) {
+            printf("[");
+            for (int i = 0; i < arr->size; i++) {
+                if (i) printf(", ");
+                nv_write_no_nl(&arr->elements[i]);
+            }
+            printf("]\n");
+        } else {
+            const char* tn = (arr->size > 0 && arr->elements[0].obj && arr->elements[0].obj->ob_type)
+                ? arr->elements[0].obj->ob_type->tp_name : "?";
+            printf("<%s[%d]>\n", tn, arr->size);
+        }
     } else if (type == NVMap_Type) {
         NVMap* map = (NVMap*)v->obj;
         Value cls = {0};
@@ -59,6 +69,15 @@ void nv_write_no_nl(Value* v) {
     else if (type == NVFloat_Type) printf("%f",  ((NVFloat*)v->obj)->value);
     else if (type == NVBool_Type)  printf("%s",  ((NVBool*)v->obj)->value ? "true" : "false");
     else if (type == NVChar_Type)  printf("%c",  ((NVChar*)v->obj)->value);
+    else if (type == NVArray_Type) {
+        NVArray* arr = (NVArray*)v->obj;
+        printf("[");
+        for (int i = 0; i < arr->size; i++) {
+            if (i) printf(", ");
+            nv_write_no_nl(&arr->elements[i]);
+        }
+        printf("]");
+    }
     else printf("<object:%s>", type->tp_name ? type->tp_name : "object");
     fflush(stdout);
 }
