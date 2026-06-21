@@ -213,4 +213,24 @@ namespace nv {
     void nv::None::init_prototype() {
         prototype = std::make_shared<nv::Namespace>();
     }
+
+    void nv::TensorType::init_prototype() {
+        prototype = std::make_shared<nv::Namespace>();
+        auto self_type = std::const_pointer_cast<Type>(shared_from_this());
+
+        // Static methods: Tensor.zeros(dims), Tensor.ones(dims)
+        prototype->put_key("zeros", make_native_def({}, self_type), true);
+        prototype->put_key("ones", make_native_def({}, self_type), true);
+
+        // Fields (getters): .shape, .ndim, .dtype, .T, .size
+        prototype->put_key("shape",  std::make_shared<nv::Array>(std::make_shared<Int>(), 0), true);
+        prototype->put_key("ndim",   std::make_shared<Int>(), true);
+        prototype->put_key("dtype",  std::make_shared<String>(), true);
+        prototype->put_key("T",      self_type, true);
+        prototype->put_key("size",   std::make_shared<Int>(), true);
+
+        // Methods: .item() -> int/float, .tolist() -> array
+        prototype->put_key("item", make_native_def({}, std::make_shared<Int>()), true);
+        prototype->put_key("tolist", make_native_def({}, std::make_shared<Array>(std::make_shared<Int>(), 0)), true);
+    }
 }

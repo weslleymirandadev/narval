@@ -1,6 +1,7 @@
 #include "frontend/checker/expressions/check_call_expr.hpp"
 #include "frontend/ast/ast.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
+#include "frontend/ast/expressions/numeric_literal_node.hpp"
 #include "frontend/checker/checker.hpp"
 #include "frontend/checker/builtins.hpp"
 #include "frontend/checker/type.hpp"
@@ -51,6 +52,61 @@ namespace {
 std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
     static thread_local std::shared_ptr<nv::Type> temp_result;
     const auto* call = static_cast<CallExprNode*>(node);
+
+    // ── Tensor.zeros(d0, d1, ...) / Tensor.ones(d0, d1, ...) ──────────────
+    // Recognises MemberExprNode(Tensor, zeros/ones) and builds the return type.
+    if (call->caller->kind == NodeType::MemberExpression) {
+        auto* member_expr = static_cast<MemberExprNode*>(call->caller.get());
+        if (member_expr->object->kind == NodeType::Identifier &&
+            member_expr->property->kind == NodeType::Identifier) {
+            auto* obj_id  = static_cast<IdentifierNode*>(member_expr->object.get());
+            auto* prop_id = static_cast<IdentifierNode*>(member_expr->property.get());
+            if (obj_id->symbol == "Tensor" &&
+                (prop_id->symbol == "zeros" || prop_id->symbol == "ones")) {
+                // All args must be int literals
+                std::vector<int64_t> dims;
+                for (const auto& arg : call->args) {
+                    auto val = arg->value.get();
+                    if (val && val->kind == NodeType::NumericLiteral) {
+                        auto* num = static_cast<NumericLiteralNode*>(val);
+                        if (num->value.find('.') == std::string::npos) {
+                            dims.push_back(std::stoll(num->value));
+                            continue;
+                        }
+                    }
+                    ch->error(val ? val : (Node*)node, "Tensor dimensions must be integer literals");
+                    return ch->gettyptr("None");
+                }
+                auto result = std::make_shared<nv::TensorType>(
+                    std::make_shared<nv::Float>(), dims);
+                temp_result = result;
+                return temp_result;
+            }
+        }
+    }
+
+    // ── Tensor(d0, d1, ...) — constructor call ─────────────────────────
+    if (call->caller->kind == NodeType::Identifier) {
+        auto* id = static_cast<IdentifierNode*>(call->caller.get());
+        if (id->symbol == "Tensor") {
+            std::vector<int64_t> dims;
+            for (const auto& arg : call->args) {
+                auto val = arg->value.get();
+                if (val && val->kind == NodeType::NumericLiteral) {
+                    auto* num = static_cast<NumericLiteralNode*>(val);
+                    if (num->value.find('.') == std::string::npos) {
+                        dims.push_back(std::stoll(num->value));
+                        continue;
+                    }
+                }
+                ch->error(val ? val : (Node*)node, "Tensor dimensions must be integer literals");
+                return ch->gettyptr("None");
+            }
+            temp_result = std::make_shared<nv::TensorType>(
+                std::make_shared<nv::Float>(), dims);
+            return temp_result;
+        }
+    }
 
     // Tratamento especial para chamadas de método: obj.method(args)
     if (call->caller->kind == NodeType::MemberExpression) {

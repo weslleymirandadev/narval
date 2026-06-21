@@ -634,6 +634,8 @@ namespace nv {
         TensorType(std::shared_ptr<Type> elem, std::vector<int64_t> dims)
             : Type(Kind::TENSOR), element(std::move(elem)), dims(std::move(dims)) {}
 
+        void init_prototype() override;
+
         std::string toString() override {
             std::string s = "Tensor<" + element->toString() + ", [";
             for (size_t i = 0; i < dims.size(); ++i) {
