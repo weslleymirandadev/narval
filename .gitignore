@@ -5,5 +5,7 @@ narval_program
 .claude
 MEMORY.md
 memory
-test*.nv
+*.nv
 *.o
+*.md
+!README.md
