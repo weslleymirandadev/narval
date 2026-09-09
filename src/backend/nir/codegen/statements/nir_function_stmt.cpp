@@ -12,7 +12,13 @@ void FunctionStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
 
     bool is_void = (return_type == "None" || return_type == "void" || return_type.empty());
     std::vector<mlir::Type> param_types(parameters.size(), vt);
-    mlir::TypeRange ret_types = is_void ? mlir::TypeRange{} : mlir::TypeRange{vt};
+    // NOTE: never build this from `TypeRange{vt}` / braced-init: TypeRange
+    // stores an ArrayRef pointing at the temporary initializer-list backing
+    // array, which dies at the end of the full expression → the FunctionType
+    // is uniqued with a dangling result type (garbage impl pointer) that
+    // crashes later passes (SymbolDCE walk, type printing). Use a vector.
+    llvm::SmallVector<mlir::Type> ret_types;
+    if (!is_void) ret_types.push_back(vt);
 
     auto fn_type = mlir::FunctionType::get(&ctx.get_mlir_context(), param_types, ret_types);
 
