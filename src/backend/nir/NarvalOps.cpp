@@ -292,3 +292,16 @@ void TensorTransposeOp::getCanonicalizationPatterns(RewritePatternSet& patterns,
                                                      MLIRContext* ctx) {
     patterns.add<FoldDoubleTranspose>(ctx);
 }
+
+//===----------------------------------------------------------------------===//
+// TensorFillOp — canonicalizer
+//===----------------------------------------------------------------------===//
+// No self-fold is registered: a tensor_fill with a compile-time constant
+// scalar could become a splat constant, but the dialect's lowering contract
+// sends tensor_fill → tensor.empty + linalg.fill (LowerTensorToLinalgPass),
+// which is bufferization-friendly. Folds involving fills live on the ops that
+// consume them (see FoldTensorAddZeroFill on TensorAddOp). Keeping this entry
+// point defined satisfies the hasCanonicalizer declaration in NarvalOps.td.
+
+void TensorFillOp::getCanonicalizationPatterns(RewritePatternSet& patterns,
+                                               MLIRContext* ctx) {}
