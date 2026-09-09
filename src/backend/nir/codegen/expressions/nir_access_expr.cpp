@@ -13,5 +13,7 @@ void AccessExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
     if (!base) base = nir_emit_const(ctx, loc, ctx.get_builder().getI64IntegerAttr(0));
     if (!idx)  idx  = nir_emit_const(ctx, loc, ctx.get_builder().getI64IntegerAttr(0));
 
-    ctx.push_value(nir_call_runtime(ctx, loc, "nv_array_get", {base, idx}, {vt}));
+    // Dispatch on the receiver type at runtime: maps are keyed by string,
+    // arrays/vectors/tuples by integer index.
+    ctx.push_value(nir_call_runtime(ctx, loc, "nv_container_get", {base, idx}, {vt}));
 }
