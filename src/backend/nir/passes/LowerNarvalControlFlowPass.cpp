@@ -64,6 +64,21 @@ struct LowerIfOp : public OpConversionPattern<IfOp> {
         return isa<func::ReturnOp, narval::ReturnOp>(term);
     }
 
+    static bool isYieldTerminator(Operation* term) {
+        return isa<narval::YieldOp, scf::YieldOp>(term);
+    }
+
+    static bool isLoopExitTerminator(Operation* term) {
+        return isa<narval::BreakOp, narval::ContinueOp>(term);
+    }
+
+    // True when the block ends in a bare yield (fall-through) that must be
+    // replaced by a branch; return/break/continue terminators are kept as-is
+    // (the enclosing while/for lowering resolves them).
+    static bool endsWithFallthroughYield(Block* block) {
+        return !block->empty() && isYieldTerminator(&block->back());
+    }
+
     // Statement if (no results): lower to a cf.cond_br CFG directly.
     // scf.if regions that end in func.return (early return in one branch) are
     // invalid: later region DCE (ConvertVectorToLLVMPass) crashes on them.
@@ -83,10 +98,10 @@ struct LowerIfOp : public OpConversionPattern<IfOp> {
 
         // Move then-region ops into thenBlk.
         Block* thenSrc = &op.getThenRegion().front();
-        bool thenReturns = returnsFromBlock(thenSrc);
         r.mergeBlocks(thenSrc, thenBlk, {});
-        if (!thenReturns) {
-            // Region ended with a yield — replace with a branch to cont.
+        if (endsWithFallthroughYield(thenBlk)) {
+            // Fall-through — branch to cont; other terminators (return/break/
+            // continue) are kept for the enclosing loop lowering.
             Operation* term = &thenBlk->back();
             r.eraseOp(term);
             r.setInsertionPointToEnd(thenBlk);
@@ -99,16 +114,13 @@ struct LowerIfOp : public OpConversionPattern<IfOp> {
         if (hasElse) {
             Block* elseSrc = &op.getElseRegion().front();
             // A region containing only a yield is a vacuous else.
-            bool vacuousElse = returnsFromBlock(elseSrc) == false &&
-                               llvm::hasSingleElement(elseSrc->getOperations()) &&
-                               isa<narval::YieldOp, scf::YieldOp>(
-                                   &elseSrc->back());
+            bool vacuousElse = llvm::hasSingleElement(elseSrc->getOperations()) &&
+                               isYieldTerminator(&elseSrc->back());
             if (vacuousElse) {
                 hasElse = false;
             } else {
-                bool elseReturns = returnsFromBlock(elseSrc);
                 r.mergeBlocks(elseSrc, elseBlk, {});
-                if (!elseReturns) {
+                if (endsWithFallthroughYield(elseBlk)) {
                     Operation* term = &elseBlk->back();
                     r.eraseOp(term);
                     r.setInsertionPointToEnd(elseBlk);
@@ -226,6 +238,31 @@ struct LowerWhileOp : public OpConversionPattern<WhileOp> {
         // Everything after the while moves to a continuation block.
         Block* cont = r.splitBlock(parent, op->getIterator());
 
+        // Loop header (condition) block, before cont.
+        Block* loop_blk = r.createBlock(cont);
+
+        // Resolve narval.break/continue ANYWHERE inside the while's regions
+        // (they may sit inside not-yet-lowered if regions): break → br cont,
+        // continue → br loop_blk. The LowerIfOp runs after this pattern and
+        // keeps these branch terminators when it moves blocks around.
+        llvm::SmallVector<Operation*> exits;
+        op.getConditionRegion().walk([&](Operation* o) {
+            if (isa<narval::BreakOp, narval::ContinueOp>(o))
+                exits.push_back(o);
+        });
+        op.getBodyRegion().walk([&](Operation* o) {
+            if (isa<narval::BreakOp, narval::ContinueOp>(o))
+                exits.push_back(o);
+        });
+        for (Operation* e : exits) {
+            r.setInsertionPoint(e);
+            if (isa<narval::BreakOp>(e))
+                r.create<cf::BranchOp>(loc, cont);
+            else
+                r.create<cf::BranchOp>(loc, loop_blk);
+            r.eraseOp(e);
+        }
+
         // Move ALL body blocks into the function region, before cont.
         Region& fn_region = *cont->getParent();
         llvm::SmallVector<Block*> body_blocks;
@@ -234,9 +271,6 @@ struct LowerWhileOp : public OpConversionPattern<WhileOp> {
         if (body_first)
             r.inlineRegionBefore(op.getBodyRegion(), fn_region,
                                  cont->getIterator());
-
-        // Loop header (condition) block before the body.
-        Block* loop_blk = r.createBlock(body_first ? body_first : cont);
 
         // Move condition ops into loop_blk; extract the i1 from its
         // terminating yield.
@@ -263,7 +297,7 @@ struct LowerWhileOp : public OpConversionPattern<WhileOp> {
                                    ValueRange{}, cont, ValueRange{});
 
         // Body fall-through blocks (yield terminators) branch back to the
-        // condition; blocks ending in func.return stay as early exits.
+        // condition; func.return stays as an early exit.
         for (Block* bb : body_blocks) {
             if (bb->empty()) continue;
             Operation* term = &bb->back();
@@ -358,7 +392,8 @@ struct LowerNarvalControlFlowPassImpl
         target.addLegalDialect<scf::SCFDialect, func::FuncDialect,
                                arith::ArithDialect>();
         target.addLegalOp<ModuleOp>();
-        target.addIllegalOp<IfOp, ForRangeOp, WhileOp, YieldOp>();
+        target.addIllegalOp<IfOp, ForRangeOp, WhileOp, YieldOp, BreakOp,
+                            ContinueOp>();
         // Leave all other narval.* alone for the standard pass.
         target.markUnknownOpDynamicallyLegal([](Operation*) { return true; });
 
