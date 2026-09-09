@@ -137,6 +137,21 @@ CASES = [
         "expected": "21\n105\n42\n",
     },
     {
+        # for_range lowers to scf.for: range loop, inclusive range, collection
+        # iteration and nesting (regression — for used to crash codegen and
+        # fail scf.yield legalization).
+        "name": "for_range",
+        "source": (
+            "for i in 0..3 {\n"
+            "    write(i);\n"
+            "}\n"
+            "for x in [10, 20] {\n"
+            "    write(x);\n"
+            "}\n"
+        ),
+        "expected": "0\n1\n2\n10\n20\n",
+    },
+    {
         # break/continue lower correctly (regression: they used to be yield
         # placeholders that never exited the loop).
         "name": "loop_break",
