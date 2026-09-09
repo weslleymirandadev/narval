@@ -192,30 +192,152 @@ struct LowerIfOp : public OpConversionPattern<IfOp> {
 struct LowerForRangeOp : public OpConversionPattern<ForRangeOp> {
     using OpConversionPattern::OpConversionPattern;
 
+    // for_range lowers to the same cf.cond_br CFG as whiles (NOT scf.for):
+    // scf.for with carried values hits the same conversion walls as
+    // scf.while — block-arg vt types, yields, and materialization casts for
+    // values entering a legal op. The CFG carries the index and the
+    // loop-carried values through block args (codegen body block args are
+    // index + carried, retyped to !llvm.ptr for carried), and branch values
+    // flow in as vt until lower-narval-to-std converts their producers
+    // (cf.br/cf.cond_br are dynamically legal there — see LowerCFBranch.cpp).
     LogicalResult matchAndRewrite(ForRangeOp op, OpAdaptor adaptor,
                                   ConversionPatternRewriter& r) const override {
-        SmallVector<Type> result_types;
-        if (failed(typeConverter->convertTypes(op.getResultTypes(), result_types)))
-            return failure();
+        Location loc = op.getLoc();
+        Block* parent = op->getBlock();
+        if (!parent) return failure();
 
-        auto scf_for = scf::ForOp::create(r, op.getLoc(),
-            adaptor.getLb(), adaptor.getUb(), adaptor.getStep(),
-            adaptor.getInitArgs());
+        bool has_carried = !op.getInitArgs().empty();
+        NarvalTypeConverter ntc(r.getContext());
+        SmallVector<Type> carried_types;
+        for (Type t : op.getInitArgs().getTypes()) {
+            Type c = ntc.convertType(t);
+            carried_types.push_back(c ? c : t);
+        }
+        auto idx_ty = r.getIndexType();
 
-        // Move the narval body block into scf.for's body region. The codegen
-        // body block already carries (index, iter_args...) as its block args
-        // and terminates with its own yield, so swap it in for scf.for's
-        // placeholder block instead of mergeBlocks (which appends ops after
-        // the placeholder's yield terminator, leaving a malformed body).
-        Region& narval_body = op.getBody();
-        if (!narval_body.empty() && !narval_body.front().empty()) {
-            Block* scf_body = scf_for.getBody();  // scf.for's placeholder body
-            Region& scf_region = *scf_body->getParent();
-            r.eraseBlock(scf_body);
-            r.inlineRegionBefore(narval_body, scf_region, scf_region.end());
+        // Everything after the loop moves to a continuation block that
+        // receives the final carried values as results.
+        Block* cont = r.splitBlock(parent, op->getIterator());
+        llvm::SmallVector<Location> locs;
+        if (has_carried) {
+            locs.assign(carried_types.size(), loc);
+            cont->addArguments(carried_types, locs);
         }
 
-        r.replaceOp(op, scf_for.getResults());
+        // Loop header (condition) block: (index, carried...).
+        Block* loop_blk = r.createBlock(cont);
+        {
+            llvm::SmallVector<Type> hdr_types;
+            hdr_types.push_back(idx_ty);
+            for (Type t : carried_types) hdr_types.push_back(t);
+            llvm::SmallVector<Location> hdr_locs(hdr_types.size(), loc);
+            loop_blk->addArguments(hdr_types, hdr_locs);
+        }
+
+        // Move ALL body blocks into the function region, before cont.
+        Region& fn_region = *cont->getParent();
+        llvm::SmallVector<Block*> body_blocks;
+        for (Block& b : op.getBody()) body_blocks.push_back(&b);
+        Block* body_first = body_blocks.empty() ? nullptr : body_blocks.front();
+        if (body_first) {
+            r.inlineRegionBefore(op.getBody(), fn_region, cont->getIterator());
+            // Retype the carried block args (index stays index).
+            if (has_carried) {
+                size_t n = body_first->getNumArguments() > 1
+                               ? body_first->getNumArguments() - 1
+                               : 0;
+                if (n > carried_types.size()) n = carried_types.size();
+                for (size_t i = 0; i < n; ++i)
+                    body_first->getArgument(1 + i).setType(carried_types[i]);
+            }
+        }
+
+        // Resolve break/continue inside the body (they may sit inside
+        // not-yet-lowered if regions): break → cont (carried only); continue →
+        // the header WITH the index incremented (a plain branch to the header
+        // would skip the increment and loop forever). Limitation: carries the
+        // iteration-entry values (same rule as while).
+        ValueRange cur_vals = (body_first && has_carried)
+                                  ? ValueRange(body_first->getArguments())
+                                         .drop_front()
+                                  : ValueRange{};
+        llvm::SmallVector<Operation*> exits;
+        for (Block* bb : body_blocks)
+            bb->walk([&](Operation* o) {
+                if (isa<narval::BreakOp, narval::ContinueOp>(o))
+                    exits.push_back(o);
+            });
+        for (Operation* e : exits) {
+            r.setInsertionPoint(e);
+            if (isa<narval::BreakOp>(e)) {
+                r.create<cf::BranchOp>(loc, cont, cur_vals);
+            } else {
+                llvm::SmallVector<Value> cont_vals;
+                if (body_first) {
+                    Value next = r
+                        .create<arith::AddIOp>(
+                            loc, body_first->getArgument(0),
+                            adaptor.getStep())
+                        .getResult();
+                    cont_vals.push_back(next);
+                    for (Value v : cur_vals) cont_vals.push_back(v);
+                }
+                r.create<cf::BranchOp>(loc, loop_blk, cont_vals);
+            }
+            r.eraseOp(e);
+        }
+
+        // Condition ops into loop_blk: index < ub.
+        r.setInsertionPointToEnd(loop_blk);
+        Value ub = adaptor.getUb();
+        Value cond =
+            r.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt,
+                                    loop_blk->getArgument(0), ub)
+                .getResult();
+        r.create<cf::CondBranchOp>(loc, cond,
+                                   body_first ? body_first : cont,
+                                   loop_blk->getArguments(),
+                                   cont,
+                                   has_carried
+                                       ? ValueRange(loop_blk->getArguments())
+                                             .drop_front()
+                                       : ValueRange{});
+
+        // Body fall-through: replace the terminating yield with the
+        // increment + back edge (index' = index + step, carried' = yield
+        // values). func.return stays as an early exit.
+        if (body_first && !body_first->empty()) {
+            Operation* term = &body_first->back();
+            if (isa<narval::YieldOp, scf::YieldOp>(term)) {
+                llvm::SmallVector<Value> yield_vals;
+                for (Value v : term->getOperands()) yield_vals.push_back(v);
+                r.eraseOp(term);
+                r.setInsertionPointToEnd(body_first);
+                Value idx = body_first->getArgument(0);
+                Value step = adaptor.getStep();
+                Value next = r.create<arith::AddIOp>(loc, idx, step).getResult();
+                llvm::SmallVector<Value> back;
+                back.push_back(next);
+                for (Value v : yield_vals) back.push_back(v);
+                r.create<cf::BranchOp>(loc, loop_blk, back);
+            }
+        }
+
+        // Parent falls through into the header: index = lb, carried = inits.
+        r.setInsertionPointToEnd(parent);
+        llvm::SmallVector<Value> entry;
+        entry.push_back(adaptor.getLb());
+        for (Value v : adaptor.getInitArgs()) entry.push_back(v);
+        r.create<cf::BranchOp>(loc, loop_blk, entry);
+
+        // Replace results by hand (codegen types vt differ from the block-arg
+        // ptr types; r.replaceOp would make the framework materialize).
+        if (has_carried) {
+            for (auto [res, arg] : llvm::zip(op.getResults(),
+                                             cont->getArguments()))
+                res.replaceAllUsesWith(arg);
+        }
+        r.eraseOp(op);
         return success();
     }
 };
