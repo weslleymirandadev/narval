@@ -5,6 +5,7 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -35,6 +36,7 @@ void populateLowerNarvalCallOp(RewritePatternSet& patterns, mlir::narval::Narval
 void populateLowerCallOp(RewritePatternSet& patterns, mlir::narval::NarvalTypeConverter& tc);
 void populateLowerCallRuntimeOp(RewritePatternSet& patterns, mlir::narval::NarvalTypeConverter& tc);
 void populateLowerReturnOp(RewritePatternSet& patterns, mlir::narval::NarvalTypeConverter& tc);
+void populateLowerCFBranchOp(RewritePatternSet& patterns, mlir::narval::NarvalTypeConverter& tc);
 void populateLowerConstantOp(RewritePatternSet& patterns, mlir::narval::NarvalTypeConverter& tc);
 void populateLowerComptimeConstOp(RewritePatternSet& patterns, mlir::narval::NarvalTypeConverter& tc);
 void populateLowerNewOp(RewritePatternSet& patterns, mlir::narval::NarvalTypeConverter& tc);
@@ -82,6 +84,18 @@ struct LowerNarvalToStandardPassImpl
                     return false;
             return true;
         });
+        // cf.br/cf.cond_br carrying !narval.value operands (loop-carried CFG
+        // from the while lowering) become legal once their producer ops are
+        // converted — the driver remaps the uses, so the branch operands end
+        // up !llvm.ptr like the block arguments.
+        target.addDynamicallyLegalOp<cf::BranchOp, cf::CondBranchOp>(
+            [](Operation* op) {
+                for (auto t : op->getOperandTypes())
+                    if (mlir::isa<narval::ValueType, narval::RefType,
+                                  narval::MutRefType>(t))
+                        return false;
+                return true;
+            });
         target.addIllegalOp<AllocOp, DropOp, MoveOp, BorrowOp, BorrowMutOp,
                             CallOp, CallRuntimeOp, ReturnOp,
                             ConstantOp, ComptimeConstOp,
@@ -104,6 +118,7 @@ struct LowerNarvalToStandardPassImpl
         populateLowerCallOp(patterns, tc);
         populateLowerCallRuntimeOp(patterns, tc);
         populateLowerReturnOp(patterns, tc);
+        populateLowerCFBranchOp(patterns, tc);
         populateLowerConstantOp(patterns, tc);
         populateLowerComptimeConstOp(patterns, tc);
         populateLowerNewOp(patterns, tc);
