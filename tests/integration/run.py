@@ -137,19 +137,29 @@ CASES = [
         "expected": "21\n105\n42\n",
     },
     {
-        # for_range lowers to scf.for: range loop, inclusive range, collection
-        # iteration and nesting (regression — for used to crash codegen and
-        # fail scf.yield legalization).
+        # for_range lowers to a CFG with carried values: range loop,
+        # accumulator (loop-carried), break/continue, collection iteration.
         "name": "for_range",
         "source": (
             "for i in 0..3 {\n"
+            "    write(i);\n"
+            "}\n"
+            "soma = 0;\n"
+            "for i in 1..=5 {\n"
+            "    soma = soma + i;\n"
+            "}\n"
+            "write(soma);\n"
+            "for i in 0..10 {\n"
+            "    if (i >= 3) {\n"
+            "        break;\n"
+            "    }\n"
             "    write(i);\n"
             "}\n"
             "for x in [10, 20] {\n"
             "    write(x);\n"
             "}\n"
         ),
-        "expected": "0\n1\n2\n10\n20\n",
+        "expected": "0\n1\n2\n15\n0\n1\n2\n10\n20\n",
     },
     {
         # break/continue lower correctly (regression: they used to be yield
