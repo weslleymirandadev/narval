@@ -27,7 +27,8 @@ void apply_transform_annotations(mlir::ModuleOp module, mlir::PassManager& pm);
 
 //  Pipeline builders (NarvalPassPipeline.cpp)
 void build_narval_pass_pipeline_phase_a(mlir::PassManager& pm, mlir::ModuleOp module);
-void build_narval_pass_pipeline_phase_b(mlir::PassManager& pm);
+void build_narval_pass_pipeline_phase_b(mlir::PassManager& pm,
+                                        mlir::ModuleOp module);
 
 } // namespace nv
 
