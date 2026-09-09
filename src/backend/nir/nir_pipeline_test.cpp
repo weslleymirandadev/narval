@@ -270,7 +270,7 @@ static void test_tensor_to_value_pipeline() {
         fail(NAME, "memref.extract_aligned_pointer_as_index not found");
 
     mlir::PassManager pmB(&ctx);
-    nv::build_narval_pass_pipeline_phase_b(pmB);
+    nv::build_narval_pass_pipeline_phase_b(pmB, nir.get_module());
     if (mlir::failed(pmB.run(nir.get_module())))
         fail(NAME, "phase B pipeline failed on tensor boxing chain");
     bool leftoverDialectOps = false;
