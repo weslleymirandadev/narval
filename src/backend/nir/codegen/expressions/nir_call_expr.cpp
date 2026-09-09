@@ -67,17 +67,25 @@ void CallExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
             return;
         }
 
-        // Local variable with a closure/function value — calling function
-        // values is not implemented yet (would need a call dispatch through
-        // the closure handle). Fail with a clear diagnostic instead of
-        // emitting a reference to an undefined external function.
+        // Local variable with a closure/function value — dispatch through the
+        // closure handle at runtime. One nv_invoke_closure_N bridge per arity
+        // (fixed module signatures; the runtime-call re-declaration cannot
+        // serve variadic arities).
         if (ctx.lookup(callee)) {
-            auto diag = mlir::emitError(loc, "calling a function value ('" +
-                                                callee +
-                                                "') is not supported yet; "
-                                                "call a def directly");
-            (void)diag;
-            ctx.push_value(nir_emit_const(ctx, loc, ctx.get_builder().getI64IntegerAttr(0)));
+            mlir::Value clo = ctx.lookup(callee);
+            if (arg_vals.size() > 8) {
+                mlir::emitError(loc, "closures with more than 8 arguments are "
+                                     "not supported");
+                ctx.push_value(nir_emit_const(ctx, loc,
+                    ctx.get_builder().getI64IntegerAttr(0)));
+                return;
+            }
+            llvm::SmallVector<mlir::Value> rt_args;
+            rt_args.push_back(clo);
+            for (auto& v : arg_vals) rt_args.push_back(v);
+            std::string bridge =
+                "nv_invoke_closure_" + std::to_string(arg_vals.size());
+            ctx.push_value(nir_call_runtime(ctx, loc, bridge, rt_args, {vt}));
             return;
         }
 
