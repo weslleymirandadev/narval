@@ -18,6 +18,7 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 
+
 namespace nv {
 
 void build_narval_pass_pipeline_phase_a(mlir::PassManager& pm,
@@ -44,11 +45,13 @@ void build_narval_pass_pipeline_phase_b(mlir::PassManager& pm) {
     pm.addPass(mlir::bufferization::createOneShotBufferizePass());
     pm.addPass(mlir::bufferization::createOwnershipBasedBufferDeallocationPass());
     pm.addPass(mlir::bufferization::createBufferDeallocationSimplificationPass());
+    // Lower bufferization.dealloc to memref.dealloc + helpers; the final
+    // LowerNarvalToLLVMPass full conversion cannot legalize the former.
+    pm.addPass(mlir::bufferization::createLowerDeallocationsPass());
     pm.addPass(mlir::createConvertLinalgToLoopsPass());
     pm.addPass(mlir::createSCFToControlFlowPass());
     pm.addPass(mlir::createConvertVectorToLLVMPass());
     pm.addPass(nv::createLowerNarvalToLLVMPass());
     pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 }
-
 } // namespace nv
