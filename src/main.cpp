@@ -7,6 +7,7 @@
 #include "frontend/checker/checker.hpp"
 #include "frontend/attributes/attribute_mapper.hpp"
 #include "backend/nir/NIRGenerationContext.hpp"
+#include "backend/nir/NarvalOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -446,6 +447,34 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
         }
 
         nv::generate_ir_nir(std::move(ast), nir_ctx);
+
+        // C-like entry convention: top-level code runs first, then a
+        // user-defined zero-arg `main` function is invoked (unless top-level
+        // code already called it explicitly). Its return value is ignored —
+        // _exit below still uses 0.
+        if (!no_std) {
+            bool main_called = false;
+            entry_blk->walk([&](mlir::Operation* op) {
+                if (auto call = mlir::dyn_cast<mlir::narval::CallOp>(op))
+                    if (call.getCallee() == "main")
+                        main_called = true;
+            });
+            if (!main_called) {
+                mlir::narval::FuncOp user_main = nullptr;
+                nir_ctx.get_module().walk([&](mlir::narval::FuncOp f) {
+                    if (f.getSymName() == "main" &&
+                        f.getFunctionType().getNumInputs() == 0)
+                        user_main = f;
+                });
+                if (user_main) {
+                    auto vt = nir_ctx.get_narval_value_type();
+                    mlir::narval::CallOp::create(
+                        b, ul, mlir::TypeRange{vt},
+                        mlir::SymbolRefAttr::get(&mlir_ctx, "main"),
+                        mlir::ValueRange{});
+                }
+            }
+        }
 
         // Finalize main.start: add _exit(0) and a return terminator
         if (!no_std) {
