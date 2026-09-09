@@ -11,14 +11,19 @@
 #include "mlir/Conversion/LinalgToStandard/LinalgToStandard.h"
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVMPass.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Linalg/Passes.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Verifier.h"
+#include "mlir/InitAllExtensions.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Target/LLVMIR/ModuleTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
@@ -77,6 +82,18 @@ NIRGenerationContext::NIRGenerationContext(mlir::MLIRContext& ctx,
     // are first resolved — letting MLIR's thread pool handle init is safer.
 
     // Register all dialects we may emit or lower into.
+    // Register all dialect extensions (external models — e.g. the
+    // BufferizableOpInterface external models OneShotBufferize needs for
+    // tensor.empty/linalg.fill) before loading dialects, like mlir-opt does.
+    {
+        mlir::DialectRegistry registry;
+        mlir::registerAllExtensions(registry);
+        // The per-dialect bufferization models live under Transforms/ and are
+        // NOT part of registerAllExtensions — register them explicitly.
+        mlir::tensor::registerBufferizableOpInterfaceExternalModels(registry);
+        mlir::linalg::registerBufferizableOpInterfaceExternalModels(registry);
+        ctx_.appendDialectRegistry(registry);
+    }
     ctx_.loadDialect<mlir::narval::NarvalDialect>();
     ctx_.loadDialect<mlir::func::FuncDialect>();
     ctx_.loadDialect<mlir::arith::ArithDialect>();
@@ -85,6 +102,12 @@ NIRGenerationContext::NIRGenerationContext(mlir::MLIRContext& ctx,
     ctx_.loadDialect<mlir::memref::MemRefDialect>();
     ctx_.loadDialect<mlir::vector::VectorDialect>();
     ctx_.loadDialect<mlir::LLVM::LLVMDialect>();
+    // Tensor / linalg / bufferization: needed by the tensor boxing path
+    // (codegen emits tensor.empty + linalg.fill + narval.tensor_to_value, and
+    // its lowering creates bufferization.materialize_in_destination).
+    ctx_.loadDialect<mlir::tensor::TensorDialect>();
+    ctx_.loadDialect<mlir::linalg::LinalgDialect>();
+    ctx_.loadDialect<mlir::bufferization::BufferizationDialect>();
 
     // Create the top-level module.
     module_ = mlir::ModuleOp::create(builder_.getUnknownLoc());
