@@ -247,7 +247,12 @@ mlir::narval::ForRangeOp NIRGenerationContext::emit_for_range(
 mlir::narval::WhileOp NIRGenerationContext::emit_while(
     mlir::Location loc, mlir::TypeRange result_types,
     mlir::ValueRange init_args) {
-    return mlir::narval::WhileOp::create(builder_, loc, result_types, init_args);
+    auto op = mlir::narval::WhileOp::create(builder_, loc, result_types, init_args);
+    // Auto-generated builder leaves regions empty; populate with entry blocks
+    // (same as emit_if) so codegen can address condition/body fronts safely.
+    if (op.getConditionRegion().empty()) op.getConditionRegion().emplaceBlock();
+    if (op.getBodyRegion().empty()) op.getBodyRegion().emplaceBlock();
+    return op;
 }
 
 mlir::Value NIRGenerationContext::pop_value() {
