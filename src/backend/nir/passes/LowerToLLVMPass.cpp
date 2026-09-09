@@ -46,6 +46,10 @@ struct LowerNarvalToLLVMPassImpl
         arith::populateArithToLLVMConversionPatterns(type_converter, patterns);
         populateFuncToLLVMConversionPatterns(type_converter, patterns);
         cf::populateControlFlowToLLVMConversionPatterns(type_converter, patterns);
+        // NOTE: MLIR 22 has no populateMemRefToLLVMConversionPatterns anymore;
+        // memref ops implement per-op ToLLVM interfaces resolved by the
+        // FinalizeMemRefToLLVM patterns below (alloc, dim,
+        // extract_aligned_pointer_as_index — used by the tensor boxing path).
         populateFinalizeMemRefToLLVMConversionPatterns(type_converter, patterns);
         ub::populateUBToLLVMConversionPatterns(type_converter, patterns);
         populateVectorToLLVMConversionPatterns(type_converter, patterns, false);
