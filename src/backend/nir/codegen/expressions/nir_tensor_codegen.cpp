@@ -10,6 +10,8 @@
 #include "backend/nir/NarvalOps.h"
 #include "../nir_codegen_utils.hpp"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include <functional>
 
 namespace nv_tensor_codegen {
@@ -59,27 +61,58 @@ static std::vector<int64_t> extract_dims(const std::vector<std::unique_ptr<ArgNo
 }
 
 // ── emit_tensor_fill: Tensor.zeros/ones/Tensor(dims) ────────────────
+// The tensor is built in the MLIR tensor world (tensor.empty + linalg.fill)
+// and boxed into a runtime Value with narval.tensor_to_value — the codegen
+// producer of the tensor boxing path. Falls back to the runtime bridge for
+// 0-D (no dims) or >8-D shapes (nv_box_tensor caps at 8 dims).
 static void emit_tensor_fill(nv::NIRGenerationContext& ctx,
                               const std::string& method,
                               const std::vector<int64_t>& dims) {
     auto loc = ctx.get_builder().getUnknownLoc();
     auto vt  = ctx.get_narval_value_type();
-    int64_t fill_val = (method == "ones") ? 1 : 0;
 
-    llvm::SmallVector<mlir::Type> arg_types(10, ctx.get_builder().getIntegerType(64));
-    llvm::SmallVector<mlir::Value> rt_args;
-    rt_args.push_back(i64_const(ctx, fill_val));
-    rt_args.push_back(i64_const(ctx, (int64_t)dims.size()));
-    for (int j = 0; j < 8; j++)
-        rt_args.push_back(i64_const(ctx, (j < (int)dims.size()) ? dims[j] : 0));
+    if (dims.empty() || dims.size() > 8) {
+        // 0-D / oversized — keep the runtime bridge (parity path).
+        llvm::SmallVector<mlir::Type> arg_types(10, ctx.get_builder().getIntegerType(64));
+        llvm::SmallVector<mlir::Value> rt_args;
+        rt_args.push_back(i64_const(ctx, (method == "ones") ? 1 : 0));
+        rt_args.push_back(i64_const(ctx, (int64_t)dims.size()));
+        for (int j = 0; j < 8; j++)
+            rt_args.push_back(i64_const(ctx, (j < (int)dims.size()) ? dims[j] : 0));
 
-    auto fn_type = mlir::FunctionType::get(&ctx.get_mlir_context(), arg_types, vt);
-    ctx.ensure_runtime_func("nv_tensor_fill_nd", fn_type);
-    auto call = narval::CallRuntimeOp::create(
-        ctx.get_builder(), loc, mlir::TypeRange{vt},
-        mlir::SymbolRefAttr::get(&ctx.get_mlir_context(), "nv_tensor_fill_nd"),
-        rt_args);
-    ctx.push_value(call.getResults()[0]);
+        auto fn_type = mlir::FunctionType::get(&ctx.get_mlir_context(), arg_types, vt);
+        ctx.ensure_runtime_func("nv_tensor_fill_nd", fn_type);
+        auto call = narval::CallRuntimeOp::create(
+            ctx.get_builder(), loc, mlir::TypeRange{vt},
+            mlir::SymbolRefAttr::get(&ctx.get_mlir_context(), "nv_tensor_fill_nd"),
+            rt_args);
+        ctx.push_value(call.getResults()[0]);
+        return;
+    }
+
+    auto& b = ctx.get_builder();
+    auto f32 = b.getF32Type();
+
+    // %empty = tensor.empty() : tensor<dims x f32>
+    auto empty = mlir::tensor::EmptyOp::create(b, loc, dims, f32);
+
+    // %fill = arith.constant <0.0|1.0> : f32
+    double fill_d = (method == "ones") ? 1.0 : 0.0;
+    auto fill_c = mlir::arith::ConstantOp::create(
+        b, loc, mlir::FloatAttr::get(f32, fill_d));
+
+    // %filled = linalg.fill ins(%fill) outs(%empty) — the result tensor type
+    // matches the outs operand (tensor.empty result).
+    auto emptyRes = empty.getOperation()->getResult(0);
+    auto filled = mlir::linalg::FillOp::create(
+        b, loc, mlir::TypeRange{emptyRes.getType()},
+        mlir::ValueRange{fill_c.getOperation()->getResult(0)},
+        mlir::ValueRange{emptyRes});
+
+    // %v = narval.tensor_to_value %filled : tensor<...xf32> -> !narval.value
+    auto t2v = narval::TensorToValueOp::create(
+        b, loc, filled.getOperation()->getResult(0));
+    ctx.push_value(t2v.getOperation()->getResult(0));
 }
 
 // ── emit_simple_bridge: obj.item(), obj.shape, etc. ─────────────────
