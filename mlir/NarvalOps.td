@@ -277,14 +277,52 @@ def Narval_TensorTransposeOp : Narval_Op<"tensor_transpose", [Pure]> {
     let hasCanonicalizer = 1;
 }
 
-def Narval_TensorFillOp : Narval_Op<"tensor_fill"> {
+
+//===----------------------------------------------------------------------===//
+// narval.tensor_to_value — box a NIR tensor into a runtime value
+//===----------------------------------------------------------------------===//
+// After all tensor lowering (linalg → bufferization → LLVM), this op
+// extracts the flat data pointer and shape from the tensor and creates an
+// NvObject* (boxed Narval value) that can be used with write(), etc.
+//
+// Lowering Phase A:
+//   Bufferize the tensor via bufferization.to_memref, then call a runtime
+//   bridge function that takes the data pointer and shape and creates the Value.
+
+def Narval_TensorToValueOp : Narval_Op<"tensor_to_value", [Pure]> {
+    let summary = "Box a NIR tensor into a boxed Narval value (!narval.value)";
+    let description = [{
+        Converts a tensor-typed SSA value into a boxed !narval.value suitable
+        for use with write(), str(), and other runtime functions.
+
+        The lowering path:
+        1. Phase A (LowerNarvalToStandardPass): bufferize and emit a runtime call
+           that takes the data pointer + shape → returns !narval.value
+        2. Phase B (bufferization → LLVM): normal memref/LLVM lowering
+    }];
+    let arguments = (ins AnyRankedTensor:$input);
+    let results = (outs Narval_ValueType:$result);
+    let assemblyFormat = "$input attr-dict `:` functional-type(operands, results)";
+    let hasCustomAssemblyFormat = 0;
+}
+
+//===----------------------------------------------------------------------===//
+// narval.tensor_fill — create a tensor filled with a scalar value
+//===----------------------------------------------------------------------===//
+
+def Narval_TensorFillOp : Narval_Op<"tensor_fill", [Pure]> {
     let summary = "Create a tensor filled with a scalar value";
+    let description = [{
+        Creates a tensor of the given shape where every element equals fill_value.
+        Lowers to tensor.empty + linalg.fill (or memref equivalent).
+    }];
     let arguments = (ins
         AnyType:$fill_value,
         DenseI64ArrayAttr:$shape
     );
     let results = (outs AnyRankedTensor:$result);
     let assemblyFormat = "$fill_value `shape` `=` $shape attr-dict `:` functional-type(operands, results)";
+    let hasCanonicalizer = 1;
 }
 
 // GPU ops
