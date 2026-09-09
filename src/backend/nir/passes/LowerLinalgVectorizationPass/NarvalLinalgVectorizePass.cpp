@@ -42,8 +42,16 @@ struct NarvalLinalgVectorizePass
             SmallVector<linalg::LinalgOp> to_vectorize;
             Block& entry = func.getBody().front();
             for (Operation& op : entry.getOperations()) {
-                if (auto lop = dyn_cast<linalg::LinalgOp>(&op))
+                // Skip linalg.fill: elementwise fill vectorization has no
+                // benefit and rewriting it into vector.transfer ops breaks the
+                // OneShotBufferize pass that runs right after (the vectorized
+                // form is not bufferizable) — tensor chains such as
+                // tensor.empty → linalg.fill → narval.tensor_to_value rely on
+                // the fill staying in linalg form.
+                if (auto lop = dyn_cast<linalg::LinalgOp>(&op)) {
+                    if (isa<linalg::FillOp>(lop)) continue;
                     to_vectorize.push_back(lop);
+                }
             }
             for (linalg::LinalgOp lop : to_vectorize) {
                 rewriter.setInsertionPoint(lop);
