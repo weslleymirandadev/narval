@@ -237,11 +237,22 @@ mlir::narval::YieldOp NIRGenerationContext::emit_yield(mlir::Location loc,
 mlir::narval::ForRangeOp NIRGenerationContext::emit_for_range(
     mlir::Location loc, mlir::Value lb, mlir::Value ub, mlir::Value step,
     llvm::StringRef var_name, mlir::ValueRange init_args) {
-    return mlir::narval::ForRangeOp::create(
+    auto op = mlir::narval::ForRangeOp::create(
         builder_, loc,
         mlir::TypeRange(init_args.getTypes()),
         lb, ub, step, init_args,
         builder_.getStringAttr(var_name));
+    // Auto-generated builder leaves SingleBlock regions empty; populate the
+    // body with an entry block carrying (index, iter_args...) — same fix as
+    // emit_while.
+    auto* entry = new mlir::Block();
+    op.getBody().push_back(entry);
+    llvm::SmallVector<mlir::Type> arg_types;
+    arg_types.push_back(builder_.getIndexType());
+    for (mlir::Type t : init_args.getTypes()) arg_types.push_back(t);
+    llvm::SmallVector<mlir::Location> arg_locs(arg_types.size(), loc);
+    entry->addArguments(arg_types, arg_locs);
+    return op;
 }
 
 mlir::narval::WhileOp NIRGenerationContext::emit_while(
