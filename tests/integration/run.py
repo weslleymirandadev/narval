@@ -57,6 +57,31 @@ CASES = [
         "expected": "big\nfour\n4\n",
     },
     {
+        # Early-return inside def bodies (if-statement with returns in the
+        # branches) and recursion — regressions for the CFG lowering of
+        # statement-ifs (scf.if regions cannot hold func.return).
+        "name": "function_control_flow",
+        "source": (
+            'def pick(n: int): int {\n'
+            '    if (n <= 1) {\n'
+            '        return 1;\n'
+            '    }\n'
+            '    return 0;\n'
+            '}\n'
+            'def fact(n: int): int {\n'
+            '    if (n <= 1) {\n'
+            '        return 1;\n'
+            '    }\n'
+            '    return n * fact(n - 1);\n'
+            '}\n'
+            'write(pick(1));\n'
+            'write(pick(5));\n'
+            'write(fact(1));\n'
+            'write(fact(5));\n'
+        ),
+        "expected": "1\n0\n1\n120\n",
+    },
+    {
         # Tensor.zeros/ones go through the MLIR tensor path
         # (tensor.empty + linalg.fill + narval.tensor_to_value boxing).
         "name": "tensor_mlir_path",
