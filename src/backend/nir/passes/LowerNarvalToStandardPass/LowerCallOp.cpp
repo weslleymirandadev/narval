@@ -31,16 +31,20 @@ struct LowerCallOp : public OpConversionPattern<func::CallOp> {
         if (failed(typeConverter->convertTypes(op.getResultTypes(), rt)))
             return failure();
 
-        // Update the function signature to the converted types so the
-        // resulting func::CallOp doesn't need a materialization cast.
+        // Update the function signature to the converted types — but only for
+        // runtime declarations. A user-defined function (with a body) keeps its
+        // narval-typed signature here: erasing it would destroy the body, and
+        // LowerNarvalToLLVMPass converts signature + body together in phase B.
         auto mod = op->getParentOfType<ModuleOp>();
         if (auto fn = mod.lookupSymbol<func::FuncOp>(op.getCallee())) {
-            SmallVector<Type> param_types;
-            for (auto v : a.getOperands()) param_types.push_back(v.getType());
-            auto new_ft = FunctionType::get(r.getContext(), param_types, rt);
-            if (fn.getFunctionType() != new_ft) {
-                fn.erase();
-                ensure_decl(mod, r, op.getCallee().str(), new_ft);
+            if (fn.isExternal()) {
+                SmallVector<Type> param_types;
+                for (auto v : a.getOperands()) param_types.push_back(v.getType());
+                auto new_ft = FunctionType::get(r.getContext(), param_types, rt);
+                if (fn.getFunctionType() != new_ft) {
+                    fn.erase();
+                    ensure_decl(mod, r, op.getCallee().str(), new_ft);
+                }
             }
         }
 
