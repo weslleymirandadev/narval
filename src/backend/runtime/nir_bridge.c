@@ -211,6 +211,20 @@ NvObject* nv_array_get(NvObject* arr_obj, NvObject* idx_obj) {
     return out.obj;
 }
 
+// Generic container access dispatched on the receiver type: maps are keyed by
+// string (like field access), arrays/vectors/tuples by integer index.
+// Used by AccessExprNode (m["k"] / v[i]) which cannot know the static type.
+NvObject* nv_container_get(NvObject* base_obj, NvObject* key_obj) {
+    if (!base_obj || !key_obj) return NULL;
+    if (base_obj->ob_type == NVMap_Type) {
+        if (key_obj->ob_type != NVStr_Type) return NULL;
+        Value self = {base_obj}, out = {NULL};
+        nv_object_get_field(&out, &self, ((NVStr*)key_obj)->value);
+        return out.obj;
+    }
+    return nv_array_get(base_obj, key_obj);
+}
+
 NvObject* nv_create_vector(NvObject* sz_obj) {
     int32_t n = sz_obj ? obj_to_i32(sz_obj) : 4;
     if (n < 0) n = 4;
