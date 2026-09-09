@@ -114,6 +114,29 @@ CASES = [
         "expected": "10\n5\n",
     },
     {
+        # Closures are first-class: creation, calling through the handle,
+        # captures, and higher-order passing into a def.
+        "name": "closure_call",
+        "source": (
+            "def apply(f: (int): int, x: int): int {\n"
+            "    return f(x);\n"
+            "}\n"
+            "def counter(start: int): int {\n"
+            "    n = start;\n"
+            "    f = |x: int|: int { return x + n; };\n"
+            "    return f(100);\n"
+            "}\n"
+            "def main(): int {\n"
+            "    write(apply(|x: int|: int { return x * 3; }, 7));\n"
+            "    write(counter(5));\n"
+            "    g = |a: int, b: int|: int { return a + b; };\n"
+            "    write(g(20, 22));\n"
+            "    return 0;\n"
+            "}\n"
+        ),
+        "expected": "21\n105\n42\n",
+    },
+    {
         # break/continue lower correctly (regression: they used to be yield
         # placeholders that never exited the loop).
         "name": "loop_break",
