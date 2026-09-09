@@ -7,12 +7,15 @@
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/InitAllExtensions.h"
 
 // nv_runtime.h only opens its extern "C" block *after* including
 // prototypes.h, so wrap the whole include for C++ linkage.
@@ -134,22 +137,20 @@ static void test_alloc_drop() {
 }
 
 //===----------------------------------------------------------------------===//
-// narval.tensor_to_value — phase A lowering test.
+// narval.tensor_to_value — full pipeline E2E test (phase A + phase B).
 //
 // Builds func @box_tensor_test() that:
-//   1. creates a tensor<2x3xf32> (arith.constant dense producer)
+//   1. creates a tensor<2x3xf32> (tensor.empty + linalg.fill, mirroring the
+//      codegen producer used by Tensor.zeros/ones)
 //   2. boxes it with narval.tensor_to_value
 //   3. releases it with narval.drop
-// Then runs the phase A pipeline (LowerNarvalToStandardPass is where
-// TensorToValueOp is converted). Success means:
+// Then runs phase A (TensorToValueOp → memref alloc + materialize_in_destination
+// + nv_box_tensor runtime call) and phase B (bufferize/linalg/LLVM). Success:
 //   - no narval.tensor_to_value remains
-//   - a func.call @nv_box_tensor with the runtime ABI signature
-//     (11 x i64 operands) was emitted
-//   - the hand-off ops for phase B are present: memref.alloc +
-//     bufferization.materialize_in_destination +
-//     memref.extract_aligned_pointer_as_index
-// (Full phase B bufferization of tensor chains is a separate, pre-existing
-// pipeline gap — see skill narval-lang — and is not exercised here.)
+//   - a func.call @nv_box_tensor with the runtime ABI signature (12 x i64
+//     operands) was emitted
+//   - phase B bufferizes the tensor chain and no tensor/linalg/bufferization
+//     op survives into the LLVM dialect module
 //===----------------------------------------------------------------------===//
 
 static void test_tensor_to_value_pipeline() {
@@ -162,6 +163,18 @@ static void test_tensor_to_value_pipeline() {
 
     // Dialects this test emits directly (tensor/linalg) and that the new
     // lowering produces (bufferization dialect).
+    // Register all dialect extensions (external models — e.g. the
+    // BufferizableOpInterface external models that OneShotBufferize needs for
+    // tensor.empty/linalg.fill) before loading dialects, like mlir-opt does.
+    {
+        mlir::DialectRegistry registry;
+        mlir::registerAllExtensions(registry);
+        // The per-dialect bufferization models live under Transforms/ and are
+        // NOT part of registerAllExtensions — register them explicitly.
+        mlir::tensor::registerBufferizableOpInterfaceExternalModels(registry);
+        mlir::linalg::registerBufferizableOpInterfaceExternalModels(registry);
+        ctx.appendDialectRegistry(registry);
+    }
     ctx.loadDialect<mlir::tensor::TensorDialect>();
     ctx.loadDialect<mlir::linalg::LinalgDialect>();
     ctx.loadDialect<mlir::bufferization::BufferizationDialect>();
@@ -174,20 +187,28 @@ static void test_tensor_to_value_pipeline() {
     auto* entry = fn.addEntryBlock();
     b.setInsertionPointToStart(entry);
 
-    // %cst = arith.constant dense<[...]> : tensor<2x3xf32>
-    // (constant tensor producer — NarvalLinalgVectorizePass rewrites any
-    //  linalg op in phase B, so avoid linalg.fill as the source here)
+    // %empty = tensor.empty() : tensor<2x3xf32>
+    // %c0f = arith.constant 0.0 : f32
+    // %filled = linalg.fill ins(%c0f) outs(%empty) : f32, tensor<2x3xf32>
+    // (empty+fill is the producer the codegen emits for Tensor.zeros/ones —
+    //  it bufferizes cleanly, unlike arith.constant dense tensors)
     auto f32   = b.getF32Type();
     llvm::SmallVector<int64_t> shape = {2, 3};
-    auto tensor_ty = mlir::RankedTensorType::get(shape, f32);
-    float dense_vals[6] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-    auto cst = mlir::arith::ConstantOp::create(b, loc,
-        mlir::DenseElementsAttr::get(tensor_ty,
-                                     llvm::ArrayRef<float>(dense_vals, 6)));
+    auto empty = mlir::tensor::EmptyOp::create(b, loc, shape, f32);
+    auto zero_f = mlir::arith::ConstantOp::create(b, loc,
+        mlir::FloatAttr::get(f32, 0.0));
 
-    // %v = narval.tensor_to_value %cst : (tensor<2x3xf32>) -> !narval.value
+    // %filled = linalg.fill ins(%fill) outs(%empty) — the result tensor type
+    // matches the outs operand (tensor.empty result).
+    auto emptyRes = empty.getOperation()->getResult(0);
+    auto filled = mlir::linalg::FillOp::create(
+        b, loc, mlir::TypeRange{emptyRes.getType()},
+        mlir::ValueRange{zero_f.getOperation()->getResult(0)},
+        mlir::ValueRange{emptyRes});
+
+    // %v = narval.tensor_to_value %filled : (tensor<2x3xf32>) -> !narval.value
     auto t2v = mlir::narval::TensorToValueOp::create(b, loc,
-        cst.getOperation()->getResult(0));
+        filled.getOperation()->getResult(0));
     mlir::Value boxed = t2v.getOperation()->getResult(0);
 
     // narval.drop %v — consume the boxed value (like the ownership pass does)
@@ -248,37 +269,31 @@ static void test_tensor_to_value_pipeline() {
     if (!foundPtrExtract)
         fail(NAME, "memref.extract_aligned_pointer_as_index not found");
 
+    mlir::PassManager pmB(&ctx);
+    nv::build_narval_pass_pipeline_phase_b(pmB);
+    if (mlir::failed(pmB.run(nir.get_module())))
+        fail(NAME, "phase B pipeline failed on tensor boxing chain");
+    bool leftoverDialectOps = false;
+    nir.get_module().walk([&](mlir::Operation* op) {
+        if (mlir::isa<mlir::tensor::TensorDialect>(op->getDialect()) ||
+            mlir::isa<mlir::linalg::LinalgDialect>(op->getDialect()) ||
+            mlir::isa<mlir::bufferization::BufferizationDialect>(
+                op->getDialect()))
+            leftoverDialectOps = true;
+    });
+    if (leftoverDialectOps)
+        fail(NAME, "tensor/linalg/bufferization ops remain after phase B");
+
     ok(NAME);
 }
 
 //===----------------------------------------------------------------------===//
 // nv_box_tensor runtime unit tests.
-// The function reads a flat data buffer (as passed by the NIR lowering) and
-// produces a boxed map Value { __data__: NVArray of elements, __shape__:
-// NVArray of dimension sizes }. Each case validates type detection and data
-// ordering for a different element size / dtype.
+// The function reads a flat MLIR memref data buffer (raw pointer + shape) and
+// produces a runtime NVTensor value (copying; storage widened to int32/double
+// per dtype). Each case validates shape/ndim/nelem and element data ordering
+// for a different element size / dtype.
 //===----------------------------------------------------------------------===//
-
-static int is_int_obj(NvObject* o, int32_t expect) {
-    return o && o->ob_type == NVInt_Type && ((NVInt*)o)->value == expect;
-}
-
-static int is_float_obj(NvObject* o, double expect) {
-    return o && o->ob_type == NVFloat_Type && ((NVFloat*)o)->value == expect;
-}
-
-// Reads a named field of a map Value and requires it to be an NVArray.
-static NVArray* box_field_array(Value* self, const char* key,
-                                const char* test_name) {
-    Value f = {NULL};
-    nv_object_get_field(&f, self, key);
-    if (!f.obj || f.obj->ob_type != NVArray_Type) {
-        std::fprintf(stderr, "[FAIL] %s: field '%s' missing or not an array\n",
-                     test_name, key);
-        std::exit(1);
-    }
-    return (NVArray*)f.obj;
-}
 
 static void test_nv_box_tensor_runtime() {
     const char* NAME = "test_nv_box_tensor_runtime";
@@ -286,85 +301,83 @@ static void test_nv_box_tensor_runtime() {
     // Mirrors main.start: initialize the runtime type system before use.
     register_global_init();
 
-    // 1) f32 buffer (elem_size 4, fractional values) → NVFloat elements.
+    // 1) f32 buffer (elem_size 4) → float NVTensor (double storage, widened).
     {
         float buf[6] = {1.5f, -2.25f, 3.75f, 0.5f, 10.0f, -1.0f};
         Value v = nv_box_tensor((int64_t)(intptr_t)buf, 2, 4, 2,
                                 2, 3, 0, 0, 0, 0, 0, 0);
-        if (!v.obj || v.obj->ob_type != NVMap_Type)
-            fail(NAME, "f32 case: expected a map value");
-
-        NVArray* data  = box_field_array(&v, "__data__", NAME);
-        NVArray* shape = box_field_array(&v, "__shape__", NAME);
-        if (data->size != 6) fail(NAME, "f32 case: __data__ size != 6");
-        if (shape->size != 2) fail(NAME, "f32 case: __shape__ size != 2");
-        if (!is_int_obj(shape->elements[0].obj, 2) ||
-            !is_int_obj(shape->elements[1].obj, 3))
+        if (!v.obj || v.obj->ob_type != NVTensor_Type)
+            fail(NAME, "f32 case: expected an NVTensor value");
+        if (nv_tensor_ndim(&v) != 2)
+            fail(NAME, "f32 case: ndim != 2");
+        if (nv_tensor_dim(&v, 0) != 2 || nv_tensor_dim(&v, 1) != 3)
             fail(NAME, "f32 case: wrong shape dims");
-
+        if (nv_tensor_nelem(&v) != 6)
+            fail(NAME, "f32 case: nelem != 6");
+        double* data = (double*)nv_tensor_data_ptr(&v);
+        if (!data) fail(NAME, "f32 case: null data pointer");
         const double exp[6] = {1.5, -2.25, 3.75, 0.5, 10.0, -1.0};
         for (int i = 0; i < 6; i++)
-            if (!is_float_obj(data->elements[i].obj, exp[i]))
+            if (data[i] != exp[i])
                 fail(NAME, "f32 case: element value mismatch");
     }
 
-    // 2) i32 buffer (elem_size 4, int-like values) → NVInt elements.
+    // 2) i32 buffer (elem_size 4, dtype int) → int NVTensor (int32 storage).
     {
         int32_t buf[6] = {10, 20, 30, 40, 50, 60};
         Value v = nv_box_tensor((int64_t)(intptr_t)buf, 2, 4, 1,
                                 2, 3, 0, 0, 0, 0, 0, 0);
-        if (!v.obj || v.obj->ob_type != NVMap_Type)
-            fail(NAME, "i32 case: expected a map value");
-
-        NVArray* data = box_field_array(&v, "__data__", NAME);
-        if (data->size != 6) fail(NAME, "i32 case: __data__ size != 6");
+        if (!v.obj || v.obj->ob_type != NVTensor_Type)
+            fail(NAME, "i32 case: expected an NVTensor value");
+        if (nv_tensor_ndim(&v) != 2 || nv_tensor_nelem(&v) != 6)
+            fail(NAME, "i32 case: bad ndim/nelem");
+        int32_t* data = (int32_t*)nv_tensor_data_ptr(&v);
+        if (!data) fail(NAME, "i32 case: null data pointer");
         const int32_t exp[6] = {10, 20, 30, 40, 50, 60};
         for (int i = 0; i < 6; i++)
-            if (!is_int_obj(data->elements[i].obj, exp[i]))
+            if (data[i] != exp[i])
                 fail(NAME, "i32 case: element value mismatch");
     }
 
-    // 3) f64 buffer (elem_size 8) → NVFloat elements (always float path).
+    // 3) f64 buffer (elem_size 8) → float NVTensor (memcpy path).
     {
         double buf[4] = {0.25, 1.5, 2.75, -4.5};
         Value v = nv_box_tensor((int64_t)(intptr_t)buf, 1, 8, 2,
                                 4, 0, 0, 0, 0, 0, 0, 0);
-        if (!v.obj || v.obj->ob_type != NVMap_Type)
-            fail(NAME, "f64 case: expected a map value");
-
-        NVArray* data = box_field_array(&v, "__data__", NAME);
-        if (data->size != 4) fail(NAME, "f64 case: __data__ size != 4");
+        if (!v.obj || v.obj->ob_type != NVTensor_Type)
+            fail(NAME, "f64 case: expected an NVTensor value");
+        double* data = (double*)nv_tensor_data_ptr(&v);
         const double exp[4] = {0.25, 1.5, 2.75, -4.5};
         for (int i = 0; i < 4; i++)
-            if (!is_float_obj(data->elements[i].obj, exp[i]))
+            if (data[i] != exp[i])
                 fail(NAME, "f64 case: element value mismatch");
     }
 
-    // 4) i16 buffer (elem_size 2) → NVInt elements.
+    // 4) i16 buffer (elem_size 2) → int NVTensor (widened to int32).
     {
         int16_t buf[3] = {100, -200, 300};
         Value v = nv_box_tensor((int64_t)(intptr_t)buf, 1, 2, 1,
                                 3, 0, 0, 0, 0, 0, 0, 0);
-        if (!v.obj) fail(NAME, "i16 case: expected a map value");
-        NVArray* data = box_field_array(&v, "__data__", NAME);
-        if (data->size != 3) fail(NAME, "i16 case: __data__ size != 3");
+        if (!v.obj || v.obj->ob_type != NVTensor_Type)
+            fail(NAME, "i16 case: expected an NVTensor value");
+        int32_t* data = (int32_t*)nv_tensor_data_ptr(&v);
         const int32_t exp[3] = {100, -200, 300};
         for (int i = 0; i < 3; i++)
-            if (!is_int_obj(data->elements[i].obj, exp[i]))
+            if (data[i] != exp[i])
                 fail(NAME, "i16 case: element value mismatch");
     }
 
-    // 5) i8 buffer (elem_size 1) → NVInt elements.
+    // 5) i8 buffer (elem_size 1) → int NVTensor (widened to int32).
     {
         int8_t buf[3] = {-5, 0, 5};
         Value v = nv_box_tensor((int64_t)(intptr_t)buf, 1, 1, 1,
                                 3, 0, 0, 0, 0, 0, 0, 0);
-        if (!v.obj) fail(NAME, "i8 case: expected a map value");
-        NVArray* data = box_field_array(&v, "__data__", NAME);
-        if (data->size != 3) fail(NAME, "i8 case: __data__ size != 3");
+        if (!v.obj || v.obj->ob_type != NVTensor_Type)
+            fail(NAME, "i8 case: expected an NVTensor value");
+        int32_t* data = (int32_t*)nv_tensor_data_ptr(&v);
         const int32_t exp[3] = {-5, 0, 5};
         for (int i = 0; i < 3; i++)
-            if (!is_int_obj(data->elements[i].obj, exp[i]))
+            if (data[i] != exp[i])
                 fail(NAME, "i8 case: element value mismatch");
     }
 
@@ -377,18 +390,16 @@ static void test_nv_box_tensor_runtime() {
             fail(NAME, "elem_size 3 must produce a null value");
     }
 
-    // 7) Zero elements (d0 = 0) → map with empty __data__ and shape [0].
+    // 7) Zero elements (d0 = 0) → valid NVTensor with shape [0], nelem 0.
     {
         float buf[1] = {0.0f};
         Value v = nv_box_tensor((int64_t)(intptr_t)buf, 1, 4, 2,
                                 0, 0, 0, 0, 0, 0, 0, 0);
-        if (!v.obj || v.obj->ob_type != NVMap_Type)
-            fail(NAME, "empty case: expected a map value");
-        NVArray* data  = box_field_array(&v, "__data__", NAME);
-        NVArray* shape = box_field_array(&v, "__shape__", NAME);
-        if (data->size != 0) fail(NAME, "empty case: __data__ not empty");
-        if (shape->size != 1 || !is_int_obj(shape->elements[0].obj, 0))
-            fail(NAME, "empty case: wrong shape");
+        if (!v.obj || v.obj->ob_type != NVTensor_Type)
+            fail(NAME, "empty case: expected an NVTensor value");
+        if (nv_tensor_ndim(&v) != 1 || nv_tensor_dim(&v, 0) != 0 ||
+            nv_tensor_nelem(&v) != 0)
+            fail(NAME, "empty case: wrong shape/nelem");
     }
 
     ok(NAME);
