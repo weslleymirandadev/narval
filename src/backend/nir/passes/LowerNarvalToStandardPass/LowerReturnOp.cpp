@@ -20,10 +20,25 @@ struct LowerReturnOp : public OpConversionPattern<ReturnOp> {
     }
 };
 
+// narval.func lowering retypes user function signatures to !llvm.ptr, so a
+// func.return may still carry !narval.value operands whose producers get
+// converted later in this pass. func.return is dynamically illegal in that
+// case; this pattern rewrites the operand to its converted (ptr) value so the
+// conversion framework doesn't leave an unrealized cast (ptr → value) behind.
+struct LowerFuncReturnOp : public OpConversionPattern<func::ReturnOp> {
+    using OpConversionPattern::OpConversionPattern;
+    LogicalResult matchAndRewrite(func::ReturnOp op, OpAdaptor a,
+                                  ConversionPatternRewriter& r) const override {
+        r.replaceOpWithNewOp<func::ReturnOp>(op, a.getOperands());
+        return success();
+    }
+};
+
 } // namespace
 
 void populateLowerReturnOp(RewritePatternSet& patterns, mlir::narval::NarvalTypeConverter& tc) {
     patterns.add<LowerReturnOp>(tc, patterns.getContext());
+    patterns.add<LowerFuncReturnOp>(tc, patterns.getContext());
 }
 
 } // namespace nv
