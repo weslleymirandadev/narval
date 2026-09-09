@@ -4,6 +4,7 @@
 #include "backend/runtime/nv_runtime.h"
 #include "backend/runtime/prototypes.h"
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
 
@@ -202,108 +203,64 @@ NvObject* nv_tensor_from_flat_array(NvObject* flat, int64_t ndim,
 // ── nv_box_tensor — box a flat tensor data buffer into a Value ─────
 // nv_box_tensor(ptr_i64, ndim_i64, elem_size_i64, dtype_i64, d0_i64..d7_i64)
 //   -> Value
-// Takes a flat data pointer (from MLIR memref) and shape, creates a
-// generic Narval Value (NVMap) with __data__ (NVArray of elements)
-// and __shape__ (NVArray of dimension sizes).
-// dtype is NV_INT_BASE (1) or NV_FLOAT_BASE (2): elem_size alone cannot
-// disambiguate f32 from i32 — both are 4 bytes wide.
-// elem_size: 1=i8, 2=i16, 4=i32/f32, 8=i64/f64.
+// Boxes a flat MLIR memref data buffer into a runtime NVTensor value
+// (copying). elem_size is the MLIR element byte width (1/2/4/8); dtype is
+// NV_INT_BASE(1) or NV_FLOAT_BASE(2) — the NVTensor storage is int32/double,
+// so narrower sources are widened element-wise (f32→double, i8/i16→int32).
+// Unsupported combos (i64, f16/bf16) return a null Value.
 Value nv_box_tensor(int64_t ptr_int, int64_t ndim, int64_t elem_size,
                      int64_t dtype,
                      int64_t d0, int64_t d1, int64_t d2, int64_t d3,
                      int64_t d4, int64_t d5, int64_t d6, int64_t d7) {
+    nv_tensor_init_type();
     void* data = (void*)(intptr_t)ptr_int;
     int64_t dims[8] = {d0, d1, d2, d3, d4, d5, d6, d7};
+    if (ndim < 0 || ndim > 8) { Value bad = {NULL}; return bad; }
+
     int64_t nelem = 1;
     for (int64_t i = 0; i < ndim && i < 8; i++)
         nelem *= dims[i];
-    if (nelem < 0 || nelem > 1000000000) nelem = 0;
+    if (nelem < 0 || nelem > 1000000000) { Value bad = {NULL}; return bad; }
 
-    // Create result map: { __data__: [...elements...], __shape__: [d0, d1, ...] }
-    Value result;
-    create_map(&result);
-    if (!result.obj) { Value bad = {NULL}; return bad; }
+    if (nelem == 0 || !data)
+        return nv_tensor_zeros((int32_t)dtype, (int32_t)ndim, dims);
 
-    // Helper to store the shape array into __shape__.
-    Value shape_arr;
-    create_array(&shape_arr, (int32_t)ndim);
-    if (shape_arr.obj) {
-        NVArray* sa = (NVArray*)shape_arr.obj;
-        for (int64_t i = 0; i < ndim; i++) {
-            Value v = {NULL};
-            create_int(&v, (int32_t)dims[i]);
-            sa->elements[i] = v;
-        }
-    }
-    nv_object_set_field(&result, "__shape__", &shape_arr);
-
-    if (nelem == 0 || !data) {
-        // Empty data — still create an empty __data__ array.
-        Value empty_arr;
-        create_array(&empty_arr, 0);
-        nv_object_set_field(&result, "__data__", &empty_arr);
-        return result;
-    }
-
-    const int is_float = (dtype == NV_FLOAT_BASE);
-
-    // Create the flat NVArray of elements
-    Value data_arr;
-    create_array(&data_arr, (int32_t)nelem);
-    if (!data_arr.obj) { Value bad = {NULL}; return bad; }
-    NVArray* arr = (NVArray*)data_arr.obj;
-
-    if (is_float) {
-        if (elem_size == 8) {
-            double* fdata = (double*)data;
-            for (int64_t i = 0; i < nelem; i++) {
-                Value v = {NULL};
-                create_float(&v, fdata[i]);
-                arr->elements[i] = v;
-            }
-        } else if (elem_size == 4) {
-            float* fdata = (float*)data;
-            for (int64_t i = 0; i < nelem; i++) {
-                Value v = {NULL};
-                create_float(&v, (double)fdata[i]);
-                arr->elements[i] = v;
-            }
-        } else {
-            // f16/bf16 (2 bytes) boxing not implemented yet
-            Value bad = {NULL};
-            return bad;
-        }
-    } else {
-        if (elem_size == 1) {
-            int8_t* i1data = (int8_t*)data;
-            for (int64_t i = 0; i < nelem; i++) {
-                Value v = {NULL};
-                create_int(&v, (int32_t)i1data[i]);
-                arr->elements[i] = v;
-            }
+    if (dtype == NV_INT_BASE) {
+        // NVTensor int storage is int32 — widen i8/i16, memcpy i32.
+        int32_t* tmp = (int32_t*)malloc((size_t)nelem * sizeof(int32_t));
+        if (!tmp) { Value bad = {NULL}; return bad; }
+        if (elem_size == 4) {
+            memcpy(tmp, data, (size_t)nelem * sizeof(int32_t));
+        } else if (elem_size == 1) {
+            const int8_t* src = (const int8_t*)data;
+            for (int64_t i = 0; i < nelem; i++) tmp[i] = (int32_t)src[i];
         } else if (elem_size == 2) {
-            int16_t* i2data = (int16_t*)data;
-            for (int64_t i = 0; i < nelem; i++) {
-                Value v = {NULL};
-                create_int(&v, (int32_t)i2data[i]);
-                arr->elements[i] = v;
-            }
-        } else if (elem_size == 4) {
-            int32_t* i4data = (int32_t*)data;
-            for (int64_t i = 0; i < nelem; i++) {
-                Value v = {NULL};
-                create_int(&v, i4data[i]);
-                arr->elements[i] = v;
-            }
+            const int16_t* src = (const int16_t*)data;
+            for (int64_t i = 0; i < nelem; i++) tmp[i] = (int32_t)src[i];
         } else {
-            // i64 cannot be boxed: NVInt stores int32 — refuse to truncate.
-            Value bad = {NULL};
-            return bad;
+            free(tmp); // i64: NVInt storage is int32 — refuse to truncate.
+            Value bad = {NULL}; return bad;
         }
+        Value v = nv_tensor_from_data(NV_INT_BASE, (int32_t)ndim, dims, tmp);
+        free(tmp);
+        return v;
     }
 
-    nv_object_set_field(&result, "__data__", &data_arr);
-    return result;
+    // NVTensor float storage is double — widen f32, memcpy f64.
+    double* tmp = (double*)malloc((size_t)nelem * sizeof(double));
+    if (!tmp) { Value bad = {NULL}; return bad; }
+    if (elem_size == 4) {
+        const float* src = (const float*)data;
+        for (int64_t i = 0; i < nelem; i++) tmp[i] = (double)src[i];
+    } else if (elem_size == 8) {
+        memcpy(tmp, data, (size_t)nelem * sizeof(double));
+    } else {
+        free(tmp); // f16/bf16 boxing not implemented yet.
+        Value bad = {NULL}; return bad;
+    }
+    Value v = nv_tensor_from_data(NV_FLOAT_BASE, (int32_t)ndim, dims, tmp);
+    free(tmp);
+    return v;
 }
 
 // ── Generic attribute access bridge ───────────────────────────────
