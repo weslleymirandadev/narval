@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 project(Narval)
+include(CTest)
 include(GNUInstallDirs)
 include(cmake/NarvalSources.cmake)
 
@@ -106,6 +107,17 @@ if(TARGET Narval)
         NARVAL_INSTALL_RUNTIME_DIR="${NARVAL_INSTALL_RUNTIME_DIR}"
         NARVAL_DEV_MODE=$<BOOL:${NARVAL_DEV_MODE}>
     )
+endif()
+
+if(BUILD_TESTING)
+    # End-to-end integration suite: compiles and runs small .nv programs
+    # (tests/integration/run.py) and compares stdout against expected output.
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME narval_integration
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/run.py
+                     $<TARGET_FILE:Narval>)
+    set_tests_properties(narval_integration PROPERTIES TIMEOUT 300)
 endif()
 
 install(TARGETS Narval
