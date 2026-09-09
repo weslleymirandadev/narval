@@ -164,6 +164,19 @@ def Narval_ReturnOp : Narval_Op<"return", [Pure, Terminator, ReturnLike]> {
     let assemblyFormat = "($operands^ `:` type($operands))? attr-dict";
 }
 
+// narval.break — exit the innermost enclosing loop.
+// Lowered by LowerNarvalControlFlowPass to a branch out of the loop.
+def Narval_BreakOp : Narval_Op<"break", [Pure, Terminator]> {
+    let summary = "Break out of the innermost loop";
+    let assemblyFormat = "attr-dict";
+}
+
+// narval.continue — jump to the next iteration of the innermost loop.
+def Narval_ContinueOp : Narval_Op<"continue", [Pure, Terminator]> {
+    let summary = "Continue to the next loop iteration";
+    let assemblyFormat = "attr-dict";
+}
+
 // Object model ops
 
 def Narval_GetFieldOp : Narval_Op<"get_field"> {
