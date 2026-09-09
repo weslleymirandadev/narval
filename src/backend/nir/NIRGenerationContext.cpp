@@ -301,7 +301,7 @@ NIRGenerationContext::lower_to_llvm_ir(llvm::LLVMContext& llvm_ctx) {
     std::cerr << "NIR: running phase B..." << std::endl;
     {
         mlir::PassManager pm(&ctx_);
-        nv::build_narval_pass_pipeline_phase_b(pm);
+        nv::build_narval_pass_pipeline_phase_b(pm, *module_);
         if (!run(pm))
             return llvm::createStringError(llvm::inconvertibleErrorCode(),
                                            "NIR phase B failed");
