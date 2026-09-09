@@ -148,7 +148,8 @@ std::string parse_type(Parser* parser) {
         type_str = "[" + num.lexeme + "]" + elem;
     }
     else if (curr.type == TokenType::OPAREN) {
-        // Tuple type: (int, str)
+        // Tuple type: (int, str) — or a function type in the (T1, T2): R
+        // form when a ':' follows the closing paren.
         parser->consume_token(); // (
         std::vector<std::string> elems;
         bool first = true;
@@ -159,6 +160,21 @@ std::string parse_type(Parser* parser) {
             elems.push_back(parse_type(parser));
         }
         parser->expect(TokenType::CPAREN, "Expected ')' to close tuple type.");
+
+        // Function type: (T1, T2): R — normalize to the canonical pipe form
+        // |_0:T1, _1:T2|:R used elsewhere for function types.
+        if (parser->current_token().type == TokenType::COLON) {
+            parser->consume_token();
+            std::string ret = parse_type(parser);
+            std::string result = "|";
+            for (size_t i = 0; i < elems.size(); ++i) {
+                result += "_" + std::to_string(i) + ":" + elems[i];
+                if (i + 1 < elems.size()) result += ", ";
+            }
+            result += "|:" + ret;
+            return result;
+        }
+
         type_str = "(" + join(elems, ", ") + ")";
     }
     else if (curr.type == TokenType::BITWISE_OR) {
