@@ -87,11 +87,13 @@ void ClosureExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
 
     llvm::SmallVector<mlir::Value> rt_args;
     // The closure wrapper references fn by name (a string constant proxy);
-    // the runtime resolves/creates the closure handle from it.
+    // the runtime resolves the symbol via dlsym and snapshots the captured
+    // values into cells. One nv_create_closure_cN bridge per capture count.
     auto fn_name_val = mlir::narval::ConstantOp::create(b, loc, vt,
         mlir::StringAttr::get(&mlir_ctx, fn_name)).getResult();
     rt_args.push_back(fn_name_val);
     for (auto& v : captured_vals) rt_args.push_back(v);
-
-    ctx.push_value(nir_call_runtime(ctx, loc, "nv_create_closure", rt_args, {vt}));
+    std::string bridge =
+        "nv_create_closure_c" + std::to_string(captured_vals.size());
+    ctx.push_value(nir_call_runtime(ctx, loc, bridge, rt_args, {vt}));
 }
