@@ -95,6 +95,22 @@ CASES = [
         "expected": "top\nmain\n",
     },
     {
+        # break/continue lower correctly (regression: they used to be yield
+        # placeholders that never exited the loop).
+        "name": "loop_break",
+        "source": (
+            'while (true) {\n'
+            '    write("a");\n'
+            '    if (1 == 1) {\n'
+            '        break;\n'
+            '    }\n'
+            '    write("c");\n'
+            '}\n'
+            'write("fim");\n'
+        ),
+        "expected": "a\nfim\n",
+    },
+    {
         # Tensor.zeros/ones go through the MLIR tensor path
         # (tensor.empty + linalg.fill + narval.tensor_to_value boxing).
         "name": "tensor_mlir_path",
