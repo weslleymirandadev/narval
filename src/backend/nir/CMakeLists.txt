@@ -141,6 +141,10 @@ target_link_libraries(NarvalNirDialect
 target_compile_options(NarvalNirDialect PRIVATE -fexceptions -fno-rtti -fPIE)
 
 add_executable(NarvalNirTest ${CMAKE_CURRENT_SOURCE_DIR}/nir_pipeline_test.cpp)
+if(BUILD_TESTING)
+    add_test(NAME NarvalNirTest COMMAND $<TARGET_FILE:NarvalNirTest>)
+    set_tests_properties(NarvalNirTest PROPERTIES TIMEOUT 300)
+endif()
 add_dependencies(NarvalNirTest NarvalDialectIncGen NarvalTypesIncGen NarvalOpsIncGen NarvalPassesIncGen)
 target_include_directories(NarvalNirTest PRIVATE
     ${CMAKE_CURRENT_BINARY_DIR}
