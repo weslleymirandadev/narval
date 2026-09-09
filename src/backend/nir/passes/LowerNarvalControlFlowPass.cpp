@@ -202,16 +202,17 @@ struct LowerForRangeOp : public OpConversionPattern<ForRangeOp> {
             adaptor.getLb(), adaptor.getUb(), adaptor.getStep(),
             adaptor.getInitArgs());
 
-        // Move narval body blocks into scf.for's body region.
-        // scf.for creates one body block with (index, iter_args...) args.
-        // narval.for_range's body should have the same block arg structure.
-        // Use mergeBlocks to merge the narval body block into the scf body block.
+        // Move the narval body block into scf.for's body region. The codegen
+        // body block already carries (index, iter_args...) as its block args
+        // and terminates with its own yield, so swap it in for scf.for's
+        // placeholder block instead of mergeBlocks (which appends ops after
+        // the placeholder's yield terminator, leaving a malformed body).
         Region& narval_body = op.getBody();
         if (!narval_body.empty() && !narval_body.front().empty()) {
-            Block* scf_body = scf_for.getBody();    // scf.for's body block
-            Block& narval_block = narval_body.front();
-            // Replace narval block args (if any) with scf.for's block args, then merge.
-            r.mergeBlocks(&narval_block, scf_body, scf_body->getArguments());
+            Block* scf_body = scf_for.getBody();  // scf.for's placeholder body
+            Region& scf_region = *scf_body->getParent();
+            r.eraseBlock(scf_body);
+            r.inlineRegionBefore(narval_body, scf_region, scf_region.end());
         }
 
         r.replaceOp(op, scf_for.getResults());
