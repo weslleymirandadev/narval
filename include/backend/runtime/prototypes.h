@@ -502,6 +502,15 @@ Value  nv_tensor_transpose(Value* v);
 Value  nv_tensor_item(Value* v);
 Value  nv_tensor_tolist(Value* v);
 
+// nv_box_tensor — box a flat data buffer (from MLIR memref) into a Value
+// with __data__ (NVArray of elements) and __shape__ (NVArray of dims).
+// dtype: NV_INT_BASE (1) or NV_FLOAT_BASE (2) — elem_size alone cannot
+// disambiguate f32 from i32. elem_size: 1=i8 2=i16 4=i32/f32 8=f64.
+Value nv_box_tensor(int64_t ptr_int, int64_t ndim, int64_t elem_size,
+                    int64_t dtype,
+                    int64_t d0, int64_t d1, int64_t d2, int64_t d3,
+                    int64_t d4, int64_t d5, int64_t d6, int64_t d7);
+
 // Verificar se valor é nulo (legado)
 int is_null_value(const Value* v);
 
