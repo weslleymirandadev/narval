@@ -1,11 +1,13 @@
 #include "backend/nir/NarvalOps.h"
 #include "backend/nir/NarvalPasses.h"
 #include "backend/nir/NarvalTypes.h"
+#include "backend/nir/passes/NarvalTypeConverter.hpp"
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -224,44 +226,54 @@ struct LowerForRangeOp : public OpConversionPattern<ForRangeOp> {
 struct LowerWhileOp : public OpConversionPattern<WhileOp> {
     using OpConversionPattern::OpConversionPattern;
 
-    // Statement-while (no results/inits — always the case from codegen):
-    // lower straight to a cf.cond_br CFG. scf.while proved unreliable here
-    // (region-block juggling crashed both inline+eraseBlock and the walk in
-    // the next pass), and a CFG also permits multi-block bodies produced by
-    // nested statement-ifs and early returns.
-    LogicalResult lowerStatementWhile(WhileOp op, OpAdaptor adaptor,
-                                      ConversionPatternRewriter& r) const {
+    // Statement-whiles (and loop-carried while loops) lower straight to a
+    // cf.cond_br CFG. scf.while proved unreliable here (region-block juggling
+    // crashed both inline+eraseBlock and the walk in the next pass), and a CFG
+    // also permits multi-block bodies produced by nested statement-ifs, early
+    // returns, and break/continue.
+    //
+    // Loop-carried values flow through block arguments using the runtime ABI
+    // type (!llvm.ptr): condition/body region block args (vt from codegen) are
+    // remapped onto ptr-typed args by mergeBlocks; values produced by body ops
+    // (vt, results of runtime calls) are materialized into the back-edge with
+    // unrealized_conversion_cast vt→ptr, which later passes collapse once the
+    // producer ops are converted.
+    LogicalResult matchAndRewrite(WhileOp op, OpAdaptor adaptor,
+                                  ConversionPatternRewriter& r) const override {
         Location loc = op.getLoc();
+        auto* ctx = r.getContext();
         Block* parent = op->getBlock();
         if (!parent) return failure();
 
-        // Everything after the while moves to a continuation block.
-        Block* cont = r.splitBlock(parent, op->getIterator());
-
-        // Loop header (condition) block, before cont.
-        Block* loop_blk = r.createBlock(cont);
-
-        // Resolve narval.break/continue ANYWHERE inside the while's regions
-        // (they may sit inside not-yet-lowered if regions): break → br cont,
-        // continue → br loop_blk. The LowerIfOp runs after this pattern and
-        // keeps these branch terminators when it moves blocks around.
-        llvm::SmallVector<Operation*> exits;
-        op.getConditionRegion().walk([&](Operation* o) {
-            if (isa<narval::BreakOp, narval::ContinueOp>(o))
-                exits.push_back(o);
-        });
-        op.getBodyRegion().walk([&](Operation* o) {
-            if (isa<narval::BreakOp, narval::ContinueOp>(o))
-                exits.push_back(o);
-        });
-        for (Operation* e : exits) {
-            r.setInsertionPoint(e);
-            if (isa<narval::BreakOp>(e))
-                r.create<cf::BranchOp>(loc, cont);
-            else
-                r.create<cf::BranchOp>(loc, loop_blk);
-            r.eraseOp(e);
+        bool has_carried = !op.getInitArgs().empty();
+        // The CF pass type converter is identity, so carried block args are
+        // retyped to the runtime ABI type explicitly (like
+        // LowerNarvalFunctionsPass — the conversion framework cannot convert
+        // block-argument types). Values entering the blocks (init args, body
+        // yields) are vt results of ops; they flow into the branches
+        // unconverted, and lower-narval-to-std converts the producer ops and
+        // re-legalizes the branches (cf.br/cf.cond_br are dynamically legal
+        // there), so everything lines up as !llvm.ptr without any
+        // materialization casts.
+        NarvalTypeConverter ntc(ctx);
+        SmallVector<Type> carried_types;
+        for (Type t : op.getInitArgs().getTypes()) {
+            Type c = ntc.convertType(t);
+            carried_types.push_back(c ? c : t);
         }
+
+        // Everything after the while moves to a continuation block, which
+        // receives the final carried values as its (result) arguments.
+        Block* cont = r.splitBlock(parent, op->getIterator());
+        llvm::SmallVector<Location> locs;
+        if (has_carried) {
+            locs.assign(carried_types.size(), loc);
+            cont->addArguments(carried_types, locs);
+        }
+
+        // Loop header (condition) block, before cont, holding the live values.
+        Block* loop_blk = r.createBlock(cont);
+        if (has_carried) loop_blk->addArguments(carried_types, locs);
 
         // Move ALL body blocks into the function region, before cont.
         Region& fn_region = *cont->getParent();
@@ -272,12 +284,67 @@ struct LowerWhileOp : public OpConversionPattern<WhileOp> {
             r.inlineRegionBefore(op.getBodyRegion(), fn_region,
                                  cont->getIterator());
 
-        // Move condition ops into loop_blk; extract the i1 from its
-        // terminating yield.
+        // The body's front block keeps its codegen'd args (vt) — retype them
+        // to the runtime ABI type now (block-arg types cannot be converted by
+        // the framework; LowerNarvalFunctionsPass does the same for entry
+        // args).
+        if (body_first && has_carried) {
+            size_t n = body_first->getNumArguments();
+            if (n > carried_types.size()) n = carried_types.size();
+            for (size_t i = 0; i < n; ++i)
+                body_first->getArgument(i).setType(carried_types[i]);
+        }
+
+        // Resolve narval.break/continue ANYWHERE inside the while's regions
+        // (they may sit inside not-yet-lowered if regions): break → br cont,
+        // continue → br loop_blk, both carrying the current iteration values
+        // (the body's front-block args — correct when the exit precedes any
+        // reassignment in the body, the typical `while (true) { if (c) break;
+        // ... }` pattern). The LowerIfOp keeps these branch terminators when
+        // it moves blocks around.
+        ValueRange cur_vals = (body_first && has_carried)
+                                  ? ValueRange(body_first->getArguments())
+                                  : ValueRange{};
+        llvm::SmallVector<Operation*> exits;
+        op.getConditionRegion().walk([&](Operation* o) {
+            if (isa<narval::BreakOp, narval::ContinueOp>(o))
+                exits.push_back(o);
+        });
+        for (Block* bb : body_blocks)
+            bb->walk([&](Operation* o) {
+                if (isa<narval::BreakOp, narval::ContinueOp>(o))
+                    exits.push_back(o);
+            });
+        for (Operation* e : exits) {
+            r.setInsertionPoint(e);
+            if (isa<narval::BreakOp>(e))
+                r.create<cf::BranchOp>(loc, cont, cur_vals);
+            else
+                r.create<cf::BranchOp>(loc, loop_blk, cur_vals);
+            r.eraseOp(e);
+        }
+
+        // Move condition ops into loop_blk, remapping the condition region's
+        // block args (the loop-carried values) onto loop_blk's args. Done
+        // manually (splice + direct replaceAllUsesWith) instead of
+        // mergeBlocks: mergeBlocks notifies the conversion driver of the
+        // vt→ptr arg replacement, which makes it materialize a ptr→vt cast for
+        // the remaining vt uses → "unresolved materialization" failure.
         if (!op.getConditionRegion().empty()) {
             Block* cond_src = &op.getConditionRegion().front();
-            r.mergeBlocks(cond_src, loop_blk, {});
+            loop_blk->getOperations().splice(loop_blk->end(),
+                                             cond_src->getOperations());
+            for (auto [src_arg, dst_arg] :
+                 llvm::zip(cond_src->getArguments(),
+                           loop_blk->getArguments())) {
+                if (src_arg.getType() != dst_arg.getType())
+                    src_arg.replaceAllUsesWith(dst_arg);
+            }
+            r.eraseBlock(cond_src);
         }
+
+        // Extract the i1 from the condition's terminating yield
+        // (yield {i1, carried...}).
         Value cond;
         if (!loop_blk->empty()) {
             Operation* term = &loop_blk->back();
@@ -290,86 +357,47 @@ struct LowerWhileOp : public OpConversionPattern<WhileOp> {
         if (!cond)
             cond = arith::ConstantIntOp::create(r, loc, 0, 1).getResult();
 
-        // Terminate loop_blk with the conditional branch.
+        // Terminate loop_blk: true → body (carried stay live), false → cont
+        // (carried are the final results).
         r.setInsertionPointToEnd(loop_blk);
         r.create<cf::CondBranchOp>(loc, cond,
                                    body_first ? body_first : cont,
-                                   ValueRange{}, cont, ValueRange{});
+                                   loop_blk->getArguments(),
+                                   cont, loop_blk->getArguments());
 
-        // Body fall-through blocks (yield terminators) branch back to the
-        // condition; func.return stays as an early exit.
+        // Body fall-through blocks: yield {updated values} → branch back to
+        // the header carrying the updated values; func.return stays as an
+        // early exit. Values are vt (results of runtime calls) — materialize
+        // vt→ptr casts that later passes collapse after converting producers.
         for (Block* bb : body_blocks) {
             if (bb->empty()) continue;
             Operation* term = &bb->back();
             if (isa<narval::YieldOp, scf::YieldOp>(term)) {
+                llvm::SmallVector<Value> vals;
+                for (Value v : term->getOperands()) vals.push_back(v);
                 r.eraseOp(term);
                 r.setInsertionPointToEnd(bb);
-                r.create<cf::BranchOp>(loc, loop_blk);
+                r.create<cf::BranchOp>(loc, loop_blk, vals);
             }
         }
 
-        // Parent falls through into the loop header.
+        // Parent falls through into the loop header with the initial values.
         r.setInsertionPointToEnd(parent);
-        r.create<cf::BranchOp>(loc, loop_blk);
+        r.create<cf::BranchOp>(loc, loop_blk, adaptor.getInitArgs());
 
-        r.eraseOp(op);
-        return success();
-    }
-
-    LogicalResult matchAndRewrite(WhileOp op, OpAdaptor adaptor,
-                                  ConversionPatternRewriter& r) const override {
-        if (op.getNumResults() == 0 && op.getInitArgs().empty())
-            return lowerStatementWhile(op, adaptor, r);
-
-        SmallVector<Type> result_types;
-        if (failed(typeConverter->convertTypes(op.getResultTypes(), result_types)))
-            return failure();
-
-        auto scf_while = scf::WhileOp::create(r, op.getLoc(), result_types,
-                                               adaptor.getInitArgs());
-
-        // Move condition region → scf.while before-region (merge into the
-        // placeholder block — inline+eraseBlock crashed in this pass).
-        {
-            Block* scf_before = &scf_while.getBefore().front();
-            if (!op.getConditionRegion().empty())
-                r.mergeBlocks(&op.getConditionRegion().front(), scf_before,
-                              scf_before->getArguments());
+        // Replace the while's results with the continuation block args by
+        // hand: the codegen types (vt) differ from the block-arg types (ptr),
+        // and r.replaceOp would ask the framework to materialize ptr→vt (the
+        // CF type converter cannot). Uses of the vt results (later runtime
+        // calls) tolerate ptr operands — lower-narval-to-std converts them.
+        if (has_carried) {
+            for (auto [res, arg] :
+                 llvm::zip(op.getResults(), cont->getArguments()))
+                res.replaceAllUsesWith(arg);
+            r.eraseOp(op);
+        } else {
+            r.eraseOp(op);
         }
-
-        // Move body region → scf.while after-region.
-        {
-            Block* scf_after = &scf_while.getAfter().front();
-            if (!op.getBodyRegion().empty())
-                r.mergeBlocks(&op.getBodyRegion().front(), scf_after,
-                              scf_after->getArguments());
-        }
-
-        // The codegen terminates the condition region with a yield carrying the
-        // i1 (narval.yield{i1}). scf.while requires its before-region to end
-        // with scf.condition.
-        Block& before_blk = scf_while.getBefore().front();
-        if (!before_blk.empty()) {
-            Operation* term = &before_blk.back();
-            if (isa<narval::YieldOp, scf::YieldOp>(term) &&
-                term->getNumOperands() >= 1) {
-                Value cond = term->getOperand(0);
-                r.eraseOp(term);
-                r.setInsertionPointToEnd(&before_blk);
-                r.create<scf::ConditionOp>(op.getLoc(), cond, ValueRange{});
-            }
-        }
-
-        // The after-region must end with an (empty) scf.yield.
-        Block& after_blk = scf_while.getAfter().front();
-        if (!after_blk.empty() && isa<narval::YieldOp>(&after_blk.back())) {
-            Operation* term = &after_blk.back();
-            r.eraseOp(term);
-            r.setInsertionPointToEnd(&after_blk);
-            r.create<scf::YieldOp>(op.getLoc(), ValueRange{});
-        }
-
-        r.replaceOp(op, scf_while.getResults());
         return success();
     }
 };
