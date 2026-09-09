@@ -82,6 +82,19 @@ CASES = [
         "expected": "1\n0\n1\n120\n",
     },
     {
+        # A zero-arg `def main` is invoked after top-level code (C-like entry
+        # convention); explicit top-level calls are not duplicated.
+        "name": "main_entry",
+        "source": (
+            'write("top");\n'
+            'def main(): int {\n'
+            '    write("main");\n'
+            '    return 0;\n'
+            '}\n'
+        ),
+        "expected": "top\nmain\n",
+    },
+    {
         # Tensor.zeros/ones go through the MLIR tensor path
         # (tensor.empty + linalg.fill + narval.tensor_to_value boxing).
         "name": "tensor_mlir_path",
