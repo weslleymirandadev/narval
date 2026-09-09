@@ -587,6 +587,10 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
                 obj_path + " -pthread -ldl -lm -o " + bin_path +
                 " -Wl,-e,_narval_entry -nostartfiles " + nir_pie +
                 " -lc -w -Wl,--gc-sections " +
+                // Closures resolve their function symbols (__closure_fn_N) via
+                // dlsym at runtime; export those symbols so the dynamic lookup
+                // works and gc-sections keeps them.
+                "-Wl,--export-dynamic-symbol=__closure_fn_* " +
                 (attrs.strip ? "-Wl,--strip-all " : "") +
                 (attrs.lto   ? "-flto "           : "") +
                 nir_link_extra;
