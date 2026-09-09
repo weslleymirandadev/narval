@@ -90,6 +90,7 @@ set(MLIR_DIALECT_LIBS
     MLIRTensorTransforms
     MLIRBufferizationDialect
     MLIRBufferizationTransforms
+    MLIRRegisterAllExtensions
     MLIRGPUToGPURuntimeTransforms
     MLIRTransformDialect
     MLIRTransformDialectInterfaces
