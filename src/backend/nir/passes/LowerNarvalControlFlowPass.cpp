@@ -4,6 +4,7 @@
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Builders.h"
@@ -56,8 +57,84 @@ struct LowerYieldOp : public OpConversionPattern<YieldOp> {
 struct LowerIfOp : public OpConversionPattern<IfOp> {
     using OpConversionPattern::OpConversionPattern;
 
+    // True when the block's terminator is an (early) function return.
+    static bool returnsFromBlock(Block* block) {
+        if (block->empty()) return false;
+        Operation* term = &block->back();
+        return isa<func::ReturnOp, narval::ReturnOp>(term);
+    }
+
+    // Statement if (no results): lower to a cf.cond_br CFG directly.
+    // scf.if regions that end in func.return (early return in one branch) are
+    // invalid: later region DCE (ConvertVectorToLLVMPass) crashes on them.
+    LogicalResult lowerStatementIf(IfOp op, OpAdaptor adaptor,
+                                   ConversionPatternRewriter& r) const {
+        Location loc = op.getLoc();
+        Block* parent = op->getBlock();
+        if (!parent) return failure();
+
+        // Split: everything after the if goes to a continuation block.
+        Block* cont = r.splitBlock(parent, op->getIterator());
+
+        // Build then/else blocks between parent and cont.
+        r.setInsertionPointToEnd(parent);
+        Block* thenBlk = r.createBlock(cont);
+        Block* elseBlk = r.createBlock(cont);
+
+        // Move then-region ops into thenBlk.
+        Block* thenSrc = &op.getThenRegion().front();
+        bool thenReturns = returnsFromBlock(thenSrc);
+        r.mergeBlocks(thenSrc, thenBlk, {});
+        if (!thenReturns) {
+            // Region ended with a yield — replace with a branch to cont.
+            Operation* term = &thenBlk->back();
+            r.eraseOp(term);
+            r.setInsertionPointToEnd(thenBlk);
+            r.create<cf::BranchOp>(loc, cont);
+        }
+
+        // Move else-region ops into elseBlk (empty else = just br cont).
+        bool hasElse = !op.getElseRegion().empty() &&
+                       !op.getElseRegion().front().empty();
+        if (hasElse) {
+            Block* elseSrc = &op.getElseRegion().front();
+            // A region containing only a yield is a vacuous else.
+            bool vacuousElse = returnsFromBlock(elseSrc) == false &&
+                               llvm::hasSingleElement(elseSrc->getOperations()) &&
+                               isa<narval::YieldOp, scf::YieldOp>(
+                                   &elseSrc->back());
+            if (vacuousElse) {
+                hasElse = false;
+            } else {
+                bool elseReturns = returnsFromBlock(elseSrc);
+                r.mergeBlocks(elseSrc, elseBlk, {});
+                if (!elseReturns) {
+                    Operation* term = &elseBlk->back();
+                    r.eraseOp(term);
+                    r.setInsertionPointToEnd(elseBlk);
+                    r.create<cf::BranchOp>(loc, cont);
+                }
+            }
+        }
+        if (!hasElse) {
+            r.setInsertionPointToEnd(elseBlk);
+            r.create<cf::BranchOp>(loc, cont);
+        }
+
+        // Terminate parent with the conditional branch and drop the if op.
+        r.setInsertionPointToEnd(parent);
+        r.create<cf::CondBranchOp>(loc, adaptor.getCondition(),
+                                   thenBlk, ValueRange{}, elseBlk, ValueRange{});
+        r.eraseOp(op);
+        return success();
+    }
+
     LogicalResult matchAndRewrite(IfOp op, OpAdaptor adaptor,
                                   ConversionPatternRewriter& r) const override {
+        // Statement-if (no results) → cf.cond_br CFG (handles early returns).
+        if (op.getNumResults() == 0)
+            return lowerStatementIf(op, adaptor, r);
+
         SmallVector<Type> result_types;
         if (failed(typeConverter->convertTypes(op.getResultTypes(), result_types)))
             return failure();
