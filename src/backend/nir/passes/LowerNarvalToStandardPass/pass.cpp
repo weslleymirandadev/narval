@@ -4,6 +4,7 @@
 #include "backend/nir/passes/NarvalTypeConverter.hpp"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -14,6 +15,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
+
 
 #define GEN_PASS_DEF_LOWERNARVALTOSTANDARDPASS
 #include "NarvalPasses.h.inc"
@@ -39,6 +41,7 @@ void populateLowerNewOp(RewritePatternSet& patterns, mlir::narval::NarvalTypeCon
 void populateLowerGetFieldOp(RewritePatternSet& patterns, mlir::narval::NarvalTypeConverter& tc);
 void populateLowerSetFieldOp(RewritePatternSet& patterns, mlir::narval::NarvalTypeConverter& tc);
 void populateLowerCallMethodOp(RewritePatternSet& patterns, mlir::narval::NarvalTypeConverter& tc);
+void populateLowerTensorToValue(RewritePatternSet& patterns, mlir::narval::NarvalTypeConverter& tc);
 
 namespace {
 
@@ -57,6 +60,7 @@ struct LowerNarvalToStandardPassImpl
 
         target.addLegalDialect<func::FuncDialect, arith::ArithDialect,
                                scf::SCFDialect, memref::MemRefDialect,
+                               bufferization::BufferizationDialect,
                                LLVM::LLVMDialect>();
         target.addLegalOp<ModuleOp>();
         // Mark func.call as dynamically legal — illegal when it has narval types.
@@ -69,10 +73,20 @@ struct LowerNarvalToStandardPassImpl
                     return false;
             return true;
         });
+        // func.return with !narval.value operands (from user funcs whose body
+        // producers are converted by this pass) must be rewritten too —
+        // otherwise the driver leaves an unrealized cast ptr→value behind.
+        target.addDynamicallyLegalOp<func::ReturnOp>([](func::ReturnOp op) {
+            for (auto t : op.getOperandTypes())
+                if (mlir::isa<narval::ValueType, narval::RefType, narval::MutRefType>(t))
+                    return false;
+            return true;
+        });
         target.addIllegalOp<AllocOp, DropOp, MoveOp, BorrowOp, BorrowMutOp,
                             CallOp, CallRuntimeOp, ReturnOp,
                             ConstantOp, ComptimeConstOp,
-                            NewOp, GetFieldOp, SetFieldOp, CallMethodOp>();
+                            NewOp, GetFieldOp, SetFieldOp, CallMethodOp,
+                            TensorToValueOp>();
         // Tensor and GPU stay for later passes.
         target.addLegalOp<TensorMatmulOp, TensorAddOp, TensorMulOp,
                           TensorTransposeOp, TensorFillOp,
@@ -96,6 +110,7 @@ struct LowerNarvalToStandardPassImpl
         populateLowerGetFieldOp(patterns, tc);
         populateLowerSetFieldOp(patterns, tc);
         populateLowerCallMethodOp(patterns, tc);
+        populateLowerTensorToValue(patterns, tc);
 
         if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
             module.emitError("lower-narval-to-std: conversion failed");
