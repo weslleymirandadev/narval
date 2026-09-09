@@ -164,6 +164,7 @@ set(NIR_TEST_EXTRA_LIBS
 
 target_link_libraries(NarvalNirTest PRIVATE
     NarvalNirDialect
+    NarvalRuntimeObjs
     ${NIR_TEST_EXTRA_LIBS}
     LLVMX86TargetMCA
     LLVMMCA
