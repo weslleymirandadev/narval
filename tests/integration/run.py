@@ -95,6 +95,25 @@ CASES = [
         "expected": "top\nmain\n",
     },
     {
+        # Loop-carried mutation across iterations (while with reassigned
+        # variables) + break, regression for the carried-value CFG lowering.
+        "name": "loop_mutation",
+        "source": (
+            "i = 0;\n"
+            "soma = 0;\n"
+            "while (true) {\n"
+            "    if (i >= 5) {\n"
+            "        break;\n"
+            "    }\n"
+            "    soma = soma + i;\n"
+            "    i = i + 1;\n"
+            "}\n"
+            "write(soma);\n"
+            "write(i);\n"
+        ),
+        "expected": "10\n5\n",
+    },
+    {
         # break/continue lower correctly (regression: they used to be yield
         # placeholders that never exited the loop).
         "name": "loop_break",
