@@ -212,8 +212,81 @@ struct LowerForRangeOp : public OpConversionPattern<ForRangeOp> {
 struct LowerWhileOp : public OpConversionPattern<WhileOp> {
     using OpConversionPattern::OpConversionPattern;
 
+    // Statement-while (no results/inits — always the case from codegen):
+    // lower straight to a cf.cond_br CFG. scf.while proved unreliable here
+    // (region-block juggling crashed both inline+eraseBlock and the walk in
+    // the next pass), and a CFG also permits multi-block bodies produced by
+    // nested statement-ifs and early returns.
+    LogicalResult lowerStatementWhile(WhileOp op, OpAdaptor adaptor,
+                                      ConversionPatternRewriter& r) const {
+        Location loc = op.getLoc();
+        Block* parent = op->getBlock();
+        if (!parent) return failure();
+
+        // Everything after the while moves to a continuation block.
+        Block* cont = r.splitBlock(parent, op->getIterator());
+
+        // Move ALL body blocks into the function region, before cont.
+        Region& fn_region = *cont->getParent();
+        llvm::SmallVector<Block*> body_blocks;
+        for (Block& b : op.getBodyRegion()) body_blocks.push_back(&b);
+        Block* body_first = body_blocks.empty() ? nullptr : body_blocks.front();
+        if (body_first)
+            r.inlineRegionBefore(op.getBodyRegion(), fn_region,
+                                 cont->getIterator());
+
+        // Loop header (condition) block before the body.
+        Block* loop_blk = r.createBlock(body_first ? body_first : cont);
+
+        // Move condition ops into loop_blk; extract the i1 from its
+        // terminating yield.
+        if (!op.getConditionRegion().empty()) {
+            Block* cond_src = &op.getConditionRegion().front();
+            r.mergeBlocks(cond_src, loop_blk, {});
+        }
+        Value cond;
+        if (!loop_blk->empty()) {
+            Operation* term = &loop_blk->back();
+            if (isa<narval::YieldOp, scf::YieldOp>(term) &&
+                term->getNumOperands() >= 1) {
+                cond = term->getOperand(0);
+                r.eraseOp(term);
+            }
+        }
+        if (!cond)
+            cond = arith::ConstantIntOp::create(r, loc, 0, 1).getResult();
+
+        // Terminate loop_blk with the conditional branch.
+        r.setInsertionPointToEnd(loop_blk);
+        r.create<cf::CondBranchOp>(loc, cond,
+                                   body_first ? body_first : cont,
+                                   ValueRange{}, cont, ValueRange{});
+
+        // Body fall-through blocks (yield terminators) branch back to the
+        // condition; blocks ending in func.return stay as early exits.
+        for (Block* bb : body_blocks) {
+            if (bb->empty()) continue;
+            Operation* term = &bb->back();
+            if (isa<narval::YieldOp, scf::YieldOp>(term)) {
+                r.eraseOp(term);
+                r.setInsertionPointToEnd(bb);
+                r.create<cf::BranchOp>(loc, loop_blk);
+            }
+        }
+
+        // Parent falls through into the loop header.
+        r.setInsertionPointToEnd(parent);
+        r.create<cf::BranchOp>(loc, loop_blk);
+
+        r.eraseOp(op);
+        return success();
+    }
+
     LogicalResult matchAndRewrite(WhileOp op, OpAdaptor adaptor,
                                   ConversionPatternRewriter& r) const override {
+        if (op.getNumResults() == 0 && op.getInitArgs().empty())
+            return lowerStatementWhile(op, adaptor, r);
+
         SmallVector<Type> result_types;
         if (failed(typeConverter->convertTypes(op.getResultTypes(), result_types)))
             return failure();
@@ -221,20 +294,45 @@ struct LowerWhileOp : public OpConversionPattern<WhileOp> {
         auto scf_while = scf::WhileOp::create(r, op.getLoc(), result_types,
                                                adaptor.getInitArgs());
 
-        // Move condition region → scf.while before-region.
+        // Move condition region → scf.while before-region (merge into the
+        // placeholder block — inline+eraseBlock crashed in this pass).
         {
-            Block& placeholder = scf_while.getBefore().front();
-            r.inlineRegionBefore(op.getConditionRegion(), scf_while.getBefore(),
-                                  scf_while.getBefore().begin());
-            r.eraseBlock(&placeholder);
+            Block* scf_before = &scf_while.getBefore().front();
+            if (!op.getConditionRegion().empty())
+                r.mergeBlocks(&op.getConditionRegion().front(), scf_before,
+                              scf_before->getArguments());
         }
 
         // Move body region → scf.while after-region.
         {
-            Block& placeholder = scf_while.getAfter().front();
-            r.inlineRegionBefore(op.getBodyRegion(), scf_while.getAfter(),
-                                  scf_while.getAfter().begin());
-            r.eraseBlock(&placeholder);
+            Block* scf_after = &scf_while.getAfter().front();
+            if (!op.getBodyRegion().empty())
+                r.mergeBlocks(&op.getBodyRegion().front(), scf_after,
+                              scf_after->getArguments());
+        }
+
+        // The codegen terminates the condition region with a yield carrying the
+        // i1 (narval.yield{i1}). scf.while requires its before-region to end
+        // with scf.condition.
+        Block& before_blk = scf_while.getBefore().front();
+        if (!before_blk.empty()) {
+            Operation* term = &before_blk.back();
+            if (isa<narval::YieldOp, scf::YieldOp>(term) &&
+                term->getNumOperands() >= 1) {
+                Value cond = term->getOperand(0);
+                r.eraseOp(term);
+                r.setInsertionPointToEnd(&before_blk);
+                r.create<scf::ConditionOp>(op.getLoc(), cond, ValueRange{});
+            }
+        }
+
+        // The after-region must end with an (empty) scf.yield.
+        Block& after_blk = scf_while.getAfter().front();
+        if (!after_blk.empty() && isa<narval::YieldOp>(&after_blk.back())) {
+            Operation* term = &after_blk.back();
+            r.eraseOp(term);
+            r.setInsertionPointToEnd(&after_blk);
+            r.create<scf::YieldOp>(op.getLoc(), ValueRange{});
         }
 
         r.replaceOp(op, scf_while.getResults());
