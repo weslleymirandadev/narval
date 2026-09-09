@@ -67,6 +67,20 @@ void CallExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
             return;
         }
 
+        // Local variable with a closure/function value — calling function
+        // values is not implemented yet (would need a call dispatch through
+        // the closure handle). Fail with a clear diagnostic instead of
+        // emitting a reference to an undefined external function.
+        if (ctx.lookup(callee)) {
+            auto diag = mlir::emitError(loc, "calling a function value ('" +
+                                                callee +
+                                                "') is not supported yet; "
+                                                "call a def directly");
+            (void)diag;
+            ctx.push_value(nir_emit_const(ctx, loc, ctx.get_builder().getI64IntegerAttr(0)));
+            return;
+        }
+
         // Runtime / builtin call
         ctx.push_value(nir_call_runtime(ctx, loc, callee, arg_vals, {vt}));
         return;
