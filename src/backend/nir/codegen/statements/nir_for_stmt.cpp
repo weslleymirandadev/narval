@@ -1,5 +1,7 @@
 #include "../nir_codegen_utils.hpp"
 #include "frontend/ast/statements/for_stmt_node.hpp"
+#include "frontend/ast/statements/declaration_stmt_node.hpp"
+#include "frontend/ast/expressions/assignment_expr_node.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -20,6 +22,34 @@ void ForStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
 
     std::string var = get_binding_name(*this);
 
+    // Loop-carried variables: names assigned directly in the body that already
+    // exist in the enclosing scope (same rule as the while codegen).
+    std::vector<std::pair<std::string, mlir::Value>> carried;
+    for (const auto& stmt : body) {
+        if (!stmt) continue;
+        std::string name;
+        if (stmt->kind == NodeType::DeclarationStatement) {
+            auto* decl = static_cast<DeclarationStmtNode*>(stmt.get());
+            if (decl->target && decl->target->kind == NodeType::Identifier)
+                name = static_cast<IdentifierNode*>(decl->target.get())->symbol;
+        } else if (stmt->kind == NodeType::AssignmentExpression) {
+            auto* asg = static_cast<AssignmentExprNode*>(stmt.get());
+            if (asg->target && asg->target->kind == NodeType::Identifier)
+                name = static_cast<IdentifierNode*>(asg->target.get())->symbol;
+        }
+        if (name.empty()) continue;
+        mlir::Value cur = ctx.lookup(name);
+        if (cur) carried.emplace_back(name, cur);
+    }
+
+    llvm::SmallVector<mlir::Value> init_args;
+    llvm::SmallVector<mlir::Type>  res_types;
+    for (auto& [name, v] : carried) {
+        (void)name;
+        init_args.push_back(v);
+        res_types.push_back(vt);
+    }
+
     // ── Range-based: for x in lb..ub ──────────────────────────────────────
     if (range_start && range_end) {
         range_start->nir_codegen(ctx);
@@ -39,7 +69,7 @@ void ForStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         }
         auto step = mlir::arith::ConstantIndexOp::create(b, loc, 1).getResult();
 
-        auto for_op = ctx.emit_for_range(loc, lb, ub, step, var);
+        auto for_op = ctx.emit_for_range(loc, lb, ub, step, var, init_args);
         {
             mlir::OpBuilder::InsertionGuard g(b);
             auto* body_blk = &for_op.getBody().front();
@@ -54,11 +84,29 @@ void ForStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
             auto iv_boxed = mlir::func::CallOp::create(b, loc, box_fn, {iv}).getResult(0);
             if (!var.empty()) ctx.define(var, iv_boxed);
 
+            // Bind loop-carried variables to the body block args.
+            for (size_t i = 0; i < carried.size(); ++i)
+                ctx.define(carried[i].first, body_blk->getArgument(1 + i));
+
             nir_emit_body(body, ctx);
+
+            // Yield the updated carried values (before pop_scope — the
+            // lookups must resolve inside the body scope).
+            if (body_blk->empty() ||
+                !body_blk->back().hasTrait<mlir::OpTrait::IsTerminator>()) {
+                llvm::SmallVector<mlir::Value> yv;
+                for (auto& [name, _] : carried) {
+                    mlir::Value v = ctx.lookup(name);
+                    if (!v) v = nir_emit_const(ctx, loc, b.getI64IntegerAttr(0));
+                    yv.push_back(v);
+                }
+                mlir::narval::YieldOp::create(b, loc, yv);
+            }
             ctx.pop_scope();
-            nir_terminate(*body_blk, b, loc);
         }
         b.setInsertionPointAfter(for_op);
+        for (size_t i = 0; i < carried.size(); ++i)
+            ctx.define(carried[i].first, for_op.getResults()[i]);
         return;
     }
 
@@ -76,7 +124,7 @@ void ForStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         auto zero = mlir::arith::ConstantIndexOp::create(b, loc, 0).getResult();
         auto one  = mlir::arith::ConstantIndexOp::create(b, loc, 1).getResult();
 
-        auto for_op = ctx.emit_for_range(loc, zero, len_idx, one, var);
+        auto for_op = ctx.emit_for_range(loc, zero, len_idx, one, var, init_args);
         {
             mlir::OpBuilder::InsertionGuard g(b);
             auto* body_blk = &for_op.getBody().front();
@@ -92,10 +140,27 @@ void ForStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
             auto elem = mlir::func::CallOp::create(b, loc, get_fn, {iter, iv_i32}).getResult(0);
             if (!var.empty()) ctx.define(var, elem);
 
+            for (size_t i = 0; i < carried.size(); ++i)
+                ctx.define(carried[i].first, body_blk->getArgument(1 + i));
+
             nir_emit_body(body, ctx);
+
+            // Yield the updated carried values (before pop_scope — the
+            // lookups must resolve inside the body scope).
+            if (body_blk->empty() ||
+                !body_blk->back().hasTrait<mlir::OpTrait::IsTerminator>()) {
+                llvm::SmallVector<mlir::Value> yv;
+                for (auto& [name, _] : carried) {
+                    mlir::Value v = ctx.lookup(name);
+                    if (!v) v = nir_emit_const(ctx, loc, b.getI64IntegerAttr(0));
+                    yv.push_back(v);
+                }
+                mlir::narval::YieldOp::create(b, loc, yv);
+            }
             ctx.pop_scope();
-            nir_terminate(*body_blk, b, loc);
         }
         b.setInsertionPointAfter(for_op);
+        for (size_t i = 0; i < carried.size(); ++i)
+            ctx.define(carried[i].first, for_op.getResults()[i]);
     }
 }
