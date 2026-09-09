@@ -11,6 +11,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdarg.h>
+#include <dlfcn.h>
 
 // Internal helpers declared in value.c but not in headers.
 void tuple_set_impl(Value* self, int32_t index, Value* elem);
@@ -529,15 +530,92 @@ NvObject* nv_await_fiber(NvObject* fut_obj) {
 
 // ── Closures ──────────────────────────────────────────────────────────────────
 
-// Called as: nv_create_closure(NvObject* fn_ref, NvObject* cap0, ...)
-// fn_ref is a string Value containing the MLIR symbol name of the closure function.
-// Without a symbol table lookup, we create a placeholder closure.
-NvObject* nv_create_closure(NvObject* fn_ref, ...) {
-    (void)fn_ref;
-    Value out = {NULL};
-    create_closure(&out, NULL);
-    return out.obj;
-}
+// nv_create_closure_cN(fn_ref:NvObject*(NVStr), cap0..capN-1)
+// Resolves the closure function symbol (__closure_fn_N, compiled as an
+// ordinary def with individual !llvm.ptr params) via dlsym — the final link
+// exports __closure_fn_* symbols (-Wl,--export-dynamic-symbol) — snapshots the
+// captured values into cells, and builds the runtime closure handle. One
+// variant per capture count (the runtime-call re-declaration cannot serve
+// variadic arities).
+#define NV_CREATE_CLOSURE(N)                                                  \
+    NvObject* nv_create_closure_c##N(NvObject* fn_ref,                        \
+                                     NvObject* c0, NvObject* c1,              \
+                                     NvObject* c2, NvObject* c3,              \
+                                     NvObject* c4, NvObject* c5,              \
+                                     NvObject* c6, NvObject* c7) {            \
+        (void)c0; (void)c1; (void)c2; (void)c3;                               \
+        (void)c4; (void)c5; (void)c6; (void)c7;                               \
+        if (!fn_ref || fn_ref->ob_type != NVStr_Type) return NULL;            \
+        const char* name = ((NVStr*)fn_ref)->value;                           \
+        void* fn = dlsym(RTLD_DEFAULT, name);                                 \
+        if (!fn) {                                                            \
+            fprintf(stderr, "nv_create_closure: symbol '%s' not found\n",     \
+                    name);                                                    \
+            return NULL;                                                      \
+        }                                                                     \
+        Value** cells = NULL;                                                 \
+        if (N > 0) {                                                          \
+            cells = (Value**)malloc(sizeof(Value*) * (size_t)N);              \
+            Value* cv[8];                                                     \
+            cv[0] = &(Value){c0}; cv[1] = &(Value){c1};                       \
+            cv[2] = &(Value){c2}; cv[3] = &(Value){c3};                       \
+            cv[4] = &(Value){c4}; cv[5] = &(Value){c5};                       \
+            cv[6] = &(Value){c6}; cv[7] = &(Value){c7};                       \
+            for (int i = 0; i < N; ++i) cells[i] = nv_closure_cell_new(cv[i]); \
+        }                                                                     \
+        Value out = {NULL};                                                   \
+        create_closure_with_captures(&out, fn, cells, N);                     \
+        return out.obj;                                                       \
+    }
+
+NV_CREATE_CLOSURE(0)
+NV_CREATE_CLOSURE(1)
+NV_CREATE_CLOSURE(2)
+NV_CREATE_CLOSURE(3)
+NV_CREATE_CLOSURE(4)
+NV_CREATE_CLOSURE(5)
+NV_CREATE_CLOSURE(6)
+NV_CREATE_CLOSURE(7)
+NV_CREATE_CLOSURE(8)
+
+// nv_invoke_closure_N(closure:NvObject*, a0..aN-1)
+// Calls the closure handle: unboxed args are dispatched to the compiled
+// closure function through its captured-function arity (see
+// call_closure_indirect in lang/closures.c). One variant per arity so each
+// has a fixed module-level signature (the runtime-call re-declaration cannot
+// serve variadic arities).
+#define NV_INVOKE_CLOSURE(N)                                                  \
+    NvObject* nv_invoke_closure_##N(NvObject* clo,                            \
+                                    NvObject* a0, NvObject* a1,               \
+                                    NvObject* a2, NvObject* a3,               \
+                                    NvObject* a4, NvObject* a5,               \
+                                    NvObject* a6, NvObject* a7) {             \
+        (void)a0; (void)a1; (void)a2; (void)a3;                               \
+        (void)a4; (void)a5; (void)a6; (void)a7;                               \
+        NvObject* args[8];                                                    \
+        NvObject** ap = args;                                                 \
+        if (N > 0) *ap++ = a0;                                                \
+        if (N > 1) *ap++ = a1;                                                \
+        if (N > 2) *ap++ = a2;                                                \
+        if (N > 3) *ap++ = a3;                                                \
+        if (N > 4) *ap++ = a4;                                                \
+        if (N > 5) *ap++ = a5;                                                \
+        if (N > 6) *ap++ = a6;                                                \
+        if (N > 7) *ap++ = a7;                                                \
+        Value cval = {clo}, out = {NULL};                                     \
+        call_closure_indirect(&cval, args, N, &out);                          \
+        return out.obj;                                                       \
+    }
+
+NV_INVOKE_CLOSURE(0)
+NV_INVOKE_CLOSURE(1)
+NV_INVOKE_CLOSURE(2)
+NV_INVOKE_CLOSURE(3)
+NV_INVOKE_CLOSURE(4)
+NV_INVOKE_CLOSURE(5)
+NV_INVOKE_CLOSURE(6)
+NV_INVOKE_CLOSURE(7)
+NV_INVOKE_CLOSURE(8)
 
 // ── Narval builtin functions (NIR ABI wrappers) ───────────────────────────────
 // Called as: callee(NvObject* arg) -> NvObject*
