@@ -47,6 +47,12 @@ void free_value(Value* v) {
     v->obj = NULL;
 }
 
+// Exported for compiled code: releases a heap object when the last use of a
+// temporary dies (insert-runtime-drops pass).
+void nv_drop(NvObject* obj) {
+    nv_decref(obj);
+}
+
 // ── Creation ───────────────────────────────────────────────────────────────
 
 void create_int(Value* out, int32_t value) {
