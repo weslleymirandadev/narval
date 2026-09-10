@@ -628,6 +628,33 @@ CASES = [
         ),
         "expected": "3\n0\n2\n",
     },
+    {
+        "name": "type_ast_reflection",
+        "source": (
+            'comptime def poly(x: int): int {\n'
+            '    y = x * x + 3;\n'
+            '    return y;\n'
+            '}\n'
+            'write(type.ast(poly).name);\n'
+            'write(type.ast(poly).is_macro);\n'
+            'write(type.ast(poly).return_type);\n'
+            'write(type.ast(poly).statement_count);\n'
+            'comptime for n in type.ast(poly).param_names { write(n); }\n'
+            'comptime for k in type.ast(poly).body_kinds { write(k); }\n'
+            'comptime for op in type.ast(poly).expr_ops { write(op); }\n'
+        ),
+        "expected": "poly\nfalse\nint\n2\nx\nassignment\nreturn\n=\n+\n*\n",
+    },
+    {
+        "name": "type_ast_rejects_runtime_function",
+        "source": (
+            'def plain(x: int): int {\n'
+            '    return x;\n'
+            '}\n'
+            'write(type.ast(plain).name);\n'
+        ),
+        "expect_error": "only comptime functions can be inspected",
+    },
 ]
 
 
