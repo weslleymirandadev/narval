@@ -492,6 +492,35 @@ CASES = [
         ),
         "expect_error": "no derivative rule for 'unknown_fn'",
     },
+    {
+        "name": "diagnostic_ce003_runtime_value",
+        "source": (
+            'n = 5;\n'
+            'comptime for i in n..10 {\n'
+            '    write(i);\n'
+            '}\n'
+        ),
+        "expect_error": "error[CE003]",
+    },
+    {
+        "name": "diagnostic_ce002_tensor_shape",
+        "source": (
+            'd: Tensor<float, [2, 3]> = Tensor.zeros(2, 3);\n'
+            'e: Tensor<float, [2, 4]> = Tensor.zeros(2, 4);\n'
+            'f = d + e;\n'
+        ),
+        "expect_error": "error[CE002]",
+    },
+    {
+        "name": "diagnostic_ce001_bad_derive",
+        "source": (
+            '@[derive(nope)]\n'
+            'class Q {\n'
+            '    a: int;\n'
+            '}\n'
+        ),
+        "expect_error": "error[CE001]",
+    },
 ]
 
 
