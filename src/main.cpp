@@ -430,6 +430,11 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
         mlir::MLIRContext mlir_ctx;
         nv::NIRGenerationContext nir_ctx(mlir_ctx, filename);
         nir_ctx.set_type_checker(&checker);
+        // `comptime import_c` collected prototypes and linker items during
+        // checking; hand them to the codegen/link stage.
+        nir_ctx.set_c_import_sigs(checker.c_import_sigs);
+        for (const auto& item : checker.extra_link_items)
+            nir_ctx.add_extra_link_item(item);
 
         // Build main.start as the program entry point
         auto& b  = nir_ctx.get_builder();
