@@ -535,6 +535,21 @@ CASES = [
         },
         "expected": "SQL[ SELECT 1 ]\nRE[ a+ ]\n7\n42\n",
     },
+    {
+        "name": "string_compare_and_index",
+        "source": (
+            's = "hello";\n'
+            'write(len(s));\n'
+            'write(s == "hello");\n'
+            'write(s != "x");\n'
+            'write(s == "hellp");\n'
+            'write(s[0]);\n'
+            'write(s[4]);\n'
+            'write(s[99]);\n'
+            'write("abc" != "abc");\n'
+        ),
+        "expected": "5\ntrue\ntrue\nfalse\nh\no\n\nfalse\n",
+    },
 ]
 
 
