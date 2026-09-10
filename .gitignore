@@ -4,6 +4,7 @@ build/
 narval_program
 *.nv
 !stdlib/**/*.nv
+!tests/**/*.nv
 *.o
 *.md
 !README.md
