@@ -2,6 +2,31 @@
 #include "frontend/ast/expressions/binary_expr_node.hpp"
 #include "frontend/checker/unification.hpp"
 #include <stdexcept>
+#include <algorithm>
+#include <vector>
+
+// Right-aligned (NumPy) broadcast of two tensor shape vectors.
+// Size-1 axes expand and a missing leading axis counts as 1 (-1 is a
+// dynamic dimension and matches anything).
+static bool broadcast_dims(const std::vector<int64_t>& a,
+                           const std::vector<int64_t>& b,
+                           std::vector<int64_t>& out) {
+    size_t n = std::max(a.size(), b.size());
+    out.assign(n, 1);
+    for (size_t i = 0; i < n; ++i) {
+        int64_t da = i < a.size() ? a[a.size() - 1 - i] : 1;
+        int64_t db = i < b.size() ? b[b.size() - 1 - i] : 1;
+        int64_t r;
+        if (da == -1)           r = db;
+        else if (db == -1)      r = da;
+        else if (da == db)      r = da;
+        else if (da == 1)       r = db;
+        else if (db == 1)       r = da;
+        else return false;
+        out[n - 1 - i] = r;
+    }
+    return true;
+}
 
 static const char* op_to_dunder(const std::string& op) {
     if (op == "+")  return "__add__";
@@ -114,9 +139,13 @@ std::shared_ptr<nv::Type> check_binary_expr(nv::Checker* ch, Node* node) {
             }
             // Both tensors: shapes must match (or broadcast)
             if (lt && rt) {
-                if (!lt->equals(*rt)) {
+                // NumPy-style broadcasting: [1,3] + [2,3] -> [2,3],
+                // [2,3] + [2,4] -> compile-time error.
+                std::vector<int64_t> bcast;
+                if (!broadcast_dims(lt->dims, rt->dims, bcast)) {
                     ch->error(node, "Shape mismatch in '" + bin->op + "': "
-                              + lt->toString() + " vs " + rt->toString());
+                              + lt->toString() + " vs " + rt->toString()
+                              + " (shapes are not broadcastable)");
                     return ch->gettyptr("None");
                 }
                 mut_bin->tensor_op      = (bin->op == "+") ? "add"
@@ -124,7 +153,7 @@ std::shared_ptr<nv::Type> check_binary_expr(nv::Checker* ch, Node* node) {
                                         : (bin->op == "*") ? "mul" : "div";
                 mut_bin->lhs_tensor_dims = lt->dims;
                 mut_bin->rhs_tensor_dims = rt->dims;
-                auto res = std::make_shared<nv::TensorType>(lt->element, lt->dims);
+                auto res = std::make_shared<nv::TensorType>(lt->element, bcast);
                 ch->types[res->toString()] = res;
                 return ch->types[res->toString()];
             }
