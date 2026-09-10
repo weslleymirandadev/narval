@@ -550,6 +550,41 @@ CASES = [
         ),
         "expected": "5\ntrue\ntrue\nfalse\nh\no\n\nfalse\n",
     },
+    {
+        "name": "stdlib_macros",
+        "source": (
+            'from "macros.nv" import *;\n'
+            'write(sql! { SELECT *   FROM   users });\n'
+            'write(regex! { a(b|c)*[0-9] });\n'
+            'write(route! { GET /users/:id });\n'
+        ),
+        "module_files": {
+            "macros.nv": "stdlib/macros.nv",
+        },
+        "expected": "SELECT * FROM users\na(b|c)*[0-9]\nGET /users/:id\n",
+    },
+    {
+        "name": "stdlib_macros_reject_bad_sql",
+        "source": (
+            'from "macros.nv" import *;\n'
+            'write(sql! { SELCT x });\n'
+        ),
+        "module_files": {
+            "macros.nv": "stdlib/macros.nv",
+        },
+        "expect_error": "@compileError: sql!: expected the query to start with",
+    },
+    {
+        "name": "stdlib_macros_reject_unbalanced_regex",
+        "source": (
+            'from "macros.nv" import *;\n'
+            'write(regex! { a(b });\n'
+        ),
+        "module_files": {
+            "macros.nv": "stdlib/macros.nv",
+        },
+        "expect_error": "regex!: unbalanced '('",
+    },
 ]
 
 
@@ -567,6 +602,14 @@ def run_case(narval, case):
         fpath = os.path.join(os.path.dirname(path), fname)
         with open(fpath, "w") as f:
             f.write(content)
+        extra.append(fpath)
+    # Module files taken from the repository (e.g. the bundled stdlib): copied
+    # under the given name so the case imports the real file, not a duplicate.
+    repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    for fname, rel in case.get("module_files", {}).items():
+        fpath = os.path.join(os.path.dirname(path), fname)
+        with open(os.path.join(repo_root, rel)) as src, open(fpath, "w") as dst:
+            dst.write(src.read())
         extra.append(fpath)
     try:
         proc = subprocess.run(
