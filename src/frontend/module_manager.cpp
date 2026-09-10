@@ -26,8 +26,8 @@ std::string ModuleManager::read_file(const std::string& file_path) {
     return source;
 }
 
-void ModuleManager::load_module(const std::string& module_name, const std::string& file_path, int config) {
-    if (modules.find(module_name) != modules.end()) return;
+std::string ModuleManager::load_module(const std::string& module_name, const std::string& file_path, int config) {
+    if (modules.find(module_name) != modules.end()) return module_name;
 
     std::string source = read_file(file_path);
     Module module;
@@ -50,7 +50,9 @@ void ModuleManager::load_module(const std::string& module_name, const std::strin
         checker.set_source_file(file_path);
         checker.check_node(module.ast.get());
     }
-    modules[module.name] = std::move(module);
+    const std::string loaded_name = module.name;
+    modules[loaded_name] = std::move(module);
+    return loaded_name;
 }
 
 void ModuleManager::resolve_dependencies(const std::string& module_name, const std::string& file_path, int config) {
@@ -59,9 +61,13 @@ void ModuleManager::resolve_dependencies(const std::string& module_name, const s
     }
 
     visited.insert(module_name);
-    load_module(module_name, file_path, config);
+    // Register by the module's own name as well, and look it up under that name:
+    // keying the merge on the import path left an empty entry behind, so a
+    // module's own imports were never resolved.
+    const std::string loaded = load_module(module_name, file_path, config);
+    visited.insert(loaded);
 
-    auto& module = modules[module_name];
+    auto& module = modules[loaded];
     // Usa import_infos para resolver dependências (nova sintaxe)
     for (const auto& import_info : module.import_infos) {
         std::string clean_dep = std::regex_replace(import_info.module_path, std::regex("\""), "");
