@@ -381,15 +381,21 @@ void ComptimeEvaluator::set_var(const std::string& name, const ComptimeValue& va
     // Assign to the binding where it already lives, not unconditionally to the
     // innermost scope: loop bodies push a scope per iteration, and writing to
     // that scope made `i = i + 1` invisible to the loop condition (infinite
-    // loop, only stopped by the iteration cap).
-    for (auto it = scope_stack_.rbegin(); it != scope_stack_.rend(); ++it) {
-        auto found = it->find(name);
-        if (found != it->end()) {
+    // loop, only stopped by the iteration cap). The search stops at the current
+    // function's scope, so a callee assigning a local of its own never lands on
+    // a same-named variable of its caller.
+    const size_t base = func_scope_base_ < scope_stack_.size() ? func_scope_base_ : 0;
+    for (size_t i = scope_stack_.size(); i > base; --i) {
+        auto& scope = scope_stack_[i - 1];
+        auto found = scope.find(name);
+        if (found != scope.end()) {
             found->second = val;
             return;
         }
     }
-    scope_stack_.back()[name] = val;
+    // Not in this function yet: declare it in the function's own scope so later
+    // statements and later loop iterations see it.
+    scope_stack_[base][name] = val;
 }
 
 ComptimeValue* ComptimeEvaluator::lookup_var(const std::string& name) {
@@ -804,7 +810,10 @@ ComptimeValue ComptimeEvaluator::eval_macro(MacroCallNode* node) {
         if (!pname.empty()) declare_var(pname, ComptimeValue::from_str(node->raw_src));
     }
     ++call_depth_;
+    const size_t saved_base = func_scope_base_;
+    func_scope_base_ = scope_stack_.size() - 1;  // this function's own scope
     ComptimeValue result = eval_block(fn->body);
+    func_scope_base_ = saved_base;
     --call_depth_;
     pop_scope();
     return result;
@@ -942,7 +951,10 @@ ComptimeValue ComptimeEvaluator::eval_call(CallExprNode* node) {
         ++i;
     }
     ++call_depth_;
+    const size_t saved_base = func_scope_base_;
+    func_scope_base_ = scope_stack_.size() - 1;  // this function's own scope
     ComptimeValue result = eval_block(fn->body);
+    func_scope_base_ = saved_base;
     --call_depth_;
     pop_scope();
     return result;
