@@ -252,7 +252,24 @@ int32_t nv_value_cmp(Value* a, Value* b) {
         double vb = tb == NVFloat_Type ? ((NVFloat*)b->obj)->value : (double)((NVInt*)b->obj)->value;
         return (va > vb) - (va < vb);
     }
-    return strcmp(ta->tp_name ? ta->tp_name : "", tb->tp_name ? tb->tp_name : "");
+    if (ta == NVBool_Type && tb == NVBool_Type) {
+        int va = ((NVBool*)a->obj)->value ? 1 : 0;
+        int vb = ((NVBool*)b->obj)->value ? 1 : 0;
+        return (va > vb) - (va < vb);
+    }
+    if (ta == NVStr_Type && tb == NVStr_Type) {
+        // Compare the CONTENTS. This used to fall through to the type-name
+        // comparison below, so any two strings compared equal (and `!=` always
+        // reported false).
+        const char* sa = ((NVStr*)a->obj)->value ? ((NVStr*)a->obj)->value : "";
+        const char* sb = ((NVStr*)b->obj)->value ? ((NVStr*)b->obj)->value : "";
+        int r = strcmp(sa, sb);
+        return (r > 0) - (r < 0);
+    }
+    // Different types are never equal; same-type containers have no ordering
+    // (identity comparison only), which keeps `==`/`!=` deterministic.
+    if (ta != tb) return (ta > tb) ? 1 : -1;
+    return 0;
 }
 
 char* extract_string_from_value(Value* v) {
