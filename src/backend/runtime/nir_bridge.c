@@ -273,6 +273,15 @@ int32_t nv_len(NvObject* obj) {
     return nv_get_iterable_length(&v);
 }
 
+// Boxed length for the language-level `len(x)` builtin (see builtins.cpp).
+// nv_len above returns a raw int32 for the for-in lowering, which cannot be
+// used as a value; this wrapper returns a normal boxed int.
+NvObject* nv_len_builtin(NvObject* obj) {
+    Value out = {NULL};
+    create_int(&out, nv_len(obj));
+    return out.obj;
+}
+
 NvObject* nv_get_at(NvObject* arr_obj, int32_t idx) {
     if (!arr_obj) return NULL;
     Value arr = {arr_obj}, out = {NULL};
