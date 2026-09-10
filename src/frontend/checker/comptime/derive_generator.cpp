@@ -7,6 +7,9 @@
 #include "frontend/ast/expressions/binary_expr_node.hpp"
 #include "frontend/ast/expressions/call_expr_node.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
+#include "frontend/ast/expressions/assignment_expr_node.hpp"
+#include "frontend/ast/expressions/new_expr_node.hpp"
+#include "frontend/ast/expressions/boolean_literal_node.hpp"
 #include "frontend/ast/expressions/member_expr_node.hpp"
 #include "frontend/ast/expressions/numeric_literal_node.hpp"
 #include "frontend/ast/expressions/param_node.hpp"
@@ -76,6 +79,34 @@ ExprPtr chain(const std::string& op, std::vector<ExprPtr> parts) {
     return acc;
 }
 
+ExprPtr call2(const std::string& fn, ExprPtr a0, ExprPtr a1) {
+    std::vector<std::unique_ptr<ArgNode>> args;
+    args.push_back(std::make_unique<ArgNode>("", std::move(a0)));
+    args.push_back(std::make_unique<ArgNode>("", std::move(a1)));
+    return std::make_unique<CallExprNode>(id(fn), std::move(args));
+}
+
+ExprPtr call3(const std::string& fn, ExprPtr a0, ExprPtr a1, ExprPtr a2) {
+    std::vector<std::unique_ptr<ArgNode>> args;
+    args.push_back(std::make_unique<ArgNode>("", std::move(a0)));
+    args.push_back(std::make_unique<ArgNode>("", std::move(a1)));
+    args.push_back(std::make_unique<ArgNode>("", std::move(a2)));
+    return std::make_unique<CallExprNode>(id(fn), std::move(args));
+}
+
+// `target = value;` as a statement (used by the multi-statement derives).
+std::unique_ptr<Stmt> assign_stmt(ExprPtr target, ExprPtr value) {
+    return std::make_unique<AssignmentExprNode>(std::move(target), "=", std::move(value));
+}
+
+std::unique_ptr<ClassMethodNode> make_method_block(const std::string& name,
+                                                   std::vector<ParamNode> params,
+                                                   const std::string& ret_type,
+                                                   CodeBlock body) {
+    auto fn = std::make_unique<FunctionStmtNode>(name, std::move(params), ret_type, std::move(body));
+    return std::make_unique<ClassMethodNode>(name, "public", std::move(fn), false);
+}
+
 std::unique_ptr<ClassMethodNode> make_method(const std::string& name,
                                              std::vector<ParamNode> params,
                                              const std::string& ret_type,
@@ -104,12 +135,10 @@ bool apply_derive(Checker* checker, ClassStmtNode* cls,
                   const std::vector<std::string>& derives, std::string& error) {
     if (!cls) return true;
 
-    // `clone`/`sql`/`openapi`/`from_json` from the spec are not generated yet:
-    // they need first-class Self construction (a multi-statement body) and a
-    // JSON parser. Reject them explicitly instead of silently generating
-    // something wrong.
+    // `sql`/`openapi` from the spec are not generated yet. Reject them
+    // explicitly instead of silently generating something wrong.
     static const std::unordered_set<std::string> known = {
-        "eq", "debug", "json", "hash", "ord",
+        "eq", "debug", "json", "hash", "ord", "clone", "from_json",
     };
 
     for (const std::string& raw : derives) {
@@ -119,7 +148,7 @@ bool apply_derive(Checker* checker, ClassStmtNode* cls,
         if (d.empty()) continue;
 
         if (!known.count(d)) {
-            error = "unknown derive '" + raw + "' (supported: eq, debug, json, hash, ord)";
+            error = "unknown derive '" + raw + "' (supported: clone, debug, eq, from_json, hash, json, ord)";
             return false;
         }
 
@@ -129,6 +158,8 @@ bool apply_derive(Checker* checker, ClassStmtNode* cls,
         if (d == "json" && has_method(cls, "to_json")) continue;
         if (d == "hash" && has_method(cls, "__hash__")) continue;
         if (d == "ord" && has_method(cls, "__lt__")) continue;
+        if (d == "clone" && has_method(cls, "clone")) continue;
+        if (d == "from_json" && has_method(cls, "from_json")) continue;
 
         if (cls->fields.empty()) {
             error = "@derive(" + d + "): class '" + cls->name + "' has no fields";
@@ -183,6 +214,55 @@ bool apply_derive(Checker* checker, ClassStmtNode* cls,
                 acc = bin("||", std::move(less), bin("&&", std::move(same), std::move(acc)));
             }
             cls->methods.push_back(make_method("__lt__", { param("other", cls->name) }, "bool", std::move(acc)));
+        } else if (d == "clone") {
+            // A fresh instance with the same field values. Values are boxed and
+            // share their payload, so this is a shallow copy of the fields.
+            CodeBlock body;
+            body.push_back(assign_stmt(id("out"),
+                                       std::make_unique<NewExprNode>(cls->name, cls->name)));
+            for (const auto& f : cls->fields)
+                body.push_back(assign_stmt(field_of("out", f->name), field_of("self", f->name)));
+            body.push_back(std::make_unique<ReturnStmtNode>(id("out")));
+            cls->methods.push_back(make_method_block("clone", {}, cls->name, std::move(body)));
+        } else if (d == "from_json") {
+            // Reads the fields out of a JSON object. Scalars only: a nested class
+            // or a collection field has no reader yet, and is reported instead of
+            // generating code that would silently produce nothing.
+            CodeBlock body;
+            body.push_back(assign_stmt(id("out"),
+                                       std::make_unique<NewExprNode>(cls->name, cls->name)));
+            for (const auto& f : cls->fields) {
+                ExprPtr fallback;
+                if (f->type == "str" || f->type == "string") {
+                    fallback = str_lit("");
+                } else if (f->type == "int") {
+                    fallback = int_lit(0);
+                } else if (f->type == "float") {
+                    fallback = std::make_unique<NumericLiteralNode>("0.0");
+                } else if (f->type == "bool") {
+                    fallback = std::make_unique<BooleanLiteralNode>(false);
+                } else {
+                    error = "@derive(from_json): field '" + f->name +
+                            "' has unsupported type '" + f->type + "'";
+                    return false;
+                }
+                // The reader hands back the default for a missing key, so no
+                // branch is needed: a ternary would evaluate both sides (the
+                // selection is a plain call) and int("") raises.
+                ExprPtr field_val = call3("json_field", id("s"), str_lit(f->name), std::move(fallback));
+                ExprPtr val;
+                if (f->type == "int") {
+                    val = call1("int", std::move(field_val));
+                } else if (f->type == "float") {
+                    val = call1("float", std::move(field_val));
+                } else {
+                    val = std::move(field_val);
+                }
+                body.push_back(assign_stmt(field_of("out", f->name), std::move(val)));
+            }
+            body.push_back(std::make_unique<ReturnStmtNode>(id("out")));
+            cls->methods.push_back(make_method_block("from_json", { param("s", "str") }, cls->name,
+                                                     std::move(body)));
         }
     }
 
