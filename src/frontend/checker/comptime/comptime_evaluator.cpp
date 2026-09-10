@@ -1,6 +1,7 @@
 #include "frontend/comptime/comptime_evaluator.hpp"
 #include "frontend/ast/program.hpp"
 #include "frontend/checker/checker.hpp"
+#include "frontend/ast/expressions/member_expr_node.hpp"
 #include "frontend/comptime/c_import.hpp"
 
 #include <algorithm>
@@ -11,6 +12,44 @@
 #include <vector>
 
 namespace nv {
+namespace {
+
+// Host facts for `target.arch()` / `target.simd()` (spec 5.8). The compiler runs
+// on the machine the produced binary targets, so these are compile-time
+// constants of the build/CPU.
+std::string host_arch() {
+#if defined(__x86_64__) || defined(_M_X64)
+    return "x86_64";
+#elif defined(__aarch64__) || defined(_M_ARM64)
+    return "aarch64";
+#elif defined(__i386__) || defined(_M_IX86)
+    return "x86";
+#elif defined(__arm__) || defined(_M_ARM)
+    return "arm";
+#elif defined(__riscv)
+    return "riscv64";
+#else
+    return "unknown";
+#endif
+}
+
+std::string host_simd() {
+#if defined(__x86_64__) || defined(__i386__)
+#if defined(__GNUC__) || defined(__clang__)
+    if (__builtin_cpu_supports("avx512f")) return "avx512";
+    if (__builtin_cpu_supports("avx2"))    return "avx2";
+    if (__builtin_cpu_supports("avx"))     return "avx";
+#endif
+    return "sse2";
+#elif defined(__aarch64__)
+    return "neon";
+#else
+    return "scalar";
+#endif
+}
+
+} // anonymous namespace
+
 
 // Node kinds that carry expressions (used to walk expression statements).
 static bool is_expr_kind(NodeType k) {
@@ -489,6 +528,21 @@ ComptimeValue ComptimeEvaluator::eval_macro(MacroCallNode* node) {
 }
 
 ComptimeValue ComptimeEvaluator::eval_call(CallExprNode* node) {
+    // target.arch() / target.simd() — comptime facts about the target platform.
+    if (node->caller && node->caller->kind == NodeType::MemberExpression) {
+        auto* mem = static_cast<MemberExprNode*>(node->caller.get());
+        if (mem->object && mem->object->kind == NodeType::Identifier &&
+            mem->property && mem->property->kind == NodeType::Identifier &&
+            static_cast<IdentifierNode*>(mem->object.get())->symbol == "target") {
+            const std::string fn = static_cast<IdentifierNode*>(mem->property.get())->symbol;
+            if (fn == "arch") return ComptimeValue::from_str(host_arch());
+            if (fn == "simd") return ComptimeValue::from_str(host_simd());
+            fail("unknown target builtin 'target." + fn + "' (expected arch or simd)");
+            return ComptimeValue::none();
+        }
+    }
+
+
     // type.<fn>(T[, extra]) — reflection.
     if (node->caller && node->caller->kind == NodeType::MemberExpression) {
         auto* m = static_cast<MemberExprNode*>(node->caller.get());
