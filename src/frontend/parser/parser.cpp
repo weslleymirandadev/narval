@@ -66,6 +66,20 @@ void Parser::read_lines(const std::string& filename) {
     line_count = lines.size();
 }
 
+std::string Parser::source_slice(size_t pos_start, size_t pos_end) const {
+    // Rebuild the file text from the cached lines (read_lines strips the
+    // newline, so put one back) and cut the requested span.
+    std::string src;
+    src.reserve(pos_end + 1);
+    for (const auto& l : lines) {
+        src += l;
+        src += '\n';
+    }
+    if (pos_start >= src.size() || pos_end <= pos_start) return "";
+    if (pos_end > src.size()) pos_end = src.size();
+    return src.substr(pos_start, pos_end - pos_start);
+}
+
 void Parser::print_error_context(const Token& token) {
     if (lines.empty() || token.line - 1 >= line_count) {
         return;
