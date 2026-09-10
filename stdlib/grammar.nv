@@ -1,0 +1,347 @@
+# Narval standard library -- compile-time grammar (BNF) checker (COMPTIME_SPEC 5.11).
+#
+#     from "stdlib/grammar.nv" import *;
+#     write(grammar! {
+#         expr   = term (('+' | '-') term)*
+#         term   = factor (('*' | '/') factor)*
+#         factor = NUMBER | '(' expr ')'
+#     });
+#
+# The body is parsed at compile time. Rules must be named with a lowercase
+# letter, nonterminals are checked against the declared rules, direct left
+# recursion and two alternatives starting with the same symbol (an LL(1)
+# conflict) are rejected with @compileError.
+#
+# What this does NOT do yet: emit the parse functions as Narval `def`s. That step
+# needs a way to build AST nodes from compile-time values (quasiquote), which the
+# language does not have; until then the grammar is validated and summarised as
+# compile-time data.
+
+comptime def g_is_space(c: str): bool {
+    if c == " " {
+        return true;
+    }
+    if c == "\n" {
+        return true;
+    }
+    if c == "\t" {
+        return true;
+    }
+    if c == "\r" {
+        return true;
+    }
+    return false;
+}
+
+comptime def g_slice(s: str, start: int, stop: int): str {
+    out = "";
+    i = start;
+    while i < stop {
+        out = out + s[i];
+        i = i + 1;
+    }
+    return out;
+}
+
+comptime def g_trim(s: str): str {
+    start = 0;
+    while start < len(s) && g_is_space(s[start]) {
+        start = start + 1;
+    }
+    stop = len(s);
+    while stop > start && g_is_space(s[stop - 1]) {
+        stop = stop - 1;
+    }
+    return g_slice(s, start, stop);
+}
+
+# Index of the first occurrence of the one-character string `ch`, or -1.
+comptime def g_find(s: str, ch: str): int {
+    i = 0;
+    found = -1;
+    while i < len(s) {
+        if found < 0 {
+            if s[i] == ch {
+                found = i;
+            }
+        }
+        i = i + 1;
+    }
+    return found;
+}
+
+# Membership in a list kept as ",a,b,c,".
+comptime def g_list_has(list: str, name: str): bool {
+    needle = "," + name + ",";
+    if len(needle) > len(list) {
+        return false;
+    }
+    i = 0;
+    hit = false;
+    while i + len(needle) <= len(list) {
+        if hit == false {
+            j = 0;
+            same = true;
+            while j < len(needle) {
+                if i + j < len(list) {
+                    if list[i + j] != needle[j] {
+                        same = false;
+                        j = len(needle);
+                    } else {
+                        j = j + 1;
+                    }
+                } else {
+                    same = false;
+                    j = len(needle);
+                }
+            }
+            if same {
+                hit = true;
+            }
+        }
+        i = i + 1;
+    }
+    return hit;
+}
+
+comptime def g_in(set: str, c: str): bool {
+    i = 0;
+    found = false;
+    while i < len(set) {
+        if set[i] == c {
+            found = true;
+        }
+        i = i + 1;
+    }
+    return found;
+}
+
+comptime def g_starts_lower(tok: str): bool {
+    if len(tok) == 0 {
+        return false;
+    }
+    return g_in("abcdefghijklmnopqrstuvwxyz_", tok[0]);
+}
+
+comptime def g_starts_upper(tok: str): bool {
+    if len(tok) == 0 {
+        return false;
+    }
+    return g_in("ABCDEFGHIJKLMNOPQRSTUVWXYZ", tok[0]);
+}
+
+# The quoted literal inside a token: `('+'` -> `+`. Empty when there is none.
+comptime def g_quoted(tok: str): str {
+    open_q = g_find(tok, "'");
+    if open_q < 0 {
+        return "";
+    }
+    close_q = -1;
+    i = open_q + 1;
+    while i < len(tok) {
+        if close_q < 0 {
+            if tok[i] == "'" {
+                close_q = i;
+            }
+        }
+        i = i + 1;
+    }
+    if close_q < 0 {
+        return "";
+    }
+    return g_slice(tok, open_q + 1, close_q);
+}
+
+# ",a,b," -> "a b" (drops the edge commas the lists carry).
+comptime def g_list_text(list: str): str {
+    out = "";
+    i = 0;
+    while i < len(list) {
+        c = list[i];
+        if c == "," {
+            if len(out) > 0 {
+                out = out + " ";
+            }
+        } else {
+            out = out + c;
+        }
+        i = i + 1;
+    }
+    if len(out) > 0 {
+        out = g_slice(out, 0, len(out) - 1);
+    }
+    return out;
+}
+
+comptime def g_is_ident_char(c: str): bool {
+    return g_in("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", c);
+}
+
+# The identifier inside a token: `term)*` -> `term`, `('+'` -> `` and `term*` ->
+# `term`. Punctuation and EBNF markers are dropped from both ends.
+comptime def g_ident_core(tok: str): str {
+    start = 0;
+    while start < len(tok) && g_is_ident_char(tok[start]) == false {
+        start = start + 1;
+    }
+    stop = len(tok);
+    while stop > start && g_is_ident_char(tok[stop - 1]) == false {
+        stop = stop - 1;
+    }
+    return g_slice(tok, start, stop);
+}
+
+# Validates the BNF and returns a summary of the grammar.
+comptime def grammar!(src: str): str {
+    # Pass 1: rule names, kept as ",name,name," so membership is a search.
+    names = ",";
+    rule_count = 0;
+    i = 0;
+    while i < len(src) {
+        e = i;
+        while e < len(src) && src[e] != "\n" {
+            e = e + 1;
+        }
+        line = g_trim(g_slice(src, i, e));
+        i = e + 1;
+        if len(line) > 0 {
+            if line[0] != "#" {
+                eq = g_find(line, "=");
+                if eq < 0 {
+                    @compileError("grammar!: rule without '=': " + line)
+                }
+                name = g_trim(g_slice(line, 0, eq));
+                if len(name) == 0 {
+                    @compileError("grammar!: rule without a name")
+                }
+                if g_starts_lower(name) == false {
+                    @compileError("grammar!: rule name must start with a lowercase letter: " + name)
+                }
+                if g_list_has(names, name) {
+                    @compileError("grammar!: duplicate rule: " + name)
+                }
+                names = names + name + ",";
+                rule_count = rule_count + 1;
+            }
+        }
+    }
+    if rule_count == 0 {
+        @compileError("grammar!: no rules")
+    }
+
+    # Pass 2: every nonterminal used must be declared, no direct left recursion,
+    # no two alternatives starting with the same symbol.
+    terminals = ",";
+    check = 0;
+    rule = "";
+    i = 0;
+    while i < len(src) {
+        e = i;
+        while e < len(src) && src[e] != "\n" {
+            e = e + 1;
+        }
+        line = g_trim(g_slice(src, i, e));
+        i = e + 1;
+        if len(line) > 0 {
+            if line[0] != "#" {
+                eq = g_find(line, "=");
+                rule = g_trim(g_slice(line, 0, eq));
+                body = g_trim(g_slice(line, eq + 1, len(line)));
+                if len(body) == 0 {
+                    @compileError("grammar!: rule '" + rule + "' has no alternatives")
+                }
+
+                firsts = ",";
+                alt = "";
+                j = 0;
+                while j <= len(body) {
+                    at_end = j == len(body);
+                    is_bar = false;
+                    if at_end == false {
+                        if body[j] == "|" {
+                            is_bar = true;
+                        }
+                    }
+                    if at_end || is_bar {
+                        a = g_trim(alt);
+                        if len(a) == 0 {
+                            @compileError("grammar!: empty alternative in rule '" + rule + "'")
+                        }
+                        # first token of this alternative
+                        span = 0;
+                        while span < len(a) && g_is_space(a[span]) == false {
+                            span = span + 1;
+                        }
+                        tok = g_ident_core(g_slice(a, 0, span));
+                        if len(tok) > 0 {
+                            if g_starts_lower(tok) {
+                                if g_list_has(names, tok) == false {
+                                    @compileError("grammar!: rule '" + rule + "' uses undefined nonterminal '" + tok + "'")
+                                }
+                            } else {
+                                if g_starts_upper(tok) || tok[0] == "'" {
+                                    if g_list_has(terminals, tok) == false {
+                                        terminals = terminals + tok + ",";
+                                    }
+                                }
+                            }
+                            if tok == rule {
+                                @compileError("grammar!: rule '" + rule + "' is left recursive")
+                            }
+                            if g_list_has(firsts, tok) {
+                                @compileError("grammar!: rule '" + rule + "' has two alternatives starting with '" + tok + "' (not LL(1))")
+                            }
+                            firsts = firsts + tok + ",";
+                        }
+
+                        # every nonterminal mentioned anywhere in the alternative
+                        k = 0;
+                        while k < len(a) {
+                            tok_start = k;
+                            while tok_start < len(a) && g_is_space(a[tok_start]) {
+                                tok_start = tok_start + 1;
+                            }
+                            tok_end = tok_start;
+                            while tok_end < len(a) && g_is_space(a[tok_end]) == false {
+                                tok_end = tok_end + 1;
+                            }
+                            raw = g_slice(a, tok_start, tok_end);
+                            word = g_ident_core(raw);
+                            lit = g_quoted(raw);
+                            if len(lit) > 0 {
+                                quoted = "'" + lit + "'";
+                                if g_list_has(terminals, quoted) == false {
+                                    terminals = terminals + quoted + ",";
+                                }
+                            }
+                            if len(word) > 0 {
+                                if g_starts_lower(word) {
+                                    if g_list_has(names, word) == false {
+                                        @compileError("grammar!: rule '" + rule + "' uses undefined nonterminal '" + word + "'")
+                                    }
+                                }
+                                if g_starts_upper(word) {
+                                    if g_list_has(terminals, word) == false {
+                                        terminals = terminals + word + ",";
+                                    }
+                                }
+                            }
+                            k = tok_end + 1;
+                            if tok_end >= len(a) {
+                                k = len(a);
+                            }
+                        }
+                        alt = "";
+                        check = check + 1;
+                    } else {
+                        alt = alt + body[j];
+                    }
+                    j = j + 1;
+                }
+            }
+        }
+    }
+
+    return "grammar: " + str(rule_count) + " rule(s) [" + g_list_text(names) + "], "
+           + "terminals [" + g_list_text(terminals) + "]";
+}
