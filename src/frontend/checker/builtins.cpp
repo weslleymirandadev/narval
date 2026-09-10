@@ -19,6 +19,8 @@ namespace nv {
         // Funções de conversão de tipo (estilo Python)
         // str: aceita 1 argumento de qualquer tipo, retorna string
         BuiltinFunction("str", {}, std::make_shared<String>(), false, true, 1, 1),
+        // len(x) — length of a string/vector/map; boxed int at runtime.
+        BuiltinFunction("len", {}, std::make_shared<Int>(), false, true, 1, 1),
         
         // int: aceita 1 argumento de qualquer tipo, retorna int
         BuiltinFunction("int", {}, std::make_shared<Int>(), false, true, 1, 1),
