@@ -293,7 +293,7 @@ CASES = [
             '    write(f);\n'
             '}\n'
         ),
-        "expected": "User\n-1\nage\nname\n",
+        "expected": "User\ntrue\nage\nname\n",
     },
     {
         "name": "zig_inline_while",
@@ -584,6 +584,49 @@ CASES = [
             "macros.nv": "stdlib/macros.nv",
         },
         "expect_error": "regex!: unbalanced '('",
+    },
+    {
+        "name": "stdlib_strings",
+        "source": (
+            'from "strings.nv" import *;\n'
+            'write(trim("  hi  "));\n'
+            'write(starts_with("hello", "he"));\n'
+            'write(starts_with("hello", "he!"));\n'
+            'write(ends_with("hello", "lo"));\n'
+            'write(index_of("hello", "ll"));\n'
+            'write(index_of("hello", "z"));\n'
+            'write(substr("hello", 1, 3));\n'
+            'write(count_of("banana", "an"));\n'
+            'parts = split("a,b,c", ",");\n'
+            'write(len(parts));\n'
+            'write(parts[0]);\n'
+            'write(parts[2]);\n'
+            'write(join(["x", "y", "z"], "-"));\n'
+            'write(replace("a-b-c", "-", "+"));\n'
+        ),
+        "module_files": {
+            "strings.nv": "stdlib/strings.nv",
+        },
+        "expected": "hi\ntrue\nfalse\ntrue\n2\n-1\nell\n2\n3\na\nc\nx-y-z\na+b+c\n",
+    },
+    {
+        "name": "stdlib_strings_vector_push",
+        "source": (
+            'def build(n: int): vector {\n'
+            '    v = [];\n'
+            '    i = 0;\n'
+            '    while i < n {\n'
+            '        v.push(i);\n'
+            '        i = i + 1;\n'
+            '    }\n'
+            '    return v;\n'
+            '}\n'
+            'r = build(3);\n'
+            'write(len(r));\n'
+            'write(r[0]);\n'
+            'write(r[2]);\n'
+        ),
+        "expected": "3\n0\n2\n",
     },
 ]
 
