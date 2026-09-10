@@ -142,6 +142,12 @@ std::unique_ptr<Node> parse_stmt(Parser* parser) {
             return node;
         }
         default: {
+            // DSL macro invocation: name! { verbatim body }
+            if (parser->current_token().type == TokenType::IDENTIFIER &&
+                parser->next_token().type == TokenType::NOT &&
+                parser->peek_at(2).type == TokenType::OBRACE) {
+                return parse_macro_call(parser);
+            }
             auto expr = parse_expr(parser);
             if (parser->current_token().type == TokenType::SEMICOLON) {
                 parser->consume_token();
