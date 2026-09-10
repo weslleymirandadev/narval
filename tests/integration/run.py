@@ -521,6 +521,20 @@ CASES = [
         ),
         "expect_error": "error[CE001]",
     },
+    {
+        "name": "import_module_macros_and_comptime",
+        "source": (
+            'from "libmac.nv" import *;\n'
+            'write(sql! { SELECT 1 });\n'
+            'write(regex! { a+ });\n'
+            'write(LIMIT);\n'
+            'write(libval());\n'
+        ),
+        "files": {
+            "libmac.nv": "comptime def sql!(src: str): str {\n    return \"SQL[\" + src + \"]\";\n}\ncomptime def regex!(src: str): str {\n    return \"RE[\" + src + \"]\";\n}\ncomptime LIMIT = 7;\ndef libval(): int {\n    return 42;\n}\n",
+        },
+        "expected": "SQL[ SELECT 1 ]\nRE[ a+ ]\n7\n42\n",
+    },
 ]
 
 
