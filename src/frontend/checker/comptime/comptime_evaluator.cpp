@@ -1,6 +1,10 @@
 #include "frontend/comptime/comptime_evaluator.hpp"
 #include "frontend/ast/program.hpp"
 #include "frontend/checker/checker.hpp"
+#include "frontend/ast/statements/decorator_stmt_node.hpp"
+#include "frontend/ast/expressions/access_expr_node.hpp"
+#include "frontend/ast/statements/for_stmt_node.hpp"
+#include "frontend/ast/statements/while_stmt_node.hpp"
 #include "frontend/ast/expressions/member_expr_node.hpp"
 #include "frontend/comptime/c_import.hpp"
 
@@ -13,6 +17,9 @@
 
 namespace nv {
 namespace {
+
+// Compile-time loops are bounded so a bad condition cannot hang the compiler.
+constexpr size_t MAX_LOOP_ITERATIONS = 100000;
 
 // Host facts for `target.arch()` / `target.simd()` (spec 5.8). The compiler runs
 // on the machine the produced binary targets, so these are compile-time
@@ -200,11 +207,29 @@ void ComptimeEvaluator::fail_code(const std::string& code, const std::string& me
     }
 }
 
+void ComptimeEvaluator::declare_var(const std::string& name, const ComptimeValue& val) {
+    // Always the innermost scope: a parameter of a recursive call must shadow the
+    // caller's binding, not overwrite it.
+    if (scope_stack_.empty()) scope_stack_.emplace_back();
+    scope_stack_.back()[name] = val;
+}
+
 void ComptimeEvaluator::push_scope() { scope_stack_.emplace_back(); }
 void ComptimeEvaluator::pop_scope()  { if (scope_stack_.size() > 1) scope_stack_.pop_back(); }
 
 void ComptimeEvaluator::set_var(const std::string& name, const ComptimeValue& val) {
     if (scope_stack_.empty()) scope_stack_.emplace_back();
+    // Assign to the binding where it already lives, not unconditionally to the
+    // innermost scope: loop bodies push a scope per iteration, and writing to
+    // that scope made `i = i + 1` invisible to the loop condition (infinite
+    // loop, only stopped by the iteration cap).
+    for (auto it = scope_stack_.rbegin(); it != scope_stack_.rend(); ++it) {
+        auto found = it->find(name);
+        if (found != it->end()) {
+            found->second = val;
+            return;
+        }
+    }
     scope_stack_.back()[name] = val;
 }
 
@@ -523,7 +548,7 @@ ComptimeValue ComptimeEvaluator::eval_macro(MacroCallNode* node) {
     if (!fn->parameters.empty()) {
         std::string pname;
         for (const auto& [k, _] : fn->parameters[0].parameter) { pname = k; break; }
-        if (!pname.empty()) set_var(pname, ComptimeValue::from_str(node->raw_src));
+        if (!pname.empty()) declare_var(pname, ComptimeValue::from_str(node->raw_src));
     }
     ++call_depth_;
     ComptimeValue result = eval_block(fn->body);
@@ -605,6 +630,41 @@ ComptimeValue ComptimeEvaluator::eval_call(CallExprNode* node) {
         return ComptimeValue::void_value();
     }
 
+    // Builtins that are safe to use inside comptime function bodies. The checker
+    // knows about these too, but comptime bodies are folded away before it runs,
+    // so the evaluator needs its own handling.
+    if (name == "len" || name == "int" || name == "float" || name == "str" || name == "bool") {
+        if (node->args.empty() || !node->args[0] || !node->args[0]->value) {
+            fail(name + "() requires an argument in comptime context");
+            return ComptimeValue::none();
+        }
+        ComptimeValue v = eval(node->args[0]->value.get());
+        if (failed_) return ComptimeValue::none();
+        if (name == "len") {
+            switch (v.tag) {
+                case ComptimeValue::Tag::Str:    return ComptimeValue::from_int((int64_t)v.s_val.size());
+                case ComptimeValue::Tag::Array:  return ComptimeValue::from_int((int64_t)v.arr_val.size());
+                case ComptimeValue::Tag::Struct: return ComptimeValue::from_int((int64_t)v.struct_val.size());
+                default:
+                    fail("len() expects a string, array or struct in comptime context");
+                    return ComptimeValue::none();
+            }
+        }
+        if (name == "int") {
+            if (v.tag == ComptimeValue::Tag::Float) return ComptimeValue::from_int((int64_t)v.f_val);
+            if (v.tag == ComptimeValue::Tag::Bool)  return ComptimeValue::from_int(v.b_val ? 1 : 0);
+            if (v.tag == ComptimeValue::Tag::Str)   return ComptimeValue::from_int(strtoll(v.s_val.c_str(), nullptr, 10));
+            return v;
+        }
+        if (name == "float") {
+            if (v.tag == ComptimeValue::Tag::Int) return ComptimeValue::from_float((double)v.i_val);
+            if (v.tag == ComptimeValue::Tag::Str) return ComptimeValue::from_float(strtod(v.s_val.c_str(), nullptr));
+            return v;
+        }
+        if (name == "str") return ComptimeValue::from_str(v.to_string());
+        return ComptimeValue::from_bool(v.is_truthy());  // bool
+    }
+
     auto it = comptime_funcs_.find(name);
     if (it == comptime_funcs_.end()) {
         fail("'" + name + "' is not a comptime function (runtime calls are not allowed in comptime context)");
@@ -625,7 +685,7 @@ ComptimeValue ComptimeEvaluator::eval_call(CallExprNode* node) {
     for (auto& p : fn->parameters) {
         std::string pname;
         for (const auto& [k, _] : p.parameter) { pname = k; break; }
-        if (i < arg_vals.size()) set_var(pname, arg_vals[i]);
+        if (i < arg_vals.size()) declare_var(pname, arg_vals[i]);
         ++i;
     }
     ++call_depth_;
@@ -674,6 +734,49 @@ ComptimeValue ComptimeEvaluator::eval(Expr* expr) {
             fail_code("CE003", "'" + id->symbol +
                       "' is not known at compile-time (a runtime value cannot be used "
                       "in a comptime context)");
+            return ComptimeValue::none();
+        }
+        case NodeType::AccessExpression: {
+            // Indexing inside comptime bodies: s[i] on strings and arrays,
+            // struct[key] for reflection descriptors.
+            auto* acc = static_cast<AccessExprNode*>(expr);
+            ComptimeValue base = eval(acc->expr.get());
+            if (failed_) return ComptimeValue::none();
+            ComptimeValue idx = eval(acc->index.get());
+            if (failed_) return ComptimeValue::none();
+
+            auto as_index = [&](const ComptimeValue& v, size_t limit, const char* what) -> long long {
+                long long i = v.tag == ComptimeValue::Tag::Float ? (long long)v.f_val : v.i_val;
+                if (i < 0 || (size_t)i >= limit) {
+                    fail(std::string(what) + " index " + std::to_string(i) +
+                         " out of range (size " + std::to_string(limit) + ") in comptime context");
+                }
+                return i;
+            };
+
+            if (base.tag == ComptimeValue::Tag::Str) {
+                long long i = as_index(idx, base.s_val.size(), "string");
+                if (failed_) return ComptimeValue::none();
+                return ComptimeValue::from_str(std::string(1, base.s_val[(size_t)i]));
+            }
+            if (base.tag == ComptimeValue::Tag::Array) {
+                long long i = as_index(idx, base.arr_val.size(), "array");
+                if (failed_) return ComptimeValue::none();
+                return base.arr_val[(size_t)i];
+            }
+            if (base.tag == ComptimeValue::Tag::Struct) {
+                if (idx.tag != ComptimeValue::Tag::Str) {
+                    fail("struct index must be a string in comptime context");
+                    return ComptimeValue::none();
+                }
+                auto found = base.struct_val.find(idx.s_val);
+                if (found == base.struct_val.end()) {
+                    fail("no field '" + idx.s_val + "' in comptime struct");
+                    return ComptimeValue::none();
+                }
+                return found->second;
+            }
+            fail("unsupported index operation in comptime context");
             return ComptimeValue::none();
         }
         case NodeType::BinaryExpression:
@@ -742,7 +845,8 @@ ComptimeValue ComptimeEvaluator::eval_block(const CodeBlock& body) {
                 auto* decl = static_cast<DeclarationStmtNode*>(stmt);
                 if (decl->target && decl->target->kind == NodeType::Identifier) {
                     auto* id = static_cast<IdentifierNode*>(decl->target.get());
-                    set_var(id->symbol, decl->value ? eval(decl->value.get()) : ComptimeValue::none());
+                    declare_var(id->symbol,
+                                decl->value ? eval(decl->value.get()) : ComptimeValue::none());
                 }
                 break;
             }
@@ -759,6 +863,22 @@ ComptimeValue ComptimeEvaluator::eval_block(const CodeBlock& body) {
                 }
                 break;
             }
+            case NodeType::DecoratorStatement: {
+                // `@compileError("...")` is parsed as a decorator statement, not a
+                // builtin call; inside a comptime body it aborts the evaluation.
+                auto* dec = static_cast<DecoratorStmtNode*>(stmt);
+                if (!dec->entries.empty() && dec->entries[0].name == "compileError") {
+                    std::string msg = dec->entries[0].args.empty()
+                                      ? std::string() : dec->entries[0].args[0].value;
+                    fail("@compileError: " + msg);
+                    return ComptimeValue::none();
+                }
+                if (!dec->entries.empty()) {
+                    fail("@" + dec->entries[0].name + " is not supported in comptime context");
+                    return ComptimeValue::none();
+                }
+                break;
+            }
             case NodeType::ComptimeDecl: {
                 auto* cd = static_cast<ComptimeDeclNode*>(stmt);
                 set_var(cd->name, eval(cd->value.get()));
@@ -772,6 +892,27 @@ ComptimeValue ComptimeEvaluator::eval_block(const CodeBlock& body) {
                 } else {
                     ComptimeValue v = eval_block(ifs->alternate);
                     if (failed_ || v.tag != ComptimeValue::Tag::Void) return v;
+                }
+                break;
+            }
+            case NodeType::WhileStatement: {
+                // `while` inside a comptime function body: evaluated with a
+                // bounded iteration count so a bad condition cannot hang the
+                // compiler.
+                auto* ws = static_cast<WhileStmtNode*>(stmt);
+                size_t iterations = 0;
+                while (ws->condition && eval(ws->condition.get()).is_truthy()) {
+                    if (failed_) return ComptimeValue::none();
+                    if (++iterations > MAX_LOOP_ITERATIONS) {
+                        fail("comptime while loop exceeded " +
+                             std::to_string(MAX_LOOP_ITERATIONS) + " iterations");
+                        return ComptimeValue::none();
+                    }
+                    push_scope();
+                    ComptimeValue v = eval_block(ws->body);
+                    pop_scope();
+                    if (failed_) return ComptimeValue::none();
+                    if (v.tag != ComptimeValue::Tag::Void) return v;
                 }
                 break;
             }
@@ -859,7 +1000,8 @@ ComptimeValue ComptimeEvaluator::eval_block(const CodeBlock& body) {
             case NodeType::InterfaceStatement:
                 break; // declarations: nothing to evaluate
             default:
-                fail("unsupported statement in comptime context (node kind " +
+                if (stmt->position) error_pos_ = std::make_unique<PositionData>(*stmt->position);
+        fail("unsupported statement in comptime context (node kind " +
                      std::to_string(static_cast<int>(stmt->kind)) + ")");
                 return ComptimeValue::none();
         }
@@ -1125,6 +1267,10 @@ CodeBlock ComptimeEvaluator::expand_body(CodeBlock body) {
                 if (failed_) return out;
                 break;
             }
+            case NodeType::DecoratorStatement:
+                // Interpreted by eval_block inside comptime bodies (e.g.
+                // @compileError); nothing to expand here.
+                break;
             case NodeType::ForeverStatement: {
                 auto* f = static_cast<ForeverStmtNode*>(stmt);
                 f->body = expand_body(std::move(f->body));
