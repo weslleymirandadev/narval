@@ -6,6 +6,7 @@
 // that the NIR-generated LLVM IR expects.
 
 #include "backend/runtime/nv_runtime.h"
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -682,6 +683,89 @@ NvObject* nv_float_builtin(NvObject* obj) {
     Value v = {obj}, out = {NULL};
     nv_float_convert(&out, &v);
     return out.obj;
+}
+
+// json_field(obj, key, default): the value of a top-level key of a JSON object,
+// as a runtime value. Strings come back unescaped, numbers as their raw text (so
+// int()/float() convert them) and true/false as booleans; a null or missing key
+// yields `default`, which is handed back with a reference of its own so the
+// caller can drop the temporary it passed. Nested objects/arrays are skipped
+// while looking for the key.
+NvObject* nv_json_field_builtin(NvObject* json, NvObject* key, NvObject* fallback) {
+    Value out = {NULL};
+    if (!json || !key || json->ob_type != NVStr_Type || key->ob_type != NVStr_Type) {
+        nv_raise_type_error("json_field() expects a JSON string and a key string");
+        return NULL;
+    }
+    const char* s = ((NVStr*)json)->value;
+    const char* k = ((NVStr*)key)->value;
+    if (!s || !k) {
+        nv_incref(fallback);
+        return fallback;
+    }
+
+    const size_t klen = strlen(k);
+    const char* p = s;
+    int depth = 0;
+    while (*p) {
+        if (*p == '"') {
+            const char* start = ++p;
+            while (*p && *p != '"') p++;
+            const size_t len = (size_t)(p - start);
+            if (*p == '"') p++;
+            const char* q = p;
+            while (*q == ' ' || *q == '\t' || *q == '\n' || *q == '\r') q++;
+            if (*q == ':' && depth == 1 && len == klen && strncmp(start, k, klen) == 0) {
+                q++;
+                while (*q == ' ' || *q == '\t' || *q == '\n' || *q == '\r') q++;
+                if (*q == '"') {
+                    q++;
+                    char* buf = (char*)malloc(strlen(q) + 1);
+                    if (!buf) { nv_incref(fallback); return fallback; }
+                    size_t n = 0;
+                    while (*q && *q != '"') {
+                        if (*q == '\\' && *(q + 1)) {
+                            q++;
+                            if (*q == 'n') buf[n++] = '\n';
+                            else if (*q == 't') buf[n++] = '\t';
+                            else if (*q == 'r') buf[n++] = '\r';
+                            else buf[n++] = *q;
+                        } else {
+                            buf[n++] = *q;
+                        }
+                        q++;
+                    }
+                    buf[n] = '\0';
+                    create_str(&out, buf);
+                    free(buf);
+                    return out.obj;
+                }
+                if (strncmp(q, "true", 4) == 0)  { create_bool(&out, 1); return out.obj; }
+                if (strncmp(q, "false", 5) == 0) { create_bool(&out, 0); return out.obj; }
+                if (strncmp(q, "null", 4) == 0)  { nv_incref(fallback); return fallback; }
+                const char* e = q;
+                while (*e && (isdigit((unsigned char)*e) || *e == '-' || *e == '+' ||
+                              *e == '.' || *e == 'e' || *e == 'E')) e++;
+                if (e == q) {
+                    nv_incref(fallback);
+                    return fallback;
+                }
+                char* num = (char*)malloc((size_t)(e - q) + 1);
+                if (!num) { nv_incref(fallback); return fallback; }
+                memcpy(num, q, (size_t)(e - q));
+                num[e - q] = '\0';
+                create_str(&out, num);
+                free(num);
+                return out.obj;
+            }
+            continue;
+        }
+        if (*p == '{' || *p == '[') { depth++; p++; continue; }
+        if (*p == '}' || *p == ']') { depth--; p++; continue; }
+        p++;
+    }
+    nv_incref(fallback);
+    return fallback;
 }
 
 NvObject* nv_bool_builtin(NvObject* obj) {
