@@ -69,6 +69,7 @@ void CallExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         {"char",   "nv_char_builtin"},
         {"str",    "nv_str_builtin"},
         {"exit",   "nv_exit_builtin"},
+        {"len",    "nv_len_builtin"},
         {nullptr, nullptr}
     };
     if (!callee.empty()) {
@@ -81,6 +82,23 @@ void CallExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
     }
 
     if (!callee.empty()) {
+        // `comptime import_c` prototypes: call the generic dlsym bridge for the
+        // function's signature shape, passing the C symbol name as a boxed str.
+        {
+            const auto& sigs = ctx.get_c_import_sigs();
+            auto sig = sigs.find(callee);
+            if (sig != sigs.end()) {
+                llvm::SmallVector<mlir::Value> rt_args;
+                rt_args.push_back(mlir::narval::ConstantOp::create(
+                    ctx.get_builder(), loc, vt,
+                    mlir::StringAttr::get(&ctx.get_mlir_context(), callee)).getResult());
+                for (auto& v : arg_vals) rt_args.push_back(v);
+                std::string bridge = "nv_ffi_call_" + sig->second;
+                ctx.push_value(nir_call_runtime(ctx, loc, bridge, rt_args, {vt}));
+                return;
+            }
+        }
+
         // FFI C registry remap
         {
             auto remapped = ctx.get_ffi_remap(callee);
