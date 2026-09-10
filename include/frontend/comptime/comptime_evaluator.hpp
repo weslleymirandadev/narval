@@ -28,6 +28,10 @@ public:
     // Registers a `comptime def` so later calls can resolve it.
     void register_func(ComptimeFuncNode* node);
 
+    // Records which parameters of a (runtime) function are `comptime N: T`.
+    // Call sites must then supply compile-time constants for those positions.
+    void register_func_signature(const std::string& name, std::vector<bool> comptime_flags);
+
     // type.fields(T), type.name(T), type.kind(T), type.has_field(T, "f"), ...
     ComptimeValue eval_type_reflect(TypeReflectExprNode* node);
 
@@ -60,6 +64,8 @@ private:
 
     std::vector<std::unordered_map<std::string, ComptimeValue>> scope_stack_;
     std::unordered_map<std::string, ComptimeFuncNode*> comptime_funcs_;
+    // function name → per-parameter `comptime` flags
+    std::unordered_map<std::string, std::vector<bool>> func_comptime_params_;
 
     void fail(const std::string& message);
     void push_scope();
@@ -70,6 +76,7 @@ private:
     ComptimeValue eval_binary(BinaryExprNode* node);
     ComptimeValue eval_call(CallExprNode* node);
     ComptimeValue eval_builtin(BuiltinCallNode* node);
+    ComptimeValue eval_macro(MacroCallNode* node);
     ComptimeValue eval_member(MemberExprNode* node);
     ComptimeValue eval_range(RangeExprNode* node);
     std::unique_ptr<Stmt> make_const_decl(const std::string& name, const ComptimeValue& val,
