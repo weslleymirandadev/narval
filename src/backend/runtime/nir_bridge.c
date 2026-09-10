@@ -60,6 +60,14 @@ NvObject* nv_box_float(double v) {
     return out.obj;
 }
 
+// Booleans are boxed as NV_BOOL values. A raw int constant made `write(true)`
+// print -1 and `write(false)` print 0, and lost the type in mixed expressions.
+NvObject* nv_box_bool(int64_t v) {
+    Value out = {NULL};
+    create_bool(&out, v != 0 ? 1 : 0);
+    return out.obj;
+}
+
 NvObject* nv_box_str(const char* s) {
     Value out = {NULL};
     create_str(&out, s ? s : "");
@@ -317,8 +325,14 @@ NvObject* nv_index_to_value(size_t idx) {
 
 // Select between two values based on a boolean condition.
 // Used by ternary expressions to avoid narval.if with result types.
+// Returns an OWNED reference to the selected value. The caller passes the
+// branches as temporaries and drops them right after the call, and the winner is
+// one of those temporaries, so the extra reference is what keeps the result
+// alive (without it the value was freed and came back as a corrupt object).
 NvObject* nv_select(int cond, NvObject* a, NvObject* b) {
-    return cond ? a : b;
+    NvObject* chosen = cond ? a : b;
+    nv_incref(chosen);
+    return chosen;
 }
 
 // ── Range ─────────────────────────────────────────────────────────────────────
