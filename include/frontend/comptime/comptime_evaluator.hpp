@@ -73,6 +73,10 @@ private:
     std::unique_ptr<PositionData> error_pos_;
 
     std::vector<std::unordered_map<std::string, ComptimeValue>> scope_stack_;
+    // Index of the scope belonging to the comptime function/macro being
+    // evaluated. Assignments must not reach scopes above it: a callee reusing a
+    // name like `i` or `out` used to overwrite the caller's variable.
+    size_t func_scope_base_ = 0;
     std::unordered_map<std::string, ComptimeFuncNode*> comptime_funcs_;
     // function name → per-parameter `comptime` flags
     std::unordered_map<std::string, std::vector<bool>> func_comptime_params_;
