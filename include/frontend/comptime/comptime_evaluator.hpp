@@ -53,6 +53,14 @@ public:
 
     bool failed() const { return failed_; }
     const std::string& error_message() const { return error_; }
+    // Compile-time diagnostic code for the recorded failure (COMPTIME_SPEC 7):
+    // CE001 evaluation failure, CE003 non-comptime value in comptime context.
+    std::string error_code() const { return error_code_; }
+    // Position of the innermost expression being evaluated when the failure was
+    // recorded (spec 7 wants the diagnostic on the offending expression, not on
+    // the whole program). A COPY is stored: the expansion may replace or free
+    // the node while still reporting.
+    const PositionData* error_position() const { return error_pos_.get(); }
 
 private:
     static constexpr int MAX_DEPTH = 1024;
@@ -61,6 +69,8 @@ private:
     int call_depth_ = 0;
     bool failed_ = false;
     std::string error_;
+    std::string error_code_ = "CE001";
+    std::unique_ptr<PositionData> error_pos_;
 
     std::vector<std::unordered_map<std::string, ComptimeValue>> scope_stack_;
     std::unordered_map<std::string, ComptimeFuncNode*> comptime_funcs_;
@@ -68,6 +78,8 @@ private:
     std::unordered_map<std::string, std::vector<bool>> func_comptime_params_;
 
     void fail(const std::string& message);
+    // Records a failure with an explicit diagnostic code (spec 7).
+    void fail_code(const std::string& code, const std::string& message);
     void push_scope();
     void pop_scope();
     void set_var(const std::string& name, const ComptimeValue& val);
