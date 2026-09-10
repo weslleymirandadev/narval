@@ -1,0 +1,30 @@
+# SQLite through the standard library (stdlib/sqlite.nv).
+#   ./build/narval tests/sqlite_basic.nv
+# libsqlite3 is loaded at runtime, so nothing extra has to be linked.
+# Expected:
+#   true / 0 / 0 / 0 / 0 / 2 / 1 / 2 / 2 / bob / 7.0 / 1 / true / 0
+from "../stdlib/sqlite.nv" import *;
+
+db = db_open("/tmp/narval_sqlite_test.db");
+write(db >= 0);
+
+write(db_exec(db, "DROP TABLE IF EXISTS t"));
+write(db_exec(db, "CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT, score REAL)"));
+write(db_exec(db, "INSERT INTO t (name, score) VALUES ('bob', 9.5)"));
+write(db_exec(db, "INSERT INTO t (name, score) VALUES ('ana', 7)"));
+
+write(db_last_id(db));
+write(db_changes(db));
+
+write(db_query(db, "SELECT name, score FROM t ORDER BY id"));
+write(db_cols(db));
+
+first = db_row(db, 0);
+second = db_row(db, 1);
+write(first[0]);
+write(second[1]);
+
+write(db_exec(db, "SELECT * FROM nao_existe"));
+write(len(db_error(db)) > 0);
+
+write(db_close(db));
