@@ -10,3 +10,6 @@ std::unique_ptr<Node> parse_comptime_stmt(Parser* parser);
 
 // `inline for ...` / `inline while ...` — Zig-style unrolled loops.
 std::unique_ptr<Node> parse_inline_stmt(Parser* parser);
+
+// `name! { verbatim body }` — DSL macro invocation.
+std::unique_ptr<Node> parse_macro_call(Parser* parser);
