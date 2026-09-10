@@ -134,6 +134,26 @@ public:
         return it != ffi_remaps_.end() ? it->second : "";
     }
 
+    //  Class method registry 
+    // class name → declared method names, filled while walking ClassStmtNodes.
+    // Call sites use it to mangle `obj.method()` to __method_<Class>_<method>.
+    void register_class_methods(const std::string& class_name,
+                                const std::vector<std::string>& methods) {
+        class_methods_[class_name] = methods;
+    }
+    // Returns the class declaring `method`, or "" if none/ambiguous.
+    std::string find_method_owner(const std::string& method) const {
+        std::string owner;
+        for (const auto& [cls, methods] : class_methods_) {
+            for (const auto& m : methods) {
+                if (m != method) continue;
+                if (!owner.empty() && owner != cls) return "";  // ambiguous
+                owner = cls;
+            }
+        }
+        return owner;
+    }
+
     //  Runtime function declaration 
     // Ensures a runtime C function is declared in the module (like
     // IRGenerationContext::ensure_runtime_func). Returns the FuncOp.
@@ -173,6 +193,9 @@ public:
         int  unroll     = 0;
     };
     std::optional<OptimizeHints> pending_optimize;
+
+    // class name → declared method names (see register_class_methods)
+    std::unordered_map<std::string, std::vector<std::string>> class_methods_;
 
     //  Expression value stack (mirrors IRGenerationContext::push_value / pop_value)
     void         push_value(mlir::Value v) { value_stack_.push_back(v); }
