@@ -93,6 +93,19 @@ namespace nv {
             void set_source_file(const std::string& filename);
             void set_emit_diagnostics(bool enabled);
             void error(Node* node, const std::string& message);
+            // Compile-time diagnostic with an error code and notes, in the
+            // format documented by COMPTIME_SPEC.md section 7:
+            //   error[CE001]: <title>
+            //     -> file:line:col  (source line + caret, via error())
+            //     = note: <note>
+            void comptime_error(Node* node, const std::string& code,
+                                const std::string& title,
+                                const std::vector<std::string>& notes);
+            // Same, but located by an explicit position (for diagnostics whose
+            // node is no longer available).
+            void comptime_error_at(const PositionData* pos, const std::string& code,
+                                   const std::string& title,
+                                   const std::vector<std::string>& notes);
             void error_at(const std::string& filename, size_t line,
                           size_t col_start, size_t col_end,
                           const std::string& message);
