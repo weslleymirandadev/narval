@@ -828,6 +828,18 @@ CASES = [
         },
         "expected": "true\n",
     },
+    {
+        "name": "nested_module_import",
+        "source": (
+            'from "./nested_user.nv" import *;\n'
+            'write(user_value());\n'
+        ),
+        "module_files": {
+            "nested_dep.nv": "tests/fixtures/nested_dep.nv",
+            "nested_user.nv": "tests/fixtures/nested_user.nv",
+        },
+        "expected": "8\n",
+    },
 ]
 
 
