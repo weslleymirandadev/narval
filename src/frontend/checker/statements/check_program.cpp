@@ -248,12 +248,13 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
                 if (entry.name == "derive")
                     for (auto& arg : entry.args) derives.push_back(arg.value);
             if (target->kind != NodeType::ClassStatement) {
-                ch->error(el.get(), "@[derive(...)] must annotate a class");
+                ch->comptime_error(el.get(), "CE001", "invalid @derive target",
+                                   { "@[derive(...)] must annotate a class" });
                 continue;
             }
             std::string err;
             if (!nv::apply_derive(ch, static_cast<ClassStmtNode*>(target), derives, err)) {
-                ch->error(el.get(), err);
+                ch->comptime_error(el.get(), "CE001", "compile-time code generation failed", { err });
                 return ch->gettyptr("None");
             }
             continue;
@@ -268,18 +269,21 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
                 if (entry.name == "diff")
                     for (auto& a : entry.args) dargs.push_back(a.value);
             if (dargs.size() != 2) {
-                ch->error(el.get(), "@[diff(var, \"dfdx\")] expects exactly two arguments");
+                ch->comptime_error(el.get(), "CE001", "invalid @diff attribute",
+                                   { "@[diff(var, \"dfdx\")] expects exactly two arguments" });
                 continue;
             }
             if (target->kind != NodeType::FunctionStatement) {
-                ch->error(el.get(), "@[diff(...)] must annotate a function");
+                ch->comptime_error(el.get(), "CE001", "invalid @diff target",
+                                   { "@[diff(...)] must annotate a function" });
                 continue;
             }
             std::string err;
             auto derived = nv::make_derivative(static_cast<FunctionStmtNode*>(target),
                                                dargs[0], dargs[1], err);
             if (!derived) {
-                ch->error(el.get(), err);
+                ch->comptime_error(el.get(), "CE001", "compile-time differentiation failed",
+                                   { err });
                 return ch->gettyptr("None");
             }
             pending_inserts.push_back({i + 1, std::move(derived)});
@@ -378,7 +382,14 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
         nv::ComptimeEvaluator ct(ch);
         program->body = ct.expand_body(std::move(program->body));
         if (ct.failed()) {
-            ch->error(program, "comptime evaluation failed: " + ct.error_message());
+            const std::string code = ct.error_code();
+            const std::string title = (code == "CE003")
+                ? "non-comptime value used in comptime context"
+                : "compile-time evaluation failed";
+            if (const PositionData* pos = ct.error_position())
+                ch->comptime_error_at(pos, code, title, { ct.error_message() });
+            else
+                ch->comptime_error(program, code, title, { ct.error_message() });
             return ch->gettyptr("None");
         }
     }
