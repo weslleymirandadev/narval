@@ -1,6 +1,7 @@
 #include "frontend/comptime/comptime_evaluator.hpp"
 #include "frontend/ast/program.hpp"
 #include "frontend/checker/checker.hpp"
+#include "frontend/comptime/c_import.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -520,6 +521,31 @@ ComptimeValue ComptimeEvaluator::eval_call(CallExprNode* node) {
     }
 
     const std::string name = static_cast<IdentifierNode*>(node->caller.get())->symbol;
+
+    // comptime import_c("header.h"[, link: "lib"]) — parse a C header now and
+    // register its prototypes for codegen (see hermes skill / COMPTIME_SPEC 5.5).
+    if (name == "import_c") {
+        std::string path;
+        std::string link;
+        if (!node->args.empty() && node->args[0] && node->args[0]->value &&
+            node->args[0]->value->kind == NodeType::StringLiteral)
+            path = static_cast<StringLiteralNode*>(node->args[0]->value.get())->value;
+        for (size_t i = 1; i < node->args.size(); ++i) {
+            if (node->args[i] && node->args[i]->name == "link" && node->args[i]->value)
+                link = eval(node->args[i]->value.get()).to_string();
+        }
+        if (path.empty()) {
+            fail("import_c requires a header path, e.g. comptime import_c(\"stdio.h\")");
+            return ComptimeValue::none();
+        }
+        std::string err;
+        if (!import_c_header(checker_, path, link, err)) {
+            fail(err);
+            return ComptimeValue::none();
+        }
+        return ComptimeValue::void_value();
+    }
+
     auto it = comptime_funcs_.find(name);
     if (it == comptime_funcs_.end()) {
         fail("'" + name + "' is not a comptime function (runtime calls are not allowed in comptime context)");
