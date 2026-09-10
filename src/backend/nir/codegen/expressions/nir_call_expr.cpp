@@ -81,6 +81,7 @@ void CallExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         {"str",    "nv_str_builtin"},
         {"exit",   "nv_exit_builtin"},
         {"len",    "nv_len_builtin"},
+        {"json_field", "nv_json_field_builtin"},
         {nullptr, nullptr}
     };
     if (!callee.empty()) {
