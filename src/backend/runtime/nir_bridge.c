@@ -223,6 +223,22 @@ NvObject* nv_container_get(NvObject* base_obj, NvObject* key_obj) {
         nv_object_get_field(&out, &self, ((NVStr*)key_obj)->value);
         return out.obj;
     }
+    if (base_obj->ob_type == NVStr_Type) {
+        // s[i] is a one-character string (check_access_expr: a string indexed by
+        // an int yields a string). Falling through to nv_array_get read the
+        // string object as a vector/array and segfaulted. Out-of-range indices
+        // give "" rather than reading past the buffer.
+        const char* s = ((NVStr*)base_obj)->value;
+        int32_t i = obj_to_i32(key_obj);
+        Value out = {NULL};
+        if (!s || i < 0 || (size_t)i >= strlen(s)) {
+            create_str(&out, "");
+            return out.obj;
+        }
+        char buf[2] = { s[i], '\0' };
+        create_str(&out, buf);
+        return out.obj;
+    }
     return nv_array_get(base_obj, key_obj);
 }
 
