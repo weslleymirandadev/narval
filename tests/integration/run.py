@@ -387,6 +387,63 @@ CASES = [
         ),
         "expected": "1\n4\nabc\n",
     },
+    {
+        "name": "comptime_import_c",
+        "source": (
+            'comptime import_c("mymath.h", link: "m");\n'
+            'write(abs(-7));\n'
+            'write(pow(2.0, 10.0));\n'
+            'write(strlen("hello"));\n'
+            'write(atof("2.5"));\n'
+        ),
+        "files": {
+            "mymath.h": "double pow(double base, double exp);\nint abs(int x);\nlong strlen(const char *s);\ndouble atof(const char *s);\nvoid srand(unsigned int seed);\n",
+        },
+        "expected": "7\n1024.000000\n5\n2.500000\n",
+    },
+    {
+        "name": "tensor_broadcast",
+        "source": (
+            'a: Tensor<float, [1, 3]> = Tensor.ones(1, 3);\n'
+            'b: Tensor<float, [2, 3]> = Tensor.ones(2, 3);\n'
+            'c = a + b;\n'
+            'write(c.shape);\n'
+            'write(c.tolist());\n'
+        ),
+        "expected": "[2, 3]\n[[2.000000, 2.000000, 2.000000], [2.000000, 2.000000, 2.000000]]\n",
+    },
+    {
+        "name": "tensor_broadcast_shape_error",
+        "source": (
+            'd: Tensor<float, [2, 3]> = Tensor.zeros(2, 3);\n'
+            'e: Tensor<float, [2, 4]> = Tensor.zeros(2, 4);\n'
+            'f = d + e;\n'
+            'write(f.shape);\n'
+        ),
+        "expect_error": "not broadcastable",
+    },
+    {
+        "name": "derive_hash_ord_and_len",
+        "source": (
+            '@[derive(eq, hash, ord)]\n'
+            'class P {\n'
+            '    x: int;\n'
+            '    y: int;\n'
+            '}\n'
+            'a = new P();\n'
+            'a.x = 1;\n'
+            'a.y = 2;\n'
+            'c = new P();\n'
+            'c.x = 3;\n'
+            'c.y = 0;\n'
+            'write(a.__lt__(c));\n'
+            'write(c.__lt__(a));\n'
+            'write(a.__hash__());\n'
+            'write(c.__hash__());\n'
+            'write(len("hello"));\n'
+        ),
+        "expected": "true\nfalse\n33\n93\n5\n",
+    },
 ]
 
 
@@ -397,6 +454,14 @@ def run_case(narval, case):
     ) as f:
         f.write(case["source"])
         path = f.name
+    # Extra files (headers for `comptime import_c`, ...) live next to the .nv,
+    # which is also what import_c resolves a relative path against.
+    extra = []
+    for fname, content in case.get("files", {}).items():
+        fpath = os.path.join(os.path.dirname(path), fname)
+        with open(fpath, "w") as f:
+            f.write(content)
+        extra.append(fpath)
     try:
         proc = subprocess.run(
             [narval, path],
@@ -409,6 +474,21 @@ def run_case(narval, case):
         return False
     finally:
         os.unlink(path)
+        for fpath in extra:
+            os.unlink(fpath)
+
+    if case.get("expect_error"):
+        # Compile-time diagnostic expected: the program must be rejected, and the
+        # message must mention the given substring.
+        if proc.returncode == 0:
+            print(f"[FAIL] {name}: expected a compile-time error, but it compiled")
+            return False
+        needle = case["expect_error"]
+        if needle not in (proc.stderr + proc.stdout):
+            print(f"[FAIL] {name}: error did not mention {needle!r}\n{proc.stderr[:600]}")
+            return False
+        print(f"[PASS] {name}")
+        return True
 
     if proc.returncode != 0:
         print(f"[FAIL] {name}: exit={proc.returncode}\n{proc.stderr[:800]}")
