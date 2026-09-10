@@ -34,6 +34,9 @@
 #include "expressions/none_literal_node.hpp"
 #include "expressions/slice_expr_node.hpp"
 #include "expressions/closure_expr_node.hpp"
+#include "expressions/comptime_expr_node.hpp"
+#include "expressions/type_reflect_expr_node.hpp"
+#include "expressions/builtin_call_node.hpp"
 
 #include "statements/return_stmt_node.hpp"
 #include "statements/declaration_stmt_node.hpp"
@@ -52,6 +55,12 @@
 #include "statements/throw_stmt_node.hpp"
 #include "statements/try_stmt_node.hpp"
 #include "statements/import_stmt_node.hpp"
+#include "statements/comptime_decl_node.hpp"
+#include "statements/comptime_func_node.hpp"
+#include "statements/comptime_for_node.hpp"
+#include "statements/comptime_if_node.hpp"
+#include "statements/comptime_block_node.hpp"
+#include "statements/comptime_while_node.hpp"
 
 class Program : public Stmt {
 public:
