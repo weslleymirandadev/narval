@@ -775,6 +775,59 @@ CASES = [
         ),
         "expect_error": "has unsupported type",
     },
+    {
+        "name": "sqlite_open_exec_query",
+        "source": (
+            'from "sqlite.nv" import *;\n'
+            '\n'
+            'db = db_open("/tmp/narval_it_sqlite.db");\n'
+            'write(db >= 0);\n'
+            'write(db_exec(db, "DROP TABLE IF EXISTS t"));\n'
+            'write(db_exec(db, "CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT, score REAL)"));\n'
+            'write(db_exec(db, "INSERT INTO t (name, score) VALUES (\'bob\', 9.5)"));\n'
+            'write(db_exec(db, "INSERT INTO t (name, score) VALUES (\'ana\', 7)"));\n'
+            'write(db_last_id(db));\n'
+            'write(db_changes(db));\n'
+            'write(db_query(db, "SELECT name, score FROM t ORDER BY id"));\n'
+            'write(db_cols(db));\n'
+            'first = db_row(db, 0);\n'
+            'second = db_row(db, 1);\n'
+            'write(first[0]);\n'
+            'write(second[1]);\n'
+            'write(db_exec(db, "SELECT * FROM nao_existe"));\n'
+            'write(len(db_error(db)) > 0);\n'
+            'write(db_close(db));\n'
+        ),
+                "module_files": {
+            "sqlite.nv": "stdlib/sqlite.nv",
+        },
+"expected": "true\n0\n0\n0\n0\n2\n1\n2\n2\nbob\n7.0\n1\ntrue\n0\n",
+    },
+    {
+        "name": "derive_openapi_schema",
+        "source": (
+            '@[derive(openapi)]\n'
+            'class User {\n'
+            '    name: str;\n'
+            '    age: int;\n'
+            '    admin: bool;\n'
+            '}\n'
+            'a = new User();\n'
+            'write(a.schema());\n'
+        ),
+        "expected": "{\"type\": \"object\", \"properties\": {\"name\": {\"type\": \"string\"}, \"age\": {\"type\": \"integer\"}, \"admin\": {\"type\": \"boolean\"}}, \"required\": [\"name\", \"age\", \"admin\"]}\n",
+    },
+    {
+        "name": "ffi_string_return",
+        "source": (
+            'comptime import_c("envprobe.h", link: "c");\n'
+            'write(len(getenv("HOME")) > 0);\n'
+        ),
+        "files": {
+            "envprobe.h": 'char *getenv(const char *name);\n',
+        },
+        "expected": "true\n",
+    },
 ]
 
 
