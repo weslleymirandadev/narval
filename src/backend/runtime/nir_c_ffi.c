@@ -216,3 +216,25 @@ NvObject* nv_ffi_call_ds(NvObject* n, NvObject* a) {
     double (*f)(const char*) = (double (*)(const char*))cimp_sym(n);
     return box_d(f ? f(obj_to_s(a)) : 0.0);
 }
+
+// Signatures added for shims shipped with the runtime: a string return, and the
+// (int, char*) combinations a handle-based C API needs.
+NvObject* nv_ffi_call_s(NvObject* n) {
+    const char* (*f)(void) = (const char* (*)(void))cimp_sym(n);
+    return box_s(f ? f() : "");
+}
+
+NvObject* nv_ffi_call_si(NvObject* n, NvObject* a) {
+    const char* (*f)(int32_t) = (const char* (*)(int32_t))cimp_sym(n);
+    return box_s(f ? f(obj_to_i(a)) : "");
+}
+
+NvObject* nv_ffi_call_iis(NvObject* n, NvObject* a, NvObject* b) {
+    int32_t (*f)(int32_t, const char*) = (int32_t (*)(int32_t, const char*))cimp_sym(n);
+    return box_i(f ? f(obj_to_i(a), obj_to_s(b)) : 0);
+}
+
+NvObject* nv_ffi_call_sis(NvObject* n, NvObject* a, NvObject* b) {
+    const char* (*f)(int32_t, const char*) = (const char* (*)(int32_t, const char*))cimp_sym(n);
+    return box_s(f ? f(obj_to_i(a), obj_to_s(b)) : "");
+}
