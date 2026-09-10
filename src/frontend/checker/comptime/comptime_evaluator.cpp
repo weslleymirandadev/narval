@@ -189,8 +189,13 @@ ComptimeEvaluator::ComptimeEvaluator(Checker* checker) : checker_(checker) {
 }
 
 void ComptimeEvaluator::fail(const std::string& message) {
+    fail_code("CE001", message);
+}
+
+void ComptimeEvaluator::fail_code(const std::string& code, const std::string& message) {
     if (!failed_) {
         failed_ = true;
+        error_code_ = code;
         error_ = message;
     }
 }
@@ -635,6 +640,10 @@ ComptimeValue ComptimeEvaluator::eval(Expr* expr) {
         fail("empty comptime expression");
         return ComptimeValue::none();
     }
+    // Remember where we are: on failure this is the location the diagnostic
+    // points at (the innermost expression evaluated before the error). Store a
+    // copy of the position, not the node — expansion may free the node later.
+    if (expr->position) error_pos_ = std::make_unique<PositionData>(*expr->position);
     switch (expr->kind) {
         case NodeType::NumericLiteral: {
             auto* n = static_cast<NumericLiteralNode*>(expr);
@@ -662,7 +671,9 @@ ComptimeValue ComptimeEvaluator::eval(Expr* expr) {
             // A bare type name used in comptime context.
             if (checker_ && checker_->types.count(id->symbol))
                 return ComptimeValue::from_type(id->symbol);
-            fail("unknown comptime identifier '" + id->symbol + "'");
+            fail_code("CE003", "'" + id->symbol +
+                      "' is not known at compile-time (a runtime value cannot be used "
+                      "in a comptime context)");
             return ComptimeValue::none();
         }
         case NodeType::BinaryExpression:
