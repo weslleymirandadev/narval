@@ -732,6 +732,49 @@ CASES = [
         },
         "expect_error": "two alternatives starting with",
     },
+    {
+        "name": "derive_clone_and_from_json",
+        "source": (
+            '@[derive(debug, clone, from_json)]\n'
+            'class User {\n'
+            '    name: str;\n'
+            '    age: int;\n'
+            '    admin: bool;\n'
+            '}\n'
+            'a = new User();\n'
+            'a.name = "bob";\n'
+            'a.age = 42;\n'
+            'a.admin = true;\n'
+            'b = a.clone();\n'
+            'write(b.name);\n'
+            'write(b.age);\n'
+            'c = a.clone();\n'
+            'c.name = "ana";\n'
+            'write(a.name == c.name);\n'
+            'write(b.name == c.name);\n'
+            'd = a.from_json("{\\"name\\": \\"zoe\\", \\"age\\": 7, \\"extra\\": {\\"n\\": 1}}");\n'
+            'write(d.name);\n'
+            'write(d.age);\n'
+            'write(d.admin == false);\n'
+            'write(d.name == b.name);\n'
+        ),
+        "expected": "bob\n42\nfalse\nfalse\nzoe\n7\ntrue\nfalse\n",
+    },
+    {
+        "name": "derive_from_json_rejects_nested_type",
+        "source": (
+            '@[derive(from_json)]\n'
+            'class Inner {\n'
+            '    x: int;\n'
+            '}\n'
+            '@[derive(from_json)]\n'
+            'class Outer {\n'
+            '    inner: Inner;\n'
+            '}\n'
+            'write(1);\n'
+        ),
+        "expect_error": "has unsupported type",
+    },
 ]
 
 
