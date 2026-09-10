@@ -352,6 +352,41 @@ CASES = [
         ),
         "expected": "true\nfalse\nUser { name: \"bob\", age: 42 }\n{\"name\": \"bob\", \"age\": 42}\n",
     },
+    {
+        "name": "comptime_params",
+        "source": (
+            'def pow2(comptime N: int): int {\n'
+            '    return N * N;\n'
+            '}\n'
+            'comptime K = 9;\n'
+            'write(pow2(8));\n'
+            'write(pow2(K));\n'
+        ),
+        "expected": "64\n81\n",
+    },
+    {
+        "name": "dsl_macro_verbatim_body",
+        "source": (
+            'comptime def sql!(src: str): str {\n'
+            '    return "query(" + src + ")";\n'
+            '}\n'
+            'write(sql! { SELECT 1 });\n'
+            'q = sql! { SELECT * FROM users };\n'
+            'write(q);\n'
+        ),
+        "expected": "query( SELECT 1 )\nquery( SELECT * FROM users )\n",
+    },
+    {
+        "name": "comptime_table",
+        "source": (
+            'comptime T = [1, 2, 3, 4];\n'
+            'write(T[0]);\n'
+            'write(T[3]);\n'
+            'comptime S = "abc";\n'
+            'write(S);\n'
+        ),
+        "expected": "1\n4\nabc\n",
+    },
 ]
 
 
