@@ -94,7 +94,10 @@ void ExternStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         std::vector<mlir::Type> ptypes(nparams, vt);
         bool is_void = (decl.return_type == "None" || decl.return_type == "void"
                         || decl.return_type.empty());
-        mlir::TypeRange rtypes = is_void ? mlir::TypeRange{} : mlir::TypeRange{vt};
+        // Same dangling-ArrayRef pitfall as class methods: build the result list
+        // from a std::vector, never from a braced initializer list.
+        std::vector<mlir::Type> rtypes;
+        if (!is_void) rtypes.push_back(vt);
 
         auto fn_type = mlir::FunctionType::get(&mlir_ctx, ptypes, rtypes);
         auto fn = mlir::func::FuncOp::create(b, ul, decl.name, fn_type);
