@@ -341,3 +341,6 @@ void ensure_value_type(Value* v) { (void)v; }
 /* nv_decref / nv_incref: bump allocator never frees, so these are no-ops. */
 void nv_decref_impl(NvObject* obj) { (void)obj; }
 void nv_incref_impl(NvObject* obj) { (void)obj; }
+
+// no_std runtime does not manage object lifetimes.
+void nv_drop(NvObject* obj) { (void)obj; }
