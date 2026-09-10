@@ -459,6 +459,41 @@ void nv::Checker::error(Node* node, const std::string& message) {
     if (emit_diagnostics) std::cerr.flush();  // Garantir que a mensagem foi exibida antes de continuar
 }
 
+void nv::Checker::comptime_error(Node* node, const std::string& code,
+                                const std::string& title,
+                                const std::vector<std::string>& notes) {
+    // Header first so the diagnostic is greppable by code, then the regular
+    // location/source/caret rendering done by error().
+    if (emit_diagnostics) {
+        std::cerr << ANSI_BOLD << ANSI_RED << "error[" << code << "]" << ANSI_RESET
+                  << ANSI_BOLD << ": " << title << ANSI_RESET << "\n";
+    }
+    error(node, title);
+    if (emit_diagnostics) {
+        for (const auto& note : notes)
+            std::cerr << ANSI_BOLD << "  = note: " << ANSI_RESET << note << "\n";
+        std::cerr.flush();
+    }
+}
+
+void nv::Checker::comptime_error_at(const PositionData* pos, const std::string& code,
+                                     const std::string& title,
+                                     const std::vector<std::string>& notes) {
+    if (emit_diagnostics) {
+        std::cerr << ANSI_BOLD << ANSI_RED << "error[" << code << "]" << ANSI_RESET
+                  << ANSI_BOLD << ": " << title << ANSI_RESET << "\n";
+    }
+    if (pos)
+        error_at(current_filename, pos->line, pos->col[0], pos->col[1], title);
+    else
+        error(nullptr, title);
+    if (emit_diagnostics) {
+        for (const auto& note : notes)
+            std::cerr << ANSI_BOLD << "  = note: " << ANSI_RESET << note << "\n";
+        std::cerr.flush();
+    }
+}
+
 void nv::Checker::error_at(const std::string& filename, size_t line,
                            size_t col_start, size_t col_end,
                            const std::string& message) {
