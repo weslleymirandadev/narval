@@ -83,6 +83,9 @@ private:
     void push_scope();
     void pop_scope();
     void set_var(const std::string& name, const ComptimeValue& val);
+    // Binds a NEW name in the innermost scope (parameters, declarations);
+    // set_var() instead updates the binding where it already lives.
+    void declare_var(const std::string& name, const ComptimeValue& val);
     ComptimeValue* lookup_var(const std::string& name);
 
     ComptimeValue eval_binary(BinaryExprNode* node);
