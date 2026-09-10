@@ -103,6 +103,16 @@ public:
     void  set_type_checker(void* checker) { checker_ = checker; }
     void* get_type_checker()              { return checker_; }
 
+    //  C header imports (comptime import_c)
+    // name -> signature shape (see frontend/comptime/c_import.hpp). Calls to
+    // these names route through the runtime's generic dlsym bridge.
+    void set_c_import_sigs(std::unordered_map<std::string, std::string> sigs) {
+        c_import_sigs_ = std::move(sigs);
+    }
+    const std::unordered_map<std::string, std::string>& get_c_import_sigs() const {
+        return c_import_sigs_;
+    }
+
     //  Extra linker items (bridges, .so paths) 
     void add_extra_link_item(const std::string& item) {
         extra_link_items_.push_back(item);
@@ -230,6 +240,7 @@ private:
     void*                                checker_          = nullptr;
     std::string                          source_file_;
     std::vector<std::string>             extra_link_items_;
+    std::unordered_map<std::string, std::string> c_import_sigs_;
     std::vector<mlir::Value>             value_stack_;
     std::unordered_map<std::string, std::string> ffi_remaps_;
 };
