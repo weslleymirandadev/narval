@@ -1,4 +1,5 @@
 #include "../nir_codegen_utils.hpp"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "frontend/ast/statements/function_stmt_node.hpp"
 
 void FunctionStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
@@ -26,6 +27,20 @@ void FunctionStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
     // nested inside main.start. Save and restore the caller's insertion point.
     mlir::OpBuilder::InsertionGuard guard2(b);
     b.setInsertionPointToEnd(ctx.get_module().getBody());
+
+    // Calling a function that is defined later in the module creates a
+    // placeholder declaration; drop it, otherwise emitting the body is reported
+    // as "redefinition of symbol". Calls reference the symbol by name, so they
+    // stay valid.
+    if (mlir::Operation* existing = ctx.get_module().lookupSymbol(name)) {
+        bool is_decl = false;
+        if (auto f = mlir::dyn_cast<mlir::func::FuncOp>(existing))
+            is_decl = f.isDeclaration();
+        else if (auto nf = mlir::dyn_cast<mlir::narval::FuncOp>(existing))
+            is_decl = nf.getBody().empty();
+        if (is_decl) existing->erase();
+    }
+
     auto fn = mlir::narval::FuncOp::create(b, loc, name, fn_type, "",
                                            false, false, false, nullptr);
 
