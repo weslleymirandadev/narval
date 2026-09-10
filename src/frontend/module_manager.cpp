@@ -216,6 +216,18 @@ std::unique_ptr<Node> ModuleManager::get_combined_ast(const std::string& main_mo
                 } else if (stmt->kind == NodeType::FunctionStatement) {
                     // Incluir todas as funções (defs) do módulo (prover contexto)
                     combined_program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
+                } else if (stmt->kind == NodeType::ComptimeDecl ||
+                           stmt->kind == NodeType::ComptimeFuncDef ||
+                           stmt->kind == NodeType::ComptimeFor ||
+                           stmt->kind == NodeType::ComptimeIf ||
+                           stmt->kind == NodeType::ComptimeBlock ||
+                           stmt->kind == NodeType::MacroCall) {
+                    // Comptime state is not a symbol: `comptime` constants and
+                    // macros (`sql!`, ...) are folded away by the expansion, so
+                    // the imported module's copies are otherwise invisible to the
+                    // importer. Carry them over so the combined program's
+                    // expansion registers/expands them exactly once.
+                    combined_program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
                 } else if (stmt->kind == NodeType::ClassStatement ||
                            stmt->kind == NodeType::EnumStatement ||
                            stmt->kind == NodeType::InterfaceStatement) {
