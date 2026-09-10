@@ -110,6 +110,9 @@ enum class TokenType {
     // Async/await
     ASYNC,
     AWAIT,
+    // Compile-time execution
+    COMPTIME,
+    INLINE,
 };
 
 inline const char* get_token_name(TokenType type) {
@@ -218,6 +221,8 @@ inline const char* get_token_name(TokenType type) {
         case TokenType::NAKED_ASM: return "NAKED_ASM";
         case TokenType::ASYNC: return "ASYNC";
         case TokenType::AWAIT: return "AWAIT";
+        case TokenType::COMPTIME: return "COMPTIME";
+        case TokenType::INLINE: return "INLINE";
         default: return "UNKNOWN";
     }
 }
@@ -329,6 +334,8 @@ inline const char* get_token_display(TokenType type) {
         case TokenType::NAKED_ASM: return "naked_asm";
         case TokenType::ASYNC: return "async";
         case TokenType::AWAIT: return "await";
+        case TokenType::COMPTIME: return "comptime";
+        case TokenType::INLINE: return "inline";
         default: return "unknown token";
     }
 }
