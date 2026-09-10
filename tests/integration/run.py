@@ -444,6 +444,54 @@ CASES = [
         ),
         "expected": "true\nfalse\n33\n93\n5\n",
     },
+    {
+        "name": "comptime_target_builtins",
+        "source": (
+            'comptime ARCH = target.arch();\n'
+            'comptime SIMD = target.simd();\n'
+            'comptime if ARCH == "x86_64" { write("arch-known"); }\n'
+            'comptime if ARCH == "aarch64" { write("arch-known"); }\n'
+            'comptime if ARCH == "x86" { write("arch-known"); }\n'
+            'comptime if ARCH == "arm" { write("arch-known"); }\n'
+            'comptime if ARCH == "riscv64" { write("arch-known"); }\n'
+            'comptime if ARCH == "unknown" { write("arch-known"); }\n'
+            'comptime if SIMD == "avx512" { write("simd-known"); }\n'
+            'comptime if SIMD == "avx2" { write("simd-known"); }\n'
+            'comptime if SIMD == "avx" { write("simd-known"); }\n'
+            'comptime if SIMD == "sse2" { write("simd-known"); }\n'
+            'comptime if SIMD == "neon" { write("simd-known"); }\n'
+            'comptime if SIMD == "scalar" { write("simd-known"); }\n'
+        ),
+        "expected": "arch-known\nsimd-known\n",
+    },
+    {
+        "name": "autodiff_attribute",
+        "source": (
+            'comptime import_c("mymath2.h", link: "m");\n'
+            '\n'
+            '@[diff(x, "dloss_dx")]\n'
+            'def loss(x: float): float {\n'
+            '    return x * x + sin(x);\n'
+            '}\n'
+            '\n'
+            'write(dloss_dx(0.0));\n'
+            'write(dloss_dx(1.0));\n'
+        ),
+        "files": {
+            "mymath2.h": "double sin(double x);\ndouble cos(double x);\ndouble exp(double x);\ndouble log(double x);\ndouble sqrt(double x);\n",
+        },
+        "expected": "1.000000\n2.540302\n",
+    },
+    {
+        "name": "autodiff_unsupported_rule",
+        "source": (
+            '@[diff(x, "dx")]\n'
+            'def h(x: float): float {\n'
+            '    return unknown_fn(x) + 1;\n'
+            '}\n'
+        ),
+        "expect_error": "no derivative rule for 'unknown_fn'",
+    },
 ]
 
 
