@@ -18,6 +18,7 @@
 #include "frontend/ast/statements/match_stmt_node.hpp"
 #include "frontend/ast/expressions/or_expr_node.hpp"
 #include "frontend/comptime/comptime_evaluator.hpp"
+#include "frontend/comptime/derive_generator.hpp"
 #include <stdexcept>
 #include <unordered_set>
 
@@ -221,6 +222,35 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
     for (auto& el : program->body) {
         if (el->kind == NodeType::InterfaceStatement) {
             check_interface_stmt(ch, el.get());
+        }
+    }
+
+    // @[derive(...)] — inject generated methods into the annotated class.
+    // Must run BEFORE classes are registered/checked and before codegen.
+    for (size_t i = 0; i < program->body.size(); ++i) {
+        auto& el = program->body[i];
+        if (!el || el->kind != NodeType::AttributeStatement) continue;
+        auto* attr = static_cast<AttributeStmtNode*>(el.get());
+        if (!attr->has_attr("derive")) continue;
+
+        std::vector<std::string> derives;
+        for (auto& entry : attr->entries)
+            if (entry.name == "derive")
+                for (auto& arg : entry.args) derives.push_back(arg.value);
+
+        // The annotated statement is the next non-null one.
+        Stmt* target = nullptr;
+        for (size_t j = i + 1; j < program->body.size(); ++j) {
+            if (program->body[j]) { target = program->body[j].get(); break; }
+        }
+        if (!target || target->kind != NodeType::ClassStatement) {
+            ch->error(el.get(), "@[derive(...)] must annotate a class");
+            continue;
+        }
+        std::string err;
+        if (!nv::apply_derive(ch, static_cast<ClassStmtNode*>(target), derives, err)) {
+            ch->error(el.get(), err);
+            return ch->gettyptr("None");
         }
     }
 
