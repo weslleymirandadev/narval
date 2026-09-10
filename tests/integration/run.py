@@ -655,6 +655,24 @@ CASES = [
         ),
         "expect_error": "only comptime functions can be inspected",
     },
+    {
+        "name": "comptime_guard",
+        "source": (
+            'comptime def first_stop!(s: str): str {\n'
+            '    i = 0;\n'
+            '    while i < len(s) && s[i] != "x" {\n'
+            '        if s[i] == "Q" {\n'
+            '            @compileError("unexpected Q in: " + s)\n'
+            '        }\n'
+            '        i = i + 1;\n'
+            '    }\n'
+            '    return str(i);\n'
+            '}\n'
+            'write(first_stop! { abcxdef });\n'
+            'write("guard ok");\n'
+        ),
+        "expected": "4\nguard ok\n",
+    },
 ]
 
 
