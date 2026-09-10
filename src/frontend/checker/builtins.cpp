@@ -23,7 +23,19 @@ namespace nv {
         // json_field: valor de um campo de topo de um objeto JSON (string
         // desescapada, numero como texto, true/false como bool, "" se faltar).
         BuiltinFunction("json_field", {}, std::make_shared<String>(), false, true, 2, 3),
-        // len(x) — length of a string/vector/map; boxed int at runtime.
+
+        // SQLite: primitivas do shim do runtime. A API amigavel fica em
+        // stdlib/sqlite.nv (libsqlite3 e carregada em runtime via dlopen).
+        BuiltinFunction("nv_sqlite_open",    {}, std::make_shared<Int>(),    false, true, 1, 1),
+        BuiltinFunction("nv_sqlite_close",   {}, std::make_shared<Int>(),    false, true, 1, 1),
+        BuiltinFunction("nv_sqlite_exec",    {}, std::make_shared<Int>(),    false, true, 2, 2),
+        BuiltinFunction("nv_sqlite_query",   {}, std::make_shared<String>(), false, true, 2, 2),
+        BuiltinFunction("nv_sqlite_error",   {}, std::make_shared<String>(), false, true, 1, 1),
+        BuiltinFunction("nv_sqlite_last_id", {}, std::make_shared<Int>(),    false, true, 1, 1),
+        BuiltinFunction("nv_sqlite_changes", {}, std::make_shared<Int>(),    false, true, 1, 1),
+        BuiltinFunction("nv_sqlite_query_run", {}, std::make_shared<Int>(),    false, true, 2, 2),
+        BuiltinFunction("nv_sqlite_col_count", {}, std::make_shared<Int>(),    false, true, 1, 1),
+        BuiltinFunction("nv_sqlite_cell",      {}, std::make_shared<String>(), false, true, 3, 3),        // len(x) — length of a string/vector/map; boxed int at runtime.
         BuiltinFunction("len", {}, std::make_shared<Int>(), false, true, 1, 1),
         
         // int: aceita 1 argumento de qualquer tipo, retorna int
