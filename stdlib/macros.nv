@@ -1,0 +1,237 @@
+# Narval standard library -- compile-time macros (COMPTIME_SPEC 5.6 / roadmap 16).
+#
+# Bring them into a program with:
+#     from "stdlib/macros.nv" import *;
+#
+# A macro receives the body of the braces VERBATIM (original whitespace preserved) and
+# runs at compile time. These validate and normalise their input so a mistake in
+# the literal fails the build instead of reaching the runtime. A macro body can
+# use while/if, indexing, len(), string concatenation and @compileError.
+
+# Skips leading spaces and answers the index of the first real character.
+# (`while` + indexing only: this is the whole toolkit available here.)
+comptime def __first_nonspace(src: str): int {
+    i = 0;
+    found = false;
+    while found == false {
+        if i >= len(src) {
+            found = true;
+        } else {
+            if src[i] == " " {
+                i = i + 1;
+            } else {
+                found = true;
+            }
+        }
+    }
+    return i;
+}
+
+# Drops trailing spaces (the macro body keeps the whitespace before the `}`).
+comptime def __rtrim(src: str): str {
+    stop = len(src);
+    trimming = true;
+    while trimming {
+        if stop <= 0 {
+            trimming = false;
+        } else {
+            if src[stop - 1] == " " {
+                stop = stop - 1;
+            } else {
+                trimming = false;
+            }
+        }
+    }
+    out = "";
+    i = 0;
+    while i < stop {
+        out = out + src[i];
+        i = i + 1;
+    }
+    return out;
+}
+
+# Drops leading and trailing spaces.
+comptime def __trim(src: str): str {
+    start = __first_nonspace(src);
+    body = "";
+    i = start;
+    while i < len(src) {
+        body = body + src[i];
+        i = i + 1;
+    }
+    return __rtrim(body);
+}
+
+# sql! { SELECT ... } -- requires a known leading keyword and returns the query
+# with internal whitespace runs collapsed to single spaces.
+comptime def sql!(src: str): str {
+    start = __first_nonspace(src);
+    if start >= len(src) {
+        @compileError("sql!: empty query")
+    }
+
+    out = "";
+    prev_space = false;
+    i = start;
+    while i < len(src) {
+        c = src[i];
+        if c == " " {
+            if prev_space == false {
+                out = out + " ";
+            }
+            prev_space = true;
+        } else {
+            if c != "\n" {
+                if c != "\t" {
+                    if c != "\r" {
+                        out = out + c;
+                    }
+                }
+            }
+            prev_space = false;
+        }
+        i = i + 1;
+    }
+    out = __rtrim(out);
+    if out[0] == " " {
+        out = out[1];
+    }
+
+    kw = "";
+    j = 0;
+    stop = false;
+    while stop == false {
+        if j >= len(out) {
+            stop = true;
+        } else {
+            if out[j] == " " {
+                stop = true;
+            } else {
+                kw = kw + out[j];
+                j = j + 1;
+            }
+        }
+    }
+    known = false;
+    if kw == "SELECT" { known = true; }
+    if kw == "INSERT" { known = true; }
+    if kw == "UPDATE" { known = true; }
+    if kw == "DELETE" { known = true; }
+    if kw == "CREATE" { known = true; }
+    if kw == "WITH" { known = true; }
+    if known == false {
+        @compileError("sql!: expected the query to start with SELECT, INSERT, UPDATE, DELETE, CREATE or WITH")
+    }
+    return out;
+}
+
+# regex! { <pattern> } -- rejects unbalanced (), [], {} at compile time.
+comptime def regex!(src: str): str {
+    if len(src) == 0 {
+        @compileError("regex!: empty pattern")
+    }
+    i = 0;
+    parens = 0;
+    brackets = 0;
+    braces = 0;
+    while i < len(src) {
+        c = src[i];
+        if c == "(" { parens = parens + 1; }
+        if c == ")" { parens = parens - 1; }
+        if c == "[" { brackets = brackets + 1; }
+        if c == "]" { brackets = brackets - 1; }
+        if c == "{" { braces = braces + 1; }
+        if c == "}" { braces = braces - 1; }
+        if parens < 0 {
+            @compileError("regex!: unbalanced ')'")
+        }
+        if brackets < 0 {
+            @compileError("regex!: unbalanced ']'")
+        }
+        if braces < 0 {
+            @compileError("regex!: unbalanced '}'")
+        }
+        i = i + 1;
+    }
+    if parens != 0 {
+        @compileError("regex!: unbalanced '('")
+    }
+    if brackets != 0 {
+        @compileError("regex!: unbalanced '['")
+    }
+    if braces != 0 {
+        @compileError("regex!: unbalanced '{'")
+    }
+    return __trim(src);
+}
+
+# route! { GET /users/:id } -- requires a supported method and an absolute path;
+# returns the route normalised to "METHOD path".
+comptime def route!(src: str): str {
+    i = __first_nonspace(src);
+    if i >= len(src) {
+        @compileError("route!: empty route")
+    }
+
+    method = "";
+    reading = true;
+    while reading {
+        if i >= len(src) {
+            reading = false;
+        } else {
+            if src[i] == " " {
+                reading = false;
+            } else {
+                method = method + src[i];
+                i = i + 1;
+            }
+        }
+    }
+
+    known = false;
+    if method == "GET" { known = true; }
+    if method == "POST" { known = true; }
+    if method == "PUT" { known = true; }
+    if method == "DELETE" { known = true; }
+    if method == "PATCH" { known = true; }
+    if known == false {
+        @compileError("route!: expected GET, POST, PUT, DELETE or PATCH")
+    }
+
+    # Skip the spaces between the method and the path.
+    skip = false;
+    while skip == false {
+        if i >= len(src) {
+            skip = true;
+        } else {
+            if src[i] == " " {
+                i = i + 1;
+            } else {
+                skip = true;
+            }
+        }
+    }
+    if i >= len(src) {
+        @compileError("route!: missing path")
+    }
+    if src[i] != "/" {
+        @compileError("route!: path must start with '/'")
+    }
+
+    path = "";
+    reading_path = true;
+    while reading_path {
+        if i >= len(src) {
+            reading_path = false;
+        } else {
+            if src[i] == " " {
+                reading_path = false;
+            } else {
+                path = path + src[i];
+                i = i + 1;
+            }
+        }
+    }
+    return method + " " + path;
+}
