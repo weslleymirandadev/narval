@@ -1,0 +1,250 @@
+# Narval standard library -- string helpers.
+#
+# Bring them into a program with:
+#     from "stdlib/strings.nv" import *;
+#
+# These are ordinary runtime functions written in Narval: while loops, indexing
+# (s[i] yields a one-character string), len() and vector push. Unbounded helpers
+# return -1 / "" instead of raising, since the language has no exceptions.
+# Statements in a `def` body are terminated with `;`.
+
+# Index of the first character, skipping leading spaces.
+def nv_first_nonspace(s: str): int {
+    i = 0;
+    found = false;
+    while found == false {
+        if i >= len(s) {
+            found = true;
+        } else {
+            if s[i] == " " {
+                i = i + 1;
+            } else {
+                found = true;
+            }
+        }
+    }
+    return i;
+}
+
+# Index one past the last non-space character.
+def nv_last_nonspace(s: str): int {
+    stop = len(s);
+    trimming = true;
+    while trimming {
+        if stop <= 0 {
+            trimming = false;
+        } else {
+            if s[stop - 1] == " " {
+                stop = stop - 1;
+            } else {
+                trimming = false;
+            }
+        }
+    }
+    return stop;
+}
+
+def trim_left(s: str): str {
+    out = "";
+    i = nv_first_nonspace(s);
+    while i < len(s) {
+        out = out + s[i];
+        i = i + 1;
+    }
+    return out;
+}
+
+def trim_right(s: str): str {
+    out = "";
+    stop = nv_last_nonspace(s);
+    i = 0;
+    while i < stop {
+        out = out + s[i];
+        i = i + 1;
+    }
+    return out;
+}
+
+def trim(s: str): str {
+    return trim_left(trim_right(s));
+}
+
+def starts_with(s: str, prefix: str): bool {
+    if len(prefix) > len(s) {
+        return false;
+    }
+    i = 0;
+    ok = true;
+    while i < len(prefix) {
+        if s[i] != prefix[i] {
+            ok = false;
+            i = len(prefix);
+        } else {
+            i = i + 1;
+        }
+    }
+    return ok;
+}
+
+def ends_with(s: str, suffix: str): bool {
+    if len(suffix) > len(s) {
+        return false;
+    }
+    offset = len(s) - len(suffix);
+    i = 0;
+    ok = true;
+    while i < len(suffix) {
+        if s[offset + i] != suffix[i] {
+            ok = false;
+            i = len(suffix);
+        } else {
+            i = i + 1;
+        }
+    }
+    return ok;
+}
+
+# -1 when `sub` does not occur. Single loop, single condition per step: a loop
+# nested inside a conditional is the one shape the conditional lowering cannot
+# carry values out of.
+def index_of(s: str, sub: str): int {
+    if len(sub) == 0 {
+        return 0;
+    }
+    if len(sub) > len(s) {
+        return -1;
+    }
+    found = -1;
+    i = 0;
+    done = false;
+    while done == false {
+        if i + len(sub) > len(s) {
+            done = true;
+        } else {
+            if starts_at(s, i, sub) {
+                found = i;
+                done = true;
+            } else {
+                i = i + 1;
+            }
+        }
+    }
+    return found;
+}
+
+def contains(s: str, sub: str): bool {
+    return index_of(s, sub) >= 0;
+}
+
+# `count` characters starting at `start`; clamps to the string bounds.
+def substr(s: str, start: int, count: int): str {
+    out = "";
+    if start < 0 {
+        return out;
+    }
+    i = start;
+    stop = start + count;
+    if stop > len(s) {
+        stop = len(s);
+    }
+    while i < stop {
+        out = out + s[i];
+        i = i + 1;
+    }
+    return out;
+}
+
+# True when `sub` occurs at `start`.
+def starts_at(s: str, start: int, sub: str): bool {
+    if start < 0 {
+        return false;
+    }
+    if start + len(sub) > len(s) {
+        return false;
+    }
+    i = 0;
+    ok = true;
+    while i < len(sub) {
+        if s[start + i] != sub[i] {
+            ok = false;
+            i = len(sub);
+        } else {
+            i = i + 1;
+        }
+    }
+    return ok;
+}
+
+# Splits on every occurrence of `sep`; an empty separator returns the whole
+# string as a single part.
+def split(s: str, sep: str): vector {
+    parts = [];
+    if len(sep) == 0 {
+        parts.push(s);
+        return parts;
+    }
+    current = "";
+    i = 0;
+    while i < len(s) {
+        if starts_at(s, i, sep) {
+            parts.push(current);
+            current = "";
+            i = i + len(sep);
+        } else {
+            current = current + s[i];
+            i = i + 1;
+        }
+    }
+    parts.push(current);
+    return parts;
+}
+
+def join(parts: vector, sep: str): str {
+    out = "";
+    i = 0;
+    while i < len(parts) {
+        if i > 0 {
+            out = out + sep;
+        }
+        out = out + parts[i];
+        i = i + 1;
+    }
+    return out;
+}
+
+# Replaces every occurrence of `needle` (empty `needle` is ignored).
+def replace(s: str, needle: str, to: str): str {
+    if len(needle) == 0 {
+        return s;
+    }
+    out = "";
+    i = 0;
+    while i < len(s) {
+        if starts_at(s, i, needle) {
+            out = out + to;
+            i = i + len(needle);
+        } else {
+            out = out + s[i];
+            i = i + 1;
+        }
+    }
+    return out;
+}
+
+# Number of occurrences of `sub`.
+def count_of(s: str, sub: str): int {
+    if len(sub) == 0 {
+        return 0;
+    }
+    n = 0;
+    i = 0;
+    while i + len(sub) <= len(s) {
+        if starts_at(s, i, sub) {
+            n = n + 1;
+            i = i + len(sub);
+        } else {
+            i = i + 1;
+        }
+    }
+    return n;
+}
