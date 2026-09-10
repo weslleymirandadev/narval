@@ -4,7 +4,78 @@
 #include "frontend/ast/statements/declaration_stmt_node.hpp"
 #include "frontend/ast/expressions/assignment_expr_node.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
+#include "frontend/ast/statements/if_statement_node.hpp"
+#include "frontend/ast/statements/for_stmt_node.hpp"
+#include "frontend/ast/statements/forever_stmt_node.hpp"
+#include "frontend/ast/statements/match_stmt_node.hpp"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+
+#include <algorithm>
+#include <functional>
+#include <string>
+#include <vector>
+
+namespace {
+
+// Names assigned anywhere in the body, nested blocks included. A conditional
+// inside the loop that assigns a variable declared outside the loop has to have
+// that variable carried, otherwise the assignment only lands in the body scope
+// and is thrown away when the iteration ends.
+std::vector<std::string> assigned_in(const CodeBlock& body) {
+    std::vector<std::string> out;
+    auto add = [&](const std::string& n) {
+        if (!n.empty() && std::find(out.begin(), out.end(), n) == out.end())
+            out.push_back(n);
+    };
+    std::function<void(const CodeBlock&)> walk = [&](const CodeBlock& b) {
+        for (const auto& stmt : b) {
+            if (!stmt) continue;
+            switch (stmt->kind) {
+                case NodeType::DeclarationStatement: {
+                    auto* d = static_cast<DeclarationStmtNode*>(stmt.get());
+                    if (d->target && d->target->kind == NodeType::Identifier)
+                        add(static_cast<IdentifierNode*>(d->target.get())->symbol);
+                    break;
+                }
+                case NodeType::AssignmentExpression: {
+                    auto* a = static_cast<AssignmentExprNode*>(stmt.get());
+                    if (a->target && a->target->kind == NodeType::Identifier)
+                        add(static_cast<IdentifierNode*>(a->target.get())->symbol);
+                    break;
+                }
+                case NodeType::IfStatement: {
+                    auto* i = static_cast<IfStatementNode*>(stmt.get());
+                    walk(i->consequent);
+                    walk(i->alternate);
+                    break;
+                }
+                case NodeType::WhileStatement:
+                    walk(static_cast<WhileStmtNode*>(stmt.get())->body);
+                    break;
+                case NodeType::ForStatement: {
+                    auto* f = static_cast<ForStmtNode*>(stmt.get());
+                    walk(f->body);
+                    walk(f->else_block);
+                    break;
+                }
+                case NodeType::ForeverStatement:
+                    walk(static_cast<ForeverStmtNode*>(stmt.get())->body);
+                    break;
+                case NodeType::MatchStatement: {
+                    auto* m = static_cast<MatchStmtNode*>(stmt.get());
+                    for (auto& cb : m->bodies) walk(cb);
+                    break;
+                }
+                default:
+                    break;
+            }
+        }
+    };
+    walk(body);
+    return out;
+}
+
+} // anonymous namespace
 
 void WhileStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
     auto& b   = ctx.get_builder();
@@ -16,20 +87,9 @@ void WhileStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
     // in the enclosing scope. Their live values flow through the while's init
     // args / results.
     std::vector<std::pair<std::string, mlir::Value>> carried;
-    for (const auto& stmt : body) {
-        if (!stmt) continue;
-        std::string name;
-        if (stmt->kind == NodeType::DeclarationStatement) {
-            auto* decl = static_cast<DeclarationStmtNode*>(stmt.get());
-            if (decl->target && decl->target->kind == NodeType::Identifier)
-                name = static_cast<IdentifierNode*>(decl->target.get())->symbol;
-        } else if (stmt->kind == NodeType::AssignmentExpression) {
-            auto* asg = static_cast<AssignmentExprNode*>(stmt.get());
-            if (asg->target && asg->target->kind == NodeType::Identifier)
-                name = static_cast<IdentifierNode*>(asg->target.get())->symbol;
-        }
-        if (name.empty()) continue;
+    for (const std::string& name : assigned_in(body)) {
         mlir::Value cur = ctx.lookup(name);
+        // Only names that live outside the loop can be carried in and out.
         if (cur) carried.emplace_back(name, cur);
     }
 
