@@ -59,6 +59,13 @@ std::unique_ptr<Node> parse_function_stmt(Parser* parser) {
         size_t position_param[2] = { parser->current_token().position_start, parser->current_token().position_end };
         std::unique_ptr<PositionData> pos_param = std::make_unique<PositionData>(line_param, column_param[0], column_param[1], position_param[0], position_param[1]);
 
+        // `comptime N: int` — compile-time parameter.
+        bool param_is_comptime = false;
+        if (parser->current_token().type == TokenType::COMPTIME) {
+            parser->consume_token();
+            param_is_comptime = true;
+        }
+
         auto arg_name_token = parser->expect(TokenType::IDENTIFIER, "Expected argument name.");
         parser->expect(TokenType::COLON, "Expected ':'.");
         std::string arg_type = parse_type(parser);
@@ -75,6 +82,7 @@ std::unique_ptr<Node> parse_function_stmt(Parser* parser) {
         }
 
         ParamNode param_node(param, std::move(default_val));
+        param_node.is_comptime = param_is_comptime;
         param_node.position = std::move(pos_param);
 
         function_node->parameters.push_back(param_node);
