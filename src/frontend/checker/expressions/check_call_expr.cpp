@@ -249,6 +249,20 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
         auto* prop_id = static_cast<IdentifierNode*>(member_expr->property.get());
         const std::string& method_name = prop_id->symbol;
         
+        // `vector.push(x)` — dynamic list append. The vector prototype carries
+        // no push method, so accept it here; codegen lowers it to the runtime
+        // nv_vector_push bridge (the same one vector literals use).
+        if (object_type->kind == nv::Kind::VECTOR && method_name == "push") {
+            if (call->args.size() != 1) {
+                ch->error(member_expr->property.get(),
+                          "push(x) expects exactly one argument");
+                return ch->gettyptr("None");
+            }
+            if (call->args[0] && call->args[0]->value)
+                ch->check_node(call->args[0]->value.get());
+            return ch->gettyptr("None");
+        }
+
         // Verificar se o objeto tem o método
         std::shared_ptr<nv::Type> method_type = nullptr;
         if (object_type->kind == nv::Kind::CLASS) {
