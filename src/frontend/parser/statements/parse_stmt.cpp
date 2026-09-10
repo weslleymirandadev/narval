@@ -24,6 +24,7 @@
 #include "frontend/parser/statements/parse_attribute_stmt.hpp"
 #include "frontend/parser/statements/parse_decorator_stmt.hpp"
 #include "frontend/parser/statements/parse_inline_asm_stmt.hpp"
+#include "frontend/parser/statements/parse_comptime_stmt.hpp"
 #include "frontend/ast/statements/attribute_stmt_node.hpp"
 #include "frontend/ast/statements/function_stmt_node.hpp"
 
@@ -108,6 +109,8 @@ std::unique_ptr<Node> parse_stmt(Parser* parser) {
             return fn;
         }
         case TokenType::IF: return parse_if_stmt(parser);
+        case TokenType::COMPTIME: return parse_comptime_stmt(parser);
+        case TokenType::INLINE: return parse_inline_stmt(parser);
         case TokenType::RETURN: return parse_return_stmt(parser);
         case TokenType::BREAK: return parse_break_stmt(parser);
         case TokenType::CONTINUE: return parse_continue_stmt(parser);
