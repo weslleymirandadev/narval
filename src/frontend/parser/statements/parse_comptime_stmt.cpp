@@ -4,6 +4,8 @@
 #include "frontend/parser/statements/parse_block_util.hpp"
 #include "frontend/parser/expressions/parse_expr.hpp"
 #include "frontend/parser/expressions/parse_range_expr.hpp"
+#include "frontend/parser/expressions/parse_type.hpp"
+#include <unordered_map>
 #include "frontend/ast/statements/function_stmt_node.hpp"
 
 namespace {
@@ -83,7 +85,81 @@ std::unique_ptr<Node> parse_comptime_while(Parser* parser) {
     return node;
 }
 
+// comptime def name!(src: str): T { ... }  — DSL macro definition.
+static std::unique_ptr<Node> parse_comptime_macro_def(Parser* parser) {
+    auto kw = parser->current_token();
+    parser->consume_token(); // 'def'
+    auto name_tok = parser->expect(TokenType::IDENTIFIER, "Expected macro name after 'comptime def'");
+    parser->expect(TokenType::NOT, "Expected '!' after macro name");
+    std::string name = name_tok.lexeme + "!";
+
+    parser->expect(TokenType::OPAREN, "Expected '(' after macro name");
+    std::vector<ParamNode> params;
+    while (parser->not_eof() && parser->current_token().type != TokenType::CPAREN) {
+        auto ptok = parser->expect(TokenType::IDENTIFIER, "Expected macro parameter name");
+        parser->expect(TokenType::COLON, "Expected ':' after macro parameter name");
+        std::string ptype = parse_type(parser);
+        std::unordered_map<std::string, std::string> m;
+        m[ptok.lexeme] = ptype;
+        params.push_back(ParamNode(m));
+        if (parser->current_token().type == TokenType::COMMA) parser->consume_token();
+        else break;
+    }
+    parser->expect(TokenType::CPAREN, "Expected ')' after macro parameters");
+
+    std::string ret = "None";
+    if (parser->current_token().type == TokenType::COLON) {
+        parser->consume_token();
+        ret = parse_type(parser);
+    }
+    parser->expect(TokenType::OBRACE, "Expected '{' to open macro body");
+    CodeBlock body = parse_body(parser);
+    parser->expect(TokenType::CBRACE, "Expected '}' to close macro body");
+
+    auto node = std::make_unique<ComptimeFuncNode>(name, std::move(params), ret, std::move(body));
+    node->position = std::make_unique<PositionData>(
+        kw.line, kw.column_start, kw.column_end, kw.position_start, kw.position_end, kw.filename);
+    return node;
+}
+
 } // anonymous namespace
+
+// name! { <verbatim text> } — DSL macro invocation.
+std::unique_ptr<Node> parse_macro_call(Parser* parser) {
+    auto name_tok = parser->consume_token();  // IDENTIFIER
+    parser->consume_token();                  // '!'
+    Token open = parser->expect(TokenType::OBRACE, "Expected '{' after macro name");
+
+    // Find the matching closing brace by scanning ahead (the body is not parsed).
+    size_t depth = 1;
+    size_t off = 0;
+    bool found = false;
+    Token close = open;  // Token has no default constructor
+    while (true) {
+        Token t = parser->peek_at(off);
+        if (t.type == TokenType::EOF_TOKEN) break;
+        if (t.type == TokenType::OBRACE) ++depth;
+        else if (t.type == TokenType::CBRACE) {
+            if (--depth == 0) { close = t; found = true; break; }
+        }
+        ++off;
+    }
+    if (!found) {
+        parser->error("Unterminated macro body: missing '}'");
+        return nullptr;
+    }
+
+    std::string raw = parser->source_slice(open.position_end, close.position_start);
+    // Consume the body tokens plus the closing brace.
+    for (size_t i = 0; i <= off; ++i)
+        parser->consume_token();
+
+    auto node = std::make_unique<MacroCallNode>(name_tok.lexeme, raw);
+    node->position = std::make_unique<PositionData>(
+        name_tok.line, name_tok.column_start, name_tok.column_end,
+        name_tok.position_start, name_tok.position_end, name_tok.filename);
+    return node;
+}
 
 std::unique_ptr<Node> parse_inline_stmt(Parser* parser) {
     parser->consume_token(); // 'inline'
@@ -113,6 +189,9 @@ std::unique_ptr<Node> parse_comptime_stmt(Parser* parser) {
 
     switch (parser->current_token().type) {
         case TokenType::DEF:
+            if (parser->next_token().type == TokenType::IDENTIFIER &&
+                parser->peek_at(2).type == TokenType::NOT)
+                return with_pos(parse_comptime_macro_def(parser));
             return with_pos(parse_comptime_func(parser));
         case TokenType::FOR:
             return with_pos(parse_comptime_for(parser));
