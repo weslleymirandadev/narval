@@ -19,6 +19,7 @@
 #include "frontend/ast/expressions/or_expr_node.hpp"
 #include "frontend/comptime/comptime_evaluator.hpp"
 #include "frontend/comptime/derive_generator.hpp"
+#include "frontend/comptime/autodiff.hpp"
 #include <stdexcept>
 #include <unordered_set>
 
@@ -225,33 +226,69 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
         }
     }
 
-    // @[derive(...)] — inject generated methods into the annotated class.
-    // Must run BEFORE classes are registered/checked and before codegen.
+    // @[derive(...)] / @[diff(var, "dfdx")] — compile-time code generation.
+    // Must run BEFORE classes/functions are registered and before codegen.
+    struct PendingInsert { size_t index; std::unique_ptr<Node> node; };
+    std::vector<PendingInsert> pending_inserts;
     for (size_t i = 0; i < program->body.size(); ++i) {
         auto& el = program->body[i];
         if (!el || el->kind != NodeType::AttributeStatement) continue;
         auto* attr = static_cast<AttributeStmtNode*>(el.get());
-        if (!attr->has_attr("derive")) continue;
-
-        std::vector<std::string> derives;
-        for (auto& entry : attr->entries)
-            if (entry.name == "derive")
-                for (auto& arg : entry.args) derives.push_back(arg.value);
 
         // The annotated statement is the next non-null one.
         Stmt* target = nullptr;
         for (size_t j = i + 1; j < program->body.size(); ++j) {
             if (program->body[j]) { target = program->body[j].get(); break; }
         }
-        if (!target || target->kind != NodeType::ClassStatement) {
-            ch->error(el.get(), "@[derive(...)] must annotate a class");
+        if (!target) continue;
+
+        if (attr->has_attr("derive")) {
+            std::vector<std::string> derives;
+            for (auto& entry : attr->entries)
+                if (entry.name == "derive")
+                    for (auto& arg : entry.args) derives.push_back(arg.value);
+            if (target->kind != NodeType::ClassStatement) {
+                ch->error(el.get(), "@[derive(...)] must annotate a class");
+                continue;
+            }
+            std::string err;
+            if (!nv::apply_derive(ch, static_cast<ClassStmtNode*>(target), derives, err)) {
+                ch->error(el.get(), err);
+                return ch->gettyptr("None");
+            }
             continue;
         }
-        std::string err;
-        if (!nv::apply_derive(ch, static_cast<ClassStmtNode*>(target), derives, err)) {
-            ch->error(el.get(), err);
-            return ch->gettyptr("None");
+
+        if (attr->has_attr("diff")) {
+            // @[diff(x, "dfdx")] on a function: build the symbolic derivative
+            // here and inject it right after, so it is checked and compiled
+            // like any other function.
+            std::vector<std::string> dargs;
+            for (auto& entry : attr->entries)
+                if (entry.name == "diff")
+                    for (auto& a : entry.args) dargs.push_back(a.value);
+            if (dargs.size() != 2) {
+                ch->error(el.get(), "@[diff(var, \"dfdx\")] expects exactly two arguments");
+                continue;
+            }
+            if (target->kind != NodeType::FunctionStatement) {
+                ch->error(el.get(), "@[diff(...)] must annotate a function");
+                continue;
+            }
+            std::string err;
+            auto derived = nv::make_derivative(static_cast<FunctionStmtNode*>(target),
+                                               dargs[0], dargs[1], err);
+            if (!derived) {
+                ch->error(el.get(), err);
+                return ch->gettyptr("None");
+            }
+            pending_inserts.push_back({i + 1, std::move(derived)});
         }
+    }
+
+    for (size_t k = pending_inserts.size(); k-- > 0;) {
+        std::unique_ptr<Stmt> stmt(static_cast<Stmt*>(pending_inserts[k].node.release()));
+        program->body.insert(program->body.begin() + pending_inserts[k].index, std::move(stmt));
     }
 
     // Fourth pass: register all classes and enums.
