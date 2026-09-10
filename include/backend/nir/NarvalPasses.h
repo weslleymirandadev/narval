@@ -11,6 +11,7 @@ namespace nv {
 //  Pass creation functions
 std::unique_ptr<mlir::Pass> createNarvalCanonicalizationPass();
 std::unique_ptr<mlir::Pass> createNarvalOwnershipPass();
+std::unique_ptr<mlir::Pass> createInsertRuntimeDropsPass();   // free heap temporaries after last use
 std::unique_ptr<mlir::Pass> createLowerNarvalFunctionsPass();
 std::unique_ptr<mlir::Pass> createLowerNarvalControlFlowPass();
 std::unique_ptr<mlir::Pass> createLowerNarvalClassesPass();
