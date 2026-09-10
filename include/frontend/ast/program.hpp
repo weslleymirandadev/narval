@@ -61,6 +61,7 @@
 #include "statements/comptime_if_node.hpp"
 #include "statements/comptime_block_node.hpp"
 #include "statements/comptime_while_node.hpp"
+#include "statements/macro_call_node.hpp"
 
 class Program : public Stmt {
 public:
