@@ -3,6 +3,7 @@ build/
 .vscode/
 narval_program
 *.nv
+!stdlib/**/*.nv
 *.o
 *.md
 !README.md
