@@ -1,4 +1,5 @@
 #include "backend/nir/NIRGenerationContext.hpp"
+#include <cstdlib>
 #include "backend/nir/NarvalPasses.h"
 
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
@@ -283,20 +284,27 @@ void NIRGenerationContext::print_nir(llvm::raw_ostream& os) {
     module_->print(os);
 }
 
+// Progress traces are noise for normal builds; NARVAL_VERBOSE=1 brings them
+// back when debugging the pipeline.
+static bool nir_trace() {
+    static const bool on = std::getenv("NARVAL_VERBOSE") != nullptr;
+    return on;
+}
+
 //  Lower to LLVM IR 
 
 llvm::Expected<std::unique_ptr<llvm::Module>>
 NIRGenerationContext::lower_to_llvm_ir(llvm::LLVMContext& llvm_ctx) {
-    std::cerr << "NIR: entering lower_to_llvm_ir" << std::endl;
+    if (nir_trace()) std::cerr << "NIR: entering lower_to_llvm_ir" << std::endl;
 
     // Verify the module first
-    std::cerr << "NIR: verifying module..." << std::endl;
+    if (nir_trace()) std::cerr << "NIR: verifying module..." << std::endl;
     mlir::LogicalResult verify_result = mlir::verify(*module_);
     if (mlir::failed(verify_result)) {
         std::cerr << "NIR: module verification FAILED" << std::endl;
         module_->print(llvm::errs());
     } else {
-        std::cerr << "NIR: module verification OK" << std::endl;
+        if (nir_trace()) std::cerr << "NIR: module verification OK" << std::endl;
     }
 
     auto run = [&](mlir::PassManager& p) -> bool {
@@ -304,7 +312,7 @@ NIRGenerationContext::lower_to_llvm_ir(llvm::LLVMContext& llvm_ctx) {
     };
 
     // Phase A: narval-dialect cleanup + CF/std lowering
-    std::cerr << "NIR: running phase A..." << std::endl;
+    if (nir_trace()) std::cerr << "NIR: running phase A..." << std::endl;
     {
         mlir::PassManager pm(&ctx_);
         nv::build_narval_pass_pipeline_phase_a(pm, *module_);
@@ -314,7 +322,7 @@ NIRGenerationContext::lower_to_llvm_ir(llvm::LLVMContext& llvm_ctx) {
     }
 
     // Phase B: linalg/scf/vector → LLVM dialect
-    std::cerr << "NIR: running phase B..." << std::endl;
+    if (nir_trace()) std::cerr << "NIR: running phase B..." << std::endl;
     {
         mlir::PassManager pm(&ctx_);
         nv::build_narval_pass_pipeline_phase_b(pm, *module_);
