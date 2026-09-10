@@ -82,6 +82,16 @@ void CallExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         {"exit",   "nv_exit_builtin"},
         {"len",    "nv_len_builtin"},
         {"json_field", "nv_json_field_builtin"},
+        {"nv_sqlite_open", "nv_sqlite_open_builtin"},
+        {"nv_sqlite_close", "nv_sqlite_close_builtin"},
+        {"nv_sqlite_exec", "nv_sqlite_exec_builtin"},
+        {"nv_sqlite_query", "nv_sqlite_query_builtin"},
+        {"nv_sqlite_error", "nv_sqlite_error_builtin"},
+        {"nv_sqlite_last_id", "nv_sqlite_last_id_builtin"},
+        {"nv_sqlite_changes", "nv_sqlite_changes_builtin"},
+        {"nv_sqlite_query_run", "nv_sqlite_query_run_builtin"},
+        {"nv_sqlite_col_count", "nv_sqlite_col_count_builtin"},
+        {"nv_sqlite_cell", "nv_sqlite_cell_builtin"},
         {nullptr, nullptr}
     };
     if (!callee.empty()) {
