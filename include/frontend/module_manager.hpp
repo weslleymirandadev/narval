@@ -30,7 +30,9 @@ class ModuleManager {
 
     private:
 
-        void load_module(const std::string& module_name, const std::string& file_path, int config);
+        // Loads a module and returns the name it registered itself under. That can
+        // differ from the path it was imported by ("./mod_b.nv" vs "mod_b").
+        std::string load_module(const std::string& module_name, const std::string& file_path, int config);
         void resolve_dependencies(const std::string& module_name, const std::string& file_path, int config);
         std::string read_file(const std::string& file_path);
 
