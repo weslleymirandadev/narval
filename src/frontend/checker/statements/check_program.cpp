@@ -17,6 +17,7 @@
 #include "frontend/ast/statements/decorator_stmt_node.hpp"
 #include "frontend/ast/statements/match_stmt_node.hpp"
 #include "frontend/ast/expressions/or_expr_node.hpp"
+#include "frontend/comptime/comptime_evaluator.hpp"
 #include <stdexcept>
 #include <unordered_set>
 
@@ -300,6 +301,18 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
                 else      ch->types.erase(name);
             }
             ch->current_node = prev_cn;
+        }
+    }
+
+    // Comptime expansion (CTE): fold every `comptime` construct into plain AST
+    // before the bodies are type checked. Class/enum/function names are already
+    // registered at this point, so type reflection can resolve them.
+    {
+        nv::ComptimeEvaluator ct(ch);
+        program->body = ct.expand_body(std::move(program->body));
+        if (ct.failed()) {
+            ch->error(program, "comptime evaluation failed: " + ct.error_message());
+            return ch->gettyptr("None");
         }
     }
 
