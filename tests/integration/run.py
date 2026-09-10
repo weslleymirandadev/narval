@@ -673,6 +673,65 @@ CASES = [
         ),
         "expected": "4\nguard ok\n",
     },
+    {
+        "name": "stdlib_grammar_ok",
+        "source": (
+            'from "grammar.nv" import *;\n'
+            '\n'
+            'write(grammar! {\n'
+            "    expr   = term (('+' | '-') term)*\n"
+            "    term   = factor (('*' | '/') factor)*\n"
+            "    factor = NUMBER | '(' expr ')'\n"
+            '});\n'
+        ),
+        "module_files": {
+            "grammar.nv": "stdlib/grammar.nv",
+        },
+        "expected": "grammar: 3 rule(s) [expr term factor], terminals ['+' '-' '*' '/' NUMBER '(' ')']\n",
+    },
+    {
+        "name": "stdlib_grammar_rejects_undefined",
+        "source": (
+            'from "grammar.nv" import *;\n'
+            '\n'
+            'write(grammar! {\n'
+            '    expr = term | missing\n'
+            '});\n'
+        ),
+        "module_files": {
+            "grammar.nv": "stdlib/grammar.nv",
+        },
+        "expect_error": "uses undefined nonterminal",
+    },
+    {
+        "name": "stdlib_grammar_rejects_left_recursion",
+        "source": (
+            'from "grammar.nv" import *;\n'
+            '\n'
+            'write(grammar! {\n'
+            "    expr = expr '+' term\n"
+            '    term = NUMBER\n'
+            '});\n'
+        ),
+        "module_files": {
+            "grammar.nv": "stdlib/grammar.nv",
+        },
+        "expect_error": "is left recursive",
+    },
+    {
+        "name": "stdlib_grammar_rejects_ll1_conflict",
+        "source": (
+            'from "grammar.nv" import *;\n'
+            '\n'
+            'write(grammar! {\n'
+            '    expr = NUMBER | NUMBER\n'
+            '});\n'
+        ),
+        "module_files": {
+            "grammar.nv": "stdlib/grammar.nv",
+        },
+        "expect_error": "two alternatives starting with",
+    },
 ]
 
 
