@@ -306,6 +306,52 @@ CASES = [
         ),
         "expected": "0\n1\n2\n",
     },
+    {
+        "name": "class_methods",
+        "source": (
+            'class User {\n'
+            '    mut name: str;\n'
+            '    mut age: int;\n'
+            '    public greet(): str {\n'
+            '        return "hi " + self.name;\n'
+            '    }\n'
+            '    public describe(): str {\n'
+            '        return self.name + "@" + str(self.age);\n'
+            '    }\n'
+            '}\n'
+            'u = new User();\n'
+            'u.name = "bob";\n'
+            'u.age = 42;\n'
+            'write(u.name);\n'
+            'write(u.greet());\n'
+            'write(u.describe());\n'
+        ),
+        "expected": "bob\nhi bob\nbob@42\n",
+    },
+    {
+        "name": "derive_eq_debug_json",
+        "source": (
+            '@[derive(eq, debug, json)]\n'
+            'class User {\n'
+            '    name: str;\n'
+            '    age: int;\n'
+            '}\n'
+            'a = new User();\n'
+            'a.name = "bob";\n'
+            'a.age = 42;\n'
+            'b = new User();\n'
+            'b.name = "bob";\n'
+            'b.age = 42;\n'
+            'c = new User();\n'
+            'c.name = "bob";\n'
+            'c.age = 7;\n'
+            'write(a.__eq__(b));\n'
+            'write(a.__eq__(c));\n'
+            'write(a.__str__());\n'
+            'write(a.to_json());\n'
+        ),
+        "expected": "true\nfalse\nUser { name: \"bob\", age: 42 }\n{\"name\": \"bob\", \"age\": 42}\n",
+    },
 ]
 
 
