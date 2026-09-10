@@ -123,6 +123,15 @@ ParamNode param(const std::string& name, const std::string& type) {
     return ParamNode(m);
 }
 
+// OpenAPI 3.0 type of a field type; empty when there is no mapping.
+std::string openapi_type(const std::string& t) {
+    if (t == "str" || t == "string") return "string";
+    if (t == "int") return "integer";
+    if (t == "float") return "number";
+    if (t == "bool") return "boolean";
+    return "";
+}
+
 bool has_method(const ClassStmtNode* cls, const std::string& name) {
     for (const auto& m : cls->methods)
         if (m && m->name == name) return true;
@@ -135,10 +144,8 @@ bool apply_derive(Checker* checker, ClassStmtNode* cls,
                   const std::vector<std::string>& derives, std::string& error) {
     if (!cls) return true;
 
-    // `sql`/`openapi` from the spec are not generated yet. Reject them
-    // explicitly instead of silently generating something wrong.
     static const std::unordered_set<std::string> known = {
-        "eq", "debug", "json", "hash", "ord", "clone", "from_json",
+        "eq", "debug", "json", "hash", "ord", "clone", "from_json", "openapi",
     };
 
     for (const std::string& raw : derives) {
@@ -148,7 +155,7 @@ bool apply_derive(Checker* checker, ClassStmtNode* cls,
         if (d.empty()) continue;
 
         if (!known.count(d)) {
-            error = "unknown derive '" + raw + "' (supported: clone, debug, eq, from_json, hash, json, ord)";
+            error = "unknown derive '" + raw + "' (supported: clone, debug, eq, from_json, hash, json, openapi, ord)";
             return false;
         }
 
@@ -160,6 +167,7 @@ bool apply_derive(Checker* checker, ClassStmtNode* cls,
         if (d == "ord" && has_method(cls, "__lt__")) continue;
         if (d == "clone" && has_method(cls, "clone")) continue;
         if (d == "from_json" && has_method(cls, "from_json")) continue;
+        if (d == "openapi" && has_method(cls, "schema")) continue;
 
         if (cls->fields.empty()) {
             error = "@derive(" + d + "): class '" + cls->name + "' has no fields";
@@ -263,6 +271,29 @@ bool apply_derive(Checker* checker, ClassStmtNode* cls,
             body.push_back(std::make_unique<ReturnStmtNode>(id("out")));
             cls->methods.push_back(make_method_block("from_json", { param("s", "str") }, cls->name,
                                                      std::move(body)));
+        } else if (d == "openapi") {
+            // OpenAPI 3.0 schema of the type, as JSON text (the spec's schema()
+            // returns a map, which needs runtime map support).
+            std::vector<ExprPtr> parts;
+            parts.push_back(str_lit("{\"type\": \"object\", \"properties\": {"));
+            for (size_t i = 0; i < cls->fields.size(); ++i) {
+                const auto& f = cls->fields[i];
+                const std::string t = openapi_type(f->type);
+                if (t.empty()) {
+                    error = "@derive(openapi): field '" + f->name +
+                            "' has unsupported type '" + f->type + "'";
+                    return false;
+                }
+                if (i) parts.push_back(str_lit(", "));
+                parts.push_back(str_lit("\"" + f->name + "\": {\"type\": \"" + t + "\"}"));
+            }
+            parts.push_back(str_lit("}, \"required\": ["));
+            for (size_t i = 0; i < cls->fields.size(); ++i) {
+                if (i) parts.push_back(str_lit(", "));
+                parts.push_back(str_lit("\"" + cls->fields[i]->name + "\""));
+            }
+            parts.push_back(str_lit("]}"));
+            cls->methods.push_back(make_method("schema", {}, "str", chain("+", std::move(parts))));
         }
     }
 
