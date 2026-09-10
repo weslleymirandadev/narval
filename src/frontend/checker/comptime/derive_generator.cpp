@@ -45,6 +45,19 @@ ExprPtr bin(const std::string& op, ExprPtr l, ExprPtr r) {
     return std::make_unique<BinaryExprNode>(op, std::move(l), std::move(r));
 }
 
+ExprPtr int_lit(int v) {
+    return std::make_unique<NumericLiteralNode>(std::to_string(v));
+}
+
+// Scalar form of a field for hashing: strings hash as their length (there is no
+// string hash primitive), numbers as int().
+ExprPtr field_scalar(const std::string& base, const ClassFieldNode* f) {
+    ExprPtr val = field_of(base, f->name);
+    if (f->type == "str" || f->type == "string")
+        return call1("len", std::move(val));
+    return call1("int", std::move(val));
+}
+
 // Human-readable form of a field value: string fields are quoted, everything
 // else goes through str().
 ExprPtr field_repr(const std::string& base, const ClassFieldNode* f) {
@@ -91,12 +104,12 @@ bool apply_derive(Checker* checker, ClassStmtNode* cls,
                   const std::vector<std::string>& derives, std::string& error) {
     if (!cls) return true;
 
-    // `hash`/`ord`/`clone`/`sql`/`openapi` from the spec are not generated yet:
-    // they need primitives the language still lacks (a length/hash builtin,
-    // first-class Self construction). Reject them explicitly instead of
-    // silently generating something wrong.
+    // `clone`/`sql`/`openapi`/`from_json` from the spec are not generated yet:
+    // they need first-class Self construction (a multi-statement body) and a
+    // JSON parser. Reject them explicitly instead of silently generating
+    // something wrong.
     static const std::unordered_set<std::string> known = {
-        "eq", "debug", "json",
+        "eq", "debug", "json", "hash", "ord",
     };
 
     for (const std::string& raw : derives) {
@@ -106,7 +119,7 @@ bool apply_derive(Checker* checker, ClassStmtNode* cls,
         if (d.empty()) continue;
 
         if (!known.count(d)) {
-            error = "unknown derive '" + raw + "' (supported: eq, debug, json)";
+            error = "unknown derive '" + raw + "' (supported: eq, debug, json, hash, ord)";
             return false;
         }
 
@@ -114,6 +127,8 @@ bool apply_derive(Checker* checker, ClassStmtNode* cls,
         if (d == "eq" && has_method(cls, "__eq__")) continue;
         if (d == "debug" && has_method(cls, "__str__")) continue;
         if (d == "json" && has_method(cls, "to_json")) continue;
+        if (d == "hash" && has_method(cls, "__hash__")) continue;
+        if (d == "ord" && has_method(cls, "__lt__")) continue;
 
         if (cls->fields.empty()) {
             error = "@derive(" + d + "): class '" + cls->name + "' has no fields";
@@ -148,6 +163,26 @@ bool apply_derive(Checker* checker, ClassStmtNode* cls,
             }
             parts.push_back(str_lit("}"));
             cls->methods.push_back(make_method("to_json", {}, "str", chain("+", std::move(parts))));
+        } else if (d == "hash") {
+            // h = (((v0 * 31) + v1) * 31) + v2 ... over the field scalars.
+            ExprPtr acc = field_scalar("self", cls->fields[0].get());
+            for (size_t i = 1; i < cls->fields.size(); ++i)
+                acc = bin("+", bin("*", std::move(acc), int_lit(31)),
+                          field_scalar("self", cls->fields[i].get()));
+            cls->methods.push_back(make_method("__hash__", {}, "int", std::move(acc)));
+        } else if (d == "ord") {
+            // Lexicographic: (f0 < g0) || (f0 == g0 && (f1 < g1 || (f1 == g1 && ...)))
+            size_t n = cls->fields.size();
+            ExprPtr acc = bin("<", field_of("self", cls->fields[n - 1]->name),
+                                   field_of("other", cls->fields[n - 1]->name));
+            for (size_t i = n - 1; i-- > 0;) {
+                ExprPtr same = bin("==", field_of("self", cls->fields[i]->name),
+                                         field_of("other", cls->fields[i]->name));
+                ExprPtr less = bin("<", field_of("self", cls->fields[i]->name),
+                                        field_of("other", cls->fields[i]->name));
+                acc = bin("||", std::move(less), bin("&&", std::move(same), std::move(acc)));
+            }
+            cls->methods.push_back(make_method("__lt__", { param("other", cls->name) }, "bool", std::move(acc)));
         }
     }
 
