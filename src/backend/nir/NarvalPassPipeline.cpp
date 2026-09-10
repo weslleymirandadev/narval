@@ -42,6 +42,7 @@ void build_narval_pass_pipeline_phase_a(mlir::PassManager& pm,
     pm.addPass(nv::createFixSCFIfTypesPass());
     pm.addPass(nv::createLowerNarvalGPUPass());
     pm.addPass(mlir::createReconcileUnrealizedCastsPass());
+    pm.addPass(nv::createInsertRuntimeDropsPass());
 }
 
 static bool module_has_tensors(mlir::ModuleOp module) {
