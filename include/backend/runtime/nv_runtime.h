@@ -29,6 +29,7 @@ Value* nv_closure_cell_new(Value* initial);
 void create_closure_with_captures(Value* result, void* function_ptr, Value** captured_vars, int capture_count);
 void call_closure(Value* closure_val, Value* args, int arg_count, Value* result);
 void call_closure_indirect(Value* closure_val, NvObject** args, int arg_count, Value* result);
+void nv_drop(NvObject* obj);
 
 // Option / Result
 void create_option_some(Value* out, Value* val);
