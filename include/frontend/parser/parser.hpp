@@ -37,6 +37,10 @@ class Parser {
         Token next_token() const;
         // Lookahead sem consumir: offset=0 → current, 1 → next, etc.
         Token peek_at(size_t offset) const;
+
+        // Raw source text between two absolute offsets. Used to capture DSL
+        // macro bodies verbatim (see COMPTIME_SPEC.md 5.6).
+        std::string source_slice(size_t pos_start, size_t pos_end) const;
         Token expect(TokenType expectedType, const std::string& errorMsg);
 
 
