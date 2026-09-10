@@ -212,57 +212,110 @@ Value nv_tensor_matmul(Value* a_v, Value* b_v) {
 }
 
 // Element-wise add
+//  Broadcasting element-wise kernels 
+//
+// Right-aligned (NumPy) broadcasting: a size-1 axis expands, and a missing
+// leading axis is treated as 1. [1,3] + [2,3] -> [2,3]; [2,3] + [2,4] fails.
+// Returns 0 when the shapes cannot be broadcast.
+
+static int nvt_broadcast_shape(const NVTensor* A, const NVTensor* B,
+                               int32_t* out_ndim, int64_t out_shape[8]) {
+    int32_t n = A->ndim > B->ndim ? A->ndim : B->ndim;
+    if (n <= 0 || n > 8) return 0;
+    for (int32_t i = 0; i < n; ++i) {
+        int64_t da = (i < A->ndim) ? A->shape[A->ndim - 1 - i] : 1;
+        int64_t db = (i < B->ndim) ? B->shape[B->ndim - 1 - i] : 1;
+        if (da != db && da != 1 && db != 1) return 0;
+        out_shape[n - 1 - i] = (da > db) ? da : db;
+    }
+    *out_ndim = n;
+    return 1;
+}
+
+// Per-output-axis stride for one operand (0 for a broadcast axis).
+static void nvt_bcast_strides(const NVTensor* T, int32_t ndim, int64_t stride[8]) {
+    for (int32_t d = 0; d < ndim; ++d) {
+        int32_t td = d - (ndim - T->ndim);
+        stride[d] = 0;
+        if (td < 0 || T->shape[td] == 1) continue;
+        int64_t s = 1;
+        for (int32_t k = td + 1; k < T->ndim; ++k) s *= T->shape[k];
+        stride[d] = s;
+    }
+}
+
+// Element-wise op with broadcasting. op: 0=add 1=sub 2=mul 3=div.
+static Value nv_tensor_ew(NVTensor* A, NVTensor* B, int op) {
+    Value bad; bad.obj = NULL;
+    if (!A || !B || A->dtype != B->dtype) return bad;
+
+    int32_t ndim = 0;
+    int64_t shape[8];
+    if (!nvt_broadcast_shape(A, B, &ndim, shape)) return bad;
+
+    NVTensor* C = tensor_alloc(A->dtype, ndim, shape);
+    if (!C) return bad;
+
+    int64_t sa[8], sb[8];
+    nvt_bcast_strides(A, ndim, sa);
+    nvt_bcast_strides(B, ndim, sb);
+
+    if (A->dtype == NV_FLOAT_BASE) {
+        const double* a = (const double*)A->data;
+        const double* b = (const double*)B->data;
+        double* c = (double*)C->data;
+        for (int64_t i = 0; i < C->nelem; ++i) {
+            int64_t rem = i, oa = 0, ob = 0;
+            for (int32_t d = 0; d < ndim; ++d) {
+                int64_t s = 1;
+                for (int32_t k = d + 1; k < ndim; ++k) s *= shape[k];
+                int64_t coord = s > 0 ? rem / s : 0;
+                rem = s > 0 ? rem % s : 0;
+                oa += coord * sa[d];
+                ob += coord * sb[d];
+            }
+            double x = a[oa], y = b[ob];
+            c[i] = (op == 0) ? x + y : (op == 1) ? x - y : (op == 2) ? x * y : x / y;
+        }
+    } else {
+        const int32_t* a = (const int32_t*)A->data;
+        const int32_t* b = (const int32_t*)B->data;
+        int32_t* c = (int32_t*)C->data;
+        for (int64_t i = 0; i < C->nelem; ++i) {
+            int64_t rem = i, oa = 0, ob = 0;
+            for (int32_t d = 0; d < ndim; ++d) {
+                int64_t s = 1;
+                for (int32_t k = d + 1; k < ndim; ++k) s *= shape[k];
+                int64_t coord = s > 0 ? rem / s : 0;
+                rem = s > 0 ? rem % s : 0;
+                oa += coord * sa[d];
+                ob += coord * sb[d];
+            }
+            int32_t x = a[oa], y = b[ob];
+            c[i] = (op == 0) ? x + y : (op == 1) ? x - y : (op == 2) ? x * y : x / y;
+        }
+    }
+    return tensor_to_value(C);
+}
+
 Value nv_tensor_add(Value* a_v, Value* b_v) {
     NVTensor* A = unwrap_tensor(a_v);
     NVTensor* B = unwrap_tensor(b_v);
-    Value bad; bad.obj = NULL;
-    if (!A || !B || A->nelem != B->nelem) return bad;
-    NVTensor* C = tensor_alloc(A->dtype, A->ndim, A->shape);
-    if (!C) return bad;
-    if (A->dtype == NV_FLOAT_BASE) {
-        double* a = (double*)A->data; double* b = (double*)B->data; double* c = (double*)C->data;
-        for (int64_t i = 0; i < A->nelem; ++i) c[i] = a[i] + b[i];
-    } else {
-        int32_t* a = (int32_t*)A->data; int32_t* b = (int32_t*)B->data; int32_t* c = (int32_t*)C->data;
-        for (int64_t i = 0; i < A->nelem; ++i) c[i] = a[i] + b[i];
-    }
-    return tensor_to_value(C);
+    return nv_tensor_ew(A, B, 0);
 }
 
 // Element-wise subtract (fallback when NARVAL_USE_NIR is off)
 Value nv_tensor_sub(Value* a_v, Value* b_v) {
     NVTensor* A = unwrap_tensor(a_v);
     NVTensor* B = unwrap_tensor(b_v);
-    Value bad; bad.obj = NULL;
-    if (!A || !B || A->nelem != B->nelem) return bad;
-    NVTensor* C = tensor_alloc(A->dtype, A->ndim, A->shape);
-    if (!C) return bad;
-    if (A->dtype == NV_FLOAT_BASE) {
-        double* a = (double*)A->data; double* b = (double*)B->data; double* c = (double*)C->data;
-        for (int64_t i = 0; i < A->nelem; ++i) c[i] = a[i] - b[i];
-    } else {
-        int32_t* a = (int32_t*)A->data; int32_t* b = (int32_t*)B->data; int32_t* c = (int32_t*)C->data;
-        for (int64_t i = 0; i < A->nelem; ++i) c[i] = a[i] - b[i];
-    }
-    return tensor_to_value(C);
+    return nv_tensor_ew(A, B, 1);
 }
 
 // Element-wise multiply
 Value nv_tensor_mul(Value* a_v, Value* b_v) {
     NVTensor* A = unwrap_tensor(a_v);
     NVTensor* B = unwrap_tensor(b_v);
-    Value bad; bad.obj = NULL;
-    if (!A || !B || A->nelem != B->nelem) return bad;
-    NVTensor* C = tensor_alloc(A->dtype, A->ndim, A->shape);
-    if (!C) return bad;
-    if (A->dtype == NV_FLOAT_BASE) {
-        double* a = (double*)A->data; double* b = (double*)B->data; double* c = (double*)C->data;
-        for (int64_t i = 0; i < A->nelem; ++i) c[i] = a[i] * b[i];
-    } else {
-        int32_t* a = (int32_t*)A->data; int32_t* b = (int32_t*)B->data; int32_t* c = (int32_t*)C->data;
-        for (int64_t i = 0; i < A->nelem; ++i) c[i] = a[i] * b[i];
-    }
-    return tensor_to_value(C);
+    return nv_tensor_ew(A, B, 2);
 }
 
 // Element-wise scalar multiply
