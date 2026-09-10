@@ -84,6 +84,7 @@ enum class NodeType {
     ComptimeWhile,
     TypeReflectExpr,
     BuiltinCall,
+    MacroCall,
 };
 
 class PositionData {
