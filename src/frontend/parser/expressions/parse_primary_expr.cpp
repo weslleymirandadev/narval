@@ -10,6 +10,8 @@
 #include "frontend/parser/expressions/parse_closure_expr.hpp"
 #include "frontend/parser/expressions/parse_await_expr.hpp"
 #include "frontend/ast/expressions/binary_expr_node.hpp"
+#include "frontend/ast/expressions/comptime_expr_node.hpp"
+#include "frontend/ast/expressions/builtin_call_node.hpp"
 #include <cctype>
 
 std::unique_ptr<Node> parse_primary_expr(Parser* parser) {
@@ -251,6 +253,36 @@ std::unique_ptr<Node> parse_primary_expr(Parser* parser) {
             }
             closure_node->position = std::move(pos);
             expr = std::move(closure_node);
+            break;
+        }
+        case TokenType::COMPTIME: {
+            // `comptime <expr>` in expression position (Zig-style).
+            parser->consume_token(); // 'comptime'
+            auto inner = parse_logical_expr(parser);
+            auto node = std::make_unique<ComptimeExprNode>(
+                inner ? std::unique_ptr<Expr>(static_cast<Expr*>(inner.release())) : nullptr);
+            node->position = std::move(pos);
+            expr = std::move(node);
+            break;
+        }
+        case TokenType::AT: {
+            // @builtin(args) — compile-time builtin call.
+            parser->consume_token(); // '@'
+            Token name_tok = parser->expect(TokenType::IDENTIFIER, "Expected builtin name after '@'");
+            parser->expect(TokenType::OPAREN, "Expected '(' after builtin name");
+            std::vector<std::unique_ptr<Expr>> args;
+            if (parser->current_token().type != TokenType::CPAREN) {
+                while (true) {
+                    auto a = parse_logical_expr(parser);
+                    if (a) args.push_back(std::unique_ptr<Expr>(static_cast<Expr*>(a.release())));
+                    if (parser->current_token().type != TokenType::COMMA) break;
+                    parser->consume_token();
+                }
+            }
+            parser->expect(TokenType::CPAREN, "Expected ')' to close builtin call");
+            auto node = std::make_unique<BuiltinCallNode>(name_tok.lexeme, std::move(args));
+            node->position = std::move(pos);
+            expr = std::move(node);
             break;
         }
         default:
