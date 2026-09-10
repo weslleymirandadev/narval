@@ -70,6 +70,12 @@ namespace nv {
             std::unordered_map<std::string, std::shared_ptr<Type>> closure_fallback_symbols;
             // Nó atualmente sendo verificado — fallback de localização para gettyptr.
             Node* current_node = nullptr;
+            // `comptime import_c` — imported C prototypes: name -> signature shape
+            // (ret + params as chars: i=int, d=double, s=str, v=void).
+            std::unordered_map<std::string, std::string> c_import_sigs;
+            // Extra linker items collected during checking (e.g. -lfoo from
+            // import_c); main.cpp forwards them to the NIR context.
+            std::vector<std::string> extra_link_items;
             Checker();
             void apply_compilation_attributes(const CompilationAttributes& attrs);
             Type& getty(std::string ty);
