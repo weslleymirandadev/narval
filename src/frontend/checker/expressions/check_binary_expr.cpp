@@ -109,8 +109,11 @@ std::shared_ptr<nv::Type> check_binary_expr(nv::Checker* ch, Node* node) {
             }
             auto result = lt->matmul_result(*rt);
             if (!result) {
-                ch->error(node, "Shape mismatch in '@': "
-                          + lt->toString() + " @ " + rt->toString());
+                ch->comptime_error(node, "CE002",
+                    "shape mismatch in compile-time tensor operation",
+                    { "left operand shape:  " + lt->toString(),
+                      "right operand shape: " + rt->toString(),
+                      "inner dimensions must match" });
                 return ch->gettyptr("None");
             }
             mut_bin->tensor_op      = "matmul";
@@ -143,9 +146,11 @@ std::shared_ptr<nv::Type> check_binary_expr(nv::Checker* ch, Node* node) {
                 // [2,3] + [2,4] -> compile-time error.
                 std::vector<int64_t> bcast;
                 if (!broadcast_dims(lt->dims, rt->dims, bcast)) {
-                    ch->error(node, "Shape mismatch in '" + bin->op + "': "
-                              + lt->toString() + " vs " + rt->toString()
-                              + " (shapes are not broadcastable)");
+                    ch->comptime_error(node, "CE002",
+                        "shape mismatch in compile-time tensor operation",
+                        { "left operand shape:  " + lt->toString(),
+                          "right operand shape: " + rt->toString(),
+                          "shapes are not broadcastable (size-1 axes expand)" });
                     return ch->gettyptr("None");
                 }
                 mut_bin->tensor_op      = (bin->op == "+") ? "add"
