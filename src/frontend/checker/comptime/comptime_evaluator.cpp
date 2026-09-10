@@ -6,6 +6,17 @@
 #include "frontend/ast/statements/for_stmt_node.hpp"
 #include "frontend/ast/statements/while_stmt_node.hpp"
 #include "frontend/ast/expressions/member_expr_node.hpp"
+#include "frontend/ast/expressions/binary_expr_node.hpp"
+#include "frontend/ast/expressions/unary_minus_expr_node.hpp"
+#include "frontend/ast/expressions/logical_not_expr_node.hpp"
+#include "frontend/ast/expressions/conditional_expr_node.hpp"
+#include "frontend/ast/expressions/call_expr_node.hpp"
+#include "frontend/ast/expressions/identifier_node.hpp"
+#include "frontend/ast/expressions/assignment_expr_node.hpp"
+#include "frontend/ast/statements/declaration_stmt_node.hpp"
+#include "frontend/ast/statements/if_statement_node.hpp"
+#include "frontend/ast/statements/forever_stmt_node.hpp"
+#include "frontend/ast/statements/return_stmt_node.hpp"
 #include "frontend/comptime/c_import.hpp"
 
 #include <algorithm>
@@ -20,6 +31,154 @@ namespace {
 
 // Compile-time loops are bounded so a bad condition cannot hang the compiler.
 constexpr size_t MAX_LOOP_ITERATIONS = 100000;
+
+// ── AST reflection (type.ast) ───────────────────────────────────────────────
+// Readable kind names for the statements/expressions a macro is likely to walk.
+const char* ast_kind_name(NodeType k) {
+    switch (k) {
+        case NodeType::DeclarationStatement:  return "declaration";
+        case NodeType::AssignmentExpression:  return "assignment";
+        case NodeType::ReturnStatement:       return "return";
+        case NodeType::IfStatement:           return "if";
+        case NodeType::WhileStatement:        return "while";
+        case NodeType::ForStatement:          return "for";
+        case NodeType::ForeverStatement:      return "forever";
+        case NodeType::BreakStatement:        return "break";
+        case NodeType::ContinueStatement:     return "continue";
+        case NodeType::CallExpression:        return "call";
+        case NodeType::BinaryExpression:      return "binary";
+        case NodeType::UnaryMinusExpression:  return "negate";
+        case NodeType::LogicalNotExpression:  return "not";
+        case NodeType::AccessExpression:      return "index";
+        case NodeType::MemberExpression:      return "member";
+        case NodeType::ConditionalExpression: return "ternary";
+        case NodeType::NumericLiteral:        return "number";
+        case NodeType::StringLiteral:         return "string";
+        case NodeType::BooleanLiteral:        return "bool";
+        case NodeType::Identifier:            return "identifier";
+        default:                              return "other";
+    }
+}
+
+void ast_push_unique(std::vector<std::string>& out, const std::string& v) {
+    if (v.empty()) return;
+    if (std::find(out.begin(), out.end(), v) == out.end()) out.push_back(v);
+}
+
+void ast_collect_expr(const Expr* e, std::vector<std::string>& ops,
+                      std::vector<std::string>& calls);
+
+// Statements of a body: kind per statement, its line, plus every operator and
+// called function used anywhere inside it.
+void ast_collect_body(const CodeBlock& body, std::vector<std::string>& kinds,
+                      std::vector<int64_t>& lines, std::vector<std::string>& ops,
+                      std::vector<std::string>& calls) {
+    for (const auto& stmt : body) {
+        if (!stmt) continue;
+        kinds.push_back(ast_kind_name(stmt->kind));
+        lines.push_back(stmt->position ? (int64_t)stmt->position->line : -1);
+        switch (stmt->kind) {
+            case NodeType::DeclarationStatement: {
+                auto* d = static_cast<const DeclarationStmtNode*>(stmt.get());
+                ast_collect_expr(d->value.get(), ops, calls);
+                break;
+            }
+            case NodeType::AssignmentExpression: {
+                auto* a = static_cast<const AssignmentExprNode*>(stmt.get());
+                ast_push_unique(ops, a->op);
+                ast_collect_expr(a->value.get(), ops, calls);
+                break;
+            }
+            case NodeType::ReturnStatement: {
+                auto* r = static_cast<const ReturnStmtNode*>(stmt.get());
+                ast_collect_expr(r->value ? r->value.get() : nullptr, ops, calls);
+                break;
+            }
+            case NodeType::IfStatement: {
+                auto* i = static_cast<const IfStatementNode*>(stmt.get());
+                ast_collect_expr(i->condition.get(), ops, calls);
+                ast_collect_body(i->consequent, kinds, lines, ops, calls);
+                ast_collect_body(i->alternate, kinds, lines, ops, calls);
+                break;
+            }
+            case NodeType::WhileStatement: {
+                auto* w = static_cast<const WhileStmtNode*>(stmt.get());
+                ast_collect_expr(w->condition.get(), ops, calls);
+                ast_collect_body(w->body, kinds, lines, ops, calls);
+                break;
+            }
+            case NodeType::ForStatement: {
+                auto* f = static_cast<const ForStmtNode*>(stmt.get());
+                ast_collect_expr(f->range_start.get(), ops, calls);
+                ast_collect_expr(f->range_end.get(), ops, calls);
+                ast_collect_body(f->body, kinds, lines, ops, calls);
+                break;
+            }
+            case NodeType::CallExpression:
+                // Statement-form calls are stored as expressions; the same cast
+                // is used by rewrite_expr_impl below.
+                ast_collect_expr(static_cast<Expr*>(stmt.get()), ops, calls);
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+void ast_collect_expr(const Expr* e, std::vector<std::string>& ops,
+                      std::vector<std::string>& calls) {
+    if (!e) return;
+    switch (e->kind) {
+        case NodeType::BinaryExpression: {
+            auto* n = static_cast<const BinaryExprNode*>(e);
+            ast_push_unique(ops, n->op);
+            ast_collect_expr(n->left.get(), ops, calls);
+            ast_collect_expr(n->right.get(), ops, calls);
+            break;
+        }
+        case NodeType::UnaryMinusExpression:
+            ast_push_unique(ops, "-");
+            ast_collect_expr(static_cast<const UnaryMinusExprNode*>(e)->operand.get(), ops, calls);
+            break;
+        case NodeType::LogicalNotExpression:
+            ast_push_unique(ops, "!");
+            ast_collect_expr(static_cast<const LogicalNotExprNode*>(e)->operand.get(), ops, calls);
+            break;
+        case NodeType::AccessExpression: {
+            auto* n = static_cast<const AccessExprNode*>(e);
+            ast_collect_expr(n->expr.get(), ops, calls);
+            ast_collect_expr(n->index.get(), ops, calls);
+            break;
+        }
+        case NodeType::ConditionalExpression: {
+            auto* n = static_cast<const ConditionalExprNode*>(e);
+            ast_collect_expr(n->condition.get(), ops, calls);
+            ast_collect_expr(n->true_expr.get(), ops, calls);
+            ast_collect_expr(n->false_expr.get(), ops, calls);
+            break;
+        }
+        case NodeType::MemberExpression: {
+            auto* n = static_cast<const MemberExprNode*>(e);
+            ast_collect_expr(n->object.get(), ops, calls);
+            break;
+        }
+        case NodeType::CallExpression: {
+            auto* c = static_cast<const CallExprNode*>(e);
+            if (c->caller && c->caller->kind == NodeType::Identifier)
+                ast_push_unique(calls, static_cast<const IdentifierNode*>(c->caller.get())->symbol);
+            else
+                ast_collect_expr(c->caller.get(), ops, calls);
+            for (const auto& a : c->args) {
+                if (a && a->value) ast_collect_expr(a->value.get(), ops, calls);
+            }
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+
 
 // Host facts for `target.arch()` / `target.simd()` (spec 5.8). The compiler runs
 // on the machine the produced binary targets, so these are compile-time
@@ -359,20 +518,25 @@ ComptimeValue ComptimeEvaluator::eval_binary(BinaryExprNode* node) {
 }
 
 ComptimeValue ComptimeEvaluator::eval_member(MemberExprNode* node) {
-    // <struct_value>.<field>
-    if (node->object && node->object->kind == NodeType::Identifier &&
-        node->property && node->property->kind == NodeType::Identifier) {
-        auto* obj_id = static_cast<IdentifierNode*>(node->object.get());
-        auto* prop_id = static_cast<IdentifierNode*>(node->property.get());
-        ComptimeValue* v = lookup_var(obj_id->symbol);
-        if (v && v->tag == ComptimeValue::Tag::Struct) {
-            auto found = v->struct_val.find(prop_id->symbol);
-            if (found != v->struct_val.end()) return found->second;
-            fail("comptime struct has no field '" + prop_id->symbol + "'");
-            return ComptimeValue::none();
-        }
+    // <struct_value>.<field>, where the object may also be an inline expression
+    // such as `type.ast(f).name` (a reflection descriptor is a Struct, and a
+    // Struct cannot be stored in a `comptime` variable as a runtime literal).
+    if (!node->property || node->property->kind != NodeType::Identifier) {
+        fail("unsupported comptime member access");
+        return ComptimeValue::none();
     }
-    fail("unsupported comptime member access");
+    const std::string& field =
+        static_cast<IdentifierNode*>(node->property.get())->symbol;
+
+    ComptimeValue obj = eval(node->object.get());
+    if (failed_) return ComptimeValue::none();
+    if (obj.tag == ComptimeValue::Tag::Struct) {
+        auto found = obj.struct_val.find(field);
+        if (found != obj.struct_val.end()) return found->second;
+        fail("comptime struct has no field '" + field + "'");
+        return ComptimeValue::none();
+    }
+    fail("comptime member access on a non-struct value");
     return ComptimeValue::none();
 }
 
@@ -385,6 +549,80 @@ ComptimeValue ComptimeEvaluator::eval_type_reflect(TypeReflectExprNode* node) {
     }
 
     if (fn == "name") return ComptimeValue::from_str(type);
+
+    if (fn == "ast") {
+        // AST reflection (COMPTIME_SPEC 5.9 / roadmap 17): a navigable
+        // description of a `comptime def`. Its node is the one the evaluator
+        // registered, so the body is the source the author wrote (nested blocks
+        // included). Building new functions from this description is not
+        // supported yet - only inspection.
+        ComptimeFuncNode* target = nullptr;
+        auto direct = comptime_funcs_.find(type);
+        if (direct != comptime_funcs_.end()) {
+            target = direct->second;
+        } else {
+            auto macro = comptime_funcs_.find(type + "!");
+            if (macro != comptime_funcs_.end()) target = macro->second;
+        }
+        if (!target) {
+            fail("type.ast('" + type + "'): only comptime functions can be inspected "
+                 "(declare it with `comptime def`)");
+            return ComptimeValue::none();
+        }
+
+        std::vector<std::string> kinds;
+        std::vector<int64_t> lines;
+        std::vector<std::string> ops;
+        std::vector<std::string> calls;
+        ast_collect_body(target->body, kinds, lines, ops, calls);
+
+        auto str_array = [](const std::vector<std::string>& v) {
+            std::vector<ComptimeValue> out;
+            out.reserve(v.size());
+            for (const auto& x : v) out.push_back(ComptimeValue::from_str(x));
+            return ComptimeValue::from_array(std::move(out));
+        };
+        auto int_array = [](const std::vector<int64_t>& v) {
+            std::vector<ComptimeValue> out;
+            out.reserve(v.size());
+            for (int64_t x : v) out.push_back(ComptimeValue::from_int(x));
+            return ComptimeValue::from_array(std::move(out));
+        };
+
+        std::vector<ComptimeValue> params;
+        std::vector<std::string> param_names;
+        std::vector<std::string> param_types;
+        int64_t index = 0;
+        for (const auto& p : target->parameters) {
+            for (const auto& [pname, ptype] : p.parameter) {
+                std::unordered_map<std::string, ComptimeValue> entry;
+                entry["index"] = ComptimeValue::from_int(index++);
+                entry["name"] = ComptimeValue::from_str(pname);
+                entry["type_name"] = ComptimeValue::from_str(ptype);
+                params.push_back(ComptimeValue::from_struct(std::move(entry)));
+                param_names.push_back(pname);
+                param_types.push_back(ptype);
+            }
+        }
+
+        std::unordered_map<std::string, ComptimeValue> desc;
+        desc["name"] = ComptimeValue::from_str(target->name);
+        desc["return_type"] = ComptimeValue::from_str(target->return_type);
+        desc["is_macro"] = ComptimeValue::from_bool(!target->name.empty() &&
+                                                    target->name.back() == '!');
+        desc["statement_count"] = ComptimeValue::from_int((int64_t)target->body.size());
+        // Structured form, plus the flat pair: `comptime for` expands by
+        // substituting literals, and an element that is itself a struct cannot
+        // be materialised (yet), so the flat arrays are what macros iterate.
+        desc["params"] = ComptimeValue::from_array(std::move(params));
+        desc["param_names"] = str_array(param_names);
+        desc["param_types"] = str_array(param_types);
+        desc["body_kinds"] = str_array(kinds);
+        desc["lines"] = int_array(lines);
+        desc["expr_ops"] = str_array(ops);
+        desc["calls"] = str_array(calls);
+        return ComptimeValue::from_struct(std::move(desc));
+    }
 
     std::shared_ptr<Type> ty;
     if (checker_) {
@@ -1324,6 +1562,21 @@ void ComptimeEvaluator::rewrite_expr(std::unique_ptr<Expr>& slot) {
     rewrite_expr_impl(&slot, slot.get());
 }
 
+// Compile-time-only expressions that may appear as the object of a member access
+// inside runtime code: `type.ast(f).name`, `@fields(T).x`, `comptime(expr).x`.
+static bool is_comptime_object(const Expr* e) {
+    if (!e) return false;
+    if (e->kind == NodeType::BuiltinCall || e->kind == NodeType::TypeReflectExpr ||
+        e->kind == NodeType::ComptimeExpr)
+        return true;
+    if (e->kind != NodeType::CallExpression) return false;
+    auto* c = static_cast<const CallExprNode*>(e);
+    if (!c->caller || c->caller->kind != NodeType::MemberExpression) return false;
+    auto* m = static_cast<const MemberExprNode*>(c->caller.get());
+    return m->object && m->object->kind == NodeType::Identifier &&
+           static_cast<const IdentifierNode*>(m->object.get())->symbol == "type";
+}
+
 void ComptimeEvaluator::rewrite_expr_impl(std::unique_ptr<Expr>* slot, Expr* e) {
     if (!e) return;
     switch (e->kind) {
@@ -1399,6 +1652,18 @@ void ComptimeEvaluator::rewrite_expr_impl(std::unique_ptr<Expr>* slot, Expr* e) 
         }
         case NodeType::MemberExpression: {
             auto* n = static_cast<MemberExprNode*>(e);
+            // Fold a reflection field used as a value. Only scalars are folded:
+            // arrays and nested structs are consumed by `comptime for`, which
+            // evaluates the iterable itself.
+            if (slot && is_comptime_object(n->object.get())) {
+                ComptimeValue v = eval(n);
+                if (failed_) return;
+                if (v.tag == ComptimeValue::Tag::Str || v.tag == ComptimeValue::Tag::Int ||
+                    v.tag == ComptimeValue::Tag::Float || v.tag == ComptimeValue::Tag::Bool) {
+                    *slot = to_literal(v, e->position.get());
+                    return;
+                }
+            }
             rewrite_expr(n->object);
             rewrite_expr(n->property);
             return;
