@@ -1,0 +1,36 @@
+# Isolated copy of the scan loop used by nv_first_nonspace / nv_last_nonspace:
+# an `if` inside a `while` that updates variables declared outside the loop.
+#   ./build/narval tests/if_loop_scan.nv
+# Expected: 2 / 0 / 2 / 0   ("a b c" has two spaces)
+def scan(s: str): int {
+    i = 0;
+    found = false;
+    while found == false {
+        if i >= len(s) {
+            found = true;
+        } else {
+            if s[i] == " " {
+                i = i + 1;
+            } else {
+                found = true;
+            }
+        }
+    }
+    return i;
+}
+write(scan("  hi  "));
+write(scan("abc"));
+
+def count_spaces(s: str): int {
+    i = 0;
+    n = 0;
+    while i < len(s) {
+        if s[i] == " " {
+            n = n + 1;
+        }
+        i = i + 1;
+    }
+    return n;
+}
+write(count_spaces("a b c"));
+write(count_spaces("ab"));
