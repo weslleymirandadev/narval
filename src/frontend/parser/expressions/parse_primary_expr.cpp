@@ -12,6 +12,7 @@
 #include "frontend/ast/expressions/binary_expr_node.hpp"
 #include "frontend/ast/expressions/comptime_expr_node.hpp"
 #include "frontend/ast/expressions/builtin_call_node.hpp"
+#include "frontend/parser/statements/parse_comptime_stmt.hpp"
 #include <cctype>
 
 std::unique_ptr<Node> parse_primary_expr(Parser* parser) {
@@ -40,6 +41,14 @@ std::unique_ptr<Node> parse_primary_expr(Parser* parser) {
         }
         case TokenType::IDENTIFIER:
         case TokenType::ERR_KW: {
+            // DSL macro invocation: name! { verbatim body }
+            if (type == TokenType::IDENTIFIER &&
+                parser->next_token().type == TokenType::NOT &&
+                parser->peek_at(2).type == TokenType::OBRACE) {
+                auto macro_node = parse_macro_call(parser);
+                if (macro_node) macro_node->position = std::move(pos);
+                return macro_node;
+            }
             Token idToken = parser->consume_token();
             auto node = std::make_unique<IdentifierNode>(idToken.lexeme);
             node->position = std::move(pos);
