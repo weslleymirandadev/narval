@@ -5,6 +5,11 @@
 #include "frontend/ast/expressions/or_expr_node.hpp"
 #include "frontend/ast/expressions/assignment_expr_node.hpp"
 #include "frontend/ast/statements/declaration_stmt_node.hpp"
+#include "frontend/ast/statements/if_statement_node.hpp"
+#include "frontend/ast/statements/while_stmt_node.hpp"
+#include "frontend/ast/statements/for_stmt_node.hpp"
+#include "frontend/ast/statements/forever_stmt_node.hpp"
+#include "frontend/ast/statements/match_stmt_node.hpp"
 #include "frontend/checker/unification.hpp"
 #include <stdexcept>
 
@@ -36,6 +41,81 @@ static bool stmts_have_propagate(const std::vector<std::unique_ptr<Stmt>>& stmts
     for (auto& stmt : stmts)
         if (node_has_propagate(stmt.get())) return true;
     return false;
+}
+
+// Converts `x = value` into a declaration for names that are not in scope yet,
+// recursing into nested blocks. The function-body version of the program-level
+// pass used to look only at the top level, so an implicit local first assigned
+// inside an if/while body failed with "Identifier not found".
+static void declare_implicit_locals(CodeBlock& body, nv::Checker* ch) {
+    for (size_t i = 0; i < body.size(); i++) {
+        auto& stmt = body[i];
+        if (!stmt) continue;
+
+        if (stmt->kind == NodeType::AssignmentExpression) {
+            auto* assign_node = static_cast<AssignmentExprNode*>(stmt.get());
+            if (assign_node->op == "=" && assign_node->target &&
+                assign_node->target->kind == NodeType::Identifier) {
+                auto* id_node = static_cast<IdentifierNode*>(assign_node->target.get());
+                bool exists = false;
+                try {
+                    ch->scope->get_key(id_node->symbol);
+                    exists = true;
+                } catch (std::runtime_error&) {
+                    exists = false;
+                }
+                if (!exists) {
+                    auto new_target = std::unique_ptr<Expr>(static_cast<Expr*>(id_node->clone()));
+                    auto new_value = assign_node->value
+                        ? std::unique_ptr<Expr>(static_cast<Expr*>(assign_node->value->clone()))
+                        : nullptr;
+                    auto decl_node = std::make_unique<DeclarationStmtNode>(
+                        std::move(new_target), std::move(new_value), "automatic", false);
+                    if (assign_node->position)
+                        decl_node->position = std::make_unique<PositionData>(*assign_node->position);
+                    // Register the name right away, exactly like the program-level
+                    // pass does. Without it a later assignment to the same name
+                    // (e.g. `if c { x = 1; }` after `x = 0`) looks undeclared and is
+                    // turned into a second declaration inside the branch, which the
+                    // conditional lowering then cannot propagate out.
+                    ch->scope->put_key(
+                        id_node->symbol,
+                        std::make_shared<nv::TypeVar>(ch->unify_ctx.get_next_var_id()),
+                        true);
+                    stmt = std::move(decl_node);
+                }
+            }
+        }
+
+        switch (stmt->kind) {
+            case NodeType::IfStatement: {
+                auto* if_stmt = static_cast<IfStatementNode*>(stmt.get());
+                declare_implicit_locals(if_stmt->consequent, ch);
+                declare_implicit_locals(if_stmt->alternate, ch);
+                break;
+            }
+            case NodeType::WhileStatement:
+                declare_implicit_locals(static_cast<WhileStmtNode*>(stmt.get())->body, ch);
+                break;
+            case NodeType::ForStatement: {
+                auto* for_stmt = static_cast<ForStmtNode*>(stmt.get());
+                declare_implicit_locals(for_stmt->body, ch);
+                declare_implicit_locals(for_stmt->else_block, ch);
+                break;
+            }
+            case NodeType::ForeverStatement:
+                declare_implicit_locals(static_cast<ForeverStmtNode*>(stmt.get())->body, ch);
+                break;
+            case NodeType::MatchStatement: {
+                auto* match_stmt = static_cast<MatchStmtNode*>(stmt.get());
+                for (auto& case_body : match_stmt->bodies)
+                    declare_implicit_locals(case_body, ch);
+                break;
+            }
+            default:
+                break;
+        }
+    }
 }
 
 std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
@@ -135,52 +215,8 @@ std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
     ch->in_fallible_function = is_fallible;
 
     
-    // Implementar conversão local usando o mesmo algoritmo do process_codeblock
-    for (size_t i = 0; i < function_stmt->body.size(); i++) {
-        auto& stmt = function_stmt->body[i];
-        
-        // Verificar se é AssignmentExpression que precisa ser convertido
-        if (stmt->kind == NodeType::AssignmentExpression) {
-            auto* assign_node = static_cast<AssignmentExprNode*>(stmt.get());
-            
-            // Apenas converter assignments simples (operador =) com target Identifier
-            if (assign_node->op == "=" && assign_node->target->kind == NodeType::Identifier) {
-                auto* id_node = static_cast<IdentifierNode*>(assign_node->target.get());
-                
-                // Verificar se o identifier já existe no escopo atual
-                // Se não existe, converter para declaração
-                bool identifier_exists = false;
-                try {
-                    ch->scope->get_key(id_node->symbol);
-                    identifier_exists = true;
-                } catch (std::runtime_error&) {
-                    identifier_exists = false;
-                }
-                
-                if (!identifier_exists) {
-                    // Converter AssignmentExpression para DeclarationStmtNode
-                    auto new_target = std::unique_ptr<Expr>(static_cast<Expr*>(id_node->clone()));
-                    auto new_value = assign_node->value ? 
-                        std::unique_ptr<Expr>(static_cast<Expr*>(assign_node->value->clone())) : nullptr;
-                    
-                    auto decl_node = std::make_unique<DeclarationStmtNode>(
-                        std::move(new_target),
-                        std::move(new_value),
-                        "automatic",  // tipo automático para inferência
-                        false         // não constante (mutável)
-                    );
-                    
-                    // Copiar posição do assignment para a declaração
-                    if (assign_node->position) {
-                        decl_node->position = std::make_unique<PositionData>(*assign_node->position);
-                    }
-                    
-                    // Substituir o assignment pela declaração
-                    stmt = std::move(decl_node);
-                }
-            }
-        }
-    }
+
+    declare_implicit_locals(function_stmt->body, ch);
     
     // Verificar o corpo processado (agora com declarações corretas)
     for (auto& stmt : function_stmt->body) {
