@@ -426,9 +426,24 @@ ComptimeValue ComptimeEvaluator::eval_range(RangeExprNode* node) {
 }
 
 ComptimeValue ComptimeEvaluator::eval_binary(BinaryExprNode* node) {
+    const std::string& op = node->op;
+
+    // `&&` and `||` short-circuit: the right side is evaluated only when it can
+    // still change the result. Evaluating both eagerly made the usual guard
+    // `i < len(s) && s[i] != c` index past the end of the string.
+    if (op == "&&" || op == "and" || op == "||" || op == "or") {
+        bool is_and = (op == "&&" || op == "and");
+        ComptimeValue left = eval(node->left.get());
+        if (failed_) return ComptimeValue::none();
+        bool left_true = left.is_truthy();
+        if (is_and ? !left_true : left_true) return ComptimeValue::from_bool(left_true);
+        ComptimeValue right = eval(node->right.get());
+        if (failed_) return ComptimeValue::none();
+        return ComptimeValue::from_bool(right.is_truthy());
+    }
+
     ComptimeValue l = eval(node->left.get());
     ComptimeValue r = eval(node->right.get());
-    const std::string& op = node->op;
 
     // String concatenation and string comparison.
     if (l.tag == ComptimeValue::Tag::Str || r.tag == ComptimeValue::Tag::Str) {
