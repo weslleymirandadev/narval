@@ -1,4 +1,5 @@
 #include "frontend/comptime/c_import.hpp"
+#include <cstdlib>
 #include "frontend/checker/checker.hpp"
 #include "frontend/checker/type.hpp"
 
@@ -213,11 +214,13 @@ bool import_c_header(Checker* checker, const std::string& path,
         ++imported;
     }
 
-    if (link.empty())
-        std::cerr << "NIR: import_c '" << resolved << "' -> " << imported << " function(s)\n";
-    else
-        std::cerr << "NIR: import_c '" << resolved << "' -> " << imported
-                  << " function(s), link -l" << link << "\n";
+    if (std::getenv("NARVAL_VERBOSE")) {
+        if (link.empty())
+            std::cerr << "NIR: import_c '" << resolved << "' -> " << imported << " function(s)\n";
+        else
+            std::cerr << "NIR: import_c '" << resolved << "' -> " << imported
+                      << " function(s), link -l" << link << "\n";
+    }
 
     if (!link.empty())
         checker->extra_link_items.push_back("-l" + link);
