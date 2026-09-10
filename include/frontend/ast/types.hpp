@@ -74,6 +74,16 @@ enum class NodeType {
     AttributeStatement,
     InlineAsmStatement,
     AwaitExpression,
+    // Compile-time execution (CTE)
+    ComptimeDecl,
+    ComptimeFuncDef,
+    ComptimeFor,
+    ComptimeIf,
+    ComptimeBlock,
+    ComptimeExpr,
+    ComptimeWhile,
+    TypeReflectExpr,
+    BuiltinCall,
 };
 
 class PositionData {
