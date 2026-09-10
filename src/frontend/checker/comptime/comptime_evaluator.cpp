@@ -51,6 +51,7 @@ static bool is_expr_kind(NodeType k) {
         case NodeType::ComptimeExpr:
         case NodeType::TypeReflectExpr:
         case NodeType::BuiltinCall:
+        case NodeType::MacroCall:
         case NodeType::ClassMethod:
         case NodeType::OrExpression:
             return true;
@@ -172,6 +173,11 @@ ComptimeValue* ComptimeEvaluator::lookup_var(const std::string& name) {
 
 void ComptimeEvaluator::register_func(ComptimeFuncNode* node) {
     if (node) comptime_funcs_[node->name] = node;
+}
+
+void ComptimeEvaluator::register_func_signature(const std::string& name,
+                                                std::vector<bool> comptime_flags) {
+    func_comptime_params_[name] = std::move(comptime_flags);
 }
 
 ComptimeValue ComptimeEvaluator::eval_range(RangeExprNode* node) {
@@ -451,6 +457,36 @@ ComptimeValue ComptimeEvaluator::eval_builtin(BuiltinCallNode* node) {
     return ComptimeValue::none();
 }
 
+// `name! { verbatim body }` — hands the raw text to the matching
+// `comptime def name!(src: str)` macro and returns its value.
+ComptimeValue ComptimeEvaluator::eval_macro(MacroCallNode* node) {
+    const std::string key = node->name + "!";
+    auto it = comptime_funcs_.find(key);
+    if (it == comptime_funcs_.end()) {
+        fail("'" + key + "' is not a comptime macro (define it with "
+             "`comptime def " + key + "(src: str): ...`)");
+        return ComptimeValue::none();
+    }
+    if (call_depth_ >= MAX_DEPTH) {
+        fail("comptime recursion limit exceeded in macro '" + key + "'");
+        return ComptimeValue::none();
+    }
+    ComptimeFuncNode* fn = it->second;
+
+    push_scope();
+    // Bind the verbatim body to the macro's first parameter.
+    if (!fn->parameters.empty()) {
+        std::string pname;
+        for (const auto& [k, _] : fn->parameters[0].parameter) { pname = k; break; }
+        if (!pname.empty()) set_var(pname, ComptimeValue::from_str(node->raw_src));
+    }
+    ++call_depth_;
+    ComptimeValue result = eval_block(fn->body);
+    --call_depth_;
+    pop_scope();
+    return result;
+}
+
 ComptimeValue ComptimeEvaluator::eval_call(CallExprNode* node) {
     // type.<fn>(T[, extra]) — reflection.
     if (node->caller && node->caller->kind == NodeType::MemberExpression) {
@@ -587,6 +623,8 @@ ComptimeValue ComptimeEvaluator::eval(Expr* expr) {
             return eval_call(static_cast<CallExprNode*>(expr));
         case NodeType::BuiltinCall:
             return eval_builtin(static_cast<BuiltinCallNode*>(expr));
+        case NodeType::MacroCall:
+            return eval_macro(static_cast<MacroCallNode*>(expr));
         case NodeType::MemberExpression:
             return eval_member(static_cast<MemberExprNode*>(expr));
         case NodeType::ComptimeExpr:
@@ -763,9 +801,13 @@ std::unique_ptr<Expr> ComptimeEvaluator::to_literal(const ComptimeValue& val, co
             out = std::make_unique<StringLiteralNode>(val.s_val);
             break;
         case ComptimeValue::Tag::Array: {
+            // Emit a VectorExprNode, not an ArrayExprNode: that is what the
+            // parser produces for a source-level `[...]` literal, and the
+            // vector path is the one the checker/codegen index correctly
+            // (an ArrayExprNode here boxed as an opaque object and crashed).
             std::vector<std::unique_ptr<Expr>> elements;
             for (const auto& e : val.arr_val) elements.push_back(to_literal(e, pos));
-            out = std::make_unique<ArrayExprNode>(std::move(elements));
+            out = std::make_unique<VectorExprNode>(std::move(elements));
             break;
         }
         default:
@@ -948,6 +990,12 @@ CodeBlock ComptimeEvaluator::expand_body(CodeBlock body) {
                 if (failed_) return out;
                 continue;
             }
+            case NodeType::MacroCall: {
+                // Statement-level `name! { ... }`: evaluated for its effect only.
+                eval_macro(static_cast<MacroCallNode*>(stmt));
+                if (failed_) return out;
+                continue;
+            }
             case NodeType::ComptimeWhile: {
                 auto expanded = expand_while(static_cast<ComptimeWhileNode*>(stmt));
                 if (failed_) return out;
@@ -956,6 +1004,10 @@ CodeBlock ComptimeEvaluator::expand_body(CodeBlock body) {
             }
             case NodeType::FunctionStatement: {
                 auto* fn = static_cast<FunctionStmtNode*>(stmt);
+                std::vector<bool> flags;
+                flags.reserve(fn->parameters.size());
+                for (const auto& p : fn->parameters) flags.push_back(p.is_comptime);
+                register_func_signature(fn->name, std::move(flags));
                 fn->body = expand_body(std::move(fn->body));
                 if (failed_) return out;
                 break;
@@ -1056,6 +1108,12 @@ void ComptimeEvaluator::rewrite_expr_impl(std::unique_ptr<Expr>* slot, Expr* e) 
             if (slot) *slot = to_literal(v, e->position.get());
             return;
         }
+        case NodeType::MacroCall: {
+            ComptimeValue v = eval_macro(static_cast<MacroCallNode*>(e));
+            if (failed_) return;
+            if (slot) *slot = to_literal(v, e->position.get());
+            return;
+        }
         case NodeType::BinaryExpression: {
             auto* n = static_cast<BinaryExprNode*>(e);
             rewrite_expr(n->left);
@@ -1111,8 +1169,35 @@ void ComptimeEvaluator::rewrite_expr_impl(std::unique_ptr<Expr>* slot, Expr* e) 
         case NodeType::CallExpression: {
             auto* n = static_cast<CallExprNode*>(e);
             rewrite_expr(n->caller);
-            for (auto& a : n->args)
-                if (a) rewrite_expr(a->value);
+
+            // `comptime N: T` parameters: the argument must be known at compile
+            // time, so fold it to a literal here (there is no monomorphisation
+            // yet — the callee is still emitted once).
+            std::vector<bool> comptime_flags;
+            if (n->caller && n->caller->kind == NodeType::Identifier) {
+                auto it = func_comptime_params_.find(
+                    static_cast<IdentifierNode*>(n->caller.get())->symbol);
+                if (it != func_comptime_params_.end()) comptime_flags = it->second;
+            }
+
+            for (size_t i = 0; i < n->args.size(); ++i) {
+                auto& a = n->args[i];
+                if (!a) continue;
+                if (i < comptime_flags.size() && comptime_flags[i] && a->value) {
+                    std::string fname =
+                        static_cast<IdentifierNode*>(n->caller.get())->symbol;
+                    ComptimeValue v = eval(a->value.get());
+                    if (failed_) {
+                        error_ = "argument " + std::to_string(i + 1) + " of '" + fname +
+                                 "' must be a compile-time constant (declared `comptime`)";
+                        return;
+                    }
+                    a->value = to_literal(v, a->value->position.get());
+                    if (failed_) return;
+                    continue;
+                }
+                rewrite_expr(a->value);
+            }
             return;
         }
         case NodeType::AssignmentExpression: {
