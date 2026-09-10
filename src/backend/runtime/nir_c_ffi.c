@@ -130,3 +130,89 @@ NvObject* nv_ffi_getchar(void)                            { return box_i((int32_
 
 NvObject* nv_ffi_time(NvObject* t)                        { (void)t; return box_i((int32_t)time(NULL)); }
 NvObject* nv_ffi_clock(void)                              { return box_i((int32_t)clock()); }
+
+// ── Generic dlsym bridges (comptime import_c) ────────────────────────────────
+// One bridge per signature shape, encoded as <ret><params> with d = double,
+// i = int32, s = char*, v = void. The first argument is the C symbol name as a
+// boxed string; the runtime resolves it with dlsym at call time, so
+// `comptime import_c("math.h")` does not need a hand-written wrapper per
+// function (unlike the fixed nv_ffi_<name> registry above).
+#include <dlfcn.h>
+
+static void* cimp_sym(NvObject* name_obj) {
+    const char* name = obj_to_s(name_obj);
+    void* p = dlsym(RTLD_DEFAULT, name);
+    if (!p)
+        fprintf(stderr,
+                "narval: import_c: symbol '%s' not found (library not linked? "
+                "pass link: \"name\" to import_c)\n", name);
+    return p;
+}
+
+NvObject* nv_ffi_call_v(NvObject* n) {
+    void (*f)(void) = (void (*)(void))cimp_sym(n);
+    if (!f) return box_none();
+    f();
+    return box_none();
+}
+
+NvObject* nv_ffi_call_i(NvObject* n) {
+    int32_t (*f)(void) = (int32_t (*)(void))cimp_sym(n);
+    return box_i(f ? f() : 0);
+}
+
+NvObject* nv_ffi_call_d(NvObject* n) {
+    double (*f)(void) = (double (*)(void))cimp_sym(n);
+    return box_d(f ? f() : 0.0);
+}
+
+NvObject* nv_ffi_call_ii(NvObject* n, NvObject* a) {
+    int32_t (*f)(int32_t) = (int32_t (*)(int32_t))cimp_sym(n);
+    return box_i(f ? f(obj_to_i(a)) : 0);
+}
+
+NvObject* nv_ffi_call_dd(NvObject* n, NvObject* a) {
+    double (*f)(double) = (double (*)(double))cimp_sym(n);
+    return box_d(f ? f(obj_to_d(a)) : 0.0);
+}
+
+NvObject* nv_ffi_call_di(NvObject* n, NvObject* a) {
+    double (*f)(int32_t) = (double (*)(int32_t))cimp_sym(n);
+    return box_d(f ? f(obj_to_i(a)) : 0.0);
+}
+
+NvObject* nv_ffi_call_id(NvObject* n, NvObject* a) {
+    int32_t (*f)(double) = (int32_t (*)(double))cimp_sym(n);
+    return box_i(f ? f(obj_to_d(a)) : 0);
+}
+
+NvObject* nv_ffi_call_iii(NvObject* n, NvObject* a, NvObject* b) {
+    int32_t (*f)(int32_t, int32_t) = (int32_t (*)(int32_t, int32_t))cimp_sym(n);
+    return box_i(f ? f(obj_to_i(a), obj_to_i(b)) : 0);
+}
+
+NvObject* nv_ffi_call_ddd(NvObject* n, NvObject* a, NvObject* b) {
+    double (*f)(double, double) = (double (*)(double, double))cimp_sym(n);
+    return box_d(f ? f(obj_to_d(a), obj_to_d(b)) : 0.0);
+}
+
+NvObject* nv_ffi_call_is(NvObject* n, NvObject* a) {
+    int32_t (*f)(const char*) = (int32_t (*)(const char*))cimp_sym(n);
+    return box_i(f ? f(obj_to_s(a)) : 0);
+}
+
+NvObject* nv_ffi_call_ss(NvObject* n, NvObject* a) {
+    const char* (*f)(const char*) = (const char* (*)(const char*))cimp_sym(n);
+    return box_s(f ? f(obj_to_s(a)) : "");
+}
+
+NvObject* nv_ffi_call_vs(NvObject* n, NvObject* a) {
+    void (*f)(const char*) = (void (*)(const char*))cimp_sym(n);
+    if (f) f(obj_to_s(a));
+    return box_none();
+}
+
+NvObject* nv_ffi_call_ds(NvObject* n, NvObject* a) {
+    double (*f)(const char*) = (double (*)(const char*))cimp_sym(n);
+    return box_d(f ? f(obj_to_s(a)) : 0.0);
+}
