@@ -22,6 +22,39 @@ void CallExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         }
     }
 
+    // ── Step 3: Method call — obj.method(args) → __method_<Class>_<method> ──
+    // The receiver becomes the implicit first argument (self).
+    if (caller && caller->kind == NodeType::MemberExpression) {
+        auto* mem = static_cast<MemberExprNode*>(caller.get());
+        if (mem->object && mem->property && mem->property->kind == NodeType::Identifier) {
+            std::string method = static_cast<IdentifierNode*>(mem->property.get())->symbol;
+            std::string owner  = ctx.find_method_owner(method);
+            if (!owner.empty()) {
+                mem->object->nir_codegen(ctx);
+                llvm::SmallVector<mlir::Value> call_args;
+                if (ctx.has_value()) call_args.push_back(ctx.pop_value());
+                for (auto& v : arg_vals) call_args.push_back(v);
+
+                std::string sym = "__method_" + owner + "_" + method;
+                if (ctx.get_module().lookupSymbol(sym)) {
+                    auto call = mlir::narval::CallOp::create(
+                        ctx.get_builder(), loc,
+                        mlir::TypeRange{vt},
+                        mlir::SymbolRefAttr::get(&ctx.get_mlir_context(), sym),
+                        call_args);
+                    ctx.push_value(call.getResults().empty() ? mlir::Value{}
+                                                             : call.getResults()[0]);
+                    return;
+                }
+                mlir::emitError(loc, "method '" + method + "' of class '" + owner +
+                                     "' has no body to call");
+                ctx.push_value(nir_emit_const(ctx, loc,
+                    ctx.get_builder().getI64IntegerAttr(0)));
+                return;
+            }
+        }
+    }
+
     // Resolve callee name
     std::string callee;
     if (caller && caller->kind == NodeType::Identifier)
