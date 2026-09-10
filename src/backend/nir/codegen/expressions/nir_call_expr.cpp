@@ -52,6 +52,17 @@ void CallExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
                     ctx.get_builder().getI64IntegerAttr(0)));
                 return;
             }
+
+            // vector.push(x) — no class owns the name, so this is the dynamic
+            // list append; lower it to the bridge the vector literals use. The
+            // expression still yields None so statements keep their stack shape.
+            if (owner.empty() && method == "push" && arg_vals.size() == 1) {
+                mem->object->nir_codegen(ctx);
+                mlir::Value vec = ctx.pop_value();
+                if (vec) nir_call_runtime(ctx, loc, "nv_vector_push", {vec, arg_vals[0]}, {});
+                ctx.push_value(nir_call_runtime(ctx, loc, "nv_make_none", {}, {vt}));
+                return;
+            }
         }
     }
 
