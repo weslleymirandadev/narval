@@ -199,6 +199,113 @@ CASES = [
             "1.000000\n"
         ),
     },
+    {
+        "name": "comptime_const_arith",
+        "source": (
+            'comptime N = 1024;\n'
+            'comptime A = 2 + 3 * 4;\n'
+            'write(N);\n'
+            'write(A);\n'
+        ),
+        "expected": "1024\n14\n",
+    },
+    {
+        "name": "comptime_func_recursion",
+        "source": (
+            'comptime def fib(n: int): int {\n'
+            '    if n <= 1 { return n; }\n'
+            '    return fib(n - 1) + fib(n - 2);\n'
+            '}\n'
+            'comptime X = fib(10);\n'
+            'write(X);\n'
+        ),
+        "expected": "55\n",
+    },
+    {
+        "name": "comptime_if_removes_branch",
+        "source": (
+            'comptime PLATFORM = "linux";\n'
+            'comptime if PLATFORM == "linux" {\n'
+            '    write("linux-build");\n'
+            '} else {\n'
+            '    write("other-build");\n'
+            '}\n'
+        ),
+        "expected": "linux-build\n",
+    },
+    {
+        "name": "comptime_for_unroll",
+        "source": (
+            'comptime for i in 0..3 {\n'
+            '    write(i);\n'
+            '}\n'
+        ),
+        "expected": "0\n1\n2\n",
+    },
+    {
+        "name": "comptime_block",
+        "source": (
+            'comptime {\n'
+            '    V = 5 * 5;\n'
+            '}\n'
+            'write(V);\n'
+        ),
+        "expected": "25\n",
+    },
+    {
+        "name": "comptime_inside_function",
+        "source": (
+            'def f(): int {\n'
+            '    comptime K = 7;\n'
+            '    return K + 1;\n'
+            '}\n'
+            'write(f());\n'
+        ),
+        "expected": "8\n",
+    },
+    {
+        "name": "zig_inline_for",
+        "source": (
+            'inline for i in 0..3 {\n'
+            '    write(i);\n'
+            '}\n'
+        ),
+        "expected": "0\n1\n2\n",
+    },
+    {
+        "name": "zig_comptime_expr_inline",
+        "source": (
+            'x = comptime 2 + 3 * 4;\n'
+            'write(x);\n'
+        ),
+        "expected": "14\n",
+    },
+    {
+        "name": "zig_builtin_reflection",
+        "source": (
+            'class User {\n'
+            '    name: str;\n'
+            '    age: int;\n'
+            '}\n'
+            'write(@typeName(User));\n'
+            'write(@hasField(User, "age"));\n'
+            'comptime for f in @fieldNames(User) {\n'
+            '    write(f);\n'
+            '}\n'
+        ),
+        "expected": "User\n-1\nage\nname\n",
+    },
+    {
+        "name": "zig_inline_while",
+        "source": (
+            'comptime k = 0;\n'
+            'inline while k < 3 {\n'
+            '    write(k);\n'
+            '    k = k + 1;\n'
+            '}\n'
+        ),
+        "expected": "0\n1\n2\n",
+    },
 ]
 
 
