@@ -1,0 +1,73 @@
+# SQLite for Narval.
+#
+#     from "../stdlib/sqlite.nv" import *;
+#     db = db_open("app.db");
+#     db_exec(db, "CREATE TABLE IF NOT EXISTS t (name TEXT)");
+#     db_exec(db, "INSERT INTO t VALUES ('bob')");
+#     n = db_query(db, "SELECT name FROM t");
+#     row = db_row(db, 0);
+#     write(row[0]);
+#
+# The runtime shim (src/backend/runtime/core/sqlite_bridge.c) keeps a small handle
+# table and loads libsqlite3 on first use, so nothing has to be linked. db_query
+# runs a statement and stores the result set on the handle; the cells are then read
+# back one row at a time. Results are read through the shim on purpose: parsing the
+# text inside Narval needs assignments inside conditional branches, and an
+# assignment made in a branch that cannot be if-converted does not escape it yet.
+
+# Opens a database file, or returns -1.
+def db_open(path: str): int {
+    return nv_sqlite_open(path);
+}
+
+# Closes a handle (freeing its stored result): 0 on success.
+def db_close(handle: int): int {
+    return nv_sqlite_close(handle);
+}
+
+# Runs a statement that returns no rows: 0 on success, else the SQLite error code.
+def db_exec(handle: int, sql: str): int {
+    return nv_sqlite_exec(handle, sql);
+}
+
+# Last error message of a handle ("" when there is none).
+def db_error(handle: int): str {
+    return nv_sqlite_error(handle);
+}
+
+# Rowid of the last insert on a handle.
+def db_last_id(handle: int): int {
+    return nv_sqlite_last_id(handle);
+}
+
+# Rows changed by the last statement on a handle.
+def db_changes(handle: int): int {
+    return nv_sqlite_changes(handle);
+}
+
+# Runs a query, stores its result on the handle and returns the number of rows.
+def db_query(handle: int, sql: str): int {
+    return nv_sqlite_query_run(handle, sql);
+}
+
+# Number of columns in the stored result of the last db_query.
+def db_cols(handle: int): int {
+    return nv_sqlite_col_count(handle);
+}
+
+# A cell of the stored result, as text ("" when out of range).
+def db_cell(handle: int, row: int, col: int): str {
+    return nv_sqlite_cell(handle, row, col);
+}
+
+# The cells of one stored row, as a vector of strings.
+def db_row(handle: int, row: int): vector {
+    cells = [];
+    cols = db_cols(handle);
+    col = 0;
+    while col < cols {
+        cells.push(db_cell(handle, row, col));
+        col = col + 1;
+    }
+    return cells;
+}
