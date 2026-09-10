@@ -45,31 +45,34 @@ std::unique_ptr<Node> parse_decorator_stmt(Parser* parser) {
                 parser->consume_token();                    // '='
             }
 
-            // Value: identifier/keyword, number, string, or bracketed list
-            Token val = parser->current_token();
-            if (val.type == TokenType::IDENTIFIER ||
-                val.type == TokenType::NUMBER      ||
-                val.type == TokenType::STRING      ||
-                val.type == TokenType::TRUE        ||
-                val.type == TokenType::FALSE) {
-                arg.value = val.lexeme;
-                parser->consume_token();
-            } else if (val.type == TokenType::OBRACKET) {
-                // [M, N, K] → store as "M,N,K"
-                parser->consume_token();  // '['
-                std::string list;
-                while (parser->current_token().type != TokenType::CBRACKET &&
-                       parser->current_token().type != TokenType::EOF_TOKEN) {
-                    if (parser->current_token().type != TokenType::COMMA)
-                        list += parser->current_token().lexeme;
-                    else
-                        list += ",";
+            // Argument text, collected until ',' or ')'. Reading a single token
+            // and leaving anything else unconsumed made the loop spin forever on
+            // operators, so `@compileError("a" + b)` hung the parser.
+            std::string value;
+            while (parser->current_token().type != TokenType::COMMA &&
+                   parser->current_token().type != TokenType::CPAREN &&
+                   parser->current_token().type != TokenType::EOF_TOKEN) {
+                if (parser->current_token().type == TokenType::OBRACKET) {
+                    // [M, N, K] -> "M,N,K"
+                    parser->consume_token();  // '['
+                    std::string list;
+                    while (parser->current_token().type != TokenType::CBRACKET &&
+                           parser->current_token().type != TokenType::EOF_TOKEN) {
+                        if (parser->current_token().type != TokenType::COMMA)
+                            list += parser->current_token().lexeme;
+                        else
+                            list += ",";
+                        parser->consume_token();
+                    }
+                    if (parser->current_token().type == TokenType::CBRACKET)
+                        parser->consume_token();  // ']'
+                    value += list;
+                } else {
+                    value += parser->current_token().lexeme;
                     parser->consume_token();
                 }
-                if (parser->current_token().type == TokenType::CBRACKET)
-                    parser->consume_token();  // ']'
-                arg.value = list;
             }
+            arg.value = value;
 
             entry.args.push_back(arg);
 
