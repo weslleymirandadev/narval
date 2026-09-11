@@ -12,7 +12,7 @@ extern "C" {
 /* ============================================================= */
 
 // Criar valores básicos
-void create_int(Value* out, int32_t value);
+void create_int(Value* out, int64_t value);
 void create_char(Value* out, char value);
 void create_float(Value* out, double value);
 void create_bool(Value* out, int32_t value);
@@ -134,7 +134,7 @@ void nv_float_convert(Value* out, Value* input);
 void nv_bool_convert(Value* out, Value* input);
 
 // Funções de conversão para concatenação
-void int_to_string(Value* out, int32_t value);
+void int_to_string(Value* out, int64_t value);
 void float_to_string(Value* out, double value);
 
 // Obter tipo de um valor
