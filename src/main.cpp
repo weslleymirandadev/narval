@@ -579,8 +579,10 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
             std::string nostd_rt = std::filesystem::exists(nir_runtime_nostd_path)
                 ? nir_runtime_nostd_path + " " : "";
             nir_link_cmd =
+                // Static and freestanding: no libc, no dynamic loader, nothing outside
+                // the object file plus the runtime archive just linked in.
                 std::string("gcc ") + obj_path + " " + nostd_rt + "-o " + bin_path +
-                " -nostdlib -nostartfiles " + nir_pie +
+                " -static -nostdlib -nostartfiles " + nir_pie +
                 " -Wl,-e," + no_std_entry +
                 " -Wl,--gc-sections " +
                 (attrs.strip ? "-Wl,--strip-all " : "") +
