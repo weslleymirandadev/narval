@@ -12,10 +12,12 @@
 # recursion and two alternatives starting with the same symbol (an LL(1)
 # conflict) are rejected with @compileError.
 #
-# What this does NOT do yet: emit the parse functions as Narval `def`s. That step
-# needs a way to build AST nodes from compile-time values (quasiquote), which the
-# language does not have; until then the grammar is validated and summarised as
-# compile-time data.
+# What this emits (COMPTIME_SPEC 5.11, phase 3): for every rule, a recursive-descent
+# recognizer `def parse_<rule>(tokens: vector, pos: int): int` that walks a token
+# list (a `vector` of `str`) and returns the index after the match, or -1. A caller
+# has a full parse when the result equals len(tokens). Alternatives are tried in
+# order, which is exact LL(1) dispatch because the validator below already rejects
+# two alternatives sharing a first symbol.
 
 comptime def g_is_space(c: str): bool {
     if c == " " {
@@ -191,6 +193,124 @@ comptime def g_ident_core(tok: str): str {
     return g_slice(tok, start, stop);
 }
 
+# ── Parser generation ────────────────────────────────────────────────────────
+# Source-text generation fed to @emit; the emitted defs are ordinary Narval and go
+# through the normal checker/codegen.
+
+# Index of the ')' matching the '(' at `open`.
+comptime def g_group_end(s: str, open: int): int {
+    depth = 0;
+    i = open;
+    while i < len(s) {
+        if s[i] == "(" {
+            depth = depth + 1;
+        }
+        if s[i] == ")" {
+            depth = depth - 1;
+            if depth == 0 {
+                return i;
+            }
+        }
+        i = i + 1;
+    }
+    return len(s) - 1;
+}
+
+# Code for one alternative: `p = pos; <steps> return p;`. A group becomes a call to
+# its own def; a starred group becomes a `while true` retry loop.
+comptime def g_alt_code(path: str, alt: str): str {
+    out = "";
+    nested = "";
+    n = len(alt);
+    i = 0;
+    while i < n {
+        if g_is_space(alt[i]) {
+            i = i + 1;
+        } else {
+            if alt[i] == "(" {
+                close = g_group_end(alt, i);
+                gname = path + "__g" + str(i);
+                nested = nested + g_body_code(gname, g_slice(alt, i + 1, close));
+                after = close + 1;
+                if after < n && alt[after] == "*" {
+                    out = out + "while true {\nq = " + gname + "(tokens, p);\nif q < 0 { break; }\np = q;\n}\n";
+                    i = after + 1;
+                } else {
+                    out = out + "p = " + gname + "(tokens, p);\nif p < 0 { return -1; }\n";
+                    i = after;
+                }
+            } else {
+                e = i;
+                while e < n && g_is_space(alt[e]) == false {
+                    e = e + 1;
+                }
+                tok = g_slice(alt, i, e);
+                lit = g_quoted(tok);
+                word = g_ident_core(tok);
+                if len(lit) > 0 {
+                    out = out + "if p >= len(tokens) { return -1; }\nif tokens[p] != \"" + lit + "\" { return -1; }\np = p + 1;\n";
+                } else {
+                    if len(word) > 0 {
+                        if g_starts_lower(word) {
+                            out = out + "p = parse_" + word + "(tokens, p);\nif p < 0 { return -1; }\n";
+                        } else {
+                            out = out + "if p >= len(tokens) { return -1; }\nif tokens[p] != \"" + word + "\" { return -1; }\np = p + 1;\n";
+                        }
+                    }
+                }
+                i = e;
+            }
+        }
+    }
+    return "def " + path + "(tokens: vector, pos: int): int {\np = pos;\n" + out + "return p;\n}\n" + nested;
+}
+
+# Code for a whole rule body: split at '|' that is not inside parens, one alt def
+# each, plus a dispatcher that returns the first alternative that matched.
+comptime def g_body_code(name: str, body: str): str {
+    alts = "";
+    idx = 0;
+    start = 0;
+    depth = 0;
+    i = 0;
+    n = len(body);
+    while i <= n {
+        at_end = i == n;
+        is_bar = false;
+        if at_end == false {
+            c = body[i];
+            if c == "(" {
+                depth = depth + 1;
+            }
+            if c == ")" {
+                depth = depth - 1;
+            }
+            if c == "|" && depth == 0 {
+                is_bar = true;
+            }
+        }
+        if at_end || is_bar {
+            alts = alts + g_alt_code(name + "__a" + str(idx), g_trim(g_slice(body, start, i)));
+            idx = idx + 1;
+            start = i + 1;
+        }
+        i = i + 1;
+    }
+
+    disp = "def " + name + "(tokens: vector, pos: int): int {\n";
+    j = 0;
+    while j < idx {
+        if j + 1 < idx {
+            disp = disp + "r = " + name + "__a" + str(j) + "(tokens, pos);\nif r >= 0 { return r; }\n";
+        } else {
+            disp = disp + "return " + name + "__a" + str(j) + "(tokens, pos);\n";
+        }
+        j = j + 1;
+    }
+    disp = disp + "}\n";
+    return disp + alts;
+}
+
 # Validates the BNF and returns a summary of the grammar.
 comptime def grammar!(src: str): str {
     # Pass 1: rule names, kept as ",name,name," so membership is a search.
@@ -234,6 +354,7 @@ comptime def grammar!(src: str): str {
     terminals = ",";
     check = 0;
     rule = "";
+    code = "";
     i = 0;
     while i < len(src) {
         e = i;
@@ -338,9 +459,16 @@ comptime def grammar!(src: str): str {
                     }
                     j = j + 1;
                 }
+
+                # The rule validated: generate its recognizer (and any group ones).
+                code = code + g_body_code("parse_" + rule, body);
             }
         }
     }
+
+    # Hand the generated defs to the compiler; expand_body splices them in right
+    # after the statement that used this macro.
+    @emit(code);
 
     return "grammar: " + str(rule_count) + " rule(s) [" + g_list_text(names) + "], "
            + "terminals [" + g_list_text(terminals) + "]";
