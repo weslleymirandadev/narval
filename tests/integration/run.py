@@ -1087,6 +1087,48 @@ CASES = [
                      "['+' '-' '*' '/' NUMBER '(' ')']\n"
                      "true\n5\n1\n"),
     },
+    {
+        # The element of an untyped vector is itself unknown, and unknown values are
+        # indexable — `rows[i][j]` used to be rejected ("requires array, vector,
+        # string, map, or tuple, but got 't0'").
+        "name": "nested_index",
+        "source": (
+            'rows = [["a", "b"], ["c", "d"]];\n'
+            'write(rows[0][0]);\n'
+            'write(rows[1][1]);\n'
+            'cube = [[["deep"]]];\n'
+            'write(cube[0][0][0]);\n'
+            'def cell_at(m: vector, r: int, c: int): str {\n'
+            '    return m[r][c];\n'
+            '}\n'
+            'write(cell_at(rows, 1, 0));\n'
+        ),
+        "expected": "a\nd\ndeep\nc\n",
+    },
+    {
+        # Sqlite.rows() returns the result set as a vector of vectors now that a
+        # nested index works.
+        "name": "sqlite_rows_nested_index",
+        "source": (
+            'from "sqlite.nv" import *;\n'
+            '\n'
+            'db = new Sqlite();\n'
+            'db.open("/tmp/narval_it_sqlite_rows.db");\n'
+            'db.exec("DROP TABLE IF EXISTS t");\n'
+            'db.exec("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT, score REAL)");\n'
+            'db.exec("INSERT INTO t (name, score) VALUES (\'bob\', 9.5)");\n'
+            'db.exec("INSERT INTO t (name, score) VALUES (\'ana\', 7)");\n'
+            'n = db.query("SELECT name, score FROM t ORDER BY id");\n'
+            'all = db.rows();\n'
+            'write(n);\n'
+            'write(all[0][0]);\n'
+            'write(all[1][0]);\n'
+            'write(all[1][1]);\n'
+            'write(db.close());\n'
+        ),
+        "module_files": {"sqlite.nv": "stdlib/sqlite.nv"},
+        "expected": "2\nbob\nana\n7.0\n0\n",
+    },
 ]
 
 
