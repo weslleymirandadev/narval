@@ -7,16 +7,19 @@
 //
 // The runtime has full refcounting (nv_incref/nv_decref + tp_dealloc) but the
 // compiled code never calls it. This pass runs AFTER lower-narval-to-std
-// (values are !llvm.ptr by then) and inserts `call @nv_drop(%v)` right after
-// the LAST USE of every pointer value whose uses all live in its defining
-// block and that does not flow through a terminator (cf.br/cond_br — branch
-// operands become the destination block's args, so the destination owns the
-// object and drops it when IT dies) and does not escape through func.return.
+// (values are !llvm.ptr by then) and inserts `call @nv_drop(%v)` after every
+// LAST USE of a pointer value, where "last use" is decided by reachability over
+// the CFG: a use is last when no other use is reachable from it, so the drop can
+// never free the object while a later use still needs it. Uses on mutually
+// exclusive paths are each last and each gets its own drop (only one runs).
+// Reachability follows back edges, so a use inside a loop that can reach itself
+// is never last — loop-carried objects stay untouched.
 //
-// Conservative v1: values used across blocks (e.g. produced before an if and
-// used in its branches) are left alone (they may still leak; they can never
-// double-free). Loop-carried objects are dropped by the block-arg rule: the
-// body block's carried arg dies after its last use in the body.
+// Ownership is never transferred by a use that is a branch operand: those
+// become the destination block's args, so the destination owns the object and
+// drops it when IT dies (non-entry block args are drop candidates). A value
+// whose use escapes through func.return, or that a callee may store (container
+// push/set, user function), is left alone — it can then leak, never double-free.
 //
 // The function-entry block args are intentionally not dropped: the caller
 // owns the objects it passes (and drops them after the call).
@@ -25,6 +28,7 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Interfaces/ControlFlowInterfaces.h"
 
 #include <string>
 
@@ -32,6 +36,65 @@ using namespace mlir;
 
 namespace nv {
 namespace {
+
+// Every use of `v` reachable from `from` (walking the CFG from the block that
+// contains it). Uses later in the SAME block always count, whatever the block is —
+// missing that made the first of two uses in one block look like the last one and
+// freed the object while the second use still read it. Successors are followed
+// through whatever BranchOpInterface terminator the block has. Re-entering the
+// definition block is NOT followed: that is a loop back edge, which produces a NEW
+// object, so uses past it belong to the next iteration — without this a use inside
+// a loop could reach itself and no loop-local temporary would ever be freed.
+static bool other_use_reachable(Operation* from,
+                                ArrayRef<Operation*> uses,
+                                Block* def_block) {
+    Block* from_block = from->getBlock();
+    for (Operation* w : uses)
+        if (w != from && w->getBlock() == from_block &&
+            from->isBeforeInBlock(w))
+            return true;
+
+    llvm::SmallPtrSet<Block*, 8> seen;
+    SmallVector<Block*, 8> worklist;
+    bool loops_back = false;
+    auto push_succs = [&](Block* blk) {
+        if (!blk || blk->empty()) return;
+        if (auto br = dyn_cast<BranchOpInterface>(blk->back())) {
+            for (unsigned i = 0; i < br->getNumSuccessors(); ++i) {
+                Block* s = br->getSuccessor(i);
+                if (s == def_block) continue;
+                if (s == from_block) { loops_back = true; continue; }
+                if (seen.insert(s).second) worklist.push_back(s);
+            }
+        }
+    };
+    seen.insert(from_block);
+    push_succs(from_block);
+
+    while (!worklist.empty()) {
+        Block* blk = worklist.pop_back_val();
+        for (Operation* w : uses)
+            if (w != from && w->getBlock() == blk) return true;
+        push_succs(blk);
+    }
+
+    // The block reaches itself again without passing through the definition, so the
+    // object is not re-created on the way: this very use runs again on the next
+    // iteration and the value is still live after it. (When the definition IS inside
+    // the cycle it re-executes instead, which makes a new object and leaves this use
+    // free to be the last one.)
+    if (loops_back) return true;
+
+    return false;
+}
+
+// Label for a value's producer, for the NARVAL_DROPS_DEBUG trace.
+static std::string producer_label(Value v) {
+    Operation* op = v.getDefiningOp();
+    if (!op) return "<block-arg>";
+    if (auto c = dyn_cast<func::CallOp>(op)) return c.getCallee().str();
+    return op->getName().getStringRef().str();
+}
 
 struct InsertRuntimeDropsPass
     : public PassWrapper<InsertRuntimeDropsPass, OperationPass<ModuleOp>> {
@@ -61,15 +124,30 @@ struct InsertRuntimeDropsPass
 
     // Runtime calls whose result is a NEW heap object (ref_count == 1) owned
     // by the caller. Results of accessors (nv_get_at, nv_container_get,
-    // nv_len...) are pointers INTO containers and must not be dropped.
+    // nv_len...) are pointers INTO containers and must not be dropped. Anything
+    // added here must really allocate: dropping an object that someone else
+    // still references frees it under them.
     static bool owned_ret(const std::string& name) {
         if (name.rfind("nv_box_", 0) == 0) return true;
-        if (name == "nv_index_to_value") return true;
         if (name.rfind("nv_create_", 0) == 0) return true;
-        static const char* const arith[] = {
+        if (name == "nv_index_to_value") return true;
+        if (name == "nv_make_none") return true;
+        static const char* const fresh[] = {
+            // arithmetic produces a new object
             "nv_add", "nv_sub", "nv_mul", "nv_div", "nv_mod",
+            // conversions box a new value
+            "nv_int_builtin", "nv_float_builtin", "nv_str_builtin",
+            "nv_bool_builtin", "nv_char_builtin", "nv_len_builtin",
+            // comparisons box a new bool
+            "nv_value_lt", "nv_value_gt", "nv_value_le", "nv_value_ge",
+            "nv_value_eq", "nv_value_ne",
+            // option/result wrappers
+            "nv_make_some", "nv_make_ok", "nv_make_err",
+            // helpers that return their own box (json_field increfs the
+            // fallback it returns, so the drop balances it)
+            "nv_json_field_builtin", "nv_read_builtin",
         };
-        for (const char* a : arith)
+        for (const char* a : fresh)
             if (name == a) return true;
         return false;
     }
@@ -87,34 +165,45 @@ struct InsertRuntimeDropsPass
         return false;
     }
 
-    static void try_drop(Value v, Block* def_block, OpBuilder& b,
-                         func::FuncOp drop_fn, bool from_call) {
-        if (!isa<LLVM::LLVMPointerType>(v.getType())) return;
+    // Returns the number of nv_drop calls inserted.
+    static int try_drop(Value v, Block* def_block, OpBuilder& b,
+                        func::FuncOp drop_fn, bool from_call, bool debug_on) {
+        if (!isa<LLVM::LLVMPointerType>(v.getType())) return 0;
         // Only drop heap NvObject*. Data pointers (string-literal addresses,
         // memref bases) are !llvm.ptr too but are NOT runtime objects — they
         // come from addressof/getelementptr ops, never from func.call. And
         // only drop results of owning calls (see owned_ret). Block args are
         // carried runtime values and are always owned.
-        if (!from_call) return;
+        if (!from_call) {
+            if (debug_on)
+                llvm::errs() << "[drops] skip non-call result ("
+                             << v.getType() << ")\n";
+            return 0;
+        }
         Operation* prod = v.getDefiningOp();
         if (prod) {
             auto call = dyn_cast<func::CallOp>(prod);
-            if (!call) return;
-            if (!owned_ret(call.getCallee().str())) return;
+            if (!call) {
+                if (debug_on)
+                    llvm::errs() << "[drops] skip producer " << prod->getName()
+                                 << "\n";
+                return 0;
+            }
+            if (!owned_ret(call.getCallee().str())) {
+                if (debug_on)
+                    llvm::errs() << "[drops] skip callee "
+                                 << call.getCallee() << "\n";
+                return 0;
+            }
         }
 
-        Operation* last = nullptr;
-        bool foreign = false;
-        bool flows = false;
-        bool stored = false;
+        // Uses that keep the value alive elsewhere make it a non-candidate:
+        // escaping through func.return, carried by a branch (the destination
+        // block arg owns it), or stored by a callee that takes ownership.
+        SmallVector<Operation*, 4> uses;
+        bool flows = false, stored = false;
         for (Operation* user : v.getUsers()) {
-            if (isa<func::ReturnOp>(user)) return;  // escapes as the result
-            if (user->getBlock() != def_block) {
-                foreign = true;
-                continue;
-            }
-            // Branch operands carry the value into the destination block's
-            // args — the destination owns the object from there.
+            if (isa<func::ReturnOp>(user)) return 0;  // escapes as the result
             if (user->hasTrait<OpTrait::IsTerminator>()) {
                 flows = true;
                 continue;
@@ -127,24 +216,60 @@ struct InsertRuntimeDropsPass
             // on the ABI boundary, so be conservative.
             if (auto uc = dyn_cast<func::CallOp>(user)) {
                 std::string cname = uc.getCallee().str();
-                if (guards_args(cname) ||
-                    cname.rfind("nv_", 0) != 0) {
+                if (guards_args(cname) || cname.rfind("nv_", 0) != 0) {
                     stored = true;
                     continue;
                 }
             }
-            if (!last || last->isBeforeInBlock(user)) last = user;
+            uses.push_back(user);
         }
-        if (foreign || flows || stored || !last) return;
+        if (flows || stored) {
+            if (debug_on)
+                llvm::errs() << "[drops] skip " << producer_label(v)
+                             << " (flows=" << flows << " stored=" << stored
+                             << " uses=" << uses.size() << ")\n";
+            return 0;
+        }
 
-        b.setInsertionPointAfter(last);
-        b.create<func::CallOp>(last->getLoc(), drop_fn, ValueRange{v});
+        // Unused value: nothing can reference it, so it dies at its definition
+        // (a block arg dies at the top of its block). Without this an unused
+        // temporary — `n = len(s)` where n is never read — leaks.
+        if (uses.empty()) {
+            Operation* def = v.getDefiningOp();
+            Location loc = def ? def->getLoc() : b.getUnknownLoc();
+            if (def)            b.setInsertionPointAfter(def);
+            else if (!def_block->empty()) b.setInsertionPointToStart(def_block);
+            else                return 0;
+            b.create<func::CallOp>(loc, drop_fn, ValueRange{v});
+            if (debug_on)
+                llvm::errs() << "[drops] 1 drop (unused) for "
+                             << producer_label(v) << "\n";
+            return 1;
+        }
+
+        // Drop after each use nothing else can reach. Uses on mutually exclusive
+        // paths are each last and each gets its own drop; exactly one of them
+        // executes.
+        int inserted = 0;
+        for (Operation* u : uses) {
+            if (other_use_reachable(u, uses, def_block)) continue;
+            b.setInsertionPointAfter(u);
+            b.create<func::CallOp>(u->getLoc(), drop_fn, ValueRange{v});
+            ++inserted;
+        }
+        if (debug_on)
+            llvm::errs() << "[drops] " << inserted << " drop(s) for "
+                         << producer_label(v) << " (uses=" << uses.size()
+                         << ")\n";
+        return inserted;
     }
 
     void runOnOperation() override {
         ModuleOp module = getOperation();
         OpBuilder b(module.getContext());
         func::FuncOp drop_fn = get_or_create_drop_fn(module, b);
+        const bool debug_on = std::getenv("NARVAL_DROPS_DEBUG") != nullptr;
+        int total = 0;
 
         for (Operation& op : module.getBody()->getOperations()) {
             auto func = dyn_cast<func::FuncOp>(op);
@@ -154,17 +279,21 @@ struct InsertRuntimeDropsPass
                 bool is_entry = (&block == &entry);
                 if (!is_entry) {
                     for (Value arg : block.getArguments())
-                        try_drop(arg, &block, b, drop_fn,
-                                 /*from_call=*/true);
+                        total += try_drop(arg, &block, b, drop_fn,
+                                          /*from_call=*/true, debug_on);
                 }
                 for (Operation& o : block) {
                     if (o.hasTrait<OpTrait::IsTerminator>()) continue;
                     bool from_call = isa<func::CallOp>(o);
                     for (Value r : o.getResults())
-                        try_drop(r, &block, b, drop_fn, from_call);
+                        total += try_drop(r, &block, b, drop_fn, from_call,
+                                          debug_on);
                 }
             }
         }
+
+        if (debug_on)
+            llvm::errs() << "[drops] " << total << " nv_drop call(s) inserted\n";
     }
 };
 
