@@ -22,6 +22,17 @@ void CallExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         }
     }
 
+    // `read([prompt])` is the only builtin with an optional argument, and its
+    // bridge always takes the prompt. With no argument emitted, the callee read a
+    // stale register (the previous call's first argument) as the prompt — so
+    // `read()` printed the string the last `write` had passed. Pass an explicit
+    // None when the prompt is omitted.
+    if (arg_vals.empty() && caller && caller->kind == NodeType::Identifier &&
+        static_cast<IdentifierNode*>(caller.get())->symbol == "read") {
+        ctx.push_value(nir_call_runtime(ctx, loc, "nv_make_none", {}, {vt}));
+        arg_vals.push_back(ctx.pop_value());
+    }
+
     // ── Step 3: Method call — obj.method(args) → __method_<Class>_<method> ──
     // The receiver becomes the implicit first argument (self).
     if (caller && caller->kind == NodeType::MemberExpression) {
@@ -74,6 +85,7 @@ void CallExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
     // Remap Narval builtins whose C names conflict with keywords
     static const std::pair<const char*, const char*> kBuiltinRemap[] = {
         {"write",  "nv_write_bridge"},
+        {"read",   "nv_read_builtin"},
         {"int",    "nv_int_builtin"},
         {"float",  "nv_float_builtin"},
         {"bool",   "nv_bool_builtin"},
