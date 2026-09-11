@@ -147,6 +147,11 @@ bool ImportProcessor::process_single_import(
                 std::vector<const Stmt*> variable_stmts;
                 std::vector<const Stmt*> function_stmts;
                 std::set<std::string> imported_set(imported_names.begin(), imported_names.end());
+                // `import *` (or an import with no names) brings in everything the
+                // module exports; the name-by-name analysis below only makes sense for
+                // an explicit list, and treating a wildcard as "no names" copied nothing.
+                const bool wildcard = imported_set.empty() ||
+                                      (imported_set.size() == 1 && imported_set.count("*") == 1);
                 std::set<std::string> required_variables;
                 std::set<std::string> required_functions;
                 
@@ -154,7 +159,10 @@ bool ImportProcessor::process_single_import(
                 for (const auto& stmt : module_program->get_statements()) {
                     if (stmt->kind == NodeType::FunctionStatement) {
                         auto* function_stmt = static_cast<const FunctionStmtNode*>(stmt.get());
-                        if (imported_set.find(function_stmt->name) != imported_set.end()) {
+                        if (wildcard && imported_set.empty()) {
+                            // Everything, and no dependency tracing to do.
+                            function_stmts.push_back(stmt.get());
+                        } else if (imported_set.find(function_stmt->name) != imported_set.end()) {
                             function_stmts.push_back(stmt.get());
                             
                             // Analisa o corpo da função para encontrar identifiers usados
@@ -205,7 +213,8 @@ bool ImportProcessor::process_single_import(
                         if (decl_stmt->target && decl_stmt->target->kind == NodeType::Identifier) {
                             auto* id = static_cast<const IdentifierNode*>(decl_stmt->target.get());
                             // Adiciona variável se for requerida por alguma função importada OU se foi originalmente importada
-                            if (required_variables.find(id->symbol) != required_variables.end() || 
+                            if (wildcard ||
+                                required_variables.find(id->symbol) != required_variables.end() ||
                                 imported_set.find(id->symbol) != imported_set.end()) {
                                 variable_stmts.push_back(stmt.get());
                             }
@@ -213,7 +222,8 @@ bool ImportProcessor::process_single_import(
                     } else if (stmt->kind == NodeType::FunctionStatement) {
                         auto* function_stmt = static_cast<const FunctionStmtNode*>(stmt.get());
                         // Adiciona função se for requerida por alguma função importada OU se foi originalmente importada
-                        if (required_functions.find(function_stmt->name) != required_functions.end() || 
+                        if (wildcard ||
+                            required_functions.find(function_stmt->name) != required_functions.end() ||
                             imported_set.find(function_stmt->name) != imported_set.end()) {
                             function_stmts.push_back(stmt.get());
                         }
