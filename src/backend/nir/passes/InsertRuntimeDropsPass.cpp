@@ -251,7 +251,26 @@ struct InsertRuntimeDropsPass
             // on the ABI boundary, so be conservative.
             if (auto uc = dyn_cast<func::CallOp>(user)) {
                 std::string cname = uc.getCallee().str();
-                if (guards_args(cname) || cname.rfind("nv_", 0) != 0) {
+                if (guards_args(cname)) {
+                    // A store bridge takes ownership of the value it STORES, which is its
+                    // LAST operand — not of every operand. Treating any operand as stored
+                    // is why `a = {1, 2, 3}` never got dropped: the array is operand 0 of
+                    // nv_array_set, and the pass read that as "the array was stored
+                    // somewhere", so neither it nor its elements were ever released.
+                    // Closure captures are all captures: there every operand counts.
+                    const bool captures_all = cname.rfind("nv_create_closure", 0) == 0;
+                    const bool is_stored_value =
+                        uc.getNumOperands() > 0 &&
+                        uc.getOperand(uc.getNumOperands() - 1) == v;
+                    if (captures_all || is_stored_value) {
+                        stored = true;
+                        if (stored_by.empty()) stored_by = cname;
+                        continue;
+                    }
+                } else if (cname.rfind("nv_", 0) != 0) {
+                    // A USER function may store the argument anywhere (container,
+                    // closure capture) and there is no incref on the ABI boundary, so be
+                    // conservative.
                     stored = true;
                     if (stored_by.empty()) stored_by = cname;
                     continue;
