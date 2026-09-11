@@ -100,6 +100,17 @@ private:
     ComptimeValue eval_range(RangeExprNode* node);
     std::unique_ptr<Stmt> make_const_decl(const std::string& name, const ComptimeValue& val,
                                           const PositionData* pos);
+
+    // Source queued by `@emit("<narval source>")` while a comptime body runs.
+    // expand_body parses it and splices the resulting statements in right after
+    // the statement that emitted them, so a comptime macro can generate real
+    // `def`s (COMPTIME_SPEC 5.11: parser generators). The queue is shared by the
+    // whole expansion, so emission works from any nesting depth.
+    std::vector<std::string> emitted_sources_;
+    size_t emitted_stmts_ = 0;
+    // Parses and appends every queued source (clears the queue). Enforces a cap so
+    // a macro that keeps emitting can not spin the compiler forever.
+    void drain_emitted(std::vector<std::unique_ptr<Stmt>>& out);
 };
 
 } // namespace nv
