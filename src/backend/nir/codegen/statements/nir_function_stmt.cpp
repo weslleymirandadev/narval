@@ -63,6 +63,18 @@ void FunctionStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
 
     nir_emit_body(body, ctx);
 
+    // @[no_std] entry: terminate through the exit syscall (set by the driver).
+    if (is_void && !nir_no_std_entry().empty() && name == nir_no_std_entry()) {
+        ctx.ensure_runtime_func("_exit",
+            mlir::FunctionType::get(&ctx.get_mlir_context(), {vt}, {}));
+        auto code = mlir::narval::ConstantOp::create(b, loc, vt,
+            b.getI64IntegerAttr(0)).getResult();
+        mlir::narval::CallRuntimeOp::create(
+            b, loc, mlir::TypeRange{},
+            mlir::SymbolRefAttr::get(&ctx.get_mlir_context(), "_exit"),
+            mlir::ValueRange{code});
+    }
+
     if (entry->empty() || !entry->back().hasTrait<mlir::OpTrait::IsTerminator>()) {
         if (is_void) {
             mlir::narval::ReturnOp::create(b, loc, mlir::ValueRange{});
