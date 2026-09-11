@@ -48,6 +48,25 @@ class Sqlite {
         return nv_sqlite_cell(self.handle, index, col);
     }
 
+    # Name of a column of the stored result ("" when out of range).
+    public col_name(col: int): str {
+        return nv_sqlite_col_name(self.handle, col);
+    }
+
+    # One stored row as a map of column name → text, so a cell is read as
+    # `r["nome"]` instead of by its position. This is the shape @derive(sql)'s
+    # from_row() takes, which is what makes a row an instance.
+    public row_map(index: int): map<str, str> {
+        row = {};
+        col = 0;
+        total = self.cols();
+        while col < total {
+            row[self.col_name(col)] = self.cell(index, col);
+            col = col + 1;
+        }
+        return row;
+    }
+
     # Rowid of the last insert.
     public last_id(): int {
         return nv_sqlite_last_id(self.handle);
