@@ -953,6 +953,11 @@ ComptimeValue ComptimeEvaluator::eval_call(CallExprNode* node) {
     arg_vals.reserve(node->args.size());
     for (auto& a : node->args) arg_vals.push_back(eval(a->value.get()));
 
+    return call_func(fn, arg_vals);
+}
+
+ComptimeValue ComptimeEvaluator::call_func(ComptimeFuncNode* fn,
+                                           const std::vector<ComptimeValue>& arg_vals) {
     push_scope();
     size_t i = 0;
     for (auto& p : fn->parameters) {
@@ -969,6 +974,34 @@ ComptimeValue ComptimeEvaluator::eval_call(CallExprNode* node) {
     --call_depth_;
     pop_scope();
     return result;
+}
+
+// A user derive is a `comptime def derive_<name>` in the module. The @derive pass
+// runs before expand_body() — which is what normally registers comptime functions and
+// drops their statements from the AST — so that pass registers the derives it finds
+// from here, before it needs to call one.
+void ComptimeEvaluator::register_user_derives(const CodeBlock& body) {
+    for (const auto& s : body) {
+        if (!s || s->kind != NodeType::ComptimeFuncDef) continue;
+        auto* fn = static_cast<ComptimeFuncNode*>(s.get());
+        if (fn->name.rfind("derive_", 0) == 0) register_func(fn);
+    }
+}
+
+bool ComptimeEvaluator::call_comptime_func(const std::string& name,
+                                           const std::vector<ComptimeValue>& args,
+                                           ComptimeValue& out, std::string& error) {
+    auto it = comptime_funcs_.find(name);
+    if (it == comptime_funcs_.end()) {
+        error = "'" + name + "' is not a comptime function";
+        return false;
+    }
+    out = call_func(it->second, args);
+    if (failed_) {
+        error = error_;
+        return false;
+    }
+    return true;
 }
 
 ComptimeValue ComptimeEvaluator::eval(Expr* expr) {
