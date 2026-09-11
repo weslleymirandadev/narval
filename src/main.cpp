@@ -8,6 +8,7 @@
 #include "frontend/attributes/attribute_mapper.hpp"
 #include "backend/nir/NIRGenerationContext.hpp"
 #include "backend/nir/NarvalOps.h"
+#include "backend/nir/codegen/nir_codegen_utils.hpp"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -392,6 +393,9 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
         auto ast = module_manager.get_combined_ast(module_name);
         nv::CompilationAttributes attrs = nv::map_compilation_attributes(ast.get());
         const bool no_std = attrs.no_std;
+        // Tells the codegen which function is the @[no_std] entry, so it can be
+        // terminated with the exit syscall.
+        nir_no_std_entry().clear();
 
         // Determinar entry point quando @[no_std]:
         //   1. naked_asm def _start / main  — controle total sem wrapper
@@ -412,6 +416,8 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
                 return 1;
             }
         }
+
+        if (no_std) nir_no_std_entry() = no_std_entry;
 
         // Create checker for type inference
         nv::Checker checker;
