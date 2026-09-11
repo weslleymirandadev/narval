@@ -181,6 +181,7 @@ NvObject* nv_get_field(NvObject* obj, const char* key) {
     if (!obj || !key) return NULL;
     Value self = {obj}, result = {NULL};
     nv_object_get_field(&result, &self, key);
+    nv_incref(result.obj);   // a field read owns its reference too
     return result.obj;
 }
 
@@ -218,6 +219,12 @@ NvObject* nv_array_get(NvObject* arr_obj, NvObject* idx_obj) {
     int32_t idx = obj_to_i32(idx_obj);
     Value arr = {arr_obj}, out = {NULL};
     array_get_index_v(&out, &arr, idx);
+    // Reading PROMOTES the element to an owner (the "can_promote_to_owned" branch of
+    // OWNERSHIP_DESIGN Fase 3): the caller gets a reference of its own, so the value it
+    // read may outlive the container. Without the incref this is a pointer INTO the
+    // container and whether it survives is decided by drop ordering, not by semantics —
+    // which is what the last_consumer dance in the drops pass was papering over.
+    nv_incref(out.obj);
     return out.obj;
 }
 
@@ -230,6 +237,7 @@ NvObject* nv_container_get(NvObject* base_obj, NvObject* key_obj) {
         if (key_obj->ob_type != NVStr_Type) return NULL;
         Value self = {base_obj}, out = {NULL};
         nv_object_get_field(&out, &self, ((NVStr*)key_obj)->value);
+        nv_incref(out.obj);   // promoted to an owner, like nv_array_get above
         return out.obj;
     }
     if (base_obj->ob_type == NVStr_Type) {
