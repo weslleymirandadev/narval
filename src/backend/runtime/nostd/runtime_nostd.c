@@ -406,10 +406,17 @@ static void _ns_put_float(double d) {
 
 static int _ns_types_ready = 0;
 
+static NvTypeObject _ns_vector_type;
+static NvTypeObject _ns_array_type;
+static NvTypeObject _ns_none_type;
+
 static void _ns_ensure_types(void) {
     if (_ns_types_ready) return;
     _ns_types_ready = 1;
     nv_ns_init_types();
+    _ns_vector_type.tp_name = "vector"; NVVector_Type = &_ns_vector_type;
+    _ns_array_type.tp_name  = "array";  NVArray_Type  = &_ns_array_type;
+    _ns_none_type.tp_name   = "None";   NVOptionNone_Type = &_ns_none_type;
 }
 
 NvObject* nv_box_int(int64_t v) {
@@ -517,6 +524,16 @@ static void _ns_write_value(Value* v) {
     else if (t == NVFloat_Type) _ns_put_float(((NVFloat*)v->obj)->value);
     else if (t == NVBool_Type)  _ns_put_str(((NVBool*)v->obj)->value ? "true" : "false");
     else if (t == NVChar_Type)  _ns_write_bytes(&((NVChar*)v->obj)->value, 1);
+    else if (t == NVVector_Type || t == NVArray_Type) {
+        NVVector* vec = (NVVector*)v->obj;
+        _ns_put_str("[");
+        for (int i = 0; i < vec->size; ++i) {
+            if (i) _ns_put_str(", ");
+            Value e = vec->elements[i];
+            _ns_write_value(&e);
+        }
+        _ns_put_str("]");
+    }
     else                        _ns_put_str("<object>");
 }
 
@@ -534,4 +551,112 @@ NvObject* nv_write_bridge(NvObject* obj) {
     Value v = {obj};
     nv_write(&v);
     return (NvObject*)0;
+}
+
+/* ── Collections ─────────────────────────────────────────────────────────────
+ * Same element layout as the std runtime (Value* / size / capacity) so the
+ * functions that read them — nv_write, nv_container_get — agree. The allocator is
+ * the bump arena: growth copies into a bigger block and leaks the old one.
+ */
+
+NvObject* nv_make_none(void) {
+    _ns_ensure_types();
+    NvObject* o = (NvObject*)_nv_ns_alloc(sizeof(NvObject));
+    if (o) o->ob_type = NVOptionNone_Type;
+    return o;
+}
+
+static Value* _ns_alloc_elems(int cap) {
+    return (Value*)_nv_ns_alloc((size_t)cap * sizeof(Value));
+}
+
+NvObject* nv_create_vector(NvObject* sz_obj) {
+    _ns_ensure_types();
+    int n = 0;
+    if (sz_obj && sz_obj->ob_type == NVInt_Type) n = ((NVInt*)sz_obj)->value;
+    if (n < 0) n = 0;
+    if (n == 0) n = 4;
+    NVVector* v = (NVVector*)_nv_ns_alloc(sizeof(NVVector));
+    if (!v) return (NvObject*)0;
+    v->ob_base.ob_type = NVVector_Type;
+    v->elements  = _ns_alloc_elems(n);
+    v->size      = 0;
+    v->capacity  = n;
+    return (NvObject*)v;
+}
+
+/* The codegen may ask for an array; in this runtime it is the same object. */
+NvObject* nv_create_array(NvObject* sz_obj) {
+    NvObject* v = nv_create_vector(sz_obj);
+    if (v) v->ob_type = NVArray_Type;   /* v is NvObject* here */
+    return v;
+}
+
+void nv_vector_push(NvObject* vec_obj, NvObject* elem_obj) {
+    if (!vec_obj || (vec_obj->ob_type != NVVector_Type && vec_obj->ob_type != NVArray_Type))
+        return;
+    NVVector* v = (NVVector*)vec_obj;
+    if (v->size >= v->capacity) {
+        int cap = v->capacity ? v->capacity * 2 : 4;
+        Value* ne = _ns_alloc_elems(cap);
+        if (!ne) return;
+        for (int i = 0; i < v->size; ++i) ne[i] = v->elements[i];
+        v->elements = ne;
+        v->capacity = cap;
+    }
+    v->elements[v->size].obj = elem_obj;
+    v->size += 1;
+}
+
+static int _ns_index_of(NvObject* key_obj, int size) {
+    int i = ((NVInt*)key_obj)->value;
+    if (i < 0) i += size;
+    return i;
+}
+
+NvObject* nv_container_get(NvObject* base_obj, NvObject* key_obj) {
+    if (!base_obj || !key_obj) return nv_make_none();
+    _ns_ensure_types();
+    if (base_obj->ob_type == NVVector_Type || base_obj->ob_type == NVArray_Type) {
+        if (key_obj->ob_type != NVInt_Type) return nv_make_none();
+        NVVector* v = (NVVector*)base_obj;
+        const int i = _ns_index_of(key_obj, v->size);
+        if (i < 0 || i >= v->size) return nv_make_none();
+        NvObject* e = v->elements[i].obj;
+        return e ? e : nv_make_none();
+    }
+    if (base_obj->ob_type == NVStr_Type) {
+        /* s[i] is a one-character string, as in the std runtime. */
+        const char* str = ((NVStr*)base_obj)->value;
+        if (!str || key_obj->ob_type != NVInt_Type) return nv_make_none();
+        const int i = ((NVInt*)key_obj)->value;
+        if (i < 0 || !str[i]) return nv_make_none();
+        char buf[2] = { str[i], 0 };
+        Value out = {0};
+        create_str(&out, buf);
+        return out.obj;
+    }
+    return nv_make_none();
+}
+
+void nv_container_set(NvObject* base_obj, NvObject* key_obj, NvObject* value_obj) {
+    if (!base_obj || !key_obj) return;
+    _ns_ensure_types();
+    if (base_obj->ob_type != NVVector_Type && base_obj->ob_type != NVArray_Type) return;
+    if (key_obj->ob_type != NVInt_Type) return;
+    NVVector* v = (NVVector*)base_obj;
+    const int i = _ns_index_of(key_obj, v->size);
+    if (i < 0 || i >= v->size) return;
+    v->elements[i].obj = value_obj;
+}
+
+int32_t nv_container_len(NvObject* base_obj) {
+    if (!base_obj) return 0;
+    if (base_obj->ob_type == NVVector_Type || base_obj->ob_type == NVArray_Type)
+        return ((NVVector*)base_obj)->size;
+    if (base_obj->ob_type == NVStr_Type) {
+        const char* str = ((NVStr*)base_obj)->value;
+        return str ? (int32_t)_ns_strlen(str) : 0;
+    }
+    return 0;
 }
