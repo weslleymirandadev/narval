@@ -223,6 +223,10 @@ public:
         int  unroll     = 0;
     };
     std::optional<OptimizeHints> pending_optimize;
+    // `@[vectorize]` on a loop, consumed by the loop's own codegen (which names the
+    // body block and tags the loop). The checker has already refused a body that
+    // cannot be vectorized, so a set flag here always means a validated loop.
+    bool                                pending_loop_vectorize = false;
 
     // class name → declared method names (see register_class_methods)
     std::unordered_map<std::string, std::vector<std::string>> class_methods_;
