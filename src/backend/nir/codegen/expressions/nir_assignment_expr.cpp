@@ -66,15 +66,15 @@ void AssignmentExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         } else if (target->kind == NodeType::AccessExpression && !nir_no_std_entry().empty()) {
             // a[i] = rhs → nv_array_set(container, index, rhs).
             //
-            // Gated to @[no_std] on purpose: against the std runtime this segfaults, and
-            // the fault is inside the runtime itself (nv_array_set → array_set_index_v
-            // in collections/sequences.c), not in this call — it was simply never
-            // exercised before, because the codegen never emitted an indexed store.
-            // Silently doing nothing is less bad than crashing, so the gate stays until
-            // the runtime's store is fixed. The freestanding runtime implements it and
-            // round-trips (a[i]=v then a[i] reads back).
-            // a[i] = rhs  →  nv_container_set(container, index, rhs)
-            auto* acc = static_cast<AccessExprNode*>(target.get());
+            // Gated to @[no_std] because it segfaults against the std runtime. Blaming
+            // the store was wrong: array_set_index_v (collections/sequences.c) does cast
+            // its Value* to the collection, bounds-check the index and assign — nothing
+            // there crashes. The suspect is what happens around it: after the store, the
+            // value that was replaced (or the argument values) gets dropped by the
+            // ownership pass while the container still points at it, and the next read
+            // walks into freed memory. That fits the fact that no_std works: nv_drop is
+            // a no-op in the freestanding runtime. Next step is the ownership/drop pass,
+            // not this line.
             mlir::Value container, index;
             if (acc->expr)  { acc->expr->nir_codegen(ctx);  container = ctx.pop_value(); }
             if (acc->index) { acc->index->nir_codegen(ctx); index     = ctx.pop_value(); }
