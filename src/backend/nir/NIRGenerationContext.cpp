@@ -1,4 +1,5 @@
 #include "backend/nir/NIRGenerationContext.hpp"
+#include "backend/nir/NirDiagnostics.hpp"
 #include <cstdlib>
 #include "backend/nir/NarvalPasses.h"
 
@@ -308,10 +309,11 @@ NIRGenerationContext::lower_to_llvm_ir(llvm::LLVMContext& llvm_ctx) {
     }
 
     auto run = [&](mlir::PassManager& p) -> bool {
-        // NARVAL_DUMP_NIR_PASSES=1 prints the module after every pass, which is the
-        // only way to see which pass left the IR in the state a conversion refuses.
-        // IR printing requires the context to be single-threaded, hence the switch.
-        if (std::getenv("NARVAL_DUMP_NIR_PASSES")) {
+        // NARVAL_DUMP_NIR_PASSES=1 (or --dump-passes) prints the module after every
+        // pass, which is the only way to see which pass left the IR in the state a
+        // conversion refuses. IR printing requires the context to be single-threaded,
+        // hence the switch.
+        if (nv::diag_dump_passes() || std::getenv("NARVAL_DUMP_NIR_PASSES")) {
             ctx_.disableMultithreading();
             p.enableIRPrinting();
         }
