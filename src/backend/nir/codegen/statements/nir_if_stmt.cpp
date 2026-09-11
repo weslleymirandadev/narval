@@ -2,6 +2,11 @@
 #include "backend/nir/NarvalOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "frontend/ast/statements/if_statement_node.hpp"
+#include "frontend/ast/statements/declaration_stmt_node.hpp"
+#include "frontend/ast/statements/while_stmt_node.hpp"
+#include "frontend/ast/statements/for_stmt_node.hpp"
+#include "frontend/ast/statements/forever_stmt_node.hpp"
+#include "frontend/ast/statements/match_stmt_node.hpp"
 #include "frontend/ast/expressions/assignment_expr_node.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
 #include "frontend/ast/expressions/binary_expr_node.hpp"
@@ -89,31 +94,27 @@ bool is_call_stmt(const Stmt* s) {
     return s && s->kind == NodeType::CallExpression;
 }
 
-// c == nullptr: only the top level of a branch may carry side effects, so a
-// nested conditional is required to be pure assignments.
-bool is_assignable(const Stmt* s, NameList& assigned) {
+// c == nullptr is no longer needed: purity only decides convertibility, and the
+// names a branch writes are collected independently (see collect_assigned).
+bool is_assignable(const Stmt* s) {
     if (!s) return false;
-    if (s->kind == NodeType::AssignmentExpression) {
-        auto* as = static_cast<const AssignmentExprNode*>(s);
-        if (as->op != "=" || !as->target || as->target->kind != NodeType::Identifier)
-            return false;
-        if (!expr_is_pure(as->value.get())) return false;
-        remember(assigned, static_cast<const IdentifierNode*>(as->target.get())->symbol);
-        return true;
-    }
-    return false;
+    if (s->kind != NodeType::AssignmentExpression) return false;
+    auto* as = static_cast<const AssignmentExprNode*>(s);
+    if (as->op != "=" || !as->target || as->target->kind != NodeType::Identifier)
+        return false;
+    return expr_is_pure(as->value.get());
 }
 
-bool block_is_convertible(const CodeBlock& body, NameList& assigned, bool top_level) {
+bool block_is_convertible(const CodeBlock& body, bool top_level) {
     for (const auto& stmt : body) {
         if (!stmt) continue;
-        if (is_assignable(stmt.get(), assigned)) continue;
+        if (is_assignable(stmt.get())) continue;
         if (stmt->kind == NodeType::IfStatement) {
             auto* ifs = static_cast<const IfStatementNode*>(stmt.get());
             // Conditions may contain calls: each one is emitted exactly once per
             // conditional conversion (see cond_cache), so nothing runs twice.
-            if (!block_is_convertible(ifs->consequent, assigned, false)) return false;
-            if (!block_is_convertible(ifs->alternate, assigned, false)) return false;
+            if (!block_is_convertible(ifs->consequent, false)) return false;
+            if (!block_is_convertible(ifs->alternate, false)) return false;
             continue;
         }
         // Side effects are allowed only directly in the branch body: the
@@ -123,6 +124,58 @@ bool block_is_convertible(const CodeBlock& body, NameList& assigned, bool top_le
         return false;
     }
     return true;
+}
+
+// Names a branch writes, nested loops and conditionals included. This is tracked
+// separately from convertibility and must NOT stop at the first statement that
+// cannot be if-converted: `if c { t = ...; total = total + 1 }` cannot be converted
+// (the declaration of `t` is not a select), yet `total` still has to escape the
+// region. Collecting only the convertible prefix left `assigned` empty, the branch
+// was emitted as a plain statement, and the assignment to `total` was dropped in
+// silence (a loop that accumulated inside such an `if` always read 0).
+void collect_assigned(const CodeBlock& body, NameList& assigned) {
+    for (const auto& stmt : body) {
+        if (!stmt) continue;
+        switch (stmt->kind) {
+            case NodeType::DeclarationStatement: {
+                auto* d = static_cast<const DeclarationStmtNode*>(stmt.get());
+                if (d->target && d->target->kind == NodeType::Identifier)
+                    remember(assigned, static_cast<const IdentifierNode*>(d->target.get())->symbol);
+                break;
+            }
+            case NodeType::AssignmentExpression: {
+                auto* a = static_cast<const AssignmentExprNode*>(stmt.get());
+                if (a->target && a->target->kind == NodeType::Identifier)
+                    remember(assigned, static_cast<const IdentifierNode*>(a->target.get())->symbol);
+                break;
+            }
+            case NodeType::IfStatement: {
+                auto* i = static_cast<const IfStatementNode*>(stmt.get());
+                collect_assigned(i->consequent, assigned);
+                collect_assigned(i->alternate, assigned);
+                break;
+            }
+            case NodeType::WhileStatement:
+                collect_assigned(static_cast<const WhileStmtNode*>(stmt.get())->body, assigned);
+                break;
+            case NodeType::ForStatement: {
+                auto* f = static_cast<const ForStmtNode*>(stmt.get());
+                collect_assigned(f->body, assigned);
+                collect_assigned(f->else_block, assigned);
+                break;
+            }
+            case NodeType::ForeverStatement:
+                collect_assigned(static_cast<const ForeverStmtNode*>(stmt.get())->body, assigned);
+                break;
+            case NodeType::MatchStatement: {
+                auto* m = static_cast<const MatchStmtNode*>(stmt.get());
+                for (auto& cb : m->bodies) collect_assigned(cb, assigned);
+                break;
+            }
+            default:
+                break;
+        }
+    }
 }
 
 // Value of `name` after running this body, starting from `current`.
@@ -189,9 +242,25 @@ void IfStatementNode::nir_codegen(nv::NIRGenerationContext& ctx) {
 
     // Every condition is evaluated exactly once (the top-level one here, nested
     // ones through cond_cache), so a call in a condition is fine.
+    //
+    // Which names escape the branch and whether the branch can be if-converted are
+    // two separate questions: the first decides what the `if` yields, the second
+    // only whether the selects can replace it. Answering both with one walk made a
+    // branch that opens with something non-convertible (a declaration of its own, a
+    // loop, a call) report no escaping names at all, and every outer assignment in
+    // it vanished.
+    NameList written;
+    collect_assigned(consequent, written);
+    collect_assigned(alternate, written);
+
+    // A name the branch declares for itself stays inside it; only names that already
+    // live in the enclosing scope are carried out.
     NameList assigned;
-    bool convertible = block_is_convertible(consequent, assigned, true) &&
-                       block_is_convertible(alternate, assigned, true);
+    for (const auto& name : written)
+        if (ctx.lookup(name)) assigned.push_back(name);
+
+    bool convertible = block_is_convertible(consequent, true) &&
+                       block_is_convertible(alternate, true);
 
     // Plain statement form: no results, so nothing has to escape the region.
     auto emit_plain_if = [&](mlir::Value i1_cond) {
