@@ -54,6 +54,48 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
     static thread_local std::shared_ptr<nv::Type> temp_result;
     const auto* call = static_cast<CallExprNode*>(node);
 
+    // ── str(obj) / write(obj) through __str__ ────────────────────────────────
+    // A class that derives `debug` knows how to describe itself, but the runtime can
+    // only print the box: `write(a)` gave `<object:User>` while `a.__str__()` returned
+    // the right text. Methods resolve statically in this language, so the argument is
+    // rewritten into the method call it already knows how to make (the check of the
+    // rewritten call below sets the owner on the new member node). An unknown type, or
+    // a class without `__str__`, keeps the runtime's box printing.
+    if (call->caller && call->caller->kind == NodeType::Identifier &&
+        call->args.size() == 1 && call->args[0] && call->args[0]->value) {
+        const std::string& fn_name =
+            static_cast<IdentifierNode*>(call->caller.get())->symbol;
+        if (fn_name == "write" || fn_name == "str") {
+            // Probing the type must stay silent: the normal path checks the same
+            // expression again and would report the same error twice.
+            const bool had_error = ch->err;
+            auto arg_type = ch->infer_expr(call->args[0]->value.get());
+            if (ch->err && !had_error) {
+                ch->err = false;
+            } else if (arg_type) {
+                auto resolved = ch->unify_ctx.resolve(arg_type);
+                std::shared_ptr<nv::Type> method;
+                if (resolved && resolved->kind == nv::Kind::CLASS) {
+                    method = static_cast<nv::Class*>(resolved.get())->get_method("__str__");
+                } else if (resolved) {
+                    if (!resolved->prototype) {
+                        try { resolved->init_prototype(); } catch (...) {}
+                    }
+                    try { method = resolved->get_method("__str__"); } catch (...) {}
+                }
+                if (method && method->kind == nv::Kind::FUNCTION) {
+                    auto* mcall = static_cast<CallExprNode*>(node);
+                    auto receiver = std::move(mcall->args[0]->value);
+                    auto member = std::make_unique<MemberExprNode>(
+                        std::move(receiver), std::make_unique<IdentifierNode>("__str__"));
+                    std::vector<std::unique_ptr<ArgNode>> no_args;
+                    mcall->args[0]->value =
+                        std::make_unique<CallExprNode>(std::move(member), std::move(no_args));
+                }
+            }
+        }
+    }
+
     // ── Tensor.zeros(d0, d1, ...) / Tensor.ones(d0, d1, ...) ──────────────
     // Recognises MemberExprNode(Tensor, zeros/ones) and builds the return type.
     if (call->caller->kind == NodeType::MemberExpression) {
@@ -269,6 +311,8 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
             // Usar Class::get_method que percorre a cadeia de herança corretamente
             auto* class_type = static_cast<nv::Class*>(object_type.get());
             method_type = class_type->get_method(method_name);
+            // O dono disto é conhecido aqui; o codegen só tem o nome do método.
+            member_expr->resolved_owner = class_type->name;
 
             // Verificar visibilidade
             if (method_type && !class_type->is_method_accessible(method_name, ch->current_class_name)) {
