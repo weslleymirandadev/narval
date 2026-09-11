@@ -229,6 +229,29 @@ std::shared_ptr<nv::Type>& nv::Checker::gettyptr(std::string ty, Node* error_nod
         return types[ty];
     }
 
+    // Map<K, V> — a written map type (a map literal infers it, but a parameter or a
+    // return type has to name it). Without this branch the generic-class fallback
+    // below looks for a class named "map" and reports "Unknown type".
+    if (ty.size() > 6 && ty.substr(0, 4) == "map<" && ty.back() == '>') {
+        std::string inner = ty.substr(4, ty.size() - 5);
+        auto comma = inner.find(',');
+        if (comma != std::string::npos) {
+            auto trim = [](std::string s) {
+                while (!s.empty() && s.front() == ' ') s.erase(s.begin());
+                while (!s.empty() && s.back() == ' ') s.pop_back();
+                return s;
+            };
+            auto key_s = trim(inner.substr(0, comma));
+            auto val_s = trim(inner.substr(comma + 1));
+            auto& key_t = gettyptr(key_s, error_node);
+            auto& val_t = gettyptr(val_s, error_node);
+            auto map_t = std::make_shared<nv::Map>(key_t, val_t);
+            map_t->init_prototype();
+            types[ty] = map_t;
+            return types[ty];
+        }
+    }
+
     // Result<T, E>
     if (ty.size() > 8 && ty.substr(0, 7) == "Result<" && ty.back() == '>') {
         std::string inner = ty.substr(7, ty.size() - 8);
