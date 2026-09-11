@@ -120,6 +120,67 @@ void* map_prototype = NULL;
 // Declaração da função de inicialização de classes builtin
 void initialize_builtin_classes(void);
 
+/* ── Deallocators for the builtin types ─────────────────────────────────────
+ * nv_decref frees the OBJECT block when the count reaches zero, but the heap
+ * payload the object owns — a string's buffer, an array's element vector, a map's
+ * keys and values — was never released, so dropping a string freed 32 bytes and
+ * leaked its bytes. A container also owns the elements stored in it: the drop pass
+ * deliberately does not free a value whose last use is `push`/`set_`, so those are
+ * released here, once, with the container. Cycles (an object reachable from
+ * itself) simply keep the count above zero and leak, they never recurse: the
+ * decref of a cycle stops at the first object it cannot free.
+ */
+
+static void nv_str_dealloc(NvObject* obj) {
+    if (!obj) return;
+    NVStr* s = (NVStr*)obj;
+    free(s->value);
+    free(s);
+}
+
+static void nv_sequence_dealloc(NvObject* obj) {
+    if (!obj) return;
+    NVArray* a = (NVArray*)obj;
+    if (a->elements) {
+        for (int i = 0; i < a->size; ++i) nv_decref(a->elements[i].obj);
+        free(a->elements);
+    }
+    free(a);
+}
+
+static void nv_tuple_dealloc(NvObject* obj) {
+    if (!obj) return;
+    NVTuple* t = (NVTuple*)obj;
+    if (t->fields) {
+        for (int i = 0; i < t->field_count; ++i) nv_decref(t->fields[i].obj);
+        free(t->fields);
+    }
+    free(t);
+}
+
+static void nv_map_dealloc(NvObject* obj) {
+    if (!obj) return;
+    NVMap* m = (NVMap*)obj;
+    if (m->keys) {
+        for (int i = 0; i < m->size; ++i) free(m->keys[i]);
+        free(m->keys);
+    }
+    if (m->values) {
+        for (int i = 0; i < m->size; ++i) nv_decref(m->values[i].obj);
+        free(m->values);
+    }
+    free(m);
+}
+
+// Called after the builtin types exist (initialize_builtin_classes).
+void nv_install_builtin_deallocs(void) {
+    if (NVStr_Type)    NVStr_Type->tp_dealloc    = nv_str_dealloc;
+    if (NVArray_Type)  NVArray_Type->tp_dealloc  = nv_sequence_dealloc;
+    if (NVVector_Type) NVVector_Type->tp_dealloc = nv_sequence_dealloc;
+    if (NVTuple_Type)  NVTuple_Type->tp_dealloc  = nv_tuple_dealloc;
+    if (NVMap_Type)    NVMap_Type->tp_dealloc    = nv_map_dealloc;
+}
+
 // Registrar símbolos globais (para compatibilidade com compilador)
 void register_global_init(void) {
     static int initialized = 0;
