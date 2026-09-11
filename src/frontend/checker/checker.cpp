@@ -133,12 +133,10 @@ void nv::Checker::apply_compilation_attributes(const CompilationAttributes& attr
 
     no_std_attr_node = attrs.no_std_node;
     static const std::vector<std::string> runtime_symbols = {
-        // "write" stays available: the freestanding runtime implements it with the
-        // write(2) syscall, so a @[no_std] program can still report results.
-        // Conversions and write are the freestanding runtime's own; the rest would
-        // need machinery it does not have.
-        "read", "exit",
-        "Some", "Ok", "Err", "json", "Error"
+        // The freestanding runtime now covers write/read/exit and the
+        // Option/Result constructors, so only the pieces that need libc
+        // machinery it does not have stay blocked.
+        "json", "Error"
     };
     for (const auto& name : runtime_symbols) {
         scope->erase_key(name);
@@ -352,8 +350,12 @@ void nv::Checker::push_scope() {
 }
 
 void nv::Checker::pop_scope() {
-    namespaces.pop_back();
-    scope = namespaces[namespaces.size() - 1];
+    // `scope` is not always owned by this stack: the REPL hands a shared
+    // namespace in as the base (and resets `namespaces` to match), so popping the
+    // base — or indexing an empty vector — would silently drop every binding the
+    // caller is keeping alive.
+    if (namespaces.size() > 1) namespaces.pop_back();
+    if (!namespaces.empty()) scope = namespaces.back();
 }
 
 std::unordered_set<int> nv::Checker::get_free_vars_in_env() {
