@@ -840,6 +840,36 @@ CASES = [
         },
         "expected": "8\n",
     },
+    {
+        "name": "assignment_escapes_nonconvertible_branch",
+        "source": (
+            'def cells(row: str): vector {\n'
+            '    parts = [];\n'
+            '    cell = "";\n'
+            '    i = 0;\n'
+            '    while i < len(row) {\n'
+            '        c = row[i];\n'
+            '        if c == "\\t" {\n'
+            '            parts.push(cell);\n'
+            '            cell = "";\n'
+            '        } else {\n'
+            '            cell = cell + c;\n'
+            '        }\n'
+            '        i = i + 1;\n'
+            '    }\n'
+            '    parts.push(cell);\n'
+            '    return parts;\n'
+            '}\n'
+            '\n'
+            'r = cells("a\\tb");\n'
+            'write(len(r));\n'
+            'first = r[0];\n'
+            'second = r[1];\n'
+            'write(first);\n'
+            'write(second);\n'
+        ),
+        "expected": "2\na\nb\n",
+    },
 ]
 
 
