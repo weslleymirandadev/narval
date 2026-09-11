@@ -180,7 +180,18 @@ struct InsertRuntimeDropsPass
     // (the container takes ownership). A value whose last use is such a call
     // must not be dropped by the caller.
     static bool guards_args(const std::string& name) {
-        if (name == "nv_set_field") return true;
+        // The bridges that store are listed one by one: `nv_array_set` and
+        // `nv_tuple_set` end in "set" with no underscore, so the `set_` pattern below
+        // never matched them and the elements of an array literal (`{1, 2, 3}`) were
+        // freed right after being stored — the array was left pointing at freed memory
+        // and reading it back crashed inside nv_write.
+        static const char* kStores[] = {
+            "nv_set_field", "nv_array_set", "nv_tuple_set", "nv_container_set",
+            "nv_vector_push",
+        };
+        for (const char* store : kStores)
+            if (name == store) return true;
+        // The rest are generated per shape or capture count.
         if (name.find("push") != std::string::npos) return true;
         if (name.find("set_") != std::string::npos &&
             name != "nv_set_global") return true;
