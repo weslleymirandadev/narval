@@ -104,6 +104,19 @@ std::shared_ptr<nv::Type>& check_access_expr(nv::Checker* ch, Node* node) {
         int next_id = ch->unify_ctx.get_next_var_id();
         temp_result = std::make_shared<nv::TypeVar>(next_id);
         return temp_result;
+    } else if (expr_type->kind == nv::Kind::TYPE_VAR) {
+        // The element of an untyped `vector` (or of a still-unknown value) is itself
+        // an unknown type, and unknown values are indexable — this is what makes
+        // `rows[i][j]` work. Constraining the type var to `vector` here would wrongly
+        // narrow an inferred parameter, so just yield another unknown.
+        if (!index_is_int && !index_is_string) {
+            ch->error(access_expr->index.get(),
+                      "Access index must be int or string, but got '" + index_type->toString() + "'");
+            return ch->gettyptr("None");
+        }
+        int next_id = ch->unify_ctx.get_next_var_id();
+        temp_result = std::make_shared<nv::TypeVar>(next_id);
+        return temp_result;
     } else if (expr_type->kind == nv::Kind::FUNCTION && index_is_int) {
         // Closure arrays currently flow through annotations like |x:int|:int[2].
         // Treat indexing such a value as retrieving a callable element.
