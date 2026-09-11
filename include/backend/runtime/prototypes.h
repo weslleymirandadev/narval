@@ -8,7 +8,8 @@
 // Estrutura base NvObject - tudo em Narval é um objeto
 typedef struct NvObject {
     struct NvTypeObject* ob_type;    // Ponteiro para o tipo do objeto
-    int32_t ref_count;               // Contador de referências (GC)
+    int32_t ref_count;               // Contador de referências; só via nv_arc_inc/dec
+                                     // (atômico por builtin, ver abaixo)
     uint32_t flags;                  // Flags adicionais
 } NvObject;
 
@@ -528,17 +529,20 @@ void create_null(Value* out);
 /*                    FUNÇÕES DE GERENCIAMENTO DE MEMÓRIA       */
 /* ============================================================= */
 
-// Incrementar contador de referências
-static inline void nv_incref(NvObject* obj) {
+// Contagem de referências ATÔMICA (OWNERSHIP_DESIGN Fase 4). Sem isto, dois contextos de
+// execução mexendo no mesmo objeto ao mesmo tempo perdem uma das operações e liberam
+// duas vezes — é o que impede compartilhar valor entre threads (ver item 3 do
+// IMPLEMENTATION_FLOW). Relaxed no incremento (a ordem que importa vem de quem publica o
+// ponteiro) e acquire/release no decremento, que é quem pode liberar. Builtins do
+// compilador em vez de <stdatomic.h> porque este header também é incluído por C++.
+static inline void nv_arc_inc(NvObject* obj) {
     if (obj) {
-        obj->ref_count++;
+        __atomic_add_fetch(&obj->ref_count, 1, __ATOMIC_RELAXED);
     }
 }
 
-// Decrementar contador de referências
-static inline void nv_decref(NvObject* obj) {
-    if (obj && --obj->ref_count == 0) {
-        // Liberar objeto
+static inline void nv_arc_dec(NvObject* obj) {
+    if (obj && __atomic_sub_fetch(&obj->ref_count, 1, __ATOMIC_ACQ_REL) == 0) {
         if (obj->ob_type && obj->ob_type->tp_dealloc) {
             obj->ob_type->tp_dealloc(obj);
         } else {
@@ -546,5 +550,9 @@ static inline void nv_decref(NvObject* obj) {
         }
     }
 }
+
+// Nomes que o resto do runtime já usa: a partir daqui, atômicos.
+static inline void nv_incref(NvObject* obj) { nv_arc_inc(obj); }
+static inline void nv_decref(NvObject* obj) { nv_arc_dec(obj); }
 
 #endif /* PROTOTYPES_H */
