@@ -1,4 +1,9 @@
 #include "frontend/comptime/derive_generator.hpp"
+#include "frontend/comptime/comptime_evaluator.hpp"
+#include "frontend/ast/program.hpp"
+#include "frontend/lexer/lexer.hpp"
+#include "frontend/lexer/lexer_error.hpp"
+#include "frontend/parser/parser.hpp"
 #include "frontend/ast/ast.hpp"
 #include "frontend/ast/statements/class_stmt_node.hpp"
 #include "frontend/ast/statements/function_stmt_node.hpp"
@@ -12,9 +17,6 @@
 #include "frontend/ast/expressions/boolean_literal_node.hpp"
 #include "frontend/ast/expressions/member_expr_node.hpp"
 #include "frontend/ast/expressions/numeric_literal_node.hpp"
-#include "frontend/ast/expressions/access_expr_node.hpp"
-#include "frontend/ast/expressions/map_node.hpp"
-#include "frontend/ast/expressions/key_value_node.hpp"
 #include "frontend/ast/expressions/param_node.hpp"
 #include "frontend/ast/expressions/string_literal_node.hpp"
 
@@ -126,29 +128,45 @@ ParamNode param(const std::string& name, const std::string& type) {
     return ParamNode(m);
 }
 
-// OpenAPI 3.0 type of a field type; empty when there is no mapping.
-std::string openapi_type(const std::string& t) {
-    if (t == "str" || t == "string") return "string";
-    if (t == "int") return "integer";
-    if (t == "float") return "number";
-    if (t == "bool") return "boolean";
-    return "";
-}
 
-// SQL column type of a field type; empty when there is no mapping (a class or a
-// collection field has no column of its own).
-std::string sql_type(const std::string& t) {
-    if (t == "str" || t == "string") return "TEXT";
-    if (t == "char") return "TEXT";
-    if (t == "int") return "INTEGER";
-    if (t == "bool") return "INTEGER";
-    if (t == "float") return "REAL";
-    return "";
-}
-
-// `r[key]` — indexes a map by a literal key.
-ExprPtr map_get(const std::string& base, const std::string& key) {
-    return std::make_unique<AccessExprNode>(id(base), str_lit(key));
+// Splices what a user derive returned. The text is ordinary Narval source, so it
+// goes through the same lexer/parser as a file — wrapped in a throwaway class, since
+// a class body is exactly the grammar for members. Returning source instead of asking
+// the author for an AST-building API is what keeps user derives from drifting away
+// from the frontend as the language grows.
+bool splice_members(const std::string& name, const std::string& src, ClassStmtNode* cls,
+                    std::string& error) {
+    try {
+        Lexer lexer("class __derive_splice {\n" + src + "\n}", "comptime[@derive " + name + "]");
+        auto tokens = lexer.tokenize();
+        Parser parser;
+        auto ast = parser.produce_ast(tokens);
+        ClassStmtNode* holder = nullptr;
+        if (ast && ast->kind == NodeType::Program) {
+            auto* prog = static_cast<Program*>(ast.get());
+            for (auto& s : prog->body)
+                if (s && s->kind == NodeType::ClassStatement)
+                    holder = static_cast<ClassStmtNode*>(s.get());
+        }
+        if (!holder) {
+            error = "@derive(" + name + "): the generated members did not parse as a class body";
+            return false;
+        }
+        if (holder->fields.empty() && holder->methods.empty()) {
+            // The parser recovers from a bad member at the next `}` and reports it
+            // itself, which can leave an empty body: saying so beats pretending the
+            // derive generated nothing on purpose.
+            error = "@derive(" + name + "): the generated source has no members "
+                    "(the member grammar is `name: type;` or `name(params): type { ... }`)";
+            return false;
+        }
+        for (auto& f : holder->fields) cls->fields.push_back(std::move(f));
+        for (auto& m : holder->methods) cls->methods.push_back(std::move(m));
+        return true;
+    } catch (const std::exception& e) {
+        error = "@derive(" + name + "): the generated members are not valid Narval: " + e.what();
+        return false;
+    }
 }
 
 bool has_method(const ClassStmtNode* cls, const std::string& name) {
@@ -160,11 +178,17 @@ bool has_method(const ClassStmtNode* cls, const std::string& name) {
 } // anonymous namespace
 
 bool apply_derive(Checker* checker, ClassStmtNode* cls,
-                  const std::vector<std::string>& derives, std::string& error) {
+                  const std::vector<std::string>& derives, std::string& error,
+                  ComptimeEvaluator* ct) {
     if (!cls) return true;
 
+    // Only what the language itself needs to work: the operator protocols
+    // (==, <, hash for maps) and the two object-level ones (str for printing, a
+    // copy). Serialization, schemas, DB mapping and anything format-specific is
+    // stdlib: it belongs in a `comptime def derive_<name>` the author writes, not
+    // in the compiler.
     static const std::unordered_set<std::string> known = {
-        "eq", "debug", "json", "hash", "ord", "clone", "from_json", "openapi", "sql",
+        "eq", "debug", "hash", "ord", "clone",
     };
 
     for (const std::string& raw : derives) {
@@ -173,21 +197,12 @@ bool apply_derive(Checker* checker, ClassStmtNode* cls,
                        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         if (d.empty()) continue;
 
-        if (!known.count(d)) {
-            error = "unknown derive '" + raw + "' (supported: clone, debug, eq, from_json, hash, json, openapi, ord, sql)";
-            return false;
-        }
-
         // Never override a hand-written method.
         if (d == "eq" && has_method(cls, "__eq__")) continue;
         if (d == "debug" && has_method(cls, "__str__")) continue;
-        if (d == "json" && has_method(cls, "to_json")) continue;
         if (d == "hash" && has_method(cls, "__hash__")) continue;
         if (d == "ord" && has_method(cls, "__lt__")) continue;
         if (d == "clone" && has_method(cls, "clone")) continue;
-        if (d == "from_json" && has_method(cls, "from_json")) continue;
-        if (d == "openapi" && has_method(cls, "schema")) continue;
-        if (d == "sql" && has_method(cls, "to_row")) continue;
 
         if (cls->fields.empty()) {
             error = "@derive(" + d + "): class '" + cls->name + "' has no fields";
@@ -212,16 +227,6 @@ bool apply_derive(Checker* checker, ClassStmtNode* cls,
             }
             parts.push_back(str_lit(" }"));
             cls->methods.push_back(make_method("__str__", {}, "str", chain("+", std::move(parts))));
-        } else if (d == "json") {
-            std::vector<ExprPtr> parts;
-            parts.push_back(str_lit("{"));
-            for (size_t i = 0; i < cls->fields.size(); ++i) {
-                if (i) parts.push_back(str_lit(", "));
-                parts.push_back(str_lit("\"" + cls->fields[i]->name + "\": "));
-                parts.push_back(field_repr("self", cls->fields[i].get()));
-            }
-            parts.push_back(str_lit("}"));
-            cls->methods.push_back(make_method("to_json", {}, "str", chain("+", std::move(parts))));
         } else if (d == "hash") {
             // h = (((v0 * 31) + v1) * 31) + v2 ... over the field scalars.
             ExprPtr acc = field_scalar("self", cls->fields[0].get());
@@ -252,136 +257,56 @@ bool apply_derive(Checker* checker, ClassStmtNode* cls,
                 body.push_back(assign_stmt(field_of("out", f->name), field_of("self", f->name)));
             body.push_back(std::make_unique<ReturnStmtNode>(id("out")));
             cls->methods.push_back(make_method_block("clone", {}, cls->name, std::move(body)));
-        } else if (d == "from_json") {
-            // Reads the fields out of a JSON object. Scalars only: a nested class
-            // or a collection field has no reader yet, and is reported instead of
-            // generating code that would silently produce nothing.
-            CodeBlock body;
-            body.push_back(assign_stmt(id("out"),
-                                       std::make_unique<NewExprNode>(cls->name, cls->name)));
-            for (const auto& f : cls->fields) {
-                ExprPtr fallback;
-                if (f->type == "str" || f->type == "string") {
-                    fallback = str_lit("");
-                } else if (f->type == "int") {
-                    fallback = int_lit(0);
-                } else if (f->type == "float") {
-                    fallback = std::make_unique<NumericLiteralNode>("0.0");
-                } else if (f->type == "bool") {
-                    fallback = std::make_unique<BooleanLiteralNode>(false);
-                } else {
-                    error = "@derive(from_json): field '" + f->name +
-                            "' has unsupported type '" + f->type + "'";
-                    return false;
-                }
-                // The reader hands back the default for a missing key, so no
-                // branch is needed: a ternary would evaluate both sides (the
-                // selection is a plain call) and int("") raises.
-                ExprPtr field_val = call3("json_field", id("s"), str_lit(f->name), std::move(fallback));
-                ExprPtr val;
-                if (f->type == "int") {
-                    val = call1("int", std::move(field_val));
-                } else if (f->type == "float") {
-                    val = call1("float", std::move(field_val));
-                } else {
-                    val = std::move(field_val);
-                }
-                body.push_back(assign_stmt(field_of("out", f->name), std::move(val)));
+        } else {
+            // Not a builtin: a USER derive, written in this module as
+            //
+            //     comptime def derive_log(cls: str, fields: array): str {
+            //         out = "";
+            //         for f in fields {
+            //             out = out + "public def " + f.name + "_text(): str { return str(self." + f.name + "); }\n";
+            //         }
+            //         return out;
+            //     }
+            //
+            // `cls` is the class name and `fields` holds one descriptor per field
+            // (name / type_name / index, the shape `type.fields` uses). Whatever
+            // members it returns as source are parsed and spliced into the class here,
+            // so a derive is written in Narval, not in the compiler.
+            const std::string fn_name = "derive_" + d;
+            if (!ct || !ct->has_comptime_func(fn_name)) {
+                error = "unknown derive '" + raw + "' (builtin: clone, debug, eq, hash, ord; "
+                        "or declare `comptime def " + fn_name + "`)";
+                return false;
             }
-            body.push_back(std::make_unique<ReturnStmtNode>(id("out")));
-            cls->methods.push_back(make_method_block("from_json", { param("s", "str") }, cls->name,
-                                                     std::move(body)));
-        } else if (d == "openapi") {
-            // OpenAPI 3.0 schema of the type, as JSON text (the spec's schema()
-            // returns a map, which needs runtime map support).
-            std::vector<ExprPtr> parts;
-            parts.push_back(str_lit("{\"type\": \"object\", \"properties\": {"));
-            for (size_t i = 0; i < cls->fields.size(); ++i) {
-                const auto& f = cls->fields[i];
-                const std::string t = openapi_type(f->type);
-                if (t.empty()) {
-                    error = "@derive(openapi): field '" + f->name +
-                            "' has unsupported type '" + f->type + "'";
-                    return false;
-                }
-                if (i) parts.push_back(str_lit(", "));
-                parts.push_back(str_lit("\"" + f->name + "\": {\"type\": \"" + t + "\"}"));
+            std::vector<ComptimeValue> args;
+            args.push_back(ComptimeValue::from_str(cls->name));
+            // One descriptor per field, with the same shape `type.fields(T)` hands to
+            // a comptime function (name / type_name / index), so a derive can do
+            // `for f in fields { ... f.name ... f.type_name ... }`.
+            std::vector<ComptimeValue> field_vals;
+            field_vals.reserve(cls->fields.size());
+            for (size_t fi = 0; fi < cls->fields.size(); ++fi) {
+                const auto& f = cls->fields[fi];
+                std::unordered_map<std::string, ComptimeValue> desc;
+                desc["name"]      = ComptimeValue::from_str(f->name);
+                desc["type_name"] = ComptimeValue::from_str(f->type);
+                desc["index"]     = ComptimeValue::from_int(static_cast<int64_t>(fi));
+                field_vals.push_back(ComptimeValue::from_struct(std::move(desc)));
             }
-            parts.push_back(str_lit("}, \"required\": ["));
-            for (size_t i = 0; i < cls->fields.size(); ++i) {
-                if (i) parts.push_back(str_lit(", "));
-                parts.push_back(str_lit("\"" + cls->fields[i]->name + "\""));
-            }
-            parts.push_back(str_lit("]}"));
-            cls->methods.push_back(make_method("schema", {}, "str", chain("+", std::move(parts))));
-        } else if (d == "sql") {
-            // Row mapping for the SQL bindings. A row is a map of column name → text
-            // (that is what SQLite binds and what the stdlib hands over), so every
-            // field is stringified on the way out and converted back through its own
-            // type on the way in. A field with no column of its own (a class, a
-            // collection) is reported instead of generating a row that would drop it.
-            for (const auto& f : cls->fields) {
-                if (sql_type(f->type).empty()) {
-                    error = "@derive(sql): field '" + f->name +
-                            "' has unsupported type '" + f->type + "'";
-                    return false;
-                }
-            }
+            args.push_back(ComptimeValue::from_array(std::move(field_vals)));
 
-            // to_row(): map<str, str>
-            {
-                std::vector<ExprPtr> pairs;
-                for (const auto& f : cls->fields)
-                    pairs.push_back(std::make_unique<KeyValueNode>(
-                        str_lit(f->name), call1("str", field_of("self", f->name))));
-                cls->methods.push_back(make_method("to_row", {}, "map<str, str>",
-                                                   std::make_unique<MapNode>(std::move(pairs))));
+            ComptimeValue res;
+            std::string call_error;
+            if (!ct->call_comptime_func(fn_name, args, res, call_error)) {
+                error = "@derive(" + d + "): " + call_error;
+                return false;
             }
-
-            // create_table(): the DDL these rows live in. A field named `id` becomes
-            // the primary key — every row-mapped class needs one to be addressable.
-            {
-                std::string table = cls->name;
-                std::transform(table.begin(), table.end(), table.begin(),
-                               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-                std::vector<ExprPtr> parts;
-                parts.push_back(str_lit("CREATE TABLE " + table + " ("));
-                for (size_t i = 0; i < cls->fields.size(); ++i) {
-                    const auto& f = cls->fields[i];
-                    if (i) parts.push_back(str_lit(", "));
-                    std::string col = f->name + " " + sql_type(f->type);
-                    if (f->name == "id") col += " PRIMARY KEY";
-                    parts.push_back(str_lit(col));
-                }
-                parts.push_back(str_lit(")"));
-                cls->methods.push_back(
-                    make_method("create_table", {}, "str", chain("+", std::move(parts))));
+            if (res.tag != ComptimeValue::Tag::Str) {
+                error = "@derive(" + d + "): " + fn_name +
+                        " must return the members as a str";
+                return false;
             }
-
-            // from_row(r: map<str, str>): Self — the inverse of to_row(). Every column
-            // has to be present: int()/float() raise on empty text instead of
-            // inventing a default, and create_table() is what guarantees the columns.
-            // A bool column goes through bool(text), which reads "", "false" and "0"
-            // as false — so both to_row()'s "true"/"false" and the 1/0 a DDL INTEGER
-            // column stores come back as the right value.
-            {
-                CodeBlock body;
-                body.push_back(assign_stmt(id("out"),
-                                           std::make_unique<NewExprNode>(cls->name, cls->name)));
-                for (const auto& f : cls->fields) {
-                    ExprPtr raw = map_get("r", f->name);
-                    ExprPtr val;
-                    if (f->type == "int")         val = call1("int", std::move(raw));
-                    else if (f->type == "float")  val = call1("float", std::move(raw));
-                    else if (f->type == "char")   val = call1("char", std::move(raw));
-                    else if (f->type == "bool")   val = call1("bool", std::move(raw));
-                    else                          val = std::move(raw);
-                    body.push_back(assign_stmt(field_of("out", f->name), std::move(val)));
-                }
-                body.push_back(std::make_unique<ReturnStmtNode>(id("out")));
-                cls->methods.push_back(make_method_block(
-                    "from_row", { param("r", "map<str, str>") }, cls->name, std::move(body)));
-            }
+            if (!splice_members(d, res.s_val, cls, error)) return false;
         }
     }
 
