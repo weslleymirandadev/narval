@@ -199,7 +199,18 @@ void nv_bool_convert(Value* out, Value* input) {
     if (t == NVFloat_Type)  { create_bool(out, ((NVFloat*)input->obj)->value != 0.0); return; }
     if (t == NVBool_Type)   { create_bool(out, ((NVBool*)input->obj)->value); return; }
     if (t == NVChar_Type)   { create_bool(out, ((NVChar*)input->obj)->value != '\0'); return; }
-    if (t == NVStr_Type)    { NVStr* s = (NVStr*)input->obj; create_bool(out, s->value && s->len > 0); return; }
+    if (t == NVStr_Type) {
+        // Text: "" , "false" and "0" are the false forms. A non-empty string used to be
+        // true unconditionally, which made bool(text) a one-way door — "false" came back
+        // true, so a bool could not survive a round trip through its own text form (that
+        // is what @derive(sql)'s from_row() has to do).
+        NVStr* s = (NVStr*)input->obj;
+        const char* v = s->value;
+        if (!v || s->len == 0) { create_bool(out, 0); return; }
+        create_bool(out, !(strcmp(v, "false") == 0 || strcmp(v, "0") == 0 ||
+                           strcmp(v, "0.0") == 0));
+        return;
+    }
     if (t == NVArray_Type)  { create_bool(out, ((NVArray*)input->obj)->size > 0); return; }
     if (t == NVVector_Type) { create_bool(out, ((NVVector*)input->obj)->size > 0); return; }
     if (t == NVMap_Type)    { create_bool(out, ((NVMap*)input->obj)->size > 0); return; }
