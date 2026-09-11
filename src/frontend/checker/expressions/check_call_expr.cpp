@@ -350,7 +350,7 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
         // "write" is not listed: the freestanding runtime provides it on top of the
         // write(2) syscall, so a @[no_std] program can report what it computed.
         static const std::unordered_set<std::string> stdlib_builtins = {
-            "read", "exit", "str", "int", "char", "float", "bool",
+            "read", "exit",
             "Some", "Ok", "Err"
         };
         auto* id = static_cast<IdentifierNode*>(call->caller.get());
