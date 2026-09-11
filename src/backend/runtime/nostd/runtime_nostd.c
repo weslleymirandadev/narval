@@ -409,6 +409,9 @@ static int _ns_types_ready = 0;
 static NvTypeObject _ns_vector_type;
 static NvTypeObject _ns_array_type;
 static NvTypeObject _ns_none_type;
+static NvTypeObject _ns_some_type;
+static NvTypeObject _ns_ok_type;
+static NvTypeObject _ns_err_type;
 
 static void _ns_ensure_types(void) {
     if (_ns_types_ready) return;
@@ -416,7 +419,11 @@ static void _ns_ensure_types(void) {
     nv_ns_init_types();
     _ns_vector_type.tp_name = "vector"; NVVector_Type = &_ns_vector_type;
     _ns_array_type.tp_name  = "array";  NVArray_Type  = &_ns_array_type;
-    _ns_none_type.tp_name   = "None";   NVOptionNone_Type = &_ns_none_type;
+    _ns_none_type.tp_name   = "Option::None"; NVOptionNone_Type = &_ns_none_type;
+    /* Option/Result tags the constructors and the printers agree on. */
+    _ns_some_type.tp_name   = "Option::Some"; NVOptionSome_Type = &_ns_some_type;
+    _ns_ok_type.tp_name     = "Result::Ok";   NVResultOk_Type   = &_ns_ok_type;
+    _ns_err_type.tp_name    = "Result::Err";  NVResultErr_Type  = &_ns_err_type;
 }
 
 NvObject* nv_box_int(int64_t v) {
@@ -534,7 +541,13 @@ static void _ns_write_value(Value* v) {
         }
         _ns_put_str("]");
     }
-    else                        _ns_put_str("<object>");
+    else {
+        /* Unknown objects print their tag, like the std runtime's
+         * "<object:Name>" fallback (Option/Result land here). */
+        _ns_put_str("<object:");
+        _ns_put_str(t->tp_name ? t->tp_name : "object");
+        _ns_put_str(">");
+    }
 }
 
 void nv_write(Value* v) {
@@ -564,6 +577,37 @@ NvObject* nv_make_none(void) {
     NvObject* o = (NvObject*)_nv_ns_alloc(sizeof(NvObject));
     if (o) o->ob_type = NVOptionNone_Type;
     return o;
+}
+
+/* Option/Result constructors — the codegen emits these for Some(x)/Ok(x)/Err(x).
+ * Layout is the same for all three (tag + one inner value), so one builder serves
+ * them; the tag is what the printers and any future unwrap dispatch on. */
+static NvObject* _ns_make_wrapped(NvTypeObject* tag, NvObject* inner) {
+    _ns_ensure_types();
+    NVOptionSome* o = (NVOptionSome*)_nv_ns_alloc(sizeof(NVOptionSome));
+    if (!o) return (NvObject*)0;
+    o->ob_base.ob_type   = tag;
+    o->ob_base.ref_count = 1;
+    o->ob_base.flags     = 0;
+    o->inner.obj         = inner;
+    return (NvObject*)o;
+}
+
+NvObject* nv_make_some(NvObject* val) { return _ns_make_wrapped(NVOptionSome_Type, val); }
+NvObject* nv_make_ok(NvObject* val)   { return _ns_make_wrapped(NVResultOk_Type,   val); }
+NvObject* nv_make_err(NvObject* val)  { return _ns_make_wrapped(NVResultErr_Type,  val); }
+
+/* Inner value of Some/Ok; NULL for anything else (the std runtime's contract). */
+NvObject* nv_unwrap_result(NvObject* obj) {
+    if (!obj || !obj->ob_type) return (NvObject*)0;
+    if (obj->ob_type == NVOptionSome_Type) return ((NVOptionSome*)obj)->inner.obj;
+    if (obj->ob_type == NVResultOk_Type)   return ((NVResultOk*)obj)->inner.obj;
+    return (NvObject*)0;
+}
+
+int32_t nv_is_result_err_i1(NvObject* obj) {
+    if (!obj || !obj->ob_type) return 0;
+    return (obj->ob_type == NVResultErr_Type) ? 1 : 0;
 }
 
 static Value* _ns_alloc_elems(int cap) {
@@ -664,6 +708,27 @@ int32_t nv_container_len(NvObject* base_obj) {
         return str ? (int32_t)_ns_strlen(str) : 0;
     }
     return 0;
+}
+
+/* Raw length used by the for-in lowering (a plain int, not a boxed value). */
+int32_t nv_len(NvObject* base_obj) {
+    return nv_container_len(base_obj);
+}
+
+/* Element access used by the for-in lowering. Out-of-range yields None. */
+NvObject* nv_get_at(NvObject* base_obj, int32_t idx) {
+    if (!base_obj) return nv_make_none();
+    Value key = {0};
+    create_int(&key, idx);
+    return nv_container_get(base_obj, key.obj);
+}
+
+/* Boxed length for the language-level `len(x)` builtin. */
+NvObject* nv_len_builtin(NvObject* base_obj) {
+    _ns_ensure_types();
+    Value out = {0};
+    create_int(&out, nv_container_len(base_obj));
+    return out.obj;
 }
 
 /* ── Conversions (int / float / str / bool / char) ────────────────────────────
@@ -783,6 +848,35 @@ NvObject* nv_char_builtin(NvObject* o) {
     }
     Value out = {0};
     create_char(&out, c);
+    return out.obj;
+}
+
+/* `exit(code)` from user code — same syscall the entry terminator uses. */
+NvObject* nv_exit_builtin(NvObject* o) {
+    _exit(o);
+    return (NvObject*)0;
+}
+
+/* `read([prompt])` — read(2) on stdin until a newline or EOF, boxed as a string.
+ * There is no libc, so the buffer is a fixed static arena; longer lines are
+ * truncated to what fits. */
+NvObject* nv_read_builtin(NvObject* prompt) {
+    _ns_ensure_types();
+    if (prompt && prompt->ob_type == NVStr_Type && ((NVStr*)prompt)->value)
+        _ns_put_str(((NVStr*)prompt)->value);
+
+    static char buf[256];
+    size_t n = 0;
+    while (n + 1 < sizeof(buf)) {
+        char c = 0;
+        long got = _ns_syscall3(0 /* read(2) */, 0 /* stdin */, (long)&c, 1);
+        if (got <= 0) break;          /* EOF or error */
+        if (c == '\n') break;
+        buf[n++] = c;
+    }
+    buf[n] = 0;
+    Value out = {0};
+    create_str(&out, buf);
     return out.obj;
 }
 
