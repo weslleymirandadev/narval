@@ -31,7 +31,9 @@ std::unique_ptr<Node> parse_decorator_stmt(Parser* parser) {
     entry.name = name_tok.lexeme;
 
     // Optional argument list: @name(arg, key=val, ...)
+    bool statement_shaped = false;
     if (parser->current_token().type == TokenType::OPAREN) {
+        statement_shaped = true;
         parser->consume_token();  // '('
 
         while (parser->current_token().type != TokenType::CPAREN &&
@@ -87,6 +89,7 @@ std::unique_ptr<Node> parse_decorator_stmt(Parser* parser) {
     // Each statement is either `cmd_name(args)` or a bare `cmd_name`.
     // Equivalent to @name(cmd_name=args, cmd_name2, ...).
     } else if (parser->current_token().type == TokenType::OBRACE) {
+        statement_shaped = true;
         parser->consume_token();  // '{'
 
         while (parser->current_token().type != TokenType::CBRACE &&
@@ -135,6 +138,14 @@ std::unique_ptr<Node> parse_decorator_stmt(Parser* parser) {
 
     node->entries.push_back(entry);
     node->decorators.push_back(name_tok.lexeme);  // legacy compat
+
+    // A trailing ';' closes a statement-shaped decorator (@name(args) / @name { }).
+    // Without this the ';' fell through to the expression parser ("Unexpected token
+    // in primary expression"), which made `@compileError("...");` a parse error.
+    // A bare `@decorator` does NOT consume it: it decorates the declaration that
+    // follows.
+    if (statement_shaped && parser->current_token().type == TokenType::SEMICOLON)
+        parser->consume_token();
 
     node->position = std::make_unique<PositionData>(
         at_tok.line, at_tok.column_start, name_tok.column_end,
