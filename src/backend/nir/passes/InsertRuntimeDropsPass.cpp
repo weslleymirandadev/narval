@@ -30,6 +30,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 
+#include <functional>
 #include <string>
 
 using namespace mlir;
@@ -271,25 +272,34 @@ struct InsertRuntimeDropsPass
         const bool debug_on = std::getenv("NARVAL_DROPS_DEBUG") != nullptr;
         int total = 0;
 
-        for (Operation& op : module.getBody()->getOperations()) {
-            auto func = dyn_cast<func::FuncOp>(op);
-            if (!func || func.empty() || func.isExternal()) continue;
-            Block& entry = func.front();
-            for (Block& block : func.getBlocks()) {
-                bool is_entry = (&block == &entry);
-                if (!is_entry) {
-                    for (Value arg : block.getArguments())
-                        total += try_drop(arg, &block, b, drop_fn,
-                                          /*from_call=*/true, debug_on);
-                }
-                for (Operation& o : block) {
-                    if (o.hasTrait<OpTrait::IsTerminator>()) continue;
+        // Every block of the function, regions included: a result-carrying scf.if
+        // keeps its body in a region, and those blocks are NOT in the function's own
+        // block list, so a temporary produced inside one was dropped by nobody.
+        std::function<void(Block&, bool)> visit = [&](Block& block, bool is_entry) {
+            if (!is_entry) {
+                for (Value arg : block.getArguments())
+                    total += try_drop(arg, &block, b, drop_fn,
+                                      /*from_call=*/true, debug_on);
+            }
+            for (Operation& o : block) {
+                if (!o.hasTrait<OpTrait::IsTerminator>()) {
                     bool from_call = isa<func::CallOp>(o);
                     for (Value r : o.getResults())
                         total += try_drop(r, &block, b, drop_fn, from_call,
                                           debug_on);
                 }
+                for (Region& region : o.getRegions())
+                    for (Block& inner : region)
+                        visit(inner, /*is_entry=*/false);
             }
+        };
+
+        for (Operation& op : module.getBody()->getOperations()) {
+            auto func = dyn_cast<func::FuncOp>(op);
+            if (!func || func.empty() || func.isExternal()) continue;
+            Block& entry = func.front();
+            for (Block& block : func.getBlocks())
+                visit(block, &block == &entry);
         }
 
         if (debug_on)
