@@ -24,6 +24,7 @@
 // The function-entry block args are intentionally not dropped: the caller
 // owns the objects it passes (and drops them after the call).
 
+#include "backend/nir/NirDiagnostics.hpp"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -175,25 +176,16 @@ struct InsertRuntimeDropsPass
         // come from addressof/getelementptr ops, never from func.call. And
         // only drop results of owning calls (see owned_ret). Block args are
         // carried runtime values and are always owned.
-        if (!from_call) {
-            if (debug_on)
-                llvm::errs() << "[drops] skip non-call result ("
-                             << v.getType() << ")\n";
-            return 0;
-        }
+        if (!from_call) return 0;
         Operation* prod = v.getDefiningOp();
         if (prod) {
             auto call = dyn_cast<func::CallOp>(prod);
-            if (!call) {
-                if (debug_on)
-                    llvm::errs() << "[drops] skip producer " << prod->getName()
-                                 << "\n";
-                return 0;
-            }
+            if (!call) return 0;
             if (!owned_ret(call.getCallee().str())) {
                 if (debug_on)
-                    llvm::errs() << "[drops] skip callee "
-                                 << call.getCallee() << "\n";
+                    llvm::errs() << "[ownership] keep " << call.getCallee()
+                                 << " result: it is a view into another object, "
+                                    "not a fresh one\n";
                 return 0;
             }
         }
@@ -203,8 +195,14 @@ struct InsertRuntimeDropsPass
         // block arg owns it), or stored by a callee that takes ownership.
         SmallVector<Operation*, 4> uses;
         bool flows = false, stored = false;
+        std::string stored_by;
         for (Operation* user : v.getUsers()) {
-            if (isa<func::ReturnOp>(user)) return 0;  // escapes as the result
+            if (isa<func::ReturnOp>(user)) {
+                if (debug_on)
+                    llvm::errs() << "[ownership] keep " << producer_label(v)
+                                 << ": it is returned (the caller owns it now)\n";
+                return 0;  // escapes as the result
+            }
             if (user->hasTrait<OpTrait::IsTerminator>()) {
                 flows = true;
                 continue;
@@ -219,16 +217,24 @@ struct InsertRuntimeDropsPass
                 std::string cname = uc.getCallee().str();
                 if (guards_args(cname) || cname.rfind("nv_", 0) != 0) {
                     stored = true;
+                    if (stored_by.empty()) stored_by = cname;
                     continue;
                 }
             }
             uses.push_back(user);
         }
         if (flows || stored) {
-            if (debug_on)
-                llvm::errs() << "[drops] skip " << producer_label(v)
-                             << " (flows=" << flows << " stored=" << stored
-                             << " uses=" << uses.size() << ")\n";
+            if (debug_on) {
+                llvm::errs() << "[ownership] keep " << producer_label(v) << ": ";
+                if (stored)
+                    llvm::errs() << stored_by
+                                 << " may keep it (no incref across the call)";
+                if (stored && flows) llvm::errs() << ", and it is ";
+                if (flows)
+                    llvm::errs() << "carried by a branch (the destination block "
+                                    "owns it)";
+                llvm::errs() << "\n";
+            }
             return 0;
         }
 
@@ -243,8 +249,8 @@ struct InsertRuntimeDropsPass
             else                return 0;
             b.create<func::CallOp>(loc, drop_fn, ValueRange{v});
             if (debug_on)
-                llvm::errs() << "[drops] 1 drop (unused) for "
-                             << producer_label(v) << "\n";
+                llvm::errs() << "[ownership] drop " << producer_label(v)
+                             << " at its definition: no use at all\n";
             return 1;
         }
 
@@ -259,8 +265,12 @@ struct InsertRuntimeDropsPass
             ++inserted;
         }
         if (debug_on)
-            llvm::errs() << "[drops] " << inserted << " drop(s) for "
-                         << producer_label(v) << " (uses=" << uses.size()
+            llvm::errs() << "[ownership] " << (inserted ? "drop" : "keep") << " "
+                         << producer_label(v) << " after "
+                         << (inserted ? "its last use" : "no use is last")
+                         << " (" << uses.size() << " use"
+                         << (uses.size() == 1 ? "" : "s")
+                         << (inserted ? "" : ", every use can reach another")
                          << ")\n";
         return inserted;
     }
@@ -269,7 +279,8 @@ struct InsertRuntimeDropsPass
         ModuleOp module = getOperation();
         OpBuilder b(module.getContext());
         func::FuncOp drop_fn = get_or_create_drop_fn(module, b);
-        const bool debug_on = std::getenv("NARVAL_DROPS_DEBUG") != nullptr;
+        const bool debug_on = nv::diag_explain_ownership() ||
+                              std::getenv("NARVAL_DROPS_DEBUG") != nullptr;
         int total = 0;
 
         // Every block of the function, regions included: a result-carrying scf.if
@@ -297,13 +308,16 @@ struct InsertRuntimeDropsPass
         for (Operation& op : module.getBody()->getOperations()) {
             auto func = dyn_cast<func::FuncOp>(op);
             if (!func || func.empty() || func.isExternal()) continue;
+            if (debug_on)
+                llvm::errs() << "[ownership] func @" << func.getName() << "\n";
             Block& entry = func.front();
             for (Block& block : func.getBlocks())
                 visit(block, &block == &entry);
         }
 
         if (debug_on)
-            llvm::errs() << "[drops] " << total << " nv_drop call(s) inserted\n";
+            llvm::errs() << "[ownership] " << total
+                         << " nv_drop call(s) inserted in total\n";
     }
 };
 
