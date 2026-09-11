@@ -33,6 +33,7 @@ typedef struct {
     char** cells;   // materialised result set: rows * cols strings
     int rows;
     int cols;
+    char** col_names;  // column names of that result set (cols entries) or NULL
 } NvSqliteSlot;
 
 static void nv_sqlite_clear_cells(NvSqliteSlot* slot);  // defined below
@@ -51,6 +52,7 @@ static int (*p_step)(sqlite3_stmt*);
 static int (*p_finalize)(sqlite3_stmt*);
 static int (*p_col_count)(sqlite3_stmt*);
 static const unsigned char* (*p_col_text)(sqlite3_stmt*, int);
+static const char* (*p_col_name)(sqlite3_stmt*, int);
 static void (*p_free)(void*);
 static int64_t (*p_last_id)(sqlite3*);
 static int (*p_changes)(sqlite3*);
@@ -73,11 +75,13 @@ static int nv_sqlite_load(void) {
     p_finalize  = (int (*)(sqlite3_stmt*))dlsym(lib, "sqlite3_finalize");
     p_col_count = (int (*)(sqlite3_stmt*))dlsym(lib, "sqlite3_column_count");
     p_col_text  = (const unsigned char* (*)(sqlite3_stmt*, int))dlsym(lib, "sqlite3_column_text");
+    p_col_name  = (const char* (*)(sqlite3_stmt*, int))dlsym(lib, "sqlite3_column_name");
     p_free      = (void (*)(void*))dlsym(lib, "sqlite3_free");
     p_last_id   = (int64_t (*)(sqlite3*))dlsym(lib, "sqlite3_last_insert_rowid");
     p_changes   = (int (*)(sqlite3*))dlsym(lib, "sqlite3_changes");
     if (!p_open || !p_close || !p_exec || !p_errmsg || !p_prepare || !p_step ||
-        !p_finalize || !p_col_count || !p_col_text || !p_free || !p_last_id || !p_changes) {
+        !p_finalize || !p_col_count || !p_col_text || !p_col_name || !p_free ||
+        !p_last_id || !p_changes) {
         snprintf(g_load_error, sizeof(g_load_error), "libsqlite3 is missing an expected symbol");
         return 0;
     }
@@ -288,6 +292,11 @@ NvObject* nv_sqlite_changes_builtin(NvObject* handle) {
 // inside an if branch that cannot be if-converted does not escape the branch.
 
 static void nv_sqlite_clear_cells(NvSqliteSlot* slot) {
+    if (slot->col_names) {
+        for (int i = 0; i < slot->cols; ++i) free(slot->col_names[i]);
+        free(slot->col_names);
+        slot->col_names = NULL;
+    }
     if (!slot->cells) return;
     for (int i = 0; i < slot->rows * slot->cols; ++i) free(slot->cells[i]);
     free(slot->cells);
@@ -307,6 +316,18 @@ int nv_sqlite_query_run(int handle, const char* sql) {
     sqlite3_stmt* stmt = NULL;
     if (p_prepare(db, sql, -1, &stmt, NULL) != NV_SQLITE_OK || !stmt) return -1;
     const int cols = p_col_count(stmt);
+    // Column names, captured while the statement is alive: they are what lets a row
+    // be read by name (the sql derive maps a row to map<str, str>).
+    if (cols > 0) {
+        char** names = (char**)calloc((size_t)cols, sizeof(char*));
+        if (names) {
+            for (int c = 0; c < cols; ++c) {
+                const char* n = p_col_name(stmt, c);
+                names[c] = strdup(n ? n : "");
+            }
+            slot->col_names = names;
+        }
+    }
     int cap = 64;
     int rows = 0;
     char** cells = (char**)calloc((size_t)cap * (size_t)(cols > 0 ? cols : 1), sizeof(char*));
@@ -340,6 +361,14 @@ int nv_sqlite_col_count(int handle) {
     return g_slots[handle].cols;
 }
 
+// Name of a column of the last stored result ("" when out of range).
+const char* nv_sqlite_col_name(int handle, int col) {
+    if (handle < 0 || handle >= NV_SQLITE_MAX_DB) return "";
+    NvSqliteSlot* slot = &g_slots[handle];
+    if (!slot->col_names || col < 0 || col >= slot->cols) return "";
+    return slot->col_names[col] ? slot->col_names[col] : "";
+}
+
 // A cell of the last stored result ("" when out of range).
 const char* nv_sqlite_cell(int handle, int row, int col) {
     if (handle < 0 || handle >= NV_SQLITE_MAX_DB) return "";
@@ -361,4 +390,9 @@ NvObject* nv_sqlite_col_count_builtin(NvObject* handle) {
 NvObject* nv_sqlite_cell_builtin(NvObject* handle, NvObject* row, NvObject* col) {
     return nv_sqlite_box_s(nv_sqlite_cell(nv_sqlite_arg_int(handle), nv_sqlite_arg_int(row),
                                           nv_sqlite_arg_int(col)));
+}
+
+NvObject* nv_sqlite_col_name_builtin(NvObject* handle, NvObject* col) {
+    return nv_sqlite_box_s(nv_sqlite_col_name(nv_sqlite_arg_int(handle),
+                                              nv_sqlite_arg_int(col)));
 }
