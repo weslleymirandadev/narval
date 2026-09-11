@@ -1,5 +1,0 @@
-from "./nested_dep.nv" import *;
-
-def user_value(): int {
-    return dep_value() + 1;
-}
