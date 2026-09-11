@@ -24,6 +24,54 @@
 #include <unordered_set>
 
 namespace {
+    // Why a `@[vectorize]` loop cannot be vectorized, or "" when it can. The rule is the
+    // one the backend can honour: a range loop whose iterations are independent. The
+    // loop-carried test mirrors the loop codegen — a name written in the body and never
+    // declared there is an outer variable, i.e. state carried between iterations — and
+    // I/O is refused because a runtime call per element is exactly what keeps the
+    // backend from producing SIMD.
+    std::string loop_vectorize_refusal(const ForStmtNode* loop) {
+        if (!loop->range_start || !loop->range_end)
+            return "@[vectorize] needs a range loop (for i in a..b): iterating a "
+                   "collection reaches the elements through the runtime, one call at a "
+                   "time";
+
+        std::unordered_set<std::string> declared;
+        for (const auto& stmt : loop->body) {
+            if (!stmt) continue;
+            if (stmt->kind == NodeType::DeclarationStatement) {
+                auto* decl = static_cast<DeclarationStmtNode*>(stmt.get());
+                if (decl->target && decl->target->kind == NodeType::Identifier)
+                    declared.insert(static_cast<IdentifierNode*>(decl->target.get())->symbol);
+            }
+        }
+
+        for (const auto& stmt : loop->body) {
+            if (!stmt) continue;
+            if (stmt->kind == NodeType::AssignmentExpression) {
+                auto* asg = static_cast<AssignmentExprNode*>(stmt.get());
+                if (asg->target && asg->target->kind == NodeType::Identifier) {
+                    const std::string& name =
+                        static_cast<IdentifierNode*>(asg->target.get())->symbol;
+                    if (!declared.count(name))
+                        return "'" + name + "' is written in the loop but declared outside "
+                               "it: a loop-carried dependence, so the iterations are not "
+                               "independent";
+                }
+            } else if (stmt->kind == NodeType::CallExpression) {
+                auto* call = static_cast<CallExprNode*>(stmt.get());
+                if (call->caller && call->caller->kind == NodeType::Identifier) {
+                    const std::string& name =
+                        static_cast<IdentifierNode*>(call->caller.get())->symbol;
+                    if (name == "write" || name == "read" || name == "print")
+                        return "the body does I/O ('" + name + "'), which cannot happen "
+                               "once per SIMD lane";
+                }
+            }
+        }
+        return "";
+    }
+
     bool identifier_exists(nv::Checker* checker, const std::string& symbol) {
         try {
             checker->scope->get_key(symbol);
@@ -335,6 +383,25 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
             if (!nv::apply_derive(ch, static_cast<ClassStmtNode*>(target), derives, err, &derive_ct)) {
                 ch->comptime_error(el.get(), "CE001", "compile-time code generation failed", { err });
                 return ch->gettyptr("None");
+            }
+            continue;
+        }
+
+        if (attr->has_attr("vectorize")) {
+            // `@[vectorize]` annotates a loop: the codegen tags the loop and names its
+            // body block, and the tensor work in the body is the part that becomes SIMD
+            // (NarvalLinalgVectorizePass). A body whose iterations are not independent is
+            // refused here instead of promising SIMD the backend cannot deliver.
+            if (target->kind != NodeType::ForStatement) {
+                ch->comptime_error(el.get(), "CE001", "invalid @vectorize target",
+                                   { "@[vectorize] must annotate a for loop" });
+                continue;
+            }
+            const std::string why =
+                loop_vectorize_refusal(static_cast<ForStmtNode*>(target));
+            if (!why.empty()) {
+                ch->comptime_error(el.get(), "CE001", "loop is not vectorizable", { why });
+                continue;
             }
             continue;
         }
