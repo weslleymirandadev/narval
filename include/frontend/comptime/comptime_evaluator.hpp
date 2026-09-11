@@ -53,6 +53,21 @@ public:
 
     bool failed() const { return failed_; }
     const std::string& error_message() const { return error_; }
+
+    // ── User-defined @derive ────────────────────────────────────────────────
+    // A user derive is a top-level `comptime def` named `derive_<name>`. The
+    // @derive pass runs BEFORE the expansion pass that would register it, so the
+    // pass calls register_user_derives() on the module body first and then
+    // evaluates the derive with call_comptime_func().
+    void register_user_derives(const CodeBlock& body);
+    bool has_comptime_func(const std::string& name) const {
+        return comptime_funcs_.count(name) != 0;
+    }
+    // Evaluates a registered comptime function with the given arguments. Returns
+    // false and fills `error` when the function is unknown or the evaluation fails.
+    bool call_comptime_func(const std::string& name,
+                            const std::vector<ComptimeValue>& args,
+                            ComptimeValue& out, std::string& error);
     // Compile-time diagnostic code for the recorded failure (COMPTIME_SPEC 7):
     // CE001 evaluation failure, CE003 non-comptime value in comptime context.
     std::string error_code() const { return error_code_; }
@@ -94,6 +109,9 @@ private:
 
     ComptimeValue eval_binary(BinaryExprNode* node);
     ComptimeValue eval_call(CallExprNode* node);
+    // Body of a comptime function call: binds the arguments positionally in a new
+    // scope and evaluates the body. Shared by eval_call() and the user @derive path.
+    ComptimeValue call_func(ComptimeFuncNode* fn, const std::vector<ComptimeValue>& arg_vals);
     ComptimeValue eval_builtin(BuiltinCallNode* node);
     ComptimeValue eval_macro(MacroCallNode* node);
     ComptimeValue eval_member(MemberExprNode* node);
