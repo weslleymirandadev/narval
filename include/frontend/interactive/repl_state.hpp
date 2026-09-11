@@ -41,6 +41,9 @@ struct REPLState {
 	std::unordered_set<std::string> repl_global_names;
 	std::unordered_map<std::string, Value> repl_var_values;
 	std::unordered_set<std::string> repl_globals_added;
+	// Top-level variable names seen so far. Their values live in the runtime store
+	// (nv_repl_set / nv_repl_get), so the codegen has to know which names those are.
+	std::unordered_set<std::string> repl_var_names;
 	std::unordered_map<std::string, std::string> source_cache;
 	// Definitions (functions, classes) from earlier inputs. Each input is JIT'd on
 	// its own with a fresh JIT, so they are re-emitted together with the next one;
