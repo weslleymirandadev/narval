@@ -20,12 +20,12 @@ char* string_concat(char* str1, char* str2) {
     return r;
 }
 
-static void i32_to_cstr(int32_t value, char* out, size_t out_size) {
+static void i64_to_cstr(int64_t value, char* out, size_t out_size) {
     if (!out || out_size == 0) return;
     if (out_size == 1) { out[0] = '\0'; return; }
     if (value == 0) { out[0] = '0'; out[1] = '\0'; return; }
-    char tmp[16]; int i = 0;
-    uint32_t v = (value < 0) ? (uint32_t)(-(int64_t)value) : (uint32_t)value;
+    char tmp[24]; int i = 0;
+    uint64_t v = (value < 0) ? (uint64_t)(-value) : (uint64_t)value;
     while (v > 0 && i < (int)sizeof(tmp)) { tmp[i++] = (char)('0' + v % 10); v /= 10; }
     size_t pos = 0;
     if (value < 0 && pos < out_size - 1) out[pos++] = '-';
@@ -33,10 +33,10 @@ static void i32_to_cstr(int32_t value, char* out, size_t out_size) {
     out[pos] = '\0';
 }
 
-void int_to_string(Value* out, int32_t value) {
+void int_to_string(Value* out, int64_t value) {
     if (!out) return;
     memset(out, 0, sizeof(Value));
-    char buf[32]; i32_to_cstr(value, buf, sizeof(buf));
+    char buf[32]; i64_to_cstr(value, buf, sizeof(buf));
     create_str(out, buf);
 }
 
@@ -56,7 +56,7 @@ void nv_str_convert(Value* out, Value* input) {
     if (!type || (uintptr_t)type < 0x1000) { create_str(out, "None"); return; }
 
     if (type == NVInt_Type) {
-        char buf[32]; i32_to_cstr(((NVInt*)input->obj)->value, buf, sizeof(buf));
+        char buf[32]; i64_to_cstr(((NVInt*)input->obj)->value, buf, sizeof(buf));
         create_str(out, buf);
     } else if (type == NVFloat_Type) {
         char buf[64]; snprintf(buf, sizeof(buf), "%.15g", ((NVFloat*)input->obj)->value);
@@ -144,12 +144,12 @@ void nv_int_convert(Value* out, Value* input) {
     if (!out || !input || !input->obj) { create_int(out, 0); return; }
     NvTypeObject* t = input->obj->ob_type;
     if (t == NVInt_Type)   { create_int(out, ((NVInt*)input->obj)->value); return; }
-    if (t == NVFloat_Type) { create_int(out, (int32_t)((NVFloat*)input->obj)->value); return; }
+    if (t == NVFloat_Type) { create_int(out, (int64_t)((NVFloat*)input->obj)->value); return; }
     if (t == NVBool_Type)  { create_int(out, ((NVBool*)input->obj)->value ? 1 : 0); return; }
-    if (t == NVChar_Type)  { create_int(out, (int32_t)(unsigned char)((NVChar*)input->obj)->value); return; }
+    if (t == NVChar_Type)  { create_int(out, (int64_t)(unsigned char)((NVChar*)input->obj)->value); return; }
     if (t == NVStr_Type) {
         const char* s = ((NVStr*)input->obj)->value;
-        if (s) { char* e; long v = strtol(s, &e, 10); if (*e == '\0' && e != s) { create_int(out, (int32_t)v); return; } }
+        if (s) { char* e; long long v = strtoll(s, &e, 10); if (*e == '\0' && e != s) { create_int(out, (int64_t)v); return; } }
         nv_raise_value_error("invalid literal for int()");
         return;
     }
