@@ -13,16 +13,17 @@
 # The runtime bridge (src/backend/runtime/core/sqlite_bridge.c) keeps a small
 # handle table and loads libsqlite3 on first use, so nothing has to be linked. A
 # handle is an int because Narval integers are 32-bit and a pointer would not fit.
-# query() runs a statement and stores the result set on the handle; the cells are
-# then read back one row at a time, because a vector of vectors cannot be indexed
-# twice yet.
+# query() runs a statement and stores the result set on the handle; row() reads one
+# row back and rows() returns them all as a vector of vectors (index it twice).
 
 class Sqlite {
     handle: int;
+    nrows: int;
 
     # Opens a database file; -1 on failure.
     public open(path: str): int {
         self.handle = nv_sqlite_open(path);
+        self.nrows = 0;
         return self.handle;
     }
 
@@ -33,7 +34,8 @@ class Sqlite {
 
     # Runs a query, stores its result on the handle and returns the number of rows.
     public query(sql: str): int {
-        return nv_sqlite_query_run(self.handle, sql);
+        self.nrows = nv_sqlite_query_run(self.handle, sql);
+        return self.nrows;
     }
 
     # Columns in the stored result of the last query.
@@ -76,5 +78,17 @@ class Sqlite {
             col = col + 1;
         }
         return cells;
+    }
+
+    # Every stored row from the last query as a vector of vectors: `all[r][c]` is the
+    # cell in row r, column c.
+    public rows(): vector {
+        out = [];
+        i = 0;
+        while i < self.nrows {
+            out.push(self.row(i));
+            i = i + 1;
+        }
+        return out;
     }
 }
