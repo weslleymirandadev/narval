@@ -786,6 +786,19 @@ NvObject* nv_exit_builtin(NvObject* obj) {
     return NULL;
 }
 
+// `read([prompt])` — the checker accepts read as a String-returning builtin, but
+// the codegen emitted the bare name, which resolved to libc read(2) and segfaulted
+// the moment it ran. Marshal through nv_read and box the line as a string.
+NvObject* nv_read_builtin(NvObject* prompt) {
+    const char* p = NULL;
+    if (prompt && prompt->ob_type == NVStr_Type) p = ((NVStr*)prompt)->value;
+    char* s = nv_read(p);
+    Value out = {NULL};
+    create_str(&out, s ? s : "");
+    free(s);
+    return out.obj;
+}
+
 // NIR entry point: OS starts with RSP%16==0, but LLVM's main.start prologue
 // assumes RSP%16==8 (called via CALL). This stub subtracts 8 to fix alignment.
 __asm__(
