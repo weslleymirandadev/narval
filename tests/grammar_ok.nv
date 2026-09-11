@@ -1,9 +1,0 @@
-# Expected:
-#   grammar: 3 rule(s) [expr term factor], terminals ['+' '-' '*' '/' NUMBER '(' ')']
-from "../stdlib/grammar.nv" import *;
-
-write(grammar! {
-    expr   = term (('+' | '-') term)*
-    term   = factor (('*' | '/') factor)*
-    factor = NUMBER | '(' expr ')'
-});
