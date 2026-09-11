@@ -55,6 +55,20 @@ std::string ModuleManager::load_module(const std::string& module_name, const std
     return loaded_name;
 }
 
+namespace {
+// A module is imported by name: `from "sqlite" import *;` for a bundled library,
+// `from "./nested_user.nv"` for a file next to the importer. The `.nv` extension is
+// optional — try the path as written, then with it.
+std::string resolve_module_path(const std::string& dir, const std::string& requested) {
+    std::filesystem::path base(dir);
+    std::filesystem::path as_written = base / requested;
+    if (std::ifstream(as_written).good()) return as_written.string();
+    std::filesystem::path with_ext = base / (requested + ".nv");
+    if (std::ifstream(with_ext).good()) return with_ext.string();
+    return as_written.string();  // the caller reports it as not found
+}
+}  // namespace
+
 void ModuleManager::resolve_dependencies(const std::string& module_name, const std::string& file_path, int config) {
     if (visited.find(module_name) != visited.end()) {
         throw std::runtime_error("Error: Import cycle detected with module " + module_name);
@@ -71,7 +85,7 @@ void ModuleManager::resolve_dependencies(const std::string& module_name, const s
     // Usa import_infos para resolver dependências (nova sintaxe)
     for (const auto& import_info : module.import_infos) {
         std::string clean_dep = std::regex_replace(import_info.module_path, std::regex("\""), "");
-        std::string dep_path = (std::filesystem::path(module.directory) / (clean_dep)).string();
+        std::string dep_path = resolve_module_path(module.directory, clean_dep);
         if (!std::ifstream(dep_path).good()) {
             throw std::runtime_error("Module " + import_info.module_path + " not found");
         }
@@ -90,7 +104,7 @@ void ModuleManager::resolve_dependencies(const std::string& module_name, const s
         }
         if (!already_processed) {
             std::string clean_dep = std::regex_replace(dep, std::regex("\""), "");
-            std::string dep_path = (std::filesystem::path(module.directory) / (clean_dep)).string();
+            std::string dep_path = resolve_module_path(module.directory, clean_dep);
             if (!std::ifstream(dep_path).good()) {
                 throw std::runtime_error("Module " + dep + " not found");
             }
