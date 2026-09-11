@@ -182,13 +182,13 @@ bool apply_derive(Checker* checker, ClassStmtNode* cls,
                   ComptimeEvaluator* ct) {
     if (!cls) return true;
 
-    // Only what the language itself needs to work: the operator protocols
-    // (==, <, hash for maps) and the two object-level ones (str for printing, a
-    // copy). Serialization, schemas, DB mapping and anything format-specific is
-    // stdlib: it belongs in a `comptime def derive_<name>` the author writes, not
-    // in the compiler.
+    // The protocols the language itself needs (==, <, hash for maps, str for
+    // printing, a copy) plus JSON, which the language ships as its interchange
+    // format. Schemas and DB mapping are not here: `openapi` and `sql` were removed
+    // for that, and any format-specific derive belongs in a `comptime def
+    // derive_<name>` the author writes.
     static const std::unordered_set<std::string> known = {
-        "eq", "debug", "hash", "ord", "clone",
+        "eq", "debug", "json", "hash", "ord", "clone", "from_json",
     };
 
     for (const std::string& raw : derives) {
@@ -200,9 +200,11 @@ bool apply_derive(Checker* checker, ClassStmtNode* cls,
         // Never override a hand-written method.
         if (d == "eq" && has_method(cls, "__eq__")) continue;
         if (d == "debug" && has_method(cls, "__str__")) continue;
+        if (d == "json" && has_method(cls, "to_json")) continue;
         if (d == "hash" && has_method(cls, "__hash__")) continue;
         if (d == "ord" && has_method(cls, "__lt__")) continue;
         if (d == "clone" && has_method(cls, "clone")) continue;
+        if (d == "from_json" && has_method(cls, "from_json")) continue;
 
         if (cls->fields.empty()) {
             error = "@derive(" + d + "): class '" + cls->name + "' has no fields";
@@ -227,6 +229,16 @@ bool apply_derive(Checker* checker, ClassStmtNode* cls,
             }
             parts.push_back(str_lit(" }"));
             cls->methods.push_back(make_method("__str__", {}, "str", chain("+", std::move(parts))));
+        } else if (d == "json") {
+            std::vector<ExprPtr> parts;
+            parts.push_back(str_lit("{"));
+            for (size_t i = 0; i < cls->fields.size(); ++i) {
+                if (i) parts.push_back(str_lit(", "));
+                parts.push_back(str_lit("\"" + cls->fields[i]->name + "\": "));
+                parts.push_back(field_repr("self", cls->fields[i].get()));
+            }
+            parts.push_back(str_lit("}"));
+            cls->methods.push_back(make_method("to_json", {}, "str", chain("+", std::move(parts))));
         } else if (d == "hash") {
             // h = (((v0 * 31) + v1) * 31) + v2 ... over the field scalars.
             ExprPtr acc = field_scalar("self", cls->fields[0].get());
@@ -257,6 +269,45 @@ bool apply_derive(Checker* checker, ClassStmtNode* cls,
                 body.push_back(assign_stmt(field_of("out", f->name), field_of("self", f->name)));
             body.push_back(std::make_unique<ReturnStmtNode>(id("out")));
             cls->methods.push_back(make_method_block("clone", {}, cls->name, std::move(body)));
+        } else if (d == "from_json") {
+            // Reads the fields out of a JSON object. Scalars only: a nested class
+            // or a collection field has no reader yet, and is reported instead of
+            // generating code that would silently produce nothing.
+            CodeBlock body;
+            body.push_back(assign_stmt(id("out"),
+                                       std::make_unique<NewExprNode>(cls->name, cls->name)));
+            for (const auto& f : cls->fields) {
+                ExprPtr fallback;
+                if (f->type == "str" || f->type == "string") {
+                    fallback = str_lit("");
+                } else if (f->type == "int") {
+                    fallback = int_lit(0);
+                } else if (f->type == "float") {
+                    fallback = std::make_unique<NumericLiteralNode>("0.0");
+                } else if (f->type == "bool") {
+                    fallback = std::make_unique<BooleanLiteralNode>(false);
+                } else {
+                    error = "@derive(from_json): field '" + f->name +
+                            "' has unsupported type '" + f->type + "'";
+                    return false;
+                }
+                // The reader hands back the default for a missing key, so no
+                // branch is needed: a ternary would evaluate both sides (the
+                // selection is a plain call) and int("") raises.
+                ExprPtr field_val = call3("json_field", id("s"), str_lit(f->name), std::move(fallback));
+                ExprPtr val;
+                if (f->type == "int") {
+                    val = call1("int", std::move(field_val));
+                } else if (f->type == "float") {
+                    val = call1("float", std::move(field_val));
+                } else {
+                    val = std::move(field_val);
+                }
+                body.push_back(assign_stmt(field_of("out", f->name), std::move(val)));
+            }
+            body.push_back(std::make_unique<ReturnStmtNode>(id("out")));
+            cls->methods.push_back(make_method_block("from_json", { param("s", "str") }, cls->name,
+                                                     std::move(body)));
         } else {
             // Not a builtin: a USER derive, written in this module as
             //
@@ -274,8 +325,8 @@ bool apply_derive(Checker* checker, ClassStmtNode* cls,
             // so a derive is written in Narval, not in the compiler.
             const std::string fn_name = "derive_" + d;
             if (!ct || !ct->has_comptime_func(fn_name)) {
-                error = "unknown derive '" + raw + "' (builtin: clone, debug, eq, hash, ord; "
-                        "or declare `comptime def " + fn_name + "`)";
+                error = "unknown derive '" + raw + "' (builtin: clone, debug, eq, from_json, "
+                        "hash, json, ord; or declare `comptime def " + fn_name + "`)";
                 return false;
             }
             std::vector<ComptimeValue> args;
