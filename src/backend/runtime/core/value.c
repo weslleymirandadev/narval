@@ -55,7 +55,7 @@ void nv_drop(NvObject* obj) {
 
 // ── Creation ───────────────────────────────────────────────────────────────
 
-void create_int(Value* out, int32_t value) {
+void create_int(Value* out, int64_t value) {
     if (!out) return;
     memset(out, 0, sizeof(Value));
     if (!NVInt_Type) register_global_init();
@@ -343,7 +343,7 @@ int convert_type(Value* out, const Value* in, int32_t target_type) {
     int32_t src = get_value_type(in);
     if (src == target_type) { *out = *in; return 1; }
     switch (target_type) {
-        case NV_INT_BASE:   create_int(out, (int32_t)extract_float_from_value((Value*)in)); return 1;
+        case NV_INT_BASE:   create_int(out, (int64_t)extract_float_from_value((Value*)in)); return 1;
         case NV_FLOAT_BASE: create_float(out, extract_float_from_value((Value*)in)); return 1;
         case NV_BOOL_BASE:  create_bool(out, extract_int_from_value((Value*)in) != 0); return 1;
         default: return 0;
