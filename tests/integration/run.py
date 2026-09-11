@@ -1236,6 +1236,38 @@ CASES = [
         ),
         "expect_error": "@derive(sql): field 'itens' has unsupported type 'vector'",
     },
+    {
+        # The whole loop: the derive's DDL creates the table, Sqlite.row_map() gives
+        # a row as a map of column name → text (which needs the column-name
+        # accessor), and from_row() turns it into an instance.
+        "name": "derive_sql_with_sqlite",
+        "source": (
+            'from "sqlite.nv" import *;\n'
+            '@[derive(sql)]\n'
+            'class Pessoa {\n'
+            '    id: int;\n'
+            '    nome: str;\n'
+            '    altura: float;\n'
+            '    ativo: bool;\n'
+            '}\n'
+            'db = new Sqlite();\n'
+            'db.open(":memory:");\n'
+            'p = new Pessoa();\n'
+            'db.exec(p.create_table());\n'
+            "db.exec(\"INSERT INTO pessoa VALUES (7, 'ana', 1.62, 1)\");\n"
+            'db.query("SELECT id, nome, altura, ativo FROM pessoa");\n'
+            'write(db.cols());\n'
+            'write(db.col_name(1));\n'
+            'q = p.from_row(db.row_map(0));\n'
+            'write(q.id);\n'
+            'write(q.nome);\n'
+            'write(q.altura);\n'
+            'write(q.ativo);\n'
+            'db.close();\n'
+        ),
+        "module_files": {"sqlite.nv": "stdlib/sqlite.nv"},
+        "expected": "4\nnome\n7\nana\n1.620000\ntrue\n",
+    },
 ]
 
 
