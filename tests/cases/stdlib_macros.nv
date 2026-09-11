@@ -4,7 +4,7 @@
 # GET /users/:id
 # Module: macros.nv = stdlib/macros.nv
 
-from "macros.nv" import *;
+from "macros" import *;
 write(sql! { SELECT *   FROM   users });
 write(regex! { a(b|c)*[0-9] });
 write(route! { GET /users/:id });

@@ -14,7 +14,7 @@
 # a+b+c
 # Module: strings.nv = stdlib/strings.nv
 
-from "strings.nv" import *;
+from "strings" import *;
 write(trim("  hi  "));
 write(starts_with("hello", "he"));
 write(starts_with("hello", "he!"));

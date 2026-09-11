@@ -1,0 +1,28 @@
+# Braces are the ARRAY literal (`{1, 2, 3}`, the value form of the type `int[5]`) and
+# `{}` is the empty one; what makes a braced literal a MAP is having key: value pairs.
+# Brackets are the vector: a Python-style list, heterogeneous and dynamic.
+# Indexing a fixed array used to read freed memory — its elements were dropped right
+# after being stored, because the drops pass did not know nv_array_set stores them.
+# Expected:
+# 3
+# 2
+# 0
+# 7
+# 9
+# 3
+# two
+
+a = {1, 2, 3};
+write(len(a));
+write(a[1]);
+
+e = {};
+write(len(e));
+
+m = {"a": 7, "b": 9};
+write(m["a"]);
+write(m["b"]);
+
+v = [1, "two", 3.5];
+write(len(v));
+write(v[1]);

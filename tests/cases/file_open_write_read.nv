@@ -11,7 +11,7 @@
 # 0
 # Module: file.nv = stdlib/file.nv
 
-from "file.nv" import *;
+from "file" import *;
 
 f = new File();
 write(f.open("/tmp/narval_it_file.txt", "w") >= 0);

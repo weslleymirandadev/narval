@@ -5,7 +5,7 @@
 # 1
 # Module: grammar.nv = stdlib/grammar.nv
 
-from "grammar.nv" import *;
+from "grammar" import *;
 
 write(grammar! {
     expr   = term (('+' | '-') term)*

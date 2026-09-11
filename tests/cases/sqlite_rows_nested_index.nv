@@ -6,7 +6,7 @@
 # 0
 # Module: sqlite.nv = stdlib/sqlite.nv
 
-from "sqlite.nv" import *;
+from "sqlite" import *;
 
 db = new Sqlite();
 db.open("/tmp/narval_it_sqlite_rows.db");
