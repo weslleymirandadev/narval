@@ -304,6 +304,11 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
     // Must run BEFORE classes/functions are registered and before codegen.
     struct PendingInsert { size_t index; std::unique_ptr<Node> node; };
     std::vector<PendingInsert> pending_inserts;
+    // User derives are `comptime def derive_<name>` in this module. Registering them
+    // happens in the expansion pass below, which runs after this one, so the evaluator
+    // used to call them is seeded here.
+    nv::ComptimeEvaluator derive_ct(ch);
+    derive_ct.register_user_derives(program->body);
     for (size_t i = 0; i < program->body.size(); ++i) {
         auto& el = program->body[i];
         if (!el || el->kind != NodeType::AttributeStatement) continue;
@@ -327,7 +332,7 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
                 continue;
             }
             std::string err;
-            if (!nv::apply_derive(ch, static_cast<ClassStmtNode*>(target), derives, err)) {
+            if (!nv::apply_derive(ch, static_cast<ClassStmtNode*>(target), derives, err, &derive_ct)) {
                 ch->comptime_error(el.get(), "CE001", "compile-time code generation failed", { err });
                 return ch->gettyptr("None");
             }
