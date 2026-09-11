@@ -240,4 +240,8 @@ void initialize_builtin_classes(void) {
 
     initialize_exception_types();
     initialize_option_result_types();
+
+    // Only now that every builtin type exists can the deallocators be attached
+    // (they release the heap payload each object owns).
+    nv_install_builtin_deallocs();
 }
