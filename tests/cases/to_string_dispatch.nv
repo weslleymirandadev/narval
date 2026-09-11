@@ -1,0 +1,37 @@
+# A class that derives debug describes itself, so printing it has to use that text:
+# write() and str() go through __str__ (they used to print the runtime box,
+# <object:User>, while u.__str__() returned the right thing).
+# Two classes at once also pin the method owner: resolving it by method NAME made a
+# call to any name declared by two classes fail to compile.
+# Expected:
+# User { name: "bob", age: 42 }
+# User { name: "bob", age: 42 }!
+# Point { x: 1, y: 2 }
+# User { name: "bob", age: 42 }
+# Point { x: 1, y: 2 }
+
+@[derive(debug)]
+class User {
+    name: str;
+    age: int;
+}
+
+@[derive(debug)]
+class Point {
+    x: int;
+    y: int;
+}
+
+u = new User();
+u.name = "bob";
+u.age = 42;
+write(u);
+write(str(u) + "!");
+
+p = new Point();
+p.x = 1;
+p.y = 2;
+write(p);
+
+write(u.__str__());
+write(p.__str__());
