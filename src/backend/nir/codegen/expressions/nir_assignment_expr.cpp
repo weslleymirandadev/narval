@@ -2,6 +2,7 @@
 #include "frontend/ast/expressions/assignment_expr_node.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
 #include "frontend/ast/expressions/member_expr_node.hpp"
+#include "frontend/ast/expressions/access_expr_node.hpp"
 
 void AssignmentExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
     auto  loc = ctx.loc(position.get());
@@ -62,11 +63,23 @@ void AssignmentExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
             mlir::narval::SetFieldOp::create(
                 ctx.get_builder(), loc, obj,
                 mlir::StringAttr::get(&ctx.get_mlir_context(), field_name), rhs);
+        } else if (target->kind == NodeType::AccessExpression && !nir_no_std_entry().empty()) {
+            // NOTE: only wired for @[no_std] so far. The same call crashes against the
+            // std runtime (its collections keep a reference discipline nv_container_set
+            // does not follow yet), and silently doing nothing — as it did before — is
+            // less bad than crashing. Remove the gate once that is understood.
+            // a[i] = rhs  →  nv_container_set(container, index, rhs)
+            auto* acc = static_cast<AccessExprNode*>(target.get());
+            mlir::Value container, index;
+            if (acc->expr)  { acc->expr->nir_codegen(ctx);  container = ctx.pop_value(); }
+            if (acc->index) { acc->index->nir_codegen(ctx); index     = ctx.pop_value(); }
+            if (container && index)
+                nir_call_runtime(ctx, loc, "nv_container_set", {container, index, rhs}, {});
         } else {
-            // Subscript or other lvalue – use runtime nv_set_at_index
-            // (generic fallback; proper subscript handling is future work)
+            // Other lvalue shapes are not assignable yet; evaluating the target keeps
+            // its side effects (a call inside it, for instance) observable.
             target->nir_codegen(ctx);
-            ctx.pop_value(); // discard address
+            ctx.pop_value();
         }
     }
 
