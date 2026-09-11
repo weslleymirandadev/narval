@@ -81,10 +81,11 @@ void nv_str_convert(Value* out, Value* input) {
             if (pos + sl + 4 > buf_sz) {
                 buf_sz = (pos + sl + 4) * 2;
                 char* nb = (char*)realloc(buf, buf_sz);
-                if (!nb) { free(buf); create_str(out, "{...}"); return; }
+                if (!nb) { nv_decref(es.obj); free(buf); create_str(out, "{...}"); return; }
                 buf = nb;
             }
             memcpy(buf + pos, sv, sl); pos += sl;
+            nv_decref(es.obj);  // the text is copied into buf; nv_str_convert owned the object
             if (i < arr->size - 1) { buf[pos++] = ','; buf[pos++] = ' '; }
         }
         buf[pos++] = '}'; buf[pos] = '\0';
@@ -101,10 +102,11 @@ void nv_str_convert(Value* out, Value* input) {
             if (pos + sl + 4 > buf_sz) {
                 buf_sz = (pos + sl + 4) * 2;
                 char* nb = (char*)realloc(buf, buf_sz);
-                if (!nb) { free(buf); create_str(out, "[...]"); return; }
+                if (!nb) { nv_decref(es.obj); free(buf); create_str(out, "[...]"); return; }
                 buf = nb;
             }
             memcpy(buf + pos, sv, sl); pos += sl;
+            nv_decref(es.obj);  // the text is copied into buf; nv_str_convert owned the object
             if (i < vec->size - 1) { buf[pos++] = ','; buf[pos++] = ' '; }
         }
         buf[pos++] = ']'; buf[pos] = '\0';
