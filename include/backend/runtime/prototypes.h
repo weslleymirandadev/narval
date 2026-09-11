@@ -99,7 +99,10 @@ typedef struct {
 // Tipos primitivos herdam de NvObject
 typedef struct {
     NvObject_HEAD;
-    int32_t value;
+    int64_t value;   // Narval `int` is 64-bit: an int32 field truncated every value
+                     // above 2^31 on the way in (2000000000 + 2000000000 came out
+                     // negative). Indices and lengths stay int32 where they bound a
+                     // buffer; this is the user-visible value.
 } NVInt;
 
 typedef struct {
