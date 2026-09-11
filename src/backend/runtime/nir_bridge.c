@@ -51,7 +51,7 @@ static int obj_is_truthy(NvObject* obj) {
 
 NvObject* nv_box_int(int64_t v) {
     Value out = {NULL};
-    create_int(&out, (int32_t)v);
+    create_int(&out, v);
     return out.obj;
 }
 
