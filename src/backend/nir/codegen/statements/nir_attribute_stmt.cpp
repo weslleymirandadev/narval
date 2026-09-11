@@ -4,6 +4,14 @@
 // Parse @[optimize(tile=[M,N,K], vectorize, parallelize, unroll=N)].
 // Stores hints in ctx.pending_optimize so the next function can pick them up.
 void AttributeStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
+    // @[vectorize] annotates a LOOP (the checker validates the target and the body):
+    // the loop's codegen consumes the flag. The tensor work a vectorizable body does
+    // is what actually becomes SIMD — NarvalLinalgVectorizePass vectorizes the linalg
+    // ops, and an unboxed element op is what LLVM can turn into AVX2/NEON.
+    if (has_attr("vectorize")) {
+        ctx.pending_loop_vectorize = true;
+        return;
+    }
     if (!has_attr("optimize")) return;
 
     nv::NIRGenerationContext::OptimizeHints hints;
