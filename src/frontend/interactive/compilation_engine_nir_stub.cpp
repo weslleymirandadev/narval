@@ -123,7 +123,14 @@ bool CompilationEngine::compile_and_execute(const std::string& input,
         nv::Checker checker;
         checker.set_source_file(source_name);
         if (state && state->checker) {
+            // Adopt the REPL's scope AND make it this checker's stack base.
+            // Setting `scope` alone left `namespaces` holding the fresh checker's
+            // own global namespace, so the first push/pop (any function body)
+            // restored that empty scope and every binding made here was lost —
+            // the next input then failed with "Identifier not found".
             checker.scope = state->checker->scope;
+            checker.namespaces.clear();
+            checker.namespaces.push_back(checker.scope);
         }
         checker.set_emit_diagnostics(true);
         checker.check_node(program.get());
