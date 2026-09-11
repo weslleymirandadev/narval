@@ -44,6 +44,7 @@ void populateLowerGetFieldOp(RewritePatternSet& patterns, mlir::narval::NarvalTy
 void populateLowerSetFieldOp(RewritePatternSet& patterns, mlir::narval::NarvalTypeConverter& tc);
 void populateLowerCallMethodOp(RewritePatternSet& patterns, mlir::narval::NarvalTypeConverter& tc);
 void populateLowerTensorToValue(RewritePatternSet& patterns, mlir::narval::NarvalTypeConverter& tc);
+void populateLowerSCFIfOp(RewritePatternSet& patterns, mlir::narval::NarvalTypeConverter& tc);
 
 namespace {
 
@@ -96,6 +97,28 @@ struct LowerNarvalToStandardPassImpl
                         return false;
                 return true;
             });
+        // scf.if/scf.yield that still carry !narval.value (the result-carrying
+        // narval.if lowered by lower-narval-cf). The scf dialect is legal here, so
+        // the driver converts the region bodies but keeps the op, then inserts a
+        // ptr→value cast for the yield that no legal op can absorb — and the
+        // conversion aborts with "unresolved materialization". Converting the op
+        // keeps producer and consumer in !llvm.ptr.
+        target.addDynamicallyLegalOp<scf::IfOp>([](scf::IfOp op) {
+            for (auto t : op.getResultTypes())
+                if (mlir::isa<narval::ValueType, narval::RefType,
+                              narval::MutRefType>(t))
+                    return false;
+            return true;
+        });
+        target.addDynamicallyLegalOp<scf::YieldOp>([](scf::YieldOp op) {
+            // Only an scf.if's own yields are converted (see LowerSCFYieldOp).
+            if (!isa_and_nonnull<scf::IfOp>(op->getParentOp())) return true;
+            for (auto t : op.getOperandTypes())
+                if (mlir::isa<narval::ValueType, narval::RefType,
+                              narval::MutRefType>(t))
+                    return false;
+            return true;
+        });
         target.addIllegalOp<AllocOp, DropOp, MoveOp, BorrowOp, BorrowMutOp,
                             CallOp, CallRuntimeOp, ReturnOp,
                             ConstantOp, ComptimeConstOp,
@@ -126,6 +149,7 @@ struct LowerNarvalToStandardPassImpl
         populateLowerSetFieldOp(patterns, tc);
         populateLowerCallMethodOp(patterns, tc);
         populateLowerTensorToValue(patterns, tc);
+        populateLowerSCFIfOp(patterns, tc);
 
         if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
             module.emitError("lower-narval-to-std: conversion failed");
