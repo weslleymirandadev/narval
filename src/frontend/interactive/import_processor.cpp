@@ -3,6 +3,8 @@
 #include <iostream>
 #include <filesystem>
 #include "frontend/checker/type.hpp"
+#include "frontend/ast/statements/class_stmt_node.hpp"
+#include "frontend/ast/statements/enum_stmt_node.hpp"
 
 namespace nv {
 
@@ -154,6 +156,8 @@ bool ImportProcessor::process_single_import(
                                       (imported_set.size() == 1 && imported_set.count("*") == 1);
                 std::set<std::string> required_variables;
                 std::set<std::string> required_functions;
+                // Classes and enums the module defines.
+                std::vector<const Stmt*> type_stmts;
                 
                 // Primeira passagem: identifica as funções importadas e suas dependências
                 for (const auto& stmt : module_program->get_statements()) {
@@ -227,6 +231,19 @@ bool ImportProcessor::process_single_import(
                             imported_set.find(function_stmt->name) != imported_set.end()) {
                             function_stmts.push_back(stmt.get());
                         }
+                    } else if (stmt->kind == NodeType::ClassStatement ||
+                               stmt->kind == NodeType::EnumStatement) {
+                        // Types have to travel with the import too: without the
+                        // class, `new Sqlite()` in the next input is "Unknown type".
+                        std::string type_name;
+                        if (stmt->kind == NodeType::ClassStatement) {
+                            type_name = static_cast<const ClassStmtNode*>(stmt.get())->name;
+                        } else {
+                            type_name = static_cast<const EnumStmtNode*>(stmt.get())->name;
+                        }
+                        if (wildcard || imported_set.find(type_name) != imported_set.end()) {
+                            type_stmts.push_back(stmt.get());
+                        }
                     }
                 }
                 
@@ -248,6 +265,11 @@ bool ImportProcessor::process_single_import(
                     }
                 }
                 
+                // Adiciona os tipos antes das funções que os usam
+                for (const auto* stmt : type_stmts) {
+                    import_statements.push_back(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
+                }
+
                 // Adiciona funções depois
                 for (const auto* stmt : function_stmts) {
                     if (stmt->kind == NodeType::FunctionStatement) {
