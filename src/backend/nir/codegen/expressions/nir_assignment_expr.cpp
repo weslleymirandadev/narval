@@ -64,7 +64,11 @@ void AssignmentExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
                 ctx.get_builder(), loc, obj,
                 mlir::StringAttr::get(&ctx.get_mlir_context(), field_name), rhs);
         } else if (target->kind == NodeType::AccessExpression) {
-            // a[i] = rhs → nv_array_set(container, index, rhs).
+            // a[i] = rhs → nv_container_set(container, index, rhs). The generic store
+            // dispatches on the receiver: a map is keyed by string, an array/vector by
+            // integer index. Calling nv_array_set here read a map's string key as an
+            // integer, so `m["k"] = v` wrote to a garbage slot and the next read of
+            // "k" came back empty.
             //
             // The incref is not decoration: the statement's own reference to the value
             // is released right after this, so without it the container is left holding
@@ -80,7 +84,7 @@ void AssignmentExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
                 ctx.ensure_runtime_func("nv_incref_bridge",
                     mlir::FunctionType::get(&ctx.get_mlir_context(), {vt}, {vt}));
                 nir_call_runtime(ctx, loc, "nv_incref_bridge", {rhs}, {vt});
-                nir_call_runtime(ctx, loc, "nv_array_set", {container, index, rhs}, {});
+                nir_call_runtime(ctx, loc, "nv_container_set", {container, index, rhs}, {});
             }
         } else {
             // Other lvalue shapes are not assignable yet; evaluating the target keeps
