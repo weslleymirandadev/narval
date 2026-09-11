@@ -17,16 +17,19 @@ std::unique_ptr<Node> parse_array_map_expr(Parser* parser) {
     // consume '{'
     parser->consume_token();
 
-    // Empty braced literal: treat as empty array by default
+    // Empty braced literal: `{}` is the map literal (the non-empty form below is
+    // decided by the `key: value` colon), and `[]` is the empty vector. This used to
+    // produce an empty ARRAY, so there was no way to write an empty map to fill in
+    // later — `m = {}; m["k"] = v` failed with "Vector access requires integer index".
     if (parser->current_token().type == TokenType::CBRACE) {
         parser->consume_token();
-        auto array_node = std::make_unique<ArrayExprNode>(std::vector<std::unique_ptr<Expr>>{});
-        if (array_node && array_node->position) {
+        auto map_node = std::make_unique<MapNode>(std::vector<std::unique_ptr<Expr>>{});
+        if (map_node) {
             pos->col[1] = parser->current_token().column_end - 1;
             pos->pos[1] = parser->current_token().position_end - 1;
         }
-        array_node->position = std::move(pos);
-        return array_node;
+        map_node->position = std::move(pos);
+        return map_node;
     }
 
     // Parse a head expression to decide between map and array.
