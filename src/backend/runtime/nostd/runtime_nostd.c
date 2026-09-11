@@ -650,6 +650,11 @@ void nv_container_set(NvObject* base_obj, NvObject* key_obj, NvObject* value_obj
     v->elements[i].obj = value_obj;
 }
 
+/* The codegen emits nv_array_set for a[i] = v (std runtime's name). */
+void nv_array_set(NvObject* base_obj, NvObject* key_obj, NvObject* value_obj) {
+    nv_container_set(base_obj, key_obj, value_obj);
+}
+
 int32_t nv_container_len(NvObject* base_obj) {
     if (!base_obj) return 0;
     if (base_obj->ob_type == NVVector_Type || base_obj->ob_type == NVArray_Type)

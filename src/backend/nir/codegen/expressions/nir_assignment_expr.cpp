@@ -64,17 +64,22 @@ void AssignmentExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
                 ctx.get_builder(), loc, obj,
                 mlir::StringAttr::get(&ctx.get_mlir_context(), field_name), rhs);
         } else if (target->kind == NodeType::AccessExpression && !nir_no_std_entry().empty()) {
-            // NOTE: only wired for @[no_std] so far. The same call crashes against the
-            // std runtime (its collections keep a reference discipline nv_container_set
-            // does not follow yet), and silently doing nothing — as it did before — is
-            // less bad than crashing. Remove the gate once that is understood.
+            // a[i] = rhs → nv_array_set(container, index, rhs).
+            //
+            // Gated to @[no_std] on purpose: against the std runtime this segfaults, and
+            // the fault is inside the runtime itself (nv_array_set → array_set_index_v
+            // in collections/sequences.c), not in this call — it was simply never
+            // exercised before, because the codegen never emitted an indexed store.
+            // Silently doing nothing is less bad than crashing, so the gate stays until
+            // the runtime's store is fixed. The freestanding runtime implements it and
+            // round-trips (a[i]=v then a[i] reads back).
             // a[i] = rhs  →  nv_container_set(container, index, rhs)
             auto* acc = static_cast<AccessExprNode*>(target.get());
             mlir::Value container, index;
             if (acc->expr)  { acc->expr->nir_codegen(ctx);  container = ctx.pop_value(); }
             if (acc->index) { acc->index->nir_codegen(ctx); index     = ctx.pop_value(); }
             if (container && index)
-                nir_call_runtime(ctx, loc, "nv_container_set", {container, index, rhs}, {});
+                nir_call_runtime(ctx, loc, "nv_array_set", {container, index, rhs}, {});
         } else {
             // Other lvalue shapes are not assignable yet; evaluating the target keeps
             // its side effects (a call inside it, for instance) observable.
