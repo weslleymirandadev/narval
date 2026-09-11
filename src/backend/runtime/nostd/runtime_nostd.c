@@ -344,3 +344,191 @@ void nv_incref_impl(NvObject* obj) { (void)obj; }
 
 // no_std runtime does not manage object lifetimes.
 void nv_drop(NvObject* obj) { (void)obj; }
+
+/* ── Syscalls: the only way in/out without libc ──────────────────────────── */
+
+static long _ns_syscall3(long n, long a, long b, long c) {
+    long ret;
+    __asm__ volatile("syscall"
+                     : "=a"(ret)
+                     : "a"(n), "D"(a), "S"(b), "d"(c)
+                     : "rcx", "r11", "memory");
+    return ret;
+}
+
+static void _ns_write_bytes(const char* buf, size_t len) {
+    /* 1 = write(2); stdout only, so the fd is a constant */
+    _ns_syscall3(1, 1, (long)buf, (long)len);
+}
+
+/* Used by the codegen for @[no_std] programs: exit_group(2). */
+void _exit(int code) {
+    _ns_syscall3(231, code, 0, 0);
+    for (;;) { }   /* exit_group does not return */
+}
+
+/* ── Minimal formatting (printf's %d / %f / %s, which libc would give) ───── */
+
+static void _ns_put_str(const char* s) {
+    if (s) _ns_write_bytes(s, _ns_strlen(s));
+}
+
+static void _ns_put_int(long v) {
+    char buf[24];
+    int i = (int)sizeof(buf);
+    int neg = v < 0;
+    unsigned long u = neg ? (unsigned long)(-(v + 1)) + 1UL : (unsigned long)v;
+    if (u == 0) buf[--i] = '0';
+    while (u) { buf[--i] = (char)('0' + (u % 10)); u /= 10; }
+    if (neg) buf[--i] = '-';
+    _ns_write_bytes(buf + i, (size_t)((int)sizeof(buf) - i));
+}
+
+/* Six decimals, like printf("%f"). */
+static void _ns_put_float(double d) {
+    if (d != d) { _ns_put_str("nan"); return; }
+    if (d < 0) { _ns_put_str("-"); d = -d; }
+    unsigned long ip = (unsigned long)d;
+    double frac = d - (double)ip;
+    unsigned long fp = (unsigned long)(frac * 1000000.0 + 0.5);
+    if (fp >= 1000000UL) { ip += 1; fp -= 1000000UL; }
+    _ns_put_int((long)ip);
+    _ns_put_str(".");
+    char buf[6];
+    for (int i = 5; i >= 0; --i) { buf[i] = (char)('0' + (fp % 10)); fp /= 10; }
+    _ns_write_bytes(buf, 6);
+}
+
+/* ── The codegen-facing API (same names the std runtime exposes) ─────────── */
+
+static int _ns_types_ready = 0;
+
+static void _ns_ensure_types(void) {
+    if (_ns_types_ready) return;
+    _ns_types_ready = 1;
+    nv_ns_init_types();
+}
+
+NvObject* nv_box_int(int64_t v) {
+    _ns_ensure_types();
+    Value out = {0};
+    create_int(&out, (int32_t)v);
+    return out.obj;
+}
+
+NvObject* nv_box_float(double v) {
+    _ns_ensure_types();
+    Value out = {0};
+    create_float(&out, v);
+    return out.obj;
+}
+
+NvObject* nv_box_bool(int64_t v) {
+    _ns_ensure_types();
+    Value out = {0};
+    create_bool(&out, v != 0 ? 1 : 0);
+    return out.obj;
+}
+
+NvObject* nv_box_str(const char* s) {
+    _ns_ensure_types();
+    Value out = {0};
+    create_str(&out, s ? s : "");
+    return out.obj;
+}
+
+NvObject* nv_add(NvObject* a, NvObject* b) {
+    Value va = {a}, vb = {b}, out = {0};
+    nv_value_add(&out, &va, &vb);
+    return out.obj;
+}
+
+NvObject* nv_sub(NvObject* a, NvObject* b) {
+    Value va = {a}, vb = {b}, out = {0};
+    nv_value_sub(&out, &va, &vb);
+    return out.obj;
+}
+
+NvObject* nv_mul(NvObject* a, NvObject* b) {
+    Value va = {a}, vb = {b}, out = {0};
+    nv_value_mul(&out, &va, &vb);
+    return out.obj;
+}
+
+NvObject* nv_div(NvObject* a, NvObject* b) {
+    Value va = {a}, vb = {b}, out = {0};
+    nv_value_div(&out, &va, &vb);
+    return out.obj;
+}
+
+NvObject* nv_mod(NvObject* a, NvObject* b) {
+    Value va = {a}, vb = {b}, out = {0};
+    nv_value_mod(&out, &va, &vb);
+    return out.obj;
+}
+
+/* Comparisons are boxed booleans, like the std runtime's. */
+static NvObject* _ns_cmp_result(NvObject* a, NvObject* b, int want) {
+    _ns_ensure_types();
+    Value va = {a}, vb = {b};
+    const int32_t c = nv_value_cmp(&va, &vb);
+    Value out = {0};
+    int truth = (want < 0) ? (c < 0) : (want > 0) ? (c > 0) : (c == 0);
+    create_bool(&out, truth);
+    return out.obj;
+}
+
+NvObject* nv_value_lt(NvObject* a, NvObject* b) { return _ns_cmp_result(a, b, -1); }
+NvObject* nv_value_gt(NvObject* a, NvObject* b) { return _ns_cmp_result(a, b,  1); }
+NvObject* nv_value_le(NvObject* a, NvObject* b) { return _ns_cmp_result(a, b, -1); }
+NvObject* nv_value_ge(NvObject* a, NvObject* b) { return _ns_cmp_result(a, b,  1); }
+NvObject* nv_value_eq(NvObject* a, NvObject* b) { return _ns_cmp_result(a, b,  0); }
+NvObject* nv_value_ne(NvObject* a, NvObject* b) {
+    _ns_ensure_types();
+    Value va = {a}, vb = {b};
+    Value out = {0};
+    create_bool(&out, nv_value_cmp(&va, &vb) != 0);
+    return out.obj;
+}
+
+int nv_value_is_truthy(NvObject* obj) {
+    if (!obj || !obj->ob_type) return 0;
+    if (obj->ob_type == NVInt_Type)   return ((NVInt*)obj)->value != 0;
+    if (obj->ob_type == NVBool_Type)  return ((NVBool*)obj)->value != 0;
+    if (obj->ob_type == NVFloat_Type) return ((NVFloat*)obj)->value != 0.0;
+    if (obj->ob_type == NVStr_Type)   return ((NVStr*)obj)->value && ((NVStr*)obj)->value[0] != 0;
+    return 1;
+}
+
+NvObject* nv_select(int cond, NvObject* a, NvObject* b) {
+    return cond ? a : b;
+}
+
+/* ── Output ──────────────────────────────────────────────────────────────── */
+
+static void _ns_write_value(Value* v) {
+    if (!v || !v->obj || !v->obj->ob_type) { _ns_put_str("None"); return; }
+    NvTypeObject* t = v->obj->ob_type;
+    if (t == NVStr_Type)        _ns_put_str(((NVStr*)v->obj)->value);
+    else if (t == NVInt_Type)   _ns_put_int((long)((NVInt*)v->obj)->value);
+    else if (t == NVFloat_Type) _ns_put_float(((NVFloat*)v->obj)->value);
+    else if (t == NVBool_Type)  _ns_put_str(((NVBool*)v->obj)->value ? "true" : "false");
+    else if (t == NVChar_Type)  _ns_write_bytes(&((NVChar*)v->obj)->value, 1);
+    else                        _ns_put_str("<object>");
+}
+
+void nv_write(Value* v) {
+    _ns_write_value(v);
+    _ns_put_str("\n");
+}
+
+void nv_write_no_nl(Value* v) {
+    _ns_write_value(v);
+}
+
+/* The codegen emits nv_write_bridge for a `write(x)` statement. */
+NvObject* nv_write_bridge(NvObject* obj) {
+    Value v = {obj};
+    nv_write(&v);
+    return (NvObject*)0;
+}
