@@ -207,9 +207,9 @@ std::unique_ptr<Node> Parser::produce_ast(const std::vector<Token>& tokens, cons
     line_count = 0;
 
     if (!tokens.empty()) {
-        // Avoid attempting to read REPL or notebook virtual filenames
+        // Avoid attempting to read REPL, notebook or comptime-generated virtual filenames
         const std::string& fname = tokens[0].filename;
-        if (fname.rfind("repl[", 0) != 0 && fname.rfind("notebook[", 0) != 0 && fname.rfind("repl_line_", 0) != 0 && fname.rfind("cell_", 0) != 0) {
+        if (fname.rfind("repl[", 0) != 0 && fname.rfind("notebook[", 0) != 0 && fname.rfind("repl_line_", 0) != 0 && fname.rfind("cell_", 0) != 0 && fname.rfind("comptime[", 0) != 0) {
             // Estes são nomes virtuais que não devem ser lidos como arquivos
             try {
                 read_lines(fname);
