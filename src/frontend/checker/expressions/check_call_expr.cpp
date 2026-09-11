@@ -347,8 +347,10 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
     // Verificar uso de funções stdlib quando [no_std] está ativo.
     // Passa o IdentifierNode do caller para que o ^ aponte o nome da função, não o '('.
     if (ch->no_std_attr_node && call->caller->kind == NodeType::Identifier) {
+        // "write" is not listed: the freestanding runtime provides it on top of the
+        // write(2) syscall, so a @[no_std] program can report what it computed.
         static const std::unordered_set<std::string> stdlib_builtins = {
-            "write", "read", "exit", "str", "int", "char", "float", "bool",
+            "read", "exit", "str", "int", "char", "float", "bool",
             "Some", "Ok", "Err"
         };
         auto* id = static_cast<IdentifierNode*>(call->caller.get());
