@@ -63,29 +63,36 @@ static const char* const RUNTIME_SYMBOLS[] = {
 };
 
 void REPLState::register_runtime_functions() {
-    std::string runtime_path;
-    const char* narval_home = std::getenv("NARVAL_HOME");
-    if (narval_home) {
-        runtime_path = std::string(narval_home) + "/runtime.so";
-    } else {
-        std::string dev_runtime = std::string(NARVAL_SOURCE_DIR) + "/build/lib/runtime.so";
-        std::ifstream check_file(dev_runtime);
-        if (check_file.good()) {
-            runtime_path = dev_runtime;
-            std::cout << "Using development runtime from: " << runtime_path << std::endl;
+    // The runtime is linked into the compiler itself (NarvalRuntimeShared +
+    // ENABLE_EXPORTS), so its symbols already live in this process — prefer them
+    // and the REPL needs no runtime.so on disk at all. Only fall back to dlopen
+    // when the in-process copy is missing (a stripped/exotic build).
+    void* runtime_handle = RTLD_DEFAULT;
+    if (!dlsym(RTLD_DEFAULT, "nv_write")) {
+        std::string runtime_path;
+        const char* narval_home = std::getenv("NARVAL_HOME");
+        if (narval_home) {
+            runtime_path = std::string(narval_home) + "/runtime.so";
         } else {
-            runtime_path = "/usr/lib/narval/runtime.so";
-            std::cout << "Using production runtime from: " << runtime_path << std::endl;
+            std::string dev_runtime = std::string(NARVAL_SOURCE_DIR) + "/build/lib/runtime.so";
+            std::ifstream check_file(dev_runtime);
+            if (check_file.good()) {
+                runtime_path = dev_runtime;
+                std::cout << "Using development runtime from: " << runtime_path << std::endl;
+            } else {
+                runtime_path = "/usr/lib/narval/runtime.so";
+                std::cout << "Using production runtime from: " << runtime_path << std::endl;
+            }
+            check_file.close();
         }
-        check_file.close();
-    }
 
-    void* runtime_handle = dlopen(runtime_path.c_str(), RTLD_LAZY);
-    if (!runtime_handle) {
-        std::cerr << "Failed to load runtime from " << runtime_path << ": " << dlerror() << std::endl;
-        return;
+        runtime_handle = dlopen(runtime_path.c_str(), RTLD_LAZY);
+        if (!runtime_handle) {
+            std::cerr << "Failed to load runtime from " << runtime_path << ": " << dlerror() << std::endl;
+            return;
+        }
+        std::cout << "Loaded runtime from: " << runtime_path << std::endl;
     }
-    std::cout << "Loaded runtime from: " << runtime_path << std::endl;
 
     for (const char* const* p = RUNTIME_SYMBOLS; *p; ++p) {
         const char* name = *p;
