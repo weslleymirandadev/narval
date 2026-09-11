@@ -170,6 +170,9 @@ struct InsertRuntimeDropsPass
             // helpers that return their own box (json_field increfs the
             // fallback it returns, so the drop balances it)
             "nv_json_field_builtin", "nv_read_builtin",
+            // reads return an owned reference (incref'd by the bridge), so the value
+            // read has to be dropped like any other fresh object
+            "nv_container_get", "nv_array_get", "nv_get_field",
         };
         for (const char* a : fresh)
             if (name == a) return true;
