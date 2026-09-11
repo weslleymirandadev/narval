@@ -9,6 +9,9 @@
 #include "backend/nir/NIRGenerationContext.hpp"
 #include "frontend/ast/statements/class_stmt_node.hpp"
 #include "frontend/ast/statements/function_stmt_node.hpp"
+#include "frontend/ast/expressions/assignment_expr_node.hpp"
+#include "frontend/ast/expressions/identifier_node.hpp"
+#include "frontend/ast/statements/declaration_stmt_node.hpp"
 
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -25,8 +28,10 @@ namespace nv {
 
 namespace {
 
-// A top-level definition that has to survive into the following inputs. Statements
-// are deliberately not carried: they would run again on every line.
+// A top-level statement that has to travel into the following inputs: definitions,
+// plus the assignments that give a variable its value. Every input is JIT'd on its
+// own, so values cannot survive on their own; carrying the initializer means the
+// binding exists again, at the cost of running it once per line.
 std::string repl_decl_name(const Stmt* s) {
     if (!s) return "";
     switch (s->kind) {
@@ -34,6 +39,20 @@ std::string repl_decl_name(const Stmt* s) {
             return static_cast<const FunctionStmtNode*>(s)->name;
         case NodeType::ClassStatement:
             return static_cast<const ClassStmtNode*>(s)->name;
+        case NodeType::DeclarationStatement: {
+            auto* d = static_cast<const DeclarationStmtNode*>(s);
+            if (d->target && d->target->kind == NodeType::Identifier)
+                return static_cast<const IdentifierNode*>(d->target.get())->symbol;
+            return "";
+        }
+        case NodeType::AssignmentExpression: {
+            // Plain `name = ...` only: a compound assignment would apply twice when
+            // the statement is replayed.
+            auto* a = static_cast<const AssignmentExprNode*>(s);
+            if (a->op != "=" || !a->target || a->target->kind != NodeType::Identifier)
+                return "";
+            return static_cast<const IdentifierNode*>(a->target.get())->symbol;
+        }
         default:
             return "";
     }
