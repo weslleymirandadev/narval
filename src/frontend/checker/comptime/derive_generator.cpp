@@ -361,8 +361,9 @@ bool apply_derive(Checker* checker, ClassStmtNode* cls,
             // from_row(r: map<str, str>): Self — the inverse of to_row(). Every column
             // has to be present: int()/float() raise on empty text instead of
             // inventing a default, and create_table() is what guarantees the columns.
-            // A bool column is the literal "true"/"false" str() writes, compared
-            // rather than converted (bool("false") is true — non-empty text).
+            // A bool column goes through bool(text), which reads "", "false" and "0"
+            // as false — so both to_row()'s "true"/"false" and the 1/0 a DDL INTEGER
+            // column stores come back as the right value.
             {
                 CodeBlock body;
                 body.push_back(assign_stmt(id("out"),
@@ -373,7 +374,7 @@ bool apply_derive(Checker* checker, ClassStmtNode* cls,
                     if (f->type == "int")         val = call1("int", std::move(raw));
                     else if (f->type == "float")  val = call1("float", std::move(raw));
                     else if (f->type == "char")   val = call1("char", std::move(raw));
-                    else if (f->type == "bool")   val = bin("==", std::move(raw), str_lit("true"));
+                    else if (f->type == "bool")   val = call1("bool", std::move(raw));
                     else                          val = std::move(raw);
                     body.push_back(assign_stmt(field_of("out", f->name), std::move(val)));
                 }
