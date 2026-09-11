@@ -23,7 +23,7 @@ void nv_write(Value* v) {
         printf("%s\n", ((NVBool*)v->obj)->value ? "true" : "false");
     } else if (type == NVChar_Type) {
         printf("%c\n", ((NVChar*)v->obj)->value);
-    } else if (type == NVArray_Type) {
+    } else if ((type == NVArray_Type || type == NVVector_Type)) {
         NVArray* arr = (NVArray*)v->obj;
         // Print array contents when small (< 10 elements)
         if (arr->size <= 10) {
@@ -69,7 +69,7 @@ void nv_write_no_nl(Value* v) {
     else if (type == NVFloat_Type) printf("%f",  ((NVFloat*)v->obj)->value);
     else if (type == NVBool_Type)  printf("%s",  ((NVBool*)v->obj)->value ? "true" : "false");
     else if (type == NVChar_Type)  printf("%c",  ((NVChar*)v->obj)->value);
-    else if (type == NVArray_Type) {
+    else if ((type == NVArray_Type || type == NVVector_Type)) {
         NVArray* arr = (NVArray*)v->obj;
         printf("[");
         for (int i = 0; i < arr->size; i++) {
