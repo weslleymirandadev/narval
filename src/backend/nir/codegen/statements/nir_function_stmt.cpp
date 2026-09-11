@@ -61,10 +61,21 @@ void FunctionStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         }
     }
 
+    bool is_no_std_entry = !nir_no_std_entry().empty() && name == nir_no_std_entry();
+    ctx.set_in_no_std_entry(is_no_std_entry);
     nir_emit_body(body, ctx);
+    ctx.set_in_no_std_entry(false);
 
-    // @[no_std] entry: terminate through the exit syscall (set by the driver).
-    if (is_void && !nir_no_std_entry().empty() && name == nir_no_std_entry()) {
+    // @[no_std] entry that falls off the end: terminate through the exit syscall
+    // (set by the driver) instead of returning. The kernel jumps at the entry with no
+    // return address, so a plain `ret` lands in whatever follows and every no_std
+    // binary died with SIGSEGV (rc 139) after printing its output. A body that already
+    // ended in a `return` had its exit emitted by the return statement itself, so only
+    // a fall-through gets one here.
+    bool needs_exit = is_no_std_entry &&
+                      (entry->empty() ||
+                       !entry->back().hasTrait<mlir::OpTrait::IsTerminator>());
+    if (needs_exit) {
         ctx.ensure_runtime_func("_exit",
             mlir::FunctionType::get(&ctx.get_mlir_context(), {vt}, {}));
         auto code = mlir::narval::ConstantOp::create(b, loc, vt,
