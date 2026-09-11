@@ -227,12 +227,18 @@ std::unique_ptr<Node> ModuleManager::get_combined_ast(const std::string& main_mo
                            stmt->kind == NodeType::ComptimeFor ||
                            stmt->kind == NodeType::ComptimeIf ||
                            stmt->kind == NodeType::ComptimeBlock ||
+                           stmt->kind == NodeType::ComptimeWhile ||
+                           stmt->kind == NodeType::ComptimeExpr ||
                            stmt->kind == NodeType::MacroCall) {
                     // Comptime state is not a symbol: `comptime` constants and
                     // macros (`sql!`, ...) are folded away by the expansion, so
                     // the imported module's copies are otherwise invisible to the
                     // importer. Carry them over so the combined program's
                     // expansion registers/expands them exactly once.
+                    // ComptimeExpr/ComptimeWhile matter for the same reason and used
+                    // to be dropped here, which is why `comptime import_c(...)` in an
+                    // imported module declared nothing: the statement never reached
+                    // the expansion, so the C prototypes were never registered.
                     combined_program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
                 } else if (stmt->kind == NodeType::ClassStatement ||
                            stmt->kind == NodeType::EnumStatement ||
