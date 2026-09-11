@@ -795,3 +795,11 @@ __asm__(
     "    sub $8, %rsp\n"
     "    jmp main.start\n"
 );
+
+// Keeps a value alive across a store into a container: the statement's own reference
+// to it is released right after, which would leave the container pointing at freed
+// memory. Exposed as a symbol because the codegen emits a call to it.
+NvObject* nv_incref_bridge(NvObject* obj) {
+    nv_incref(obj);
+    return obj;
+}

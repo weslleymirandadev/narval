@@ -63,23 +63,25 @@ void AssignmentExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
             mlir::narval::SetFieldOp::create(
                 ctx.get_builder(), loc, obj,
                 mlir::StringAttr::get(&ctx.get_mlir_context(), field_name), rhs);
-        } else if (target->kind == NodeType::AccessExpression && !nir_no_std_entry().empty()) {
+        } else if (target->kind == NodeType::AccessExpression) {
             // a[i] = rhs → nv_array_set(container, index, rhs).
             //
-            // Gated to @[no_std] because it segfaults against the std runtime. Blaming
-            // the store was wrong: array_set_index_v (collections/sequences.c) does cast
-            // its Value* to the collection, bounds-check the index and assign — nothing
-            // there crashes. The suspect is what happens around it: after the store, the
-            // value that was replaced (or the argument values) gets dropped by the
-            // ownership pass while the container still points at it, and the next read
-            // walks into freed memory. That fits the fact that no_std works: nv_drop is
-            // a no-op in the freestanding runtime. Next step is the ownership/drop pass,
-            // not this line.
+            // The incref is not decoration: the statement's own reference to the value
+            // is released right after this, so without it the container is left holding
+            // a pointer to memory that was just freed, and the next read segfaults. That
+            // was the whole crash — the runtime's indexed store was fine all along (a
+            // direct C test round-trips), and no_std never showed it because nv_drop is a
+            // no-op in the freestanding runtime.
+            auto* acc = static_cast<AccessExprNode*>(target.get());
             mlir::Value container, index;
             if (acc->expr)  { acc->expr->nir_codegen(ctx);  container = ctx.pop_value(); }
             if (acc->index) { acc->index->nir_codegen(ctx); index     = ctx.pop_value(); }
-            if (container && index)
+            if (container && index) {
+                ctx.ensure_runtime_func("nv_incref_bridge",
+                    mlir::FunctionType::get(&ctx.get_mlir_context(), {vt}, {vt}));
+                nir_call_runtime(ctx, loc, "nv_incref_bridge", {rhs}, {vt});
                 nir_call_runtime(ctx, loc, "nv_array_set", {container, index, rhs}, {});
+            }
         } else {
             // Other lvalue shapes are not assignable yet; evaluating the target keeps
             // its side effects (a call inside it, for instance) observable.

@@ -788,3 +788,8 @@ NvObject* nv_char_builtin(NvObject* o) {
 
 /* The std runtime runs global initialisers here; there are none in no_std. */
 void register_global_init(void) { }
+
+/* Nothing is ever freed by the bump arena, so keeping a value alive is free. */
+NvObject* nv_incref_bridge(NvObject* obj) {
+    return obj;
+}
