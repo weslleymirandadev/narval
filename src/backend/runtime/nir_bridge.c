@@ -251,6 +251,24 @@ NvObject* nv_container_get(NvObject* base_obj, NvObject* key_obj) {
     return nv_array_get(base_obj, key_obj);
 }
 
+// Write side of nv_container_get, for the same reason: `a[i] = v` reaches here
+// without a static type. Calling nv_array_set on a map read the STRING key as an
+// integer index, so the assignment landed on whatever index the pointer happened to
+// be — the entry it meant to replace came back empty on the next read. A map is a
+// field table, so its store is nv_object_set_field, exactly like the get above.
+void nv_container_set(NvObject* base_obj, NvObject* key_obj, NvObject* val_obj) {
+    if (!base_obj || !key_obj) return;
+    if (base_obj->ob_type == NVMap_Type) {
+        if (key_obj->ob_type != NVStr_Type) return;
+        Value self = {base_obj}, val = {val_obj};
+        nv_object_set_field(&self, ((NVStr*)key_obj)->value, &val);
+        return;
+    }
+    if (base_obj->ob_type == NVStr_Type) return;  // strings are immutable
+    Value self = {base_obj}, val = {val_obj};
+    array_set_index_v(&self, obj_to_i32(key_obj), &val);
+}
+
 NvObject* nv_create_vector(NvObject* sz_obj) {
     int32_t n = sz_obj ? obj_to_i32(sz_obj) : 4;
     if (n < 0) n = 4;
