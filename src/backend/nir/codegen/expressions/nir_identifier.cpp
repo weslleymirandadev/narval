@@ -6,6 +6,21 @@ IdentifierNode::~IdentifierNode() = default;
 
 void IdentifierNode::nir_codegen(nv::NIRGenerationContext& ctx) {
     mlir::Value v = ctx.lookup(symbol);
+    if (!v && ctx.is_repl_global(symbol)) {
+        // Assigned on an earlier REPL line: the value is in the runtime store, not in
+        // this module (each REPL input is JIT'd into a fresh JIT).
+        auto& b   = ctx.get_builder();
+        auto  loc = ctx.loc(position.get());
+        auto  vt  = ctx.get_narval_value_type();
+        ctx.ensure_runtime_func("nv_repl_get",
+            mlir::FunctionType::get(&ctx.get_mlir_context(), {vt}, {vt}));
+        mlir::Value name_val = nir_emit_const(ctx, loc, b.getStringAttr(symbol));
+        auto call = mlir::narval::CallRuntimeOp::create(
+            b, loc, mlir::TypeRange{vt},
+            mlir::SymbolRefAttr::get(&ctx.get_mlir_context(), "nv_repl_get"),
+            mlir::ValueRange{name_val});
+        v = call.getResults()[0];
+    }
     if (!v) {
         // The type checker accepted the name but codegen has no binding for it at
         // this point - typically the first assignment sits inside a nested block
