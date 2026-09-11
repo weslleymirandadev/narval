@@ -96,7 +96,10 @@ add_custom_command(
     COMMAND sh -c "printf '#include <cstddef>\\n' > ${NARVAL_RUNTIME_BLOB_SRC}"
     COMMAND sh -c "xxd -i -n narval_runtime_obj ${LIB_DIR}/runtime.o >> ${NARVAL_RUNTIME_BLOB_SRC}"
     COMMAND sh -c "xxd -i -n narval_runtime_nostd_obj ${LIB_DIR}/runtime_nostd.o >> ${NARVAL_RUNTIME_BLOB_SRC}"
-    DEPENDS NarvalRuntimeObjs NarvalRuntimeNostdObjs
+    # Depend on the runtime OBJECT FILES, not only on the object libraries: the blob is
+    # regenerated exactly when runtime.o / runtime_nostd.o change. Depending on the
+    # custom targets instead would re-run this (2 MB of xxd + a recompile) every build.
+    DEPENDS ${LIB_DIR}/runtime.o ${LIB_DIR}/runtime_nostd.o
     COMMENT "Embedding runtime objects into the compiler"
     VERBATIM
 )
@@ -114,6 +117,10 @@ set_target_properties(Narval PROPERTIES OUTPUT_NAME narval)
 target_link_options(Narval PRIVATE -W -fPIE)
 target_include_directories(Narval PRIVATE ${PROJECT_SOURCE_DIR}/include)
 target_link_libraries(Narval PRIVATE NarvalAllCommon NarvalLexer NarvalParser NarvalChecker NarvalInteractive NarvalRuntimeObjs NarvalRuntimeShared NarvalNirDialect)
+# The runtime .o files have to be produced before the blob is generated, and building
+# just the Narval target would otherwise leave them stale (the embedded copy is what
+# the linker uses, so a stale blob silently links an old runtime).
+add_dependencies(Narval NarvalRuntimeO NarvalRuntimeNostdO)
 target_compile_definitions(Narval PRIVATE NARVAL_USE_NIR=1)
 target_include_directories(Narval PRIVATE ${CMAKE_BINARY_DIR}/src/backend/nir)
 
