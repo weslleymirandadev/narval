@@ -133,7 +133,9 @@ void nv::Checker::apply_compilation_attributes(const CompilationAttributes& attr
 
     no_std_attr_node = attrs.no_std_node;
     static const std::vector<std::string> runtime_symbols = {
-        "write", "read", "exit", "str", "int", "char", "float", "bool",
+        // "write" stays available: the freestanding runtime implements it with the
+        // write(2) syscall, so a @[no_std] program can still report results.
+        "read", "exit", "str", "int", "char", "float", "bool",
         "Some", "Ok", "Err", "json", "Error"
     };
     for (const auto& name : runtime_symbols) {
