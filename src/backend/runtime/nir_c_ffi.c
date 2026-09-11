@@ -238,3 +238,49 @@ NvObject* nv_ffi_call_sis(NvObject* n, NvObject* a, NvObject* b) {
     const char* (*f)(int32_t, const char*) = (const char* (*)(int32_t, const char*))cimp_sym(n);
     return box_s(f ? f(obj_to_i(a), obj_to_s(b)) : "");
 }
+
+// ── REPL value store ────────────────────────
+// Every REPL input is JIT'd into a fresh JIT, so a variable's value cannot stay in
+// a register between lines. The codegen emits nv_repl_set / nv_repl_get for the
+// names assigned at the top level of the REPL, and the store keeps them alive.
+#define NV_REPL_SLOTS 64
+
+static struct {
+    char* name;
+    NvObject* value;
+} g_repl_slots[NV_REPL_SLOTS];
+static int g_repl_used = 0;
+
+static int repl_slot(const char* name) {
+    if (!name) return -1;
+    for (int i = 0; i < g_repl_used; ++i) {
+        if (g_repl_slots[i].name && strcmp(g_repl_slots[i].name, name) == 0) return i;
+    }
+    return -1;
+}
+
+// Value of a REPL variable (none when it was never assigned).
+NvObject* nv_repl_get(NvObject* name_obj) {
+    const int i = repl_slot(obj_to_s(name_obj));
+    if (i < 0) return box_none();
+    nv_incref(g_repl_slots[i].value);
+    return g_repl_slots[i].value;
+}
+
+// Stores a REPL variable and returns the value, so an assignment keeps a value.
+NvObject* nv_repl_set(NvObject* name_obj, NvObject* value) {
+    const char* name = obj_to_s(name_obj);
+    if (!name || !value) return box_none();
+    int i = repl_slot(name);
+    if (i < 0) {
+        if (g_repl_used >= NV_REPL_SLOTS) return box_none();
+        i = g_repl_used++;
+        g_repl_slots[i].name = strdup(name);
+        g_repl_slots[i].value = NULL;
+    }
+    nv_incref(value);                      // the store holds one reference
+    nv_incref(value);                      // and the assignment keeps one
+    nv_decref(g_repl_slots[i].value);      // release whatever was there
+    g_repl_slots[i].value = value;
+    return value;
+}
