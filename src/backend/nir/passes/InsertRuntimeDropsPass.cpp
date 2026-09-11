@@ -90,6 +90,28 @@ static bool other_use_reachable(Operation* from,
     return false;
 }
 
+// The op that has to finish before `v` may die. `nv_container_get` hands back a
+// pointer INTO the container, and dropping the container right after that read freed
+// the value under the call that was about to consume it (`write(m["k"])` read freed
+// memory). So the drop goes after the LAST op in the block that depends on the use —
+// the read, the write that takes the read as an argument, anything chained further.
+static Operation* last_consumer(Operation* u) {
+    Block* block = u->getBlock();
+    Operation* sink = u;
+    bool moved = true;
+    while (moved) {
+        moved = false;
+        for (Operation* user : sink->getUsers()) {
+            if (user->getBlock() != block) continue;
+            if (user->hasTrait<OpTrait::IsTerminator>()) continue;
+            if (user->isBeforeInBlock(sink)) continue;  // keep the walk forward
+            sink = user;
+            moved = true;
+        }
+    }
+    return sink;
+}
+
 // Label for a value's producer, for the NARVAL_DROPS_DEBUG trace.
 static std::string producer_label(Value v) {
     Operation* op = v.getDefiningOp();
@@ -260,8 +282,9 @@ struct InsertRuntimeDropsPass
         int inserted = 0;
         for (Operation* u : uses) {
             if (other_use_reachable(u, uses, def_block)) continue;
-            b.setInsertionPointAfter(u);
-            b.create<func::CallOp>(u->getLoc(), drop_fn, ValueRange{v});
+            Operation* sink = last_consumer(u);
+            b.setInsertionPointAfter(sink);
+            b.create<func::CallOp>(sink->getLoc(), drop_fn, ValueRange{v});
             ++inserted;
         }
         if (debug_on)
