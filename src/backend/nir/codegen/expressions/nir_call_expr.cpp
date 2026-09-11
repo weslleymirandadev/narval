@@ -99,6 +99,13 @@ void CallExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         {"nv_file_write", "nv_file_write_builtin"},
         {"nv_file_exists", "nv_file_exists_builtin"},
         {"nv_file_remove", "nv_file_remove_builtin"},
+        // Option/Result constructors: the checker accepts them as `Some(x)` etc, but the
+        // codegen emitted the bare name as the callee, which is a symbol nothing defines
+        // — every compiled program using them failed to link. The runtime builds the
+        // objects (they are ordinary values).
+        {"Some", "nv_make_some"},
+        {"Ok",   "nv_make_ok"},
+        {"Err",  "nv_make_err"},
         {nullptr, nullptr}
     };
     if (!callee.empty()) {
