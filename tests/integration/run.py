@@ -1185,6 +1185,57 @@ CASES = [
         ),
         "expected": "2\n",
     },
+    {
+        # @derive(sql): to_row()/from_row() round-trip and the DDL, including a bool
+        # column that reads "false" (compared against "true", since bool(text) is
+        # true for any non-empty text).
+        "name": "derive_sql_row_mapping",
+        "source": (
+            '@[derive(sql)]\n'
+            'class Pessoa {\n'
+            '    id: int;\n'
+            '    nome: str;\n'
+            '    altura: float;\n'
+            '    ativo: bool;\n'
+            '}\n'
+            'p = new Pessoa();\n'
+            'p.id = 7;\n'
+            'p.nome = "ana";\n'
+            'p.altura = 1.62;\n'
+            'p.ativo = true;\n'
+            'write(p.create_table());\n'
+            'row = p.to_row();\n'
+            'write(row["id"]);\n'
+            'write(row["nome"]);\n'
+            'write(row["altura"]);\n'
+            'q = p.from_row(row);\n'
+            'write(q.altura);\n'
+            'write(q.ativo);\n'
+            'hand = {"id": "3", "nome": "bia", "altura": "1.5", "ativo": "false"};\n'
+            'r = p.from_row(hand);\n'
+            'write(r.id);\n'
+            'write(r.nome);\n'
+            'write(r.ativo);\n'
+        ),
+        "expected": (
+            "CREATE TABLE pessoa (id INTEGER PRIMARY KEY, nome TEXT, altura REAL, ativo INTEGER)\n"
+            "7\nana\n1.62\n1.620000\ntrue\n3\nbia\nfalse\n"
+        ),
+    },
+    {
+        # A field with no column of its own is reported, not silently dropped from
+        # the row.
+        "name": "derive_sql_unsupported_field",
+        "source": (
+            '@[derive(sql)]\n'
+            'class Bad {\n'
+            '    nome: str;\n'
+            '    itens: vector;\n'
+            '}\n'
+            'write("nunca compila");\n'
+        ),
+        "expect_error": "@derive(sql): field 'itens' has unsupported type 'vector'",
+    },
 ]
 
 
