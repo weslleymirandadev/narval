@@ -49,6 +49,16 @@ std::unique_ptr<Node> parse_stmt(Parser* parser) {
                 }
 
                 return attr_node;
+            } else if (parser->next_token().type == TokenType::IDENTIFIER &&
+                       parser->next_token().lexeme == "emit" &&
+                       parser->peek_at(2).type == TokenType::OPAREN) {
+                // `@emit(expr)` — the comptime code-emission builtin. Its argument
+                // is a real expression (usually a computed string), so parse it as
+                // one instead of as a decorator, whose arguments are raw text.
+                auto expr = parse_expr(parser);
+                if (parser->current_token().type == TokenType::SEMICOLON)
+                    parser->consume_token();
+                return expr;
             } else {
                 auto node = parse_decorator_stmt(parser);
                 if (node) return node;
