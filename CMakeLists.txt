@@ -84,7 +84,26 @@ include_directories(${MLIR_INCLUDE_DIRS})
 add_subdirectory(src/backend/nir)
 add_subdirectory(src/lsp)
 
-add_executable(Narval src/main.cpp src/frontend/module_manager.cpp)
+# ── Runtime embedded in the compiler ─────────────────────────────────────────
+# The two runtime objects become byte arrays inside the narval binary, so linking a
+# program never depends on build/lib/*.o or NARVAL_HOME being present. This has to
+# live here: add_custom_command is scoped to the directory of the target that
+# consumes its OUTPUT.
+set(NARVAL_RUNTIME_BLOB_SRC ${CMAKE_BINARY_DIR}/generated/narval_runtime_blobs.cpp)
+add_custom_command(
+    OUTPUT ${NARVAL_RUNTIME_BLOB_SRC}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/generated
+    COMMAND sh -c "printf '#include <cstddef>\\n' > ${NARVAL_RUNTIME_BLOB_SRC}"
+    COMMAND sh -c "xxd -i -n narval_runtime_obj ${LIB_DIR}/runtime.o >> ${NARVAL_RUNTIME_BLOB_SRC}"
+    COMMAND sh -c "xxd -i -n narval_runtime_nostd_obj ${LIB_DIR}/runtime_nostd.o >> ${NARVAL_RUNTIME_BLOB_SRC}"
+    DEPENDS NarvalRuntimeObjs NarvalRuntimeNostdObjs
+    COMMENT "Embedding runtime objects into the compiler"
+    VERBATIM
+)
+set_source_files_properties(${NARVAL_RUNTIME_BLOB_SRC} PROPERTIES GENERATED TRUE)
+
+add_executable(Narval src/main.cpp src/frontend/module_manager.cpp
+    ${NARVAL_RUNTIME_BLOB_SRC})   # runtime embedded in the compiler (see src/backend/runtime)
 
 # The REPL JITs the REPL program and resolves runtime symbols (nv_box_*, the
 # nv_sqlite_* primitives, ...) from the running process, so the narval binary has
