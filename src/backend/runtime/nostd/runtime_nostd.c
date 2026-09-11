@@ -660,3 +660,126 @@ int32_t nv_container_len(NvObject* base_obj) {
     }
     return 0;
 }
+
+/* ── Conversions (int / float / str / bool / char) ────────────────────────────
+ * Same results as the std runtime: str(float) is printf("%f"), str(7) is "7".
+ */
+
+static int _ns_fmt_int(char* buf, long v) {
+    int i = 0;
+    int neg = v < 0;
+    unsigned long u = neg ? (unsigned long)(-(v + 1)) + 1UL : (unsigned long)v;
+    char tmp[24];
+    int n = 0;
+    if (u == 0) tmp[n++] = '0';
+    while (u) { tmp[n++] = (char)('0' + (u % 10)); u /= 10; }
+    if (neg) buf[i++] = '-';
+    while (n) buf[i++] = tmp[--n];
+    buf[i] = 0;
+    return i;
+}
+
+static int _ns_fmt_float(char* buf, double d) {
+    int i = 0;
+    if (d != d) { buf[0] = 'n'; buf[1] = 'a'; buf[2] = 'n'; buf[3] = 0; return 3; }
+    if (d < 0) { buf[i++] = '-'; d = -d; }
+    unsigned long ip = (unsigned long)d;
+    double frac = d - (double)ip;
+    unsigned long fp = (unsigned long)(frac * 1000000.0 + 0.5);
+    if (fp >= 1000000UL) { ip += 1; fp -= 1000000UL; }
+    i += _ns_fmt_int(buf + i, (long)ip);
+    buf[i++] = '.';
+    char dec[6];
+    for (int k = 5; k >= 0; --k) { dec[k] = (char)('0' + (fp % 10)); fp /= 10; }
+    for (int k = 0; k < 6; ++k) buf[i++] = dec[k];
+    buf[i] = 0;
+    return i;
+}
+
+static long _ns_parse_int(const char* s) {
+    if (!s) return 0;
+    long sign = 1, v = 0;
+    if (*s == '-') { sign = -1; ++s; } else if (*s == '+') ++s;
+    while (*s >= '0' && *s <= '9') { v = v * 10 + (*s - '0'); ++s; }
+    return sign * v;
+}
+
+static double _ns_parse_float(const char* s) {
+    if (!s) return 0.0;
+    double sign = 1.0, v = 0.0;
+    if (*s == '-') { sign = -1.0; ++s; } else if (*s == '+') ++s;
+    while (*s >= '0' && *s <= '9') { v = v * 10.0 + (double)(*s - '0'); ++s; }
+    if (*s == '.') {
+        ++s;
+        double scale = 0.1;
+        while (*s >= '0' && *s <= '9') { v += (double)(*s - '0') * scale; scale *= 0.1; ++s; }
+    }
+    return sign * v;
+}
+
+NvObject* nv_int_builtin(NvObject* o) {
+    _ns_ensure_types();
+    long v = 0;
+    if (o) {
+        if      (o->ob_type == NVInt_Type)   v = ((NVInt*)o)->value;
+        else if (o->ob_type == NVFloat_Type) v = (long)((NVFloat*)o)->value;
+        else if (o->ob_type == NVBool_Type)  v = ((NVBool*)o)->value;
+        else if (o->ob_type == NVChar_Type)  v = ((NVChar*)o)->value;
+        else if (o->ob_type == NVStr_Type)   v = _ns_parse_int(((NVStr*)o)->value);
+    }
+    Value out = {0};
+    create_int(&out, (int32_t)v);
+    return out.obj;
+}
+
+NvObject* nv_float_builtin(NvObject* o) {
+    _ns_ensure_types();
+    double v = 0.0;
+    if (o) {
+        if      (o->ob_type == NVFloat_Type) v = ((NVFloat*)o)->value;
+        else if (o->ob_type == NVInt_Type)   v = (double)((NVInt*)o)->value;
+        else if (o->ob_type == NVBool_Type)  v = (double)((NVBool*)o)->value;
+        else if (o->ob_type == NVChar_Type)  v = (double)((NVChar*)o)->value;
+        else if (o->ob_type == NVStr_Type)   v = _ns_parse_float(((NVStr*)o)->value);
+    }
+    Value out = {0};
+    create_float(&out, v);
+    return out.obj;
+}
+
+NvObject* nv_str_builtin(NvObject* o) {
+    _ns_ensure_types();
+    char buf[64];
+    Value out = {0};
+    if (!o || !o->ob_type) { create_str(&out, ""); return out.obj; }
+    if (o->ob_type == NVStr_Type)  { create_str(&out, ((NVStr*)o)->value ? ((NVStr*)o)->value : ""); return out.obj; }
+    if (o->ob_type == NVInt_Type)  { _ns_fmt_int(buf, ((NVInt*)o)->value); create_str(&out, buf); return out.obj; }
+    if (o->ob_type == NVFloat_Type){ _ns_fmt_float(buf, ((NVFloat*)o)->value); create_str(&out, buf); return out.obj; }
+    if (o->ob_type == NVBool_Type) { create_str(&out, ((NVBool*)o)->value ? "true" : "false"); return out.obj; }
+    if (o->ob_type == NVChar_Type) { char c[2] = { ((NVChar*)o)->value, 0 }; create_str(&out, c); return out.obj; }
+    create_str(&out, "<object>");
+    return out.obj;
+}
+
+NvObject* nv_bool_builtin(NvObject* o) {
+    _ns_ensure_types();
+    Value out = {0};
+    create_bool(&out, nv_value_is_truthy(o) ? 1 : 0);
+    return out.obj;
+}
+
+NvObject* nv_char_builtin(NvObject* o) {
+    _ns_ensure_types();
+    char c = 0;
+    if (o) {
+        if      (o->ob_type == NVChar_Type)  c = ((NVChar*)o)->value;
+        else if (o->ob_type == NVInt_Type)   c = (char)((NVInt*)o)->value;
+        else if (o->ob_type == NVStr_Type && ((NVStr*)o)->value) c = ((NVStr*)o)->value[0];
+    }
+    Value out = {0};
+    create_char(&out, c);
+    return out.obj;
+}
+
+/* The std runtime runs global initialisers here; there are none in no_std. */
+void register_global_init(void) { }
