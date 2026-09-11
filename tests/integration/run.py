@@ -1149,6 +1149,42 @@ CASES = [
         ),
         "expected": "x0\nx1\nx2\nfim\n",
     },
+    {
+        # An assignment to an outer variable inside a branch that cannot be
+        # if-converted (it declares a local of its own) must still escape the
+        # region. It used to be dropped in silence: the branch was emitted as a
+        # result-less if and `total` kept its old value.
+        "name": "branch_assign_escapes",
+        "source": (
+            'i = 0;\n'
+            'total = 0;\n'
+            'while i < 3 {\n'
+            '    s = "x" + str(i);\n'
+            '    if i >= 0 {\n'
+            '        t = s + "y";\n'
+            '        total = total + len(t);\n'
+            '    }\n'
+            '    i = i + 1;\n'
+            '}\n'
+            'write(total);\n'
+        ),
+        "expected": "9\n",
+    },
+    {
+        # Same escape outside any loop: the non-convertible branch carries its
+        # result out of the region (one result per assigned outer variable).
+        "name": "branch_assign_escapes_toplevel",
+        "source": (
+            'i = 1;\n'
+            'total = 0;\n'
+            'if i >= 0 {\n'
+            '    t = "a" + "b";\n'
+            '    total = total + len(t);\n'
+            '}\n'
+            'write(total);\n'
+        ),
+        "expected": "2\n",
+    },
 ]
 
 
