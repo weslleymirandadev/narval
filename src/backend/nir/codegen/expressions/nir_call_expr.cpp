@@ -104,6 +104,7 @@ void CallExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         {"nv_sqlite_query_run", "nv_sqlite_query_run_builtin"},
         {"nv_sqlite_col_count", "nv_sqlite_col_count_builtin"},
         {"nv_sqlite_cell", "nv_sqlite_cell_builtin"},
+        {"nv_sqlite_col_name", "nv_sqlite_col_name_builtin"},
         {"nv_file_open", "nv_file_open_builtin"},
         {"nv_file_close", "nv_file_close_builtin"},
         {"nv_file_read", "nv_file_read_builtin"},
