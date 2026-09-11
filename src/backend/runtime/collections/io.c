@@ -16,7 +16,7 @@ void nv_write(Value* v) {
         NVStr* s = (NVStr*)v->obj;
         printf("%s\n", s->value ? s->value : "");
     } else if (type == NVInt_Type) {
-        printf("%d\n", ((NVInt*)v->obj)->value);
+        printf("%lld\n", (long long)((NVInt*)v->obj)->value);
     } else if (type == NVFloat_Type) {
         printf("%f\n", ((NVFloat*)v->obj)->value);
     } else if (type == NVBool_Type) {
@@ -65,7 +65,7 @@ void nv_write_no_nl(Value* v) {
     NvTypeObject* type = v->obj->ob_type;
     if (!type) { printf("<unknown>"); return; }
     if (type == NVStr_Type)   { NVStr* s = (NVStr*)v->obj; if (s->value) printf("%s", s->value); }
-    else if (type == NVInt_Type)   printf("%d",  ((NVInt*)v->obj)->value);
+    else if (type == NVInt_Type)   printf("%lld", (long long)((NVInt*)v->obj)->value);
     else if (type == NVFloat_Type) printf("%f",  ((NVFloat*)v->obj)->value);
     else if (type == NVBool_Type)  printf("%s",  ((NVBool*)v->obj)->value ? "true" : "false");
     else if (type == NVChar_Type)  printf("%c",  ((NVChar*)v->obj)->value);
