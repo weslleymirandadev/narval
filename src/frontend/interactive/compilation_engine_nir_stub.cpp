@@ -1,5 +1,6 @@
 #include "frontend/interactive/compilation_engine.hpp"
 #include "frontend/interactive/repl.hpp"
+#include "frontend/interactive/import_processor.hpp"
 #include "frontend/diagnostic.hpp"
 #include "frontend/lexer/lexer.hpp"
 #include "frontend/lexer/lexer_error.hpp"
@@ -32,6 +33,24 @@ namespace {
 // plus the assignments that give a variable its value. Every input is JIT'd on its
 // own, so values cannot survive on their own; carrying the initializer means the
 // binding exists again, at the cost of running it once per line.
+// Name of a top-level variable: a declaration or a plain assignment. Values are
+// kept in the runtime store, so these are not replayed.
+std::string repl_var_name(const Stmt* s) {
+    if (!s) return "";
+    if (s->kind == NodeType::DeclarationStatement) {
+        auto* d = static_cast<const DeclarationStmtNode*>(s);
+        if (d->target && d->target->kind == NodeType::Identifier)
+            return static_cast<const IdentifierNode*>(d->target.get())->symbol;
+        return "";
+    }
+    if (s->kind == NodeType::AssignmentExpression) {
+        auto* a = static_cast<const AssignmentExprNode*>(s);
+        if (a->op != "=" || !a->target || a->target->kind != NodeType::Identifier) return "";
+        return static_cast<const IdentifierNode*>(a->target.get())->symbol;
+    }
+    return "";
+}
+
 std::string repl_decl_name(const Stmt* s) {
     if (!s) return "";
     switch (s->kind) {
@@ -39,20 +58,6 @@ std::string repl_decl_name(const Stmt* s) {
             return static_cast<const FunctionStmtNode*>(s)->name;
         case NodeType::ClassStatement:
             return static_cast<const ClassStmtNode*>(s)->name;
-        case NodeType::DeclarationStatement: {
-            auto* d = static_cast<const DeclarationStmtNode*>(s);
-            if (d->target && d->target->kind == NodeType::Identifier)
-                return static_cast<const IdentifierNode*>(d->target.get())->symbol;
-            return "";
-        }
-        case NodeType::AssignmentExpression: {
-            // Plain `name = ...` only: a compound assignment would apply twice when
-            // the statement is replayed.
-            auto* a = static_cast<const AssignmentExprNode*>(s);
-            if (a->op != "=" || !a->target || a->target->kind != NodeType::Identifier)
-                return "";
-            return static_cast<const IdentifierNode*>(a->target.get())->symbol;
-        }
         default:
             return "";
     }
@@ -74,6 +79,10 @@ bool CompilationEngine::compile_and_execute(const std::string& input,
         auto ast = parser.produce_ast(tokens);
         if (!ast) return false;
 
+        // Imports first: an import line brings a module's declarations, functions and
+        // types into this input.
+        if (!process_imports(input, ast)) return false;
+
         // Re-emit the definitions from earlier inputs along with this one: an input
         // is JIT'd on its own, so a function defined earlier would be missing.
         std::set<std::string> defined_here;
@@ -85,8 +94,19 @@ bool CompilationEngine::compile_and_execute(const std::string& input,
                     defined_here.insert(name);
                     this_decls.push_back(stmt.get());
                 }
+                // A top-level variable does not need replaying: its value is kept in
+                // the runtime store, which outlives this input's JIT.
+                const std::string var = repl_var_name(stmt.get());
+                if (!var.empty() && state) state->repl_var_names.insert(var);
             }
         }
+        std::vector<std::string> repl_names;
+        if (state) {
+            repl_names.assign(state->repl_var_names.begin(), state->repl_var_names.end());
+        }
+        // Names the REPL has to keep in the runtime store: values do not survive a
+        // fresh JIT, so a top-level variable is read back through nv_repl_get.
+
         auto program = std::make_unique<Program>();
         if (state) {
             for (const auto& decl : state->repl_decls) {
@@ -133,6 +153,7 @@ bool CompilationEngine::compile_and_execute(const std::string& input,
         b.setInsertionPointToStart(entry_blk);
         nir_ctx.set_current_func(main_fn);
 
+        nir_ctx.set_repl_globals(repl_names);
         nv::generate_ir_nir(std::move(program), nir_ctx);
 
         // Remember this input's definitions for the next ones.
@@ -176,9 +197,13 @@ bool CompilationEngine::compile_and_execute(const std::string& input,
 
 void CompilationEngine::print_value(llvm::JITTargetAddress /*addr*/) {}
 
-bool CompilationEngine::process_imports(const std::string& /*input*/,
-                                         std::unique_ptr<Node>& /*ast*/) {
-    return true;
+bool CompilationEngine::process_imports(const std::string& input,
+                                         std::unique_ptr<Node>& ast) {
+    // The real processor: it compiles the imported module and puts its
+    // declarations, functions and types into this input's program. The stub that
+    // used to sit here returned true without doing anything, so an import line in
+    // the REPL was silently a no-op.
+    return ImportProcessor::process_imports(input, ast, state, module_manager);
 }
 
 void CompilationEngine::collect_repl_names(Node* /*node*/,
