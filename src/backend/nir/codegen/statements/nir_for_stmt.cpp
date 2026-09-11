@@ -22,6 +22,10 @@ void ForStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
 
     std::string var = get_binding_name(*this);
 
+    // @[vectorize] from the attribute right before this loop.
+    const bool vectorize = ctx.pending_loop_vectorize;
+    ctx.pending_loop_vectorize = false;
+
     // Loop-carried variables: names assigned directly in the body that already
     // exist in the enclosing scope (same rule as the while codegen).
     std::vector<std::pair<std::string, mlir::Value>> carried;
@@ -70,6 +74,7 @@ void ForStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         auto step = mlir::arith::ConstantIndexOp::create(b, loc, 1).getResult();
 
         auto for_op = ctx.emit_for_range(loc, lb, ub, step, var, init_args);
+        if (vectorize) for_op->setAttr("narval.vectorize", b.getUnitAttr());
         {
             mlir::OpBuilder::InsertionGuard g(b);
             auto* body_blk = &for_op.getBody().front();
