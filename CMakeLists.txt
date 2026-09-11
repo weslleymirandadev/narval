@@ -142,12 +142,11 @@ if(TARGET Narval)
 endif()
 
 if(BUILD_TESTING)
-    # End-to-end integration suite: compiles and runs small .nv programs
-    # (tests/integration/run.py) and compares stdout against expected output.
-    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    # End-to-end integration suite: one .nv program per case in tests/cases/, each with
+    # its expected stdout next to it, driven by tests/run.sh (bash, no Python — the
+    # runner is a loop over the directory).
     add_test(NAME narval_integration
-             COMMAND ${Python3_EXECUTABLE}
-                     ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/run.py
+             COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/run.sh
                      $<TARGET_FILE:Narval>)
     set_tests_properties(narval_integration PROPERTIES TIMEOUT 300)
 endif()
