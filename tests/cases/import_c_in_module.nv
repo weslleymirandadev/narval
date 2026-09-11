@@ -1,0 +1,25 @@
+# `comptime import_c(...)` inside an IMPORTED module: the module declares the C
+# prototypes and exposes wrappers, the main program imports it. The statement used to
+# be dropped when the modules were merged into one program, so the prototypes were
+# never registered and every call failed with "Identifier 'abs' not found".
+# Expected:
+# 7
+# 9.000000
+# File: mymath.h
+# int abs(int x);
+# double sqrt(double x);
+# File: libmath.nv
+# comptime import_c("mymath.h", link: "m");
+#
+# def c_abs(x: int): int {
+#     return abs(x);
+# }
+#
+# def c_sqrt(x: float): float {
+#     return sqrt(x);
+# }
+
+from "./libmath.nv" import *;
+
+write(c_abs(-7));
+write(c_sqrt(81.0));
