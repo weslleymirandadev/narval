@@ -3,6 +3,7 @@
 #include "frontend/ast/program.hpp"
 #include "frontend/ast/statements/module_attr_node.hpp"
 
+#include "backend/nir/NirDiagnostics.hpp"
 #include <cstdlib>
 
 namespace nv {
@@ -31,10 +32,10 @@ void generate_ir_nir(std::unique_ptr<Node> node, NIRGenerationContext& ctx) {
 
     ctx.pop_scope();
 
-    // NARVAL_DUMP_NIR=1 prints the narval-dialect module as codegen left it, before
-    // any pass rewrites it — the only way to read the loop/ownership structure while
-    // it still looks like the source.
-    if (std::getenv("NARVAL_DUMP_NIR")) ctx.dump_nir();
+    // NARVAL_DUMP_NIR=1 (or --emit-nir) prints the narval-dialect module as codegen
+    // left it, before any pass rewrites it — the only way to read the
+    // loop/branch/ownership structure while it still looks like the source.
+    if (diag_emit_nir() || std::getenv("NARVAL_DUMP_NIR")) ctx.dump_nir();
 }
 
 } // namespace nv
