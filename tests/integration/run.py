@@ -1268,6 +1268,35 @@ CASES = [
         "module_files": {"sqlite.nv": "stdlib/sqlite.nv"},
         "expected": "4\nnome\n7\nana\n1.620000\ntrue\n",
     },
+    {
+        # `int` is 64-bit: an int32 box truncated every value above 2^31 on the way in
+        # (2000000000 + 2000000000 came out negative) and %d printed the low half.
+        "name": "int_is_64_bit",
+        "source": (
+            'write(2000000000 + 2000000000);\n'
+            'a = 2147483647;\n'
+            'write(a + 1);\n'
+            'write(1000000 * 1000000);\n'
+            'write(str(-a));\n'
+        ),
+        "expected": "4000000000\n2147483648\n1000000000000\n-2147483647\n",
+    },
+    {
+        # A @[no_std] entry is linked as the process entry point, so it has no caller:
+        # `return rc` in it must exit with rc instead of returning into whatever follows
+        # (every no_std binary used to print its output and then die with SIGSEGV).
+        "name": "nostd_entry_return_exits",
+        "no_std": True,
+        "source": (
+            '@[no_std]\n'
+            'def main(): int {\n'
+            '    write("ok");\n'
+            '    return 0;\n'
+            '}\n'
+        ),
+        "expected": "ok\n",
+        "expected_rc": 0,
+    },
 ]
 
 
