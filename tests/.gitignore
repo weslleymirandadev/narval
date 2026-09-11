@@ -1,0 +1,5 @@
+# A case is one self-describing .nv file: expected stdout, exit code, diagnostics,
+# stdin and any file it needs are directives in its header comments, and the runner
+# materialises them in a temp directory. Nothing else belongs here.
+cases/*
+!cases/*.nv
