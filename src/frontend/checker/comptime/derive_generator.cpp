@@ -12,6 +12,9 @@
 #include "frontend/ast/expressions/boolean_literal_node.hpp"
 #include "frontend/ast/expressions/member_expr_node.hpp"
 #include "frontend/ast/expressions/numeric_literal_node.hpp"
+#include "frontend/ast/expressions/access_expr_node.hpp"
+#include "frontend/ast/expressions/map_node.hpp"
+#include "frontend/ast/expressions/key_value_node.hpp"
 #include "frontend/ast/expressions/param_node.hpp"
 #include "frontend/ast/expressions/string_literal_node.hpp"
 
@@ -132,6 +135,22 @@ std::string openapi_type(const std::string& t) {
     return "";
 }
 
+// SQL column type of a field type; empty when there is no mapping (a class or a
+// collection field has no column of its own).
+std::string sql_type(const std::string& t) {
+    if (t == "str" || t == "string") return "TEXT";
+    if (t == "char") return "TEXT";
+    if (t == "int") return "INTEGER";
+    if (t == "bool") return "INTEGER";
+    if (t == "float") return "REAL";
+    return "";
+}
+
+// `r[key]` — indexes a map by a literal key.
+ExprPtr map_get(const std::string& base, const std::string& key) {
+    return std::make_unique<AccessExprNode>(id(base), str_lit(key));
+}
+
 bool has_method(const ClassStmtNode* cls, const std::string& name) {
     for (const auto& m : cls->methods)
         if (m && m->name == name) return true;
@@ -145,7 +164,7 @@ bool apply_derive(Checker* checker, ClassStmtNode* cls,
     if (!cls) return true;
 
     static const std::unordered_set<std::string> known = {
-        "eq", "debug", "json", "hash", "ord", "clone", "from_json", "openapi",
+        "eq", "debug", "json", "hash", "ord", "clone", "from_json", "openapi", "sql",
     };
 
     for (const std::string& raw : derives) {
@@ -155,7 +174,7 @@ bool apply_derive(Checker* checker, ClassStmtNode* cls,
         if (d.empty()) continue;
 
         if (!known.count(d)) {
-            error = "unknown derive '" + raw + "' (supported: clone, debug, eq, from_json, hash, json, openapi, ord)";
+            error = "unknown derive '" + raw + "' (supported: clone, debug, eq, from_json, hash, json, openapi, ord, sql)";
             return false;
         }
 
@@ -168,6 +187,7 @@ bool apply_derive(Checker* checker, ClassStmtNode* cls,
         if (d == "clone" && has_method(cls, "clone")) continue;
         if (d == "from_json" && has_method(cls, "from_json")) continue;
         if (d == "openapi" && has_method(cls, "schema")) continue;
+        if (d == "sql" && has_method(cls, "to_row")) continue;
 
         if (cls->fields.empty()) {
             error = "@derive(" + d + "): class '" + cls->name + "' has no fields";
@@ -294,6 +314,73 @@ bool apply_derive(Checker* checker, ClassStmtNode* cls,
             }
             parts.push_back(str_lit("]}"));
             cls->methods.push_back(make_method("schema", {}, "str", chain("+", std::move(parts))));
+        } else if (d == "sql") {
+            // Row mapping for the SQL bindings. A row is a map of column name → text
+            // (that is what SQLite binds and what the stdlib hands over), so every
+            // field is stringified on the way out and converted back through its own
+            // type on the way in. A field with no column of its own (a class, a
+            // collection) is reported instead of generating a row that would drop it.
+            for (const auto& f : cls->fields) {
+                if (sql_type(f->type).empty()) {
+                    error = "@derive(sql): field '" + f->name +
+                            "' has unsupported type '" + f->type + "'";
+                    return false;
+                }
+            }
+
+            // to_row(): map<str, str>
+            {
+                std::vector<ExprPtr> pairs;
+                for (const auto& f : cls->fields)
+                    pairs.push_back(std::make_unique<KeyValueNode>(
+                        str_lit(f->name), call1("str", field_of("self", f->name))));
+                cls->methods.push_back(make_method("to_row", {}, "map<str, str>",
+                                                   std::make_unique<MapNode>(std::move(pairs))));
+            }
+
+            // create_table(): the DDL these rows live in. A field named `id` becomes
+            // the primary key — every row-mapped class needs one to be addressable.
+            {
+                std::string table = cls->name;
+                std::transform(table.begin(), table.end(), table.begin(),
+                               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                std::vector<ExprPtr> parts;
+                parts.push_back(str_lit("CREATE TABLE " + table + " ("));
+                for (size_t i = 0; i < cls->fields.size(); ++i) {
+                    const auto& f = cls->fields[i];
+                    if (i) parts.push_back(str_lit(", "));
+                    std::string col = f->name + " " + sql_type(f->type);
+                    if (f->name == "id") col += " PRIMARY KEY";
+                    parts.push_back(str_lit(col));
+                }
+                parts.push_back(str_lit(")"));
+                cls->methods.push_back(
+                    make_method("create_table", {}, "str", chain("+", std::move(parts))));
+            }
+
+            // from_row(r: map<str, str>): Self — the inverse of to_row(). Every column
+            // has to be present: int()/float() raise on empty text instead of
+            // inventing a default, and create_table() is what guarantees the columns.
+            // A bool column is the literal "true"/"false" str() writes, compared
+            // rather than converted (bool("false") is true — non-empty text).
+            {
+                CodeBlock body;
+                body.push_back(assign_stmt(id("out"),
+                                           std::make_unique<NewExprNode>(cls->name, cls->name)));
+                for (const auto& f : cls->fields) {
+                    ExprPtr raw = map_get("r", f->name);
+                    ExprPtr val;
+                    if (f->type == "int")         val = call1("int", std::move(raw));
+                    else if (f->type == "float")  val = call1("float", std::move(raw));
+                    else if (f->type == "char")   val = call1("char", std::move(raw));
+                    else if (f->type == "bool")   val = bin("==", std::move(raw), str_lit("true"));
+                    else                          val = std::move(raw);
+                    body.push_back(assign_stmt(field_of("out", f->name), std::move(val)));
+                }
+                body.push_back(std::make_unique<ReturnStmtNode>(id("out")));
+                cls->methods.push_back(make_method_block(
+                    "from_row", { param("r", "map<str, str>") }, cls->name, std::move(body)));
+            }
         }
     }
 
