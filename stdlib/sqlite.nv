@@ -15,7 +15,8 @@
 # handle is an int (Narval integers are 64-bit, so a pointer fits).
 # query() runs a statement and stores the result set on the handle; row() reads one
 # row back and rows() returns them all as a vector of vectors (index it twice).
-# col_name()/row_map() read a row by column name instead of by position.
+# col_name(i) names a column, so a caller can find the column it wants by name
+# instead of hard-coding its position (row() hands back the cells in order).
 
 class Sqlite {
     handle: int;
@@ -52,19 +53,6 @@ class Sqlite {
     # Name of a column of the stored result ("" when out of range).
     public col_name(col: int): str {
         return nv_sqlite_col_name(self.handle, col);
-    }
-
-    # One stored row as a map of column name → text, so a cell is read as
-    # `r["nome"]` instead of by its position.
-    public row_map(index: int): map<str, str> {
-        row = {};
-        col = 0;
-        total = self.cols();
-        while col < total {
-            row[self.col_name(col)] = self.cell(index, col);
-            col = col + 1;
-        }
-        return row;
     }
 
     # Rowid of the last insert.
