@@ -803,3 +803,10 @@ NvObject* nv_incref_bridge(NvObject* obj) {
     nv_incref(obj);
     return obj;
 }
+
+// Some(x): same shape as nv_make_ok. The codegen emits this name for the constructor.
+NvObject* nv_make_some(NvObject* val) {
+    Value inner = {val}, out = {NULL};
+    create_option_some(&out, &inner);
+    return out.obj;
+}
