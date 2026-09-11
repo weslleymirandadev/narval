@@ -75,12 +75,51 @@ std::vector<nv::ffi::CLibFunc> nv::ffi::c_lib_registry(const std::string& libnam
     return {};
 }
 
+// Register one C FFI function: declare the nv_ffi_<fn.name> bridge in the module
+// and register user_name -> bridge_name in the call remap table.
+//
+// This avoids emitting a wrapper function named @<fn.name> which would shadow
+// the C library symbol of the same name (causing infinite recursion in the
+// bridge's own math.h call).
+static void register_c_ffi(nv::NIRGenerationContext& ctx,
+                            const nv::ffi::CLibFunc& fn,
+                            const std::string& user_name);
+
 // Declare each extern C function in the MLIR module so callers can reference it.
 void ExternStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
     auto& mlir_ctx = ctx.get_mlir_context();
     auto  vt       = ctx.get_narval_value_type();
     auto& b        = ctx.get_builder();
     auto  ul       = b.getUnknownLoc();
+
+    // `extern "C:math" { ... }`: for a known C library, route the calls through
+    // the nv_ffi_<name> bridges, which marshal boxed values to the C ABI.
+    // Declaring the raw C symbol (the fallback below) handed libm a boxed pointer
+    // where a double was expected, so every such call took the process down.
+    {
+        std::string lib = language;
+        auto colon = lib.find(':');
+        if (colon != std::string::npos) lib = lib.substr(colon + 1);
+        if (!lib.empty() && lib != "C" && lib != "C++") {
+            auto known = nv::ffi::c_lib_registry(lib);
+            bool all_known = !known.empty();
+            for (const auto& decl : declarations) {
+                bool found = false;
+                for (const auto& fn : known)
+                    if (fn.name == decl.name) { found = true; break; }
+                if (!found) { all_known = false; break; }
+            }
+            if (all_known) {
+                for (const auto& decl : declarations)
+                    for (const auto& fn : known)
+                        if (fn.name == decl.name) {
+                            register_c_ffi(ctx, fn, decl.name);
+                            break;
+                        }
+                return;
+            }
+        }
+    }
 
     for (const auto& decl : declarations) {
         // Skip if already declared.
