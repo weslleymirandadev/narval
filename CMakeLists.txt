@@ -85,6 +85,12 @@ add_subdirectory(src/backend/nir)
 add_subdirectory(src/lsp)
 
 add_executable(Narval src/main.cpp src/frontend/module_manager.cpp)
+
+# The REPL JITs the REPL program and resolves runtime symbols (nv_box_*, the
+# nv_sqlite_* primitives, ...) from the running process, so the narval binary has
+# to export them; without this only libc/libm symbols are visible and every REPL
+# call into the runtime fails with "Symbols not found".
+set_target_properties(Narval PROPERTIES ENABLE_EXPORTS ON)
 set_target_properties(Narval PROPERTIES OUTPUT_NAME narval)
 target_link_options(Narval PRIVATE -W -fPIE)
 target_include_directories(Narval PRIVATE ${PROJECT_SOURCE_DIR}/include)
