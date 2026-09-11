@@ -1030,6 +1030,63 @@ CASES = [
         ),
         "expected": "4.000000\n1024.000000\n7\n",
     },
+    {
+        # @emit: a comptime macro generates Narval source, which is parsed and
+        # spliced in as real defs (COMPTIME_SPEC 5.11 AST building).
+        "name": "comptime_emit_def",
+        "source": (
+            'comptime def make_add!(src: str): str {\n'
+            '    @emit("def gen_add(a: int, b: int): int { return a + b; }");\n'
+            '    return "made";\n'
+            '}\n'
+            'make_add! { keep }\n'
+            'write(gen_add(20, 22));\n'
+        ),
+        "expected": "42\n",
+    },
+    {
+        # The emitted source is a normal comptime string, so it can be built with
+        # loops and string concatenation.
+        "name": "comptime_emit_computed",
+        "source": (
+            'comptime def gen_series!(src: str): str {\n'
+            '    out = "";\n'
+            '    for i in 0..3 {\n'
+            '        if i > 0 { out = out + " "; }\n'
+            '        out = out + "write(" + str(i * 10) + ");";\n'
+            '    }\n'
+            '    @emit(out);\n'
+            '    return "series";\n'
+            '}\n'
+            'gen_series! { x }\n'
+        ),
+        "expected": "0\n10\n20\n",
+    },
+    {
+        # grammar! now emits its recognizers (was validate-and-summarise only): the
+        # generated parse_expr walks a token list and returns the position after the
+        # match, or -1.
+        "name": "stdlib_grammar_generates_parser",
+        "source": (
+            'from "grammar.nv" import *;\n'
+            '\n'
+            'write(grammar! {\n'
+            "    expr   = term (('+' | '-') term)*\n"
+            "    term   = factor (('*' | '/') factor)*\n"
+            "    factor = NUMBER | '(' expr ')'\n"
+            '});\n'
+            't = ["NUMBER", "+", "NUMBER", "*", "NUMBER"];\n'
+            'write(parse_expr(t, 0) == len(t));\n'
+            'u = ["(", "NUMBER", "+", "NUMBER", ")"];\n'
+            'write(parse_expr(u, 0));\n'
+            'bad = ["NUMBER", "+", "*", "NUMBER"];\n'
+            'write(parse_expr(bad, 0));\n'
+        ),
+        "module_files": {"grammar.nv": "stdlib/grammar.nv"},
+        "expected": ("grammar: 3 rule(s) [expr term factor], terminals "
+                     "['+' '-' '*' '/' NUMBER '(' ')']\n"
+                     "true\n5\n1\n"),
+    },
 ]
 
 
