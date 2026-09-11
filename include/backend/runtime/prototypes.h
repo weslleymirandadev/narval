@@ -514,6 +514,10 @@ Value nv_box_tensor(int64_t ptr_int, int64_t ndim, int64_t elem_size,
 // Verificar se valor é nulo (legado)
 int is_null_value(const Value* v);
 
+// Attaches the builtin types' deallocators so nv_decref releases the heap payload
+// a string/array/vector/tuple/map owns (see object.c). Call after the types exist.
+void nv_install_builtin_deallocs(void);
+
 // Criar valor nulo (legado)
 void create_null(Value* out);
 
