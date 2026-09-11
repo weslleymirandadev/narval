@@ -1,0 +1,55 @@
+# Assignments inside an `if` branch must be visible after the branch.
+#   ./build/narval tests/if_assignment.nv
+# Expected output: 7 / 2 / 2 / 10 / stored
+def pick(n: int): int {
+    r = 0;
+    if n > 3 {
+        r = 7;
+    } else {
+        r = n + 1;
+    }
+    return r;
+}
+write(pick(9));
+write(pick(1));
+
+# Assignment inside an if that is inside a while (the shape the string helpers
+# use to scan: `if i >= len(s) { found = true; }`).
+def first_hit(): int {
+    found = -1;
+    i = 0;
+    while i < 3 {
+        if i == 2 {
+            found = i;
+        }
+        i = i + 1;
+    }
+    return found;
+}
+write(first_hit());
+
+# A branch that has both a side effect and an assignment.
+def with_side(n: int): int {
+    v = [];
+    r = 0;
+    if n > 0 {
+        v.push(n);
+        r = n * 2;
+    }
+    return r;
+}
+write(with_side(5));
+
+# Nested ifs.
+def nested(a: int, b: int): str {
+    label = "";
+    if a > 0 {
+        if b > 0 {
+            label = "stored";
+        } else {
+            label = "no";
+        }
+    }
+    return label;
+}
+write(nested(1, 1));
