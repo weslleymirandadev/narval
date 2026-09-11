@@ -1129,6 +1129,26 @@ CASES = [
         "module_files": {"sqlite.nv": "stdlib/sqlite.nv"},
         "expected": "2\nbob\nana\n7.0\n0\n",
     },
+    {
+        # A value used across the blocks of a loop body AND in both arms of an if:
+        # the shape the drops pass gets wrong unless the last-use reachability is
+        # careful (same-block uses, and a block that reaches itself).
+        "name": "loop_value_across_blocks",
+        "source": (
+            'i = 0;\n'
+            'while i < 3 {\n'
+            '    s = "x" + str(i);\n'
+            '    if i == i {\n'
+            '        write(s);\n'
+            '    } else {\n'
+            '        write("no");\n'
+            '    }\n'
+            '    i = i + 1;\n'
+            '}\n'
+            'write("fim");\n'
+        ),
+        "expected": "x0\nx1\nx2\nfim\n",
+    },
 ]
 
 
