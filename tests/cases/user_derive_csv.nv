@@ -1,3 +1,8 @@
+# Expected:
+# bob,42
+# true
+# User { name: "bob", age: 42 }
+
 comptime def derive_csv(cls: str, fields: array): str {
     pieces = "str(self." + fields[0].name + ")";
     i = 1;

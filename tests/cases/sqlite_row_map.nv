@@ -1,3 +1,11 @@
+# Expected:
+# 3
+# nome
+#
+# ana
+# 7
+# Module: sqlite.nv = stdlib/sqlite.nv
+
 from "sqlite.nv" import *;
 db = new Sqlite();
 db.open(":memory:");

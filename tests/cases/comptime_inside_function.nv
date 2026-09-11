@@ -1,3 +1,6 @@
+# Expected:
+# 8
+
 def f(): int {
     comptime K = 7;
     return K + 1;

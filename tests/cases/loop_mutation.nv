@@ -1,3 +1,7 @@
+# Expected:
+# 10
+# 5
+
 i = 0;
 soma = 0;
 while (true) {

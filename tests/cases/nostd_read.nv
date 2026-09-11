@@ -1,3 +1,9 @@
+# Expected:
+# in:
+# world
+# Stdin:
+# world
+
 @[no_std]
 def _start(): None {
     write("in:");

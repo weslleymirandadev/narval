@@ -1,3 +1,7 @@
+# Expected:
+# Error: two alternatives starting with
+# Module: grammar.nv = stdlib/grammar.nv
+
 from "grammar.nv" import *;
 
 write(grammar! {

@@ -1,3 +1,9 @@
+# Expected:
+# true
+# false
+# User { name: "bob", age: 42 }
+# {"name": "bob", "age": 42}
+
 @[derive(eq, debug, json)]
 class User {
     name: str;

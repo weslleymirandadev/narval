@@ -1,3 +1,8 @@
+# Expected:
+# big
+# four
+# 4
+
 x = 4;
 if (x > 2) {
     write("big");

@@ -1,3 +1,6 @@
+# Expected:
+# Error: error[CE003]
+
 n = 5;
 comptime for i in n..10 {
     write(i);

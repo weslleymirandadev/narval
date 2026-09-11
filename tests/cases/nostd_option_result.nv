@@ -1,3 +1,9 @@
+# Expected:
+# <object:Option::Some>
+# <object:Result::Ok>
+# <object:Result::Err>
+# <object:Option::None>
+
 @[no_std]
 def _start(): None {
     a = Some(5);

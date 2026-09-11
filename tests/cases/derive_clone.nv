@@ -1,3 +1,9 @@
+# Expected:
+# bob
+# 42
+# false
+# false
+
 @[derive(debug, clone)]
 class User {
     name: str;

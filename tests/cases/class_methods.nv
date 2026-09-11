@@ -1,3 +1,8 @@
+# Expected:
+# bob
+# hi bob
+# bob@42
+
 class User {
     mut name: str;
     mut age: int;

@@ -1,3 +1,13 @@
+# Expected:
+# 1.000000
+# 2.540302
+# File: mymath2.h
+# double sin(double x);
+# double cos(double x);
+# double exp(double x);
+# double log(double x);
+# double sqrt(double x);
+
 comptime import_c("mymath2.h", link: "m");
 
 @[diff(x, "dloss_dx")]

@@ -1,3 +1,19 @@
+# Expected:
+# hi
+# true
+# false
+# true
+# 2
+# -1
+# ell
+# 2
+# 3
+# a
+# c
+# x-y-z
+# a+b+c
+# Module: strings.nv = stdlib/strings.nv
+
 from "strings.nv" import *;
 write(trim("  hi  "));
 write(starts_with("hello", "he"));

@@ -1,3 +1,7 @@
+# Expected:
+# a
+# fim
+
 while (true) {
     write("a");
     if (1 == 1) {

@@ -1,3 +1,9 @@
+# Expected:
+# User
+# true
+# age
+# name
+
 class User {
     name: str;
     age: int;

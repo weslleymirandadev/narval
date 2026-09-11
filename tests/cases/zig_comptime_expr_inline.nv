@@ -1,2 +1,5 @@
+# Expected:
+# 14
+
 x = comptime 2 + 3 * 4;
 write(x);

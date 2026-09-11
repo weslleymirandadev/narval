@@ -1,3 +1,8 @@
+# Expected:
+# 0
+# 10
+# 20
+
 comptime def gen_series!(src: str): str {
     out = "";
     for i in 0..3 {

@@ -1,2 +1,6 @@
+# Expected:
+# Error: @compileError: sql!: expected the query to start with
+# Module: macros.nv = stdlib/macros.nv
+
 from "macros.nv" import *;
 write(sql! { SELCT x });

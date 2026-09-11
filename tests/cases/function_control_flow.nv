@@ -1,3 +1,9 @@
+# Expected:
+# 1
+# 0
+# 1
+# 120
+
 def pick(n: int): int {
     if (n <= 1) {
         return 1;

@@ -1,2 +1,17 @@
+# Expected:
+# 8
+# File: nested_dep.nv
+# # Imported by nested_user.nv, which is imported by the integration case:
+# # a module importing another module has to propagate its functions.
+# def dep_value(): int {
+#     return 7;
+# }
+# File: nested_user.nv
+# from "./nested_dep.nv" import *;
+#
+# def user_value(): int {
+#     return dep_value() + 1;
+# }
+
 from "./nested_user.nv" import *;
 write(user_value());

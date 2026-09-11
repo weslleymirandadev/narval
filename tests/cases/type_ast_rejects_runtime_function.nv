@@ -1,3 +1,6 @@
+# Expected:
+# Error: only comptime functions can be inspected
+
 def plain(x: int): int {
     return x;
 }

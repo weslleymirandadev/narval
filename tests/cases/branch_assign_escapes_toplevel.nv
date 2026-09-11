@@ -1,3 +1,6 @@
+# Expected:
+# 2
+
 i = 1;
 total = 0;
 if i >= 0 {

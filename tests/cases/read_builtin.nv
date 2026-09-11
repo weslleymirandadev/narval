@@ -1,2 +1,7 @@
+# Expected:
+# hello
+# Stdin:
+# hello
+
 s = read();
 write(s);

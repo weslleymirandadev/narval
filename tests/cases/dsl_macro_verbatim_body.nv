@@ -1,3 +1,7 @@
+# Expected:
+# query( SELECT 1 )
+# query( SELECT * FROM users )
+
 comptime def sql!(src: str): str {
     return "query(" + src + ")";
 }

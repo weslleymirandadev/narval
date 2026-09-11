@@ -1,3 +1,11 @@
+# Expected:
+# 2
+# bob
+# ana
+# 7.0
+# 0
+# Module: sqlite.nv = stdlib/sqlite.nv
+
 from "sqlite.nv" import *;
 
 db = new Sqlite();

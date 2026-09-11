@@ -1,3 +1,10 @@
+# Expected:
+# grammar: 3 rule(s) [expr term factor], terminals ['+' '-' '*' '/' NUMBER '(' ')']
+# true
+# 5
+# 1
+# Module: grammar.nv = stdlib/grammar.nv
+
 from "grammar.nv" import *;
 
 write(grammar! {

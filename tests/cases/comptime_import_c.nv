@@ -1,3 +1,15 @@
+# Expected:
+# 7
+# 1024.000000
+# 5
+# 2.500000
+# File: mymath.h
+# double pow(double base, double exp);
+# int abs(int x);
+# long strlen(const char *s);
+# double atof(const char *s);
+# void srand(unsigned int seed);
+
 comptime import_c("mymath.h", link: "m");
 write(abs(-7));
 write(pow(2.0, 10.0));

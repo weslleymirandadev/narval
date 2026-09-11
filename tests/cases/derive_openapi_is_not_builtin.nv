@@ -1,3 +1,6 @@
+# Expected:
+# Error: unknown derive 'openapi'
+
 @[derive(openapi)]
 class User {
     name: str;

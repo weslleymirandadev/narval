@@ -1,3 +1,7 @@
+# Expected:
+# Error: uses undefined nonterminal
+# Module: grammar.nv = stdlib/grammar.nv
+
 from "grammar.nv" import *;
 
 write(grammar! {

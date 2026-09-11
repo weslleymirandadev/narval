@@ -1,3 +1,13 @@
+# Expected:
+# 5
+# true
+# true
+# false
+# h
+# o
+#
+# false
+
 s = "hello";
 write(len(s));
 write(s == "hello");

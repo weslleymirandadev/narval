@@ -1,3 +1,8 @@
+# Expected:
+# 1
+# 4
+# abc
+
 comptime T = [1, 2, 3, 4];
 write(T[0]);
 write(T[3]);

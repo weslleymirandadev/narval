@@ -1,3 +1,6 @@
+# Expected:
+# Error: derive_bad must return the members as a str
+
 comptime def derive_bad(cls: str, fields: array): int {
     return 1;
 }

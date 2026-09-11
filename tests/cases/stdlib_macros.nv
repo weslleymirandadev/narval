@@ -1,3 +1,9 @@
+# Expected:
+# SELECT * FROM users
+# a(b|c)*[0-9]
+# GET /users/:id
+# Module: macros.nv = stdlib/macros.nv
+
 from "macros.nv" import *;
 write(sql! { SELECT *   FROM   users });
 write(regex! { a(b|c)*[0-9] });

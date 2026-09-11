@@ -1,3 +1,10 @@
+# Expected:
+# true
+# false
+# 33
+# 93
+# 5
+
 @[derive(eq, hash, ord)]
 class P {
     x: int;

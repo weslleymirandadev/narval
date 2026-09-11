@@ -1,3 +1,9 @@
+# Expected:
+# a
+# d
+# deep
+# c
+
 rows = [["a", "b"], ["c", "d"]];
 write(rows[0][0]);
 write(rows[1][1]);

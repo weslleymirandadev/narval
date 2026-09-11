@@ -1,3 +1,9 @@
+# Expected:
+# <object:Option::Some>
+# <object:Result::Ok>
+# <object:Result::Err>
+# <object:Option::None>
+
 a = Some(5);
 b = Ok(7);
 c = Err("bad");

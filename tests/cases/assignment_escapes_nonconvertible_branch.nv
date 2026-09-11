@@ -1,3 +1,8 @@
+# Expected:
+# 2
+# a
+# b
+
 def cells(row: str): vector {
     parts = [];
     cell = "";

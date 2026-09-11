@@ -1,3 +1,7 @@
+# Expected:
+# 64
+# 81
+
 def pow2(comptime N: int): int {
     return N * N;
 }

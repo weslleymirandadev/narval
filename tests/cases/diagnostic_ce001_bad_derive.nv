@@ -1,3 +1,6 @@
+# Expected:
+# Error: error[CE001]
+
 @[derive(nope)]
 class Q {
     a: int;

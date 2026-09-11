@@ -1,3 +1,9 @@
+# Expected:
+# Pessoa
+# 7
+# ana
+# Pessoa { id: 7, nome: "ana" }
+
 comptime def derive_log(cls: str, fields: array): str {
     out = "";
     for f in fields {

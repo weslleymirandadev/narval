@@ -1,3 +1,13 @@
+# Expected:
+# bob
+# 42
+# false
+# false
+# zoe
+# 7
+# true
+# false
+
 @[derive(debug, clone, from_json)]
 class User {
     name: str;

@@ -1,3 +1,6 @@
+# Expected:
+# 25
+
 comptime {
     V = 5 * 5;
 }

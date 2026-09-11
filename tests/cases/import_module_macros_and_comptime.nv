@@ -1,3 +1,20 @@
+# Expected:
+# SQL[ SELECT 1 ]
+# RE[ a+ ]
+# 7
+# 42
+# File: libmac.nv
+# comptime def sql!(src: str): str {
+#     return "SQL[" + src + "]";
+# }
+# comptime def regex!(src: str): str {
+#     return "RE[" + src + "]";
+# }
+# comptime LIMIT = 7;
+# def libval(): int {
+#     return 42;
+# }
+
 from "libmac.nv" import *;
 write(sql! { SELECT 1 });
 write(regex! { a+ });

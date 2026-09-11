@@ -1,2 +1,7 @@
+# Expected:
+# true
+# File: envprobe.h
+# char *getenv(const char *name);
+
 comptime import_c("envprobe.h", link: "c");
 write(len(getenv("HOME")) > 0);

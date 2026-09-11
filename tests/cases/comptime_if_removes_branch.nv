@@ -1,3 +1,6 @@
+# Expected:
+# linux-build
+
 comptime PLATFORM = "linux";
 comptime if PLATFORM == "linux" {
     write("linux-build");

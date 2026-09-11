@@ -1,3 +1,8 @@
+# Expected:
+# 21
+# 105
+# 42
+
 def apply(f: (int): int, x: int): int {
     return f(x);
 }

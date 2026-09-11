@@ -1,3 +1,7 @@
+# Expected:
+# arch-known
+# simd-known
+
 comptime ARCH = target.arch();
 comptime SIMD = target.simd();
 comptime if ARCH == "x86_64" { write("arch-known"); }

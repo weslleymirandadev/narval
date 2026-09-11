@@ -1,3 +1,16 @@
+# Expected:
+# true
+# 8
+# 0
+# 1
+# true
+# um
+# dois
+# 0
+# 0
+# 0
+# Module: file.nv = stdlib/file.nv
+
 from "file.nv" import *;
 
 f = new File();

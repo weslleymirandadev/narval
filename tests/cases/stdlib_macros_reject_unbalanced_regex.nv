@@ -1,2 +1,6 @@
+# Expected:
+# Error: regex!: unbalanced '('
+# Module: macros.nv = stdlib/macros.nv
+
 from "macros.nv" import *;
 write(regex! { a(b });

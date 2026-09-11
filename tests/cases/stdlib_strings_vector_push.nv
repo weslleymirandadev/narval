@@ -1,3 +1,8 @@
+# Expected:
+# 3
+# 0
+# 2
+
 def build(n: int): vector {
     v = [];
     i = 0;

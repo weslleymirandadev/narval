@@ -1,2 +1,7 @@
+# Expected:
+# Name? hi bob
+# Stdin:
+# bob
+
 n = read("Name? ");
 write("hi " + n);

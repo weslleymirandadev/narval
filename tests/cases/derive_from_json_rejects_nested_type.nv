@@ -1,3 +1,6 @@
+# Expected:
+# Error: has unsupported type
+
 @[derive(from_json)]
 class Inner {
     x: int;

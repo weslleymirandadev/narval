@@ -1,3 +1,15 @@
+# Expected:
+# poly
+# false
+# int
+# 2
+# x
+# assignment
+# return
+# =
+# +
+# *
+
 comptime def poly(x: int): int {
     y = x * x + 3;
     return y;
