@@ -780,23 +780,23 @@ CASES = [
         "source": (
             'from "sqlite.nv" import *;\n'
             '\n'
-            'db = db_open("/tmp/narval_it_sqlite.db");\n'
-            'write(db >= 0);\n'
-            'write(db_exec(db, "DROP TABLE IF EXISTS t"));\n'
-            'write(db_exec(db, "CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT, score REAL)"));\n'
-            'write(db_exec(db, "INSERT INTO t (name, score) VALUES (\'bob\', 9.5)"));\n'
-            'write(db_exec(db, "INSERT INTO t (name, score) VALUES (\'ana\', 7)"));\n'
-            'write(db_last_id(db));\n'
-            'write(db_changes(db));\n'
-            'write(db_query(db, "SELECT name, score FROM t ORDER BY id"));\n'
-            'write(db_cols(db));\n'
-            'first = db_row(db, 0);\n'
-            'second = db_row(db, 1);\n'
+            'db = new Sqlite();\n'
+            'write(db.open("/tmp/narval_it_sqlite.db") >= 0);\n'
+            'write(db.exec("DROP TABLE IF EXISTS t"));\n'
+            'write(db.exec("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT, score REAL)"));\n'
+            'write(db.exec("INSERT INTO t (name, score) VALUES (\'bob\', 9.5)"));\n'
+            'write(db.exec("INSERT INTO t (name, score) VALUES (\'ana\', 7)"));\n'
+            'write(db.last_id());\n'
+            'write(db.changes());\n'
+            'write(db.query("SELECT name, score FROM t ORDER BY id"));\n'
+            'write(db.cols());\n'
+            'first = db.row(0);\n'
+            'second = db.row(1);\n'
             'write(first[0]);\n'
             'write(second[1]);\n'
-            'write(db_exec(db, "SELECT * FROM nao_existe"));\n'
-            'write(len(db_error(db)) > 0);\n'
-            'write(db_close(db));\n'
+            'write(db.exec("SELECT * FROM nao_existe"));\n'
+            'write(len(db.error()) > 0);\n'
+            'write(db.close());\n'
         ),
                 "module_files": {
             "sqlite.nv": "stdlib/sqlite.nv",
@@ -869,6 +869,29 @@ CASES = [
             'write(second);\n'
         ),
         "expected": "2\na\nb\n",
+    },
+    {
+        "name": "file_open_write_read",
+        "source": (
+            'from "file.nv" import *;\n'
+            '\n'
+            'f = new File();\n'
+            'write(f.open("/tmp/narval_it_file.txt", "w") >= 0);\n'
+            'write(f.write("um\\ndois\\n"));\n'
+            'write(f.close());\n'
+            'write(file_exists("/tmp/narval_it_file.txt"));\n'
+            'g = new File();\n'
+            'write(g.open("/tmp/narval_it_file.txt", "r") >= 0);\n'
+            'write(g.read_line());\n'
+            'write(g.read_line());\n'
+            'write(g.close());\n'
+            'write(file_remove("/tmp/narval_it_file.txt"));\n'
+            'write(file_exists("/tmp/narval_it_file.txt"));\n'
+        ),
+        "expected": "true\n8\n0\n1\ntrue\num\ndois\n0\n0\n0\n",
+        "module_files": {
+            "file.nv": "stdlib/file.nv",
+        },
     },
 ]
 
