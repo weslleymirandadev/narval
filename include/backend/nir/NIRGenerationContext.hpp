@@ -90,6 +90,13 @@ public:
     void set_current_function_async(bool v) { current_async_ = v; }
     bool is_current_function_async() const   { return current_async_; }
 
+    // True while the body of the @[no_std] entry function is being emitted: a `return`
+    // there ends the process (the kernel jumps at the entry with no caller), so the
+    // return statement lowers to the exit syscall instead. Set by the function emitter,
+    // which is the only place that knows the function's name.
+    void set_in_no_std_entry(bool v) { in_no_std_entry_ = v; }
+    bool in_no_std_entry() const     { return in_no_std_entry_; }
+
     //  Type helpers
 
     // The universal boxed Narval value type: !narval.value
@@ -249,6 +256,7 @@ private:
     NIRSymbolTable                       symbols_;
     std::optional<mlir::func::FuncOp>   current_func_;
     bool                                 current_fallible_ = false;
+    bool                                 in_no_std_entry_  = false;
     bool                                 current_async_    = false;
     void*                                checker_          = nullptr;
     std::string                          source_file_;
