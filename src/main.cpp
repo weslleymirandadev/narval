@@ -7,6 +7,7 @@
 #include "frontend/checker/checker.hpp"
 #include "frontend/attributes/attribute_mapper.hpp"
 #include "backend/nir/NIRGenerationContext.hpp"
+#include "backend/nir/NirDiagnostics.hpp"
 #include "backend/nir/NarvalOps.h"
 #include "backend/nir/codegen/nir_codegen_utils.hpp"
 #include "mlir/IR/MLIRContext.h"
@@ -733,6 +734,18 @@ int main(int argc, char* argv[]) {
             build_target = arg.substr(std::string("--build=").size());
         } else if (arg == "--object" || arg == "-c") {
             object_only = true;
+        } else if (arg == "--emit-nir") {
+            // Print the narval-dialect module (codegen output) instead of the final
+            // binary IR: the form that still reads like the source.
+            nv::diag_emit_nir() = true;
+        } else if (arg == "--dump-passes") {
+            // Accepted for symmetry with the MLIR naming used elsewhere in the
+            // compiler: --emit-nir is the module at codegen, this is every stage.
+            nv::diag_dump_passes() = true;
+        } else if (arg == "--explain-ownership") {
+            // Per value: whether nv_drop was inserted, and which use blocked it when
+            // it was not.
+            nv::diag_explain_ownership() = true;
         } else if ((arg == "-L" || arg == "--link") && i + 1 < argc) {
             extra_libs += std::string(argv[++i]) + " ";
         } else if (arg.substr(0, 2) == "-L" && arg.size() > 2) {
@@ -747,6 +760,9 @@ int main(int argc, char* argv[]) {
             std::cout << "  --enabled-targets  List LLVM targets/triples enabled in this build\n";
             std::cout << "  --object, -c       Compile to .o without linking\n";
             std::cout << "  -L <lib>           Link an extra library (ex: ./libfoo.so)\n";
+            std::cout << "  --emit-nir         Print the narval IR as codegen left it\n";
+            std::cout << "  --dump-passes      Print the IR after every lowering pass\n";
+            std::cout << "  --explain-ownership  Report every drop decision (and why one was skipped)\n";
             std::cout << "  --help, -h         Show this help\n";
             std::cout << "\nExamples:\n";
             std::cout << "  narval              # open the REPL\n";
