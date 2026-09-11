@@ -64,3 +64,12 @@ static inline mlir::Value nir_to_i1(nv::NIRGenerationContext& ctx,
         mlir::ValueRange{val});
     return call.getResults()[0];
 }
+
+// Name of the @[no_std] entry function (the symbol the linker jumps to). The codegen
+// makes that function leave through the exit syscall: it has no caller to return to,
+// so falling off the end of the text kills the process with SIGSEGV right after it
+// printed its result.
+inline std::string& nir_no_std_entry() {
+    static std::string name;
+    return name;
+}
