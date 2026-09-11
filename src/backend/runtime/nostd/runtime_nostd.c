@@ -111,7 +111,7 @@ int32_t get_value_type(const Value* v) {
 
 /*  Object creation  */
 
-void create_int(Value* out, int32_t value) {
+void create_int(Value* out, int64_t value) {
     if (!out) return;
     out->obj = (NvObject*)0;
     NVInt* obj = (NVInt*)_nv_ns_alloc(sizeof(NVInt));
@@ -191,7 +191,7 @@ void nv_value_add(Value* out, Value* a, Value* b) {
     double vb = _ns_extract_num(b, &fb);
     /* String concat is not supported in no_std — checker blocks write anyway */
     if (fa || fb) { create_float(out, va + vb); }
-    else          { create_int  (out, (int32_t)(va + vb)); }
+    else          { create_int  (out, (int64_t)(va + vb)); }
 }
 
 void nv_value_sub(Value* out, Value* a, Value* b) {
@@ -200,7 +200,7 @@ void nv_value_sub(Value* out, Value* a, Value* b) {
     double va = _ns_extract_num(a, &fa);
     double vb = _ns_extract_num(b, &fb);
     if (fa || fb) { create_float(out, va - vb); }
-    else          { create_int  (out, (int32_t)(va - vb)); }
+    else          { create_int  (out, (int64_t)(va - vb)); }
 }
 
 void nv_value_mul(Value* out, Value* a, Value* b) {
@@ -209,7 +209,7 @@ void nv_value_mul(Value* out, Value* a, Value* b) {
     double va = _ns_extract_num(a, &fa);
     double vb = _ns_extract_num(b, &fb);
     if (fa || fb) { create_float(out, va * vb); }
-    else          { create_int  (out, (int32_t)(va * vb)); }
+    else          { create_int  (out, (int64_t)(va * vb)); }
 }
 
 void nv_value_div(Value* out, Value* a, Value* b) {
@@ -219,7 +219,7 @@ void nv_value_div(Value* out, Value* a, Value* b) {
     double vb = _ns_extract_num(b, &fb);
     if (vb == 0.0) { out->obj = (NvObject*)0; return; }
     if (fa || fb) { create_float(out, va / vb); }
-    else          { create_int  (out, (int32_t)(va / vb)); }
+    else          { create_int  (out, (int64_t)(va / vb)); }
 }
 
 void nv_value_mod(Value* out, Value* a, Value* b) {
@@ -229,8 +229,8 @@ void nv_value_mod(Value* out, Value* a, Value* b) {
         NvTypeObject* ta = a->obj->ob_type;
         NvTypeObject* tb = b->obj->ob_type;
         if (ta == NVInt_Type && tb == NVInt_Type) {
-            int32_t va = ((NVInt*)a->obj)->value;
-            int32_t vb = ((NVInt*)b->obj)->value;
+            int64_t va = ((NVInt*)a->obj)->value;
+            int64_t vb = ((NVInt*)b->obj)->value;
             if (vb != 0) { create_int(out, va % vb); return; }
         }
     }
@@ -246,8 +246,8 @@ int32_t nv_value_cmp(Value* a, Value* b) {
     if (!ta || !tb) return 0;
 
     if (ta == NVInt_Type && tb == NVInt_Type) {
-        int32_t va = ((NVInt*)a->obj)->value;
-        int32_t vb = ((NVInt*)b->obj)->value;
+        int64_t va = ((NVInt*)a->obj)->value;
+        int64_t vb = ((NVInt*)b->obj)->value;
         return (va > vb) - (va < vb);
     }
     if (ta == NVBool_Type && tb == NVBool_Type) {
