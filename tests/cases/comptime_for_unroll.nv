@@ -1,0 +1,3 @@
+comptime for i in 0..3 {
+    write(i);
+}

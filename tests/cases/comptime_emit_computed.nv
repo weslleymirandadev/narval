@@ -1,0 +1,10 @@
+comptime def gen_series!(src: str): str {
+    out = "";
+    for i in 0..3 {
+        if i > 0 { out = out + " "; }
+        out = out + "write(" + str(i * 10) + ");";
+    }
+    @emit(out);
+    return "series";
+}
+gen_series! { x }

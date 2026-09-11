@@ -1,0 +1,19 @@
+from "sqlite.nv" import *;
+
+db = new Sqlite();
+write(db.open("/tmp/narval_it_sqlite.db") >= 0);
+write(db.exec("DROP TABLE IF EXISTS t"));
+write(db.exec("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT, score REAL)"));
+write(db.exec("INSERT INTO t (name, score) VALUES ('bob', 9.5)"));
+write(db.exec("INSERT INTO t (name, score) VALUES ('ana', 7)"));
+write(db.last_id());
+write(db.changes());
+write(db.query("SELECT name, score FROM t ORDER BY id"));
+write(db.cols());
+first = db.row(0);
+second = db.row(1);
+write(first[0]);
+write(second[1]);
+write(db.exec("SELECT * FROM nao_existe"));
+write(len(db.error()) > 0);
+write(db.close());

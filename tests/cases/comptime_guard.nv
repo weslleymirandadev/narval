@@ -1,0 +1,12 @@
+comptime def first_stop!(s: str): str {
+    i = 0;
+    while i < len(s) && s[i] != "x" {
+        if s[i] == "Q" {
+            @compileError("unexpected Q in: " + s)
+        }
+        i = i + 1;
+    }
+    return str(i);
+}
+write(first_stop! { abcxdef });
+write("guard ok");

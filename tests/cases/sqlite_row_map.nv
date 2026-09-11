@@ -1,0 +1,13 @@
+from "sqlite.nv" import *;
+db = new Sqlite();
+db.open(":memory:");
+db.exec("CREATE TABLE pessoa (id INTEGER PRIMARY KEY, nome TEXT, altura REAL)");
+db.exec("INSERT INTO pessoa VALUES (7, 'ana', 1.62)");
+db.query("SELECT id, nome, altura FROM pessoa");
+write(db.cols());
+write(db.col_name(1));
+write(db.col_name(9));
+r = db.row_map(0);
+write(r["nome"]);
+write(r["id"]);
+db.close();

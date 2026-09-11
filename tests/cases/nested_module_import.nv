@@ -1,0 +1,2 @@
+from "./nested_user.nv" import *;
+write(user_value());

@@ -1,0 +1,4 @@
+write(1 + 2 * 3);
+write("hello");
+write(2.5 > 1.0);
+write(7 == 7);

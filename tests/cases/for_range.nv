@@ -1,0 +1,17 @@
+for i in 0..3 {
+    write(i);
+}
+soma = 0;
+for i in 1..=5 {
+    soma = soma + i;
+}
+write(soma);
+for i in 0..10 {
+    if (i >= 3) {
+        break;
+    }
+    write(i);
+}
+for x in [10, 20] {
+    write(x);
+}

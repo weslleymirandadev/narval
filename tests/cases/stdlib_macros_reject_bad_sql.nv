@@ -1,0 +1,2 @@
+from "macros.nv" import *;
+write(sql! { SELCT x });

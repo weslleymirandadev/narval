@@ -1,0 +1,2 @@
+comptime import_c("envprobe.h", link: "c");
+write(len(getenv("HOME")) > 0);

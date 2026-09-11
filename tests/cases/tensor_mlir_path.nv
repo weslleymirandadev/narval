@@ -1,0 +1,7 @@
+z = Tensor.zeros(2, 3);
+write(z.shape);
+write(z.tolist());
+write(z.item());
+o = Tensor.ones(1, 2);
+write(o.shape);
+write(o.item());

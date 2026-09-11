@@ -1,0 +1,16 @@
+def pick(n: int): int {
+    if (n <= 1) {
+        return 1;
+    }
+    return 0;
+}
+def fact(n: int): int {
+    if (n <= 1) {
+        return 1;
+    }
+    return n * fact(n - 1);
+}
+write(pick(1));
+write(pick(5));
+write(fact(1));
+write(fact(5));

@@ -1,0 +1,10 @@
+extern "C:math" {
+    def sqrt(x: float): float;
+    def pow(x: float, y: float): float;
+}
+extern "C:stdlib" {
+    def abs(x: int): int;
+}
+write(sqrt(16.0));
+write(pow(2.0, 10.0));
+write(abs(-7));

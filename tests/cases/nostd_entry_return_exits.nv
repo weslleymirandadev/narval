@@ -1,0 +1,5 @@
+@[no_std]
+def main(): int {
+    write("ok");
+    return 0;
+}

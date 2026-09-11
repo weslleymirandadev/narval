@@ -1,0 +1,26 @@
+comptime def derive_csv(cls: str, fields: array): str {
+    pieces = "str(self." + fields[0].name + ")";
+    i = 1;
+    while i < len(fields) {
+        pieces = pieces + " + \",\" + str(self." + fields[i].name + ")";
+        i = i + 1;
+    }
+    return "public to_csv(): str { return " + pieces + "; }\n";
+}
+
+@[derive(debug, eq, csv)]
+class User {
+    name: str;
+    age: int;
+}
+
+a = new User();
+a.name = "bob";
+a.age = 42;
+b = new User();
+b.name = "bob";
+b.age = 42;
+write(a.to_csv());
+write(a.__eq__(b));
+write(a.__str__());
+

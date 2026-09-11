@@ -1,0 +1,15 @@
+from "sqlite.nv" import *;
+
+db = new Sqlite();
+db.open("/tmp/narval_it_sqlite_rows.db");
+db.exec("DROP TABLE IF EXISTS t");
+db.exec("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT, score REAL)");
+db.exec("INSERT INTO t (name, score) VALUES ('bob', 9.5)");
+db.exec("INSERT INTO t (name, score) VALUES ('ana', 7)");
+n = db.query("SELECT name, score FROM t ORDER BY id");
+all = db.rows();
+write(n);
+write(all[0][0]);
+write(all[1][0]);
+write(all[1][1]);
+write(db.close());

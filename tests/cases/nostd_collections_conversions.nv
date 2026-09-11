@@ -1,0 +1,16 @@
+@[no_std]
+def _start(): None {
+    v = [1, 2, 3];
+    v[1] = 9;
+    v.push(4);
+    write(v);
+    write(len(v));
+    write(int("42") + 1);
+    write(str(7));
+    write(float("2.5"));
+    write(bool(0));
+    write(char(65));
+    soma = 0;
+    for x in v { soma = soma + x; }
+    write(soma);
+}

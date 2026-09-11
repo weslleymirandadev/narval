@@ -1,0 +1,6 @@
+comptime PLATFORM = "linux";
+comptime if PLATFORM == "linux" {
+    write("linux-build");
+} else {
+    write("other-build");
+}

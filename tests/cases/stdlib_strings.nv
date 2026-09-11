@@ -1,0 +1,15 @@
+from "strings.nv" import *;
+write(trim("  hi  "));
+write(starts_with("hello", "he"));
+write(starts_with("hello", "he!"));
+write(ends_with("hello", "lo"));
+write(index_of("hello", "ll"));
+write(index_of("hello", "z"));
+write(substr("hello", 1, 3));
+write(count_of("banana", "an"));
+parts = split("a,b,c", ",");
+write(len(parts));
+write(parts[0]);
+write(parts[2]);
+write(join(["x", "y", "z"], "-"));
+write(replace("a-b-c", "-", "+"));

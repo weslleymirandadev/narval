@@ -1,0 +1,2 @@
+from "macros.nv" import *;
+write(regex! { a(b });

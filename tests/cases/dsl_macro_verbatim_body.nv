@@ -1,0 +1,6 @@
+comptime def sql!(src: str): str {
+    return "query(" + src + ")";
+}
+write(sql! { SELECT 1 });
+q = sql! { SELECT * FROM users };
+write(q);

@@ -1,0 +1,4 @@
+comptime N = 1024;
+comptime A = 2 + 3 * 4;
+write(N);
+write(A);

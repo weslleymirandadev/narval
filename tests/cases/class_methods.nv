@@ -1,0 +1,16 @@
+class User {
+    mut name: str;
+    mut age: int;
+    public greet(): str {
+        return "hi " + self.name;
+    }
+    public describe(): str {
+        return self.name + "@" + str(self.age);
+    }
+}
+u = new User();
+u.name = "bob";
+u.age = 42;
+write(u.name);
+write(u.greet());
+write(u.describe());

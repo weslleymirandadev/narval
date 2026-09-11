@@ -1,0 +1,17 @@
+@[derive(debug, clone)]
+class User {
+    name: str;
+    age: int;
+    admin: bool;
+}
+a = new User();
+a.name = "bob";
+a.age = 42;
+a.admin = true;
+b = a.clone();
+write(b.name);
+write(b.age);
+c = a.clone();
+c.name = "ana";
+write(a.name == c.name);
+write(b.name == c.name);

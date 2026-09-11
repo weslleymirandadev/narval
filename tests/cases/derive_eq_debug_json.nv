@@ -1,0 +1,18 @@
+@[derive(eq, debug, json)]
+class User {
+    name: str;
+    age: int;
+}
+a = new User();
+a.name = "bob";
+a.age = 42;
+b = new User();
+b.name = "bob";
+b.age = 42;
+c = new User();
+c.name = "bob";
+c.age = 7;
+write(a.__eq__(b));
+write(a.__eq__(c));
+write(a.__str__());
+write(a.to_json());

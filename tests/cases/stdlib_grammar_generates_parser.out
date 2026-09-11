@@ -1,0 +1,4 @@
+grammar: 3 rule(s) [expr term factor], terminals ['+' '-' '*' '/' NUMBER '(' ')']
+true
+5
+1

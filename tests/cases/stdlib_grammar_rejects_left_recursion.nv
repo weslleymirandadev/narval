@@ -1,0 +1,6 @@
+from "grammar.nv" import *;
+
+write(grammar! {
+    expr = expr '+' term
+    term = NUMBER
+});

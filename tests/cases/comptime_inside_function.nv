@@ -1,0 +1,5 @@
+def f(): int {
+    comptime K = 7;
+    return K + 1;
+}
+write(f());

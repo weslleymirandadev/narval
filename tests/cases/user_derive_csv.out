@@ -1,0 +1,3 @@
+bob,42
+true
+User { name: "bob", age: 42 }

@@ -1,0 +1,13 @@
+from "grammar.nv" import *;
+
+write(grammar! {
+    expr   = term (('+' | '-') term)*
+    term   = factor (('*' | '/') factor)*
+    factor = NUMBER | '(' expr ')'
+});
+t = ["NUMBER", "+", "NUMBER", "*", "NUMBER"];
+write(parse_expr(t, 0) == len(t));
+u = ["(", "NUMBER", "+", "NUMBER", ")"];
+write(parse_expr(u, 0));
+bad = ["NUMBER", "+", "*", "NUMBER"];
+write(parse_expr(bad, 0));

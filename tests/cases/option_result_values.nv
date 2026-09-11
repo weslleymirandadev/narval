@@ -1,0 +1,8 @@
+a = Some(5);
+b = Ok(7);
+c = Err("bad");
+d = None;
+write(a);
+write(b);
+write(c);
+write(d);

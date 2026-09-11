@@ -1,0 +1,12 @@
+x = 4;
+if (x > 2) {
+    write("big");
+} else {
+    write("small");
+}
+match x {
+    1 => write("one");
+    4 => write("four");
+    _ => write("other");
+}
+write(x if x == 4 else 0);

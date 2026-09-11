@@ -1,0 +1,4 @@
+def plain(x: int): int {
+    return x;
+}
+write(type.ast(plain).name);

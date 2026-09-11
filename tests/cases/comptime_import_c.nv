@@ -1,0 +1,5 @@
+comptime import_c("mymath.h", link: "m");
+write(abs(-7));
+write(pow(2.0, 10.0));
+write(strlen("hello"));
+write(atof("2.5"));

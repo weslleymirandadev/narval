@@ -1,0 +1,9 @@
+rows = [["a", "b"], ["c", "d"]];
+write(rows[0][0]);
+write(rows[1][1]);
+cube = [[["deep"]]];
+write(cube[0][0][0]);
+def cell_at(m: vector, r: int, c: int): str {
+    return m[r][c];
+}
+write(cell_at(rows, 1, 0));

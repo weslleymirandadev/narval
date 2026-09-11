@@ -1,0 +1,5 @@
+@[no_std]
+def _start(): None {
+    write("bye");
+    exit(7);
+}

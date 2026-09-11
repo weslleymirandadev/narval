@@ -1,0 +1,5 @@
+comptime T = [1, 2, 3, 4];
+write(T[0]);
+write(T[3]);
+comptime S = "abc";
+write(S);

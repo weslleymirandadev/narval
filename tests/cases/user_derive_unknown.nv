@@ -1,0 +1,5 @@
+@[derive(nope)]
+class A {
+    x: int;
+}
+write("nunca compila");

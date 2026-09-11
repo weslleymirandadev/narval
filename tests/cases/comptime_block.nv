@@ -1,0 +1,4 @@
+comptime {
+    V = 5 * 5;
+}
+write(V);

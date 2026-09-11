@@ -1,0 +1,6 @@
+@[no_std]
+def _start(): None {
+    write("in:");
+    s = read();
+    write(s);
+}

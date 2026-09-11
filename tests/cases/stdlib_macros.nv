@@ -1,0 +1,4 @@
+from "macros.nv" import *;
+write(sql! { SELECT *   FROM   users });
+write(regex! { a(b|c)*[0-9] });
+write(route! { GET /users/:id });

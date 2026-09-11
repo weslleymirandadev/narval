@@ -1,0 +1,8 @@
+def add(a: int, b: int): int {
+    return a + b;
+}
+def twice(v: int): int {
+    return add(v, v);
+}
+write(add(2, 3));
+write(twice(21));

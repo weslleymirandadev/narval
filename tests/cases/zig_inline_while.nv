@@ -1,0 +1,5 @@
+comptime k = 0;
+inline while k < 3 {
+    write(k);
+    k = k + 1;
+}

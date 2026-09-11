@@ -1,0 +1,9 @@
+class User {
+    name: str;
+    age: int;
+}
+write(@typeName(User));
+write(@hasField(User, "age"));
+comptime for f in @fieldNames(User) {
+    write(f);
+}

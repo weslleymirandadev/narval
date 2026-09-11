@@ -1,0 +1,5 @@
+from "libmac.nv" import *;
+write(sql! { SELECT 1 });
+write(regex! { a+ });
+write(LIMIT);
+write(libval());

@@ -1,0 +1,6 @@
+def pow2(comptime N: int): int {
+    return N * N;
+}
+comptime K = 9;
+write(pow2(8));
+write(pow2(K));

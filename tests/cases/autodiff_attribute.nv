@@ -1,0 +1,9 @@
+comptime import_c("mymath2.h", link: "m");
+
+@[diff(x, "dloss_dx")]
+def loss(x: float): float {
+    return x * x + sin(x);
+}
+
+write(dloss_dx(0.0));
+write(dloss_dx(1.0));

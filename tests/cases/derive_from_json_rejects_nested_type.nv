@@ -1,0 +1,9 @@
+@[derive(from_json)]
+class Inner {
+    x: int;
+}
+@[derive(from_json)]
+class Outer {
+    inner: Inner;
+}
+write(1);

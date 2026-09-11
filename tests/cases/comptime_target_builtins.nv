@@ -1,0 +1,14 @@
+comptime ARCH = target.arch();
+comptime SIMD = target.simd();
+comptime if ARCH == "x86_64" { write("arch-known"); }
+comptime if ARCH == "aarch64" { write("arch-known"); }
+comptime if ARCH == "x86" { write("arch-known"); }
+comptime if ARCH == "arm" { write("arch-known"); }
+comptime if ARCH == "riscv64" { write("arch-known"); }
+comptime if ARCH == "unknown" { write("arch-known"); }
+comptime if SIMD == "avx512" { write("simd-known"); }
+comptime if SIMD == "avx2" { write("simd-known"); }
+comptime if SIMD == "avx" { write("simd-known"); }
+comptime if SIMD == "sse2" { write("simd-known"); }
+comptime if SIMD == "neon" { write("simd-known"); }
+comptime if SIMD == "scalar" { write("simd-known"); }

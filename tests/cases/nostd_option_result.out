@@ -1,0 +1,4 @@
+<object:Option::Some>
+<object:Result::Ok>
+<object:Result::Err>
+<object:Option::None>

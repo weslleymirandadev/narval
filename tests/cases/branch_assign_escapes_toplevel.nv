@@ -1,0 +1,7 @@
+i = 1;
+total = 0;
+if i >= 0 {
+    t = "a" + "b";
+    total = total + len(t);
+}
+write(total);

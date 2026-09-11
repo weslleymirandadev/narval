@@ -1,0 +1,4 @@
+@[diff(x, "dx")]
+def h(x: float): float {
+    return unknown_fn(x) + 1;
+}

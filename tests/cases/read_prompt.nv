@@ -1,0 +1,2 @@
+n = read("Name? ");
+write("hi " + n);

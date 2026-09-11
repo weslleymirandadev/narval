@@ -1,0 +1,5 @@
+write("top");
+def main(): int {
+    write("main");
+    return 0;
+}

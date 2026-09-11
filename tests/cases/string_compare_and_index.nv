@@ -1,0 +1,9 @@
+s = "hello";
+write(len(s));
+write(s == "hello");
+write(s != "x");
+write(s == "hellp");
+write(s[0]);
+write(s[4]);
+write(s[99]);
+write("abc" != "abc");

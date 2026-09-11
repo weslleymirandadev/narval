@@ -1,0 +1,11 @@
+i = 0;
+while i < 3 {
+    s = "x" + str(i);
+    if i == i {
+        write(s);
+    } else {
+        write("no");
+    }
+    i = i + 1;
+}
+write("fim");

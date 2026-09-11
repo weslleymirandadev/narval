@@ -1,0 +1,14 @@
+from "file.nv" import *;
+
+f = new File();
+write(f.open("/tmp/narval_it_file.txt", "w") >= 0);
+write(f.write("um\ndois\n"));
+write(f.close());
+write(file_exists("/tmp/narval_it_file.txt"));
+g = new File();
+write(g.open("/tmp/narval_it_file.txt", "r") >= 0);
+write(g.read_line());
+write(g.read_line());
+write(g.close());
+write(file_remove("/tmp/narval_it_file.txt"));
+write(file_exists("/tmp/narval_it_file.txt"));

@@ -1,0 +1,19 @@
+comptime def derive_log(cls: str, fields: array): str {
+    out = "";
+    for f in fields {
+        out = out + "public get_" + f.name + "(): str { return str(self." + f.name + "); }\n";
+    }
+    return out + "public type_name(): str { return \"" + cls + "\"; }\n";
+}
+@[derive(log, debug)]
+class Pessoa {
+    id: int;
+    nome: str;
+}
+p = new Pessoa();
+p.id = 7;
+p.nome = "ana";
+write(p.type_name());
+write(p.get_id());
+write(p.get_nome());
+write(p.__str__());

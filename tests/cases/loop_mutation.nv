@@ -1,0 +1,11 @@
+i = 0;
+soma = 0;
+while (true) {
+    if (i >= 5) {
+        break;
+    }
+    soma = soma + i;
+    i = i + 1;
+}
+write(soma);
+write(i);

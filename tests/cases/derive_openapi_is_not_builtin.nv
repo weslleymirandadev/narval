@@ -1,0 +1,5 @@
+@[derive(openapi)]
+class User {
+    name: str;
+}
+write("nunca compila");

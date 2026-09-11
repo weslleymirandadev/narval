@@ -1,0 +1,8 @@
+comptime def derive_bad(cls: str, fields: array): int {
+    return 1;
+}
+@[derive(bad)]
+class B {
+    x: int;
+}
+write("nunca compila");

@@ -1,0 +1,5 @@
+from "grammar.nv" import *;
+
+write(grammar! {
+    expr = term | missing
+});

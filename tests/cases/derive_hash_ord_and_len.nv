@@ -1,0 +1,16 @@
+@[derive(eq, hash, ord)]
+class P {
+    x: int;
+    y: int;
+}
+a = new P();
+a.x = 1;
+a.y = 2;
+c = new P();
+c.x = 3;
+c.y = 0;
+write(a.__lt__(c));
+write(c.__lt__(a));
+write(a.__hash__());
+write(c.__hash__());
+write(len("hello"));

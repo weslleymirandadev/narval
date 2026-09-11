@@ -1,0 +1,11 @@
+comptime def poly(x: int): int {
+    y = x * x + 3;
+    return y;
+}
+write(type.ast(poly).name);
+write(type.ast(poly).is_macro);
+write(type.ast(poly).return_type);
+write(type.ast(poly).statement_count);
+comptime for n in type.ast(poly).param_names { write(n); }
+comptime for k in type.ast(poly).body_kinds { write(k); }
+comptime for op in type.ast(poly).expr_ops { write(op); }

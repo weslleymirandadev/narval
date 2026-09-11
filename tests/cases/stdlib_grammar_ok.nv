@@ -1,0 +1,7 @@
+from "grammar.nv" import *;
+
+write(grammar! {
+    expr   = term (('+' | '-') term)*
+    term   = factor (('*' | '/') factor)*
+    factor = NUMBER | '(' expr ')'
+});
