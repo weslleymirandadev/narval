@@ -329,9 +329,9 @@ CASES = [
         "expected": "bob\nhi bob\nbob@42\n",
     },
     {
-        "name": "derive_eq_debug_json",
+        "name": "derive_eq_debug",
         "source": (
-            '@[derive(eq, debug, json)]\n'
+            '@[derive(eq, debug)]\n'
             'class User {\n'
             '    name: str;\n'
             '    age: int;\n'
@@ -348,9 +348,8 @@ CASES = [
             'write(a.__eq__(b));\n'
             'write(a.__eq__(c));\n'
             'write(a.__str__());\n'
-            'write(a.to_json());\n'
         ),
-        "expected": "true\nfalse\nUser { name: \"bob\", age: 42 }\n{\"name\": \"bob\", \"age\": 42}\n",
+        "expected": "true\nfalse\nUser { name: \"bob\", age: 42 }\n",
     },
     {
         "name": "comptime_params",
@@ -733,9 +732,9 @@ CASES = [
         "expect_error": "two alternatives starting with",
     },
     {
-        "name": "derive_clone_and_from_json",
+        "name": "derive_clone",
         "source": (
-            '@[derive(debug, clone, from_json)]\n'
+            '@[derive(debug, clone)]\n'
             'class User {\n'
             '    name: str;\n'
             '    age: int;\n'
@@ -752,28 +751,21 @@ CASES = [
             'c.name = "ana";\n'
             'write(a.name == c.name);\n'
             'write(b.name == c.name);\n'
-            'd = a.from_json("{\\"name\\": \\"zoe\\", \\"age\\": 7, \\"extra\\": {\\"n\\": 1}}");\n'
-            'write(d.name);\n'
-            'write(d.age);\n'
-            'write(d.admin == false);\n'
-            'write(d.name == b.name);\n'
         ),
-        "expected": "bob\n42\nfalse\nfalse\nzoe\n7\ntrue\nfalse\n",
+        "expected": "bob\n42\nfalse\nfalse\n",
     },
     {
-        "name": "derive_from_json_rejects_nested_type",
+        # Serialization is not a language protocol: `json` is no longer a builtin,
+        # and the diagnostic says how to write it (a `comptime def derive_json`).
+        "name": "derive_json_is_not_builtin",
         "source": (
-            '@[derive(from_json)]\n'
-            'class Inner {\n'
-            '    x: int;\n'
+            '@[derive(json)]\n'
+            'class User {\n'
+            '    name: str;\n'
             '}\n'
-            '@[derive(from_json)]\n'
-            'class Outer {\n'
-            '    inner: Inner;\n'
-            '}\n'
-            'write(1);\n'
+            'write("nunca compila");\n'
         ),
-        "expect_error": "has unsupported type",
+        "expect_error": "unknown derive 'json'",
     },
     {
         "name": "sqlite_open_exec_query",
@@ -804,18 +796,39 @@ CASES = [
 "expected": "true\n0\n0\n0\n0\n2\n1\n2\n2\nbob\n7.0\n1\ntrue\n0\n",
     },
     {
-        "name": "derive_openapi_schema",
+        # A format-specific derive, written in Narval: exactly the kind of thing
+        # that used to live in the compiler (json/openapi did) and now belongs to
+        # whoever needs it.
+        "name": "user_derive_csv",
         "source": (
-            '@[derive(openapi)]\n'
+            'comptime def derive_csv(cls: str, fields: array): str {\n'
+            '    pieces = "str(self." + fields[0].name + ")";\n'
+            '    i = 1;\n'
+            '    while i < len(fields) {\n'
+            '        pieces = pieces + " + \\",\\" + str(self." + fields[i].name + ")";\n'
+            '        i = i + 1;\n'
+            '    }\n'
+            '    return "public to_csv(): str { return " + pieces + "; }\\n";\n'
+            '}\n'
+            '\n'
+            '@[derive(debug, eq, csv)]\n'
             'class User {\n'
             '    name: str;\n'
             '    age: int;\n'
-            '    admin: bool;\n'
             '}\n'
+            '\n'
             'a = new User();\n'
-            'write(a.schema());\n'
+            'a.name = "bob";\n'
+            'a.age = 42;\n'
+            'b = new User();\n'
+            'b.name = "bob";\n'
+            'b.age = 42;\n'
+            'write(a.to_csv());\n'
+            'write(a.__eq__(b));\n'
+            'write(a.__str__());\n'
+            '\n'
         ),
-        "expected": "{\"type\": \"object\", \"properties\": {\"name\": {\"type\": \"string\"}, \"age\": {\"type\": \"integer\"}, \"admin\": {\"type\": \"boolean\"}}, \"required\": [\"name\", \"age\", \"admin\"]}\n",
+        "expected": "bob,42\ntrue\nUser { name: \"bob\", age: 42 }\n",
     },
     {
         "name": "ffi_string_return",
@@ -1186,87 +1199,81 @@ CASES = [
         "expected": "2\n",
     },
     {
-        # @derive(sql): to_row()/from_row() round-trip and the DDL, including a bool
-        # column that reads "false" (compared against "true", since bool(text) is
-        # true for any non-empty text).
-        "name": "derive_sql_row_mapping",
+        # A USER derive: `comptime def derive_<name>` in the module, called with the
+        # class name and one field descriptor per field, returning the members as
+        # source. Nothing about it lives in the compiler.
+        "name": "user_derive",
         "source": (
-            '@[derive(sql)]\n'
+            'comptime def derive_log(cls: str, fields: array): str {\n'
+            '    out = "";\n'
+            '    for f in fields {\n'
+            '        out = out + "public get_" + f.name + "(): str { return str(self." + f.name + "); }\\n";\n'
+            '    }\n'
+            '    return out + "public type_name(): str { return \\"" + cls + "\\"; }\\n";\n'
+            '}\n'
+            '@[derive(log, debug)]\n'
             'class Pessoa {\n'
             '    id: int;\n'
             '    nome: str;\n'
-            '    altura: float;\n'
-            '    ativo: bool;\n'
             '}\n'
             'p = new Pessoa();\n'
             'p.id = 7;\n'
             'p.nome = "ana";\n'
-            'p.altura = 1.62;\n'
-            'p.ativo = true;\n'
-            'write(p.create_table());\n'
-            'row = p.to_row();\n'
-            'write(row["id"]);\n'
-            'write(row["nome"]);\n'
-            'write(row["altura"]);\n'
-            'q = p.from_row(row);\n'
-            'write(q.altura);\n'
-            'write(q.ativo);\n'
-            'hand = {"id": "3", "nome": "bia", "altura": "1.5", "ativo": "false"};\n'
-            'r = p.from_row(hand);\n'
-            'write(r.id);\n'
-            'write(r.nome);\n'
-            'write(r.ativo);\n'
+            'write(p.type_name());\n'
+            'write(p.get_id());\n'
+            'write(p.get_nome());\n'
+            'write(p.__str__());\n'
         ),
-        "expected": (
-            "CREATE TABLE pessoa (id INTEGER PRIMARY KEY, nome TEXT, altura REAL, ativo INTEGER)\n"
-            "7\nana\n1.62\n1.620000\ntrue\n3\nbia\nfalse\n"
-        ),
+        "expected": "Pessoa\n7\nana\nPessoa { id: 7, nome: \"ana\" }\n",
     },
     {
-        # A field with no column of its own is reported, not silently dropped from
-        # the row.
-        "name": "derive_sql_unsupported_field",
+        # An unknown name is a clear error that names the convention.
+        "name": "user_derive_unknown",
         "source": (
-            '@[derive(sql)]\n'
-            'class Bad {\n'
-            '    nome: str;\n'
-            '    itens: vector;\n'
+            '@[derive(nope)]\n'
+            'class A {\n'
+            '    x: int;\n'
             '}\n'
             'write("nunca compila");\n'
         ),
-        "expect_error": "@derive(sql): field 'itens' has unsupported type 'vector'",
+        "expect_error": "unknown derive 'nope'",
     },
     {
-        # The whole loop: the derive's DDL creates the table, Sqlite.row_map() gives
-        # a row as a map of column name → text (which needs the column-name
-        # accessor), and from_row() turns it into an instance.
-        "name": "derive_sql_with_sqlite",
+        # A user derive has to hand the members back as text.
+        "name": "user_derive_bad_return",
+        "source": (
+            'comptime def derive_bad(cls: str, fields: array): int {\n'
+            '    return 1;\n'
+            '}\n'
+            '@[derive(bad)]\n'
+            'class B {\n'
+            '    x: int;\n'
+            '}\n'
+            'write("nunca compila");\n'
+        ),
+        "expect_error": "derive_bad must return the members as a str",
+    },
+    {
+        # Sqlite.row_map(index) reads one stored row by column name — col_name() is
+        # what makes the map possible.
+        "name": "sqlite_row_map",
         "source": (
             'from "sqlite.nv" import *;\n'
-            '@[derive(sql)]\n'
-            'class Pessoa {\n'
-            '    id: int;\n'
-            '    nome: str;\n'
-            '    altura: float;\n'
-            '    ativo: bool;\n'
-            '}\n'
             'db = new Sqlite();\n'
             'db.open(":memory:");\n'
-            'p = new Pessoa();\n'
-            'db.exec(p.create_table());\n'
-            "db.exec(\"INSERT INTO pessoa VALUES (7, 'ana', 1.62, 1)\");\n"
-            'db.query("SELECT id, nome, altura, ativo FROM pessoa");\n'
+            'db.exec("CREATE TABLE pessoa (id INTEGER PRIMARY KEY, nome TEXT, altura REAL)");\n'
+            "db.exec(\"INSERT INTO pessoa VALUES (7, 'ana', 1.62)\");\n"
+            'db.query("SELECT id, nome, altura FROM pessoa");\n'
             'write(db.cols());\n'
             'write(db.col_name(1));\n'
-            'q = p.from_row(db.row_map(0));\n'
-            'write(q.id);\n'
-            'write(q.nome);\n'
-            'write(q.altura);\n'
-            'write(q.ativo);\n'
+            'write(db.col_name(9));\n'
+            'r = db.row_map(0);\n'
+            'write(r["nome"]);\n'
+            'write(r["id"]);\n'
             'db.close();\n'
         ),
         "module_files": {"sqlite.nv": "stdlib/sqlite.nv"},
-        "expected": "4\nnome\n7\nana\n1.620000\ntrue\n",
+        "expected": "3\nnome\n\nana\n7\n",
     },
     {
         # `int` is 64-bit: an int32 box truncated every value above 2^31 on the way in
