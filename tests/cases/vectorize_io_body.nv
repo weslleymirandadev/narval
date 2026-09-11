@@ -1,0 +1,7 @@
+# I/O inside the body cannot happen once per SIMD lane.
+# Error: the body does I/O
+
+@[vectorize]
+for i in 0..3 {
+    write(i);
+}

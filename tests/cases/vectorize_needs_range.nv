@@ -1,0 +1,10 @@
+# A loop over a collection reaches each element through the runtime (one call per
+# element), so it is not a vector loop.
+# Error: needs a range loop
+
+v = [1, 2, 3];
+@[vectorize]
+for x in v {
+    y = x;
+}
+write("nunca compila");

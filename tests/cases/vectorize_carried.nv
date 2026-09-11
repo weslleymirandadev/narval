@@ -1,0 +1,10 @@
+# A loop that accumulates into a variable from outside has iterations that depend on
+# each other, so there is nothing to vectorize.
+# Error: loop-carried dependence
+
+total = 0;
+@[vectorize]
+for i in 0..10 {
+    total = total + i;
+}
+write(total);

@@ -1,0 +1,14 @@
+# `@[vectorize]` on a loop the backend can honour: a range loop whose iterations are
+# independent (no name written from outside, no I/O). The loop is tagged
+# `narval.vectorize` and its body block becomes `vectorized.body`, and an unboxed
+# element op in it is what LLVM/linalg turns into SIMD — a body that reaches the runtime
+# per element is refused instead (see the other three cases).
+# Expected:
+# ok
+
+@[vectorize]
+for i in 0..3 {
+    n = i * 2;
+}
+
+write("ok");
