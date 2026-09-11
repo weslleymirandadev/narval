@@ -1,0 +1,19 @@
+# Regressions in comptime evaluation:
+#   - a multi-token @compileError argument (e.g. a string concatenation) used to
+#     spin the decorator argument parser forever, hanging the compiler
+#   - `i < len(s) && s[i] != c` used to evaluate both sides eagerly, so the guard
+#     indexed past the end of the string
+#   ./build/narval tests/comptime_guard.nv
+# Expected: 4 / guard ok
+comptime def first_stop!(src: str): str {
+    i = 0;
+    while i < len(src) && src[i] != "x" {
+        if src[i] == "Q" {
+            @compileError("unexpected Q in: " + src)
+        }
+        i = i + 1;
+    }
+    return str(i);
+}
+write(first_stop! { abcxdef });
+write("guard ok");
