@@ -103,7 +103,7 @@ void nv_value_mod(Value* out, Value* a, Value* b) {
     NvTypeObject* ta = a->obj->ob_type;
     NvTypeObject* tb = b->obj->ob_type;
     if (ta == NVInt_Type && tb == NVInt_Type) {
-        int32_t vb = ((NVInt*)b->obj)->value;
+        int64_t vb = ((NVInt*)b->obj)->value;
         if (vb == 0) { out->obj = NULL; return; }
         create_int(out, ((NVInt*)a->obj)->value % vb);
     } else {
