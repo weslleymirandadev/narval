@@ -7,6 +7,8 @@
 #include "frontend/checker/checker.hpp"
 #include "frontend/attributes/attribute_mapper.hpp"
 #include "backend/nir/NIRGenerationContext.hpp"
+#include "frontend/ast/statements/class_stmt_node.hpp"
+#include "frontend/ast/statements/function_stmt_node.hpp"
 
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -14,10 +16,30 @@
 
 #include "llvm/Support/raw_ostream.h"
 
+#include <algorithm>
 #include <iostream>
+#include <set>
 #include <sstream>
 
 namespace nv {
+
+namespace {
+
+// A top-level definition that has to survive into the following inputs. Statements
+// are deliberately not carried: they would run again on every line.
+std::string repl_decl_name(const Stmt* s) {
+    if (!s) return "";
+    switch (s->kind) {
+        case NodeType::FunctionStatement:
+            return static_cast<const FunctionStmtNode*>(s)->name;
+        case NodeType::ClassStatement:
+            return static_cast<const ClassStmtNode*>(s)->name;
+        default:
+            return "";
+    }
+}
+
+}  // namespace
 
 CompilationEngine::CompilationEngine(REPLState* s, ModuleManager& mm)
     : state(s), module_manager(mm) {}
@@ -33,13 +55,39 @@ bool CompilationEngine::compile_and_execute(const std::string& input,
         auto ast = parser.produce_ast(tokens);
         if (!ast) return false;
 
+        // Re-emit the definitions from earlier inputs along with this one: an input
+        // is JIT'd on its own, so a function defined earlier would be missing.
+        std::set<std::string> defined_here;
+        std::vector<const Stmt*> this_decls;
+        if (auto* prog = dynamic_cast<Program*>(ast.get())) {
+            for (const auto& stmt : prog->get_statements()) {
+                const std::string name = repl_decl_name(stmt.get());
+                if (!name.empty()) {
+                    defined_here.insert(name);
+                    this_decls.push_back(stmt.get());
+                }
+            }
+        }
+        auto program = std::make_unique<Program>();
+        if (state) {
+            for (const auto& decl : state->repl_decls) {
+                const std::string name = repl_decl_name(decl.get());
+                if (!name.empty() && defined_here.count(name)) continue;  // redefined here
+                program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(decl->clone())));
+            }
+        }
+        if (auto* prog = dynamic_cast<Program*>(ast.get())) {
+            for (const auto& stmt : prog->get_statements())
+                program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
+        }
+
         nv::Checker checker;
         checker.set_source_file(source_name);
         if (state && state->checker) {
             checker.scope = state->checker->scope;
         }
         checker.set_emit_diagnostics(true);
-        checker.check_node(ast.get());
+        checker.check_node(program.get());
 
         if (checker.err) {
             if (state && state->config && state->config->show_errors) {
@@ -66,7 +114,22 @@ bool CompilationEngine::compile_and_execute(const std::string& input,
         b.setInsertionPointToStart(entry_blk);
         nir_ctx.set_current_func(main_fn);
 
-        nv::generate_ir_nir(std::move(ast), nir_ctx);
+        nv::generate_ir_nir(std::move(program), nir_ctx);
+
+        // Remember this input's definitions for the next ones.
+        if (state) {
+            for (const Stmt* decl : this_decls) {
+                const std::string name = repl_decl_name(decl);
+                state->repl_decls.erase(
+                    std::remove_if(state->repl_decls.begin(), state->repl_decls.end(),
+                                   [&](const std::unique_ptr<Stmt>& d) {
+                                       return repl_decl_name(d.get()) == name;
+                                   }),
+                    state->repl_decls.end());
+                state->repl_decls.push_back(
+                    std::unique_ptr<Stmt>(static_cast<Stmt*>(decl->clone())));
+            }
+        }
 
         if (entry_blk->empty() ||
             !entry_blk->back().hasTrait<mlir::OpTrait::IsTerminator>()) {
