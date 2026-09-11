@@ -2,6 +2,7 @@
 // Merges: builtin_classes.c + operator_overload.c
 
 #include "backend/runtime/nv_runtime.h"
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
@@ -129,20 +130,42 @@ int binary_add(Value* result, Value* lhs, Value* rhs) {
 
     // String concatenation
     if (lt == NVStr_Type || rt == NVStr_Type) {
+        // nv_str_convert always allocates a fresh string, so convert only the operand
+        // that is not a string already, and release those copies before returning: the
+        // result is built from their text (create_str copies it), nobody else owns
+        // them, and dropping the whole string never freed them (two objects leaked per
+        // concatenation — measured with valgrind).
         Value ls = {0}, rs = {0};
-        nv_str_convert(&ls, lhs);
-        nv_str_convert(&rs, rhs);
+        bool ls_copy = false, rs_copy = false;
+        if (lt == NVStr_Type) {
+            ls = *lhs;
+        } else {
+            nv_str_convert(&ls, lhs);
+            ls_copy = true;
+        }
+        if (rt == NVStr_Type) {
+            rs = *rhs;
+        } else {
+            nv_str_convert(&rs, rhs);
+            rs_copy = true;
+        }
         const char* ls_s = (ls.obj && ls.obj->ob_type == NVStr_Type) ? ((NVStr*)ls.obj)->value : "";
         const char* rs_s = (rs.obj && rs.obj->ob_type == NVStr_Type) ? ((NVStr*)rs.obj)->value : "";
         if (!ls_s) ls_s = "";
         if (!rs_s) rs_s = "";
         size_t len = strlen(ls_s) + strlen(rs_s) + 1;
         char* buf = (char*)malloc(len);
-        if (!buf) return 0;
+        if (!buf) {
+            if (ls_copy) nv_decref(ls.obj);
+            if (rs_copy) nv_decref(rs.obj);
+            return 0;
+        }
         strcpy(buf, ls_s);
         strcat(buf, rs_s);
         create_str(result, buf);
         free(buf);
+        if (ls_copy) nv_decref(ls.obj);
+        if (rs_copy) nv_decref(rs.obj);
         return 1;
     }
 
