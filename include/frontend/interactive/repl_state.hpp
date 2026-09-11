@@ -42,6 +42,10 @@ struct REPLState {
 	std::unordered_map<std::string, Value> repl_var_values;
 	std::unordered_set<std::string> repl_globals_added;
 	std::unordered_map<std::string, std::string> source_cache;
+	// Definitions (functions, classes) from earlier inputs. Each input is JIT'd on
+	// its own with a fresh JIT, so they are re-emitted together with the next one;
+	// otherwise a call to something defined two lines up is an unresolved symbol.
+	std::vector<std::unique_ptr<Stmt>> repl_decls;
 	
 	// Reference to config for other modules
 	const REPLConfig* config = nullptr;
