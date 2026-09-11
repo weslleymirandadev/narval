@@ -329,9 +329,9 @@ CASES = [
         "expected": "bob\nhi bob\nbob@42\n",
     },
     {
-        "name": "derive_eq_debug",
+        "name": "derive_eq_debug_json",
         "source": (
-            '@[derive(eq, debug)]\n'
+            '@[derive(eq, debug, json)]\n'
             'class User {\n'
             '    name: str;\n'
             '    age: int;\n'
@@ -348,8 +348,9 @@ CASES = [
             'write(a.__eq__(b));\n'
             'write(a.__eq__(c));\n'
             'write(a.__str__());\n'
+            'write(a.to_json());\n'
         ),
-        "expected": "true\nfalse\nUser { name: \"bob\", age: 42 }\n",
+        "expected": "true\nfalse\nUser { name: \"bob\", age: 42 }\n{\"name\": \"bob\", \"age\": 42}\n",
     },
     {
         "name": "comptime_params",
@@ -755,17 +756,60 @@ CASES = [
         "expected": "bob\n42\nfalse\nfalse\n",
     },
     {
-        # Serialization is not a language protocol: `json` is no longer a builtin,
-        # and the diagnostic says how to write it (a `comptime def derive_json`).
-        "name": "derive_json_is_not_builtin",
+        "name": "derive_clone_and_from_json",
         "source": (
-            '@[derive(json)]\n'
+            '@[derive(debug, clone, from_json)]\n'
+            'class User {\n'
+            '    name: str;\n'
+            '    age: int;\n'
+            '    admin: bool;\n'
+            '}\n'
+            'a = new User();\n'
+            'a.name = "bob";\n'
+            'a.age = 42;\n'
+            'a.admin = true;\n'
+            'b = a.clone();\n'
+            'write(b.name);\n'
+            'write(b.age);\n'
+            'c = a.clone();\n'
+            'c.name = "ana";\n'
+            'write(a.name == c.name);\n'
+            'write(b.name == c.name);\n'
+            'd = a.from_json("{\\"name\\": \\"zoe\\", \\"age\\": 7, \\"extra\\": {\\"n\\": 1}}");\n'
+            'write(d.name);\n'
+            'write(d.age);\n'
+            'write(d.admin == false);\n'
+            'write(d.name == b.name);\n'
+        ),
+        "expected": "bob\n42\nfalse\nfalse\nzoe\n7\ntrue\nfalse\n",
+    },
+    {
+        "name": "derive_from_json_rejects_nested_type",
+        "source": (
+            '@[derive(from_json)]\n'
+            'class Inner {\n'
+            '    x: int;\n'
+            '}\n'
+            '@[derive(from_json)]\n'
+            'class Outer {\n'
+            '    inner: Inner;\n'
+            '}\n'
+            'write(1);\n'
+        ),
+        "expect_error": "has unsupported type",
+    },
+    {
+        # A schema format is not a language concern: `openapi` was removed and the
+        # diagnostic says how to write it (a `comptime def derive_openapi`).
+        "name": "derive_openapi_is_not_builtin",
+        "source": (
+            '@[derive(openapi)]\n'
             'class User {\n'
             '    name: str;\n'
             '}\n'
             'write("nunca compila");\n'
         ),
-        "expect_error": "unknown derive 'json'",
+        "expect_error": "unknown derive 'openapi'",
     },
     {
         "name": "sqlite_open_exec_query",
