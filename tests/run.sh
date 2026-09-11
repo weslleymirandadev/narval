@@ -61,8 +61,14 @@ parse_case() {
             esac
             continue
         fi
-        # Not a directive: outside a block the header is over and the program starts.
-        if [ -z "$mode" ]; then break; fi
+        # Not a directive: a comment outside a block is prose and is skipped, so a
+        # case can explain itself in its header; a blank line or code ends the header.
+        if [ -z "$mode" ]; then
+            case "$line" in
+                '#'*) continue;;
+                *)    break;;
+            esac
+        fi
         case "$line" in
             '# '*) line="${line#\# }";;     # one separator space is stripped
             '#')   line="";;                # a bare "#" is an empty content line
