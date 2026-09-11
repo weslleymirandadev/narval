@@ -1,0 +1,51 @@
+# @derive(sql) — row mapping for the SQL bindings.
+#   ./build/narval tests/derive_sql.nv
+#
+# A row is a map of column name → text, which is what SQLite binds: to_row()
+# stringifies every field, from_row() converts the text back through the field's
+# own type, and create_table() is the DDL those rows live in. Scalars only: a field
+# with no column of its own (a class, a collection) is reported at compile time.
+#
+# Expected:
+#   CREATE TABLE pessoa (id INTEGER PRIMARY KEY, nome TEXT, altura REAL, ativo INTEGER)
+#   7 / ana / 1.62 / 1.620000 / true
+#   3 / bia / false / 15
+@[derive(sql)]
+class Pessoa {
+    id: int;
+    nome: str;
+    altura: float;
+    ativo: bool;
+}
+
+p = new Pessoa();
+p.id = 7;
+p.nome = "ana";
+p.altura = 1.62;
+p.ativo = true;
+
+# The DDL, with the `id` field as the primary key.
+write(p.create_table());
+
+# Every field as text, keyed by column name.
+row = p.to_row();
+write(row["id"]);
+write(row["nome"]);
+write(row["altura"]);
+
+# ...and back from that same map: the numeric fields are converted, the bool is the
+# literal str() wrote.
+q = p.from_row(row);
+write(q.altura);
+write(q.ativo);
+
+# A bool column that reads "false" must come back false: comparing against "true" is
+# the inverse of str(), where bool(text) would be true for any non-empty text.
+hand_row = {"id": "3", "nome": "bia", "altura": "1.5", "ativo": "false"};
+r = p.from_row(hand_row);
+write(r.id);
+write(r.nome);
+write(r.ativo);
+
+# A float round-trips through the text form without losing its value.
+write(int(r.altura * 10.0));
