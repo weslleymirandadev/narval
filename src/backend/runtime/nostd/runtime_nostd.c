@@ -361,8 +361,11 @@ static void _ns_write_bytes(const char* buf, size_t len) {
     _ns_syscall3(1, 1, (long)buf, (long)len);
 }
 
-/* Used by the codegen for @[no_std] programs: exit_group(2). */
-void _exit(int code) {
+/* Used by the codegen for @[no_std] programs: exit_group(2). The codegen passes a
+ * boxed value (it works in Narval values), so the status is extracted here. */
+void _exit(NvObject* value) {
+    int code = 0;
+    if (value && value->ob_type == NVInt_Type) code = ((NVInt*)value)->value;
     _ns_syscall3(231, code, 0, 0);
     for (;;) { }   /* exit_group does not return */
 }
