@@ -308,6 +308,13 @@ NIRGenerationContext::lower_to_llvm_ir(llvm::LLVMContext& llvm_ctx) {
     }
 
     auto run = [&](mlir::PassManager& p) -> bool {
+        // NARVAL_DUMP_NIR_PASSES=1 prints the module after every pass, which is the
+        // only way to see which pass left the IR in the state a conversion refuses.
+        // IR printing requires the context to be single-threaded, hence the switch.
+        if (std::getenv("NARVAL_DUMP_NIR_PASSES")) {
+            ctx_.disableMultithreading();
+            p.enableIRPrinting();
+        }
         return mlir::succeeded(p.run(*module_));
     };
 
