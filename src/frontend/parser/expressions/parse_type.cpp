@@ -100,7 +100,9 @@ std::string parse_type(Parser* parser) {
             type_str = "map<" + inner1 + ", " + inner2 + ">";
             parser->expect(TokenType::GT, "Expected '>' after generic.");
         }
-        // 3. Vector type: vector (sem generics, lista heterogênea)
+        // 3. Vector type: `vector` — a Python-style list: heterogeneous and dynamic,
+        //    so it takes no element type. A typed, fixed-size sequence is an array:
+        //    `int[5]` as a type, `{1, 2, 3}` as a literal.
         else if (type_str == "vector") {
             type_str = "vector";
         }
