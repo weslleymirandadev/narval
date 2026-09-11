@@ -1,4 +1,7 @@
 #pragma once
+#include <algorithm>
+#include <string>
+#include <vector>
 
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -172,6 +175,16 @@ public:
 
     //  Control-flow emit helpers (Phase 2) 
 
+    // Names assigned at the top level of the REPL. Each input is JIT'd on its own,
+    // so those values live in the runtime store (nv_repl_set / nv_repl_get) instead
+    // of a register that dies with the input.
+    void set_repl_globals(const std::vector<std::string>& names) {
+        repl_globals_.assign(names.begin(), names.end());
+    }
+    bool is_repl_global(const std::string& name) const {
+        return std::find(repl_globals_.begin(), repl_globals_.end(), name) != repl_globals_.end();
+    }
+
     // Emit narval.if. Caller fills then_region / else_region on the returned op.
     mlir::narval::IfOp emit_if(mlir::Location loc, mlir::Value condition,
                                 mlir::TypeRange result_types = {});
@@ -243,6 +256,7 @@ private:
     std::unordered_map<std::string, std::string> c_import_sigs_;
     std::vector<mlir::Value>             value_stack_;
     std::unordered_map<std::string, std::string> ffi_remaps_;
+    std::vector<std::string> repl_globals_;
 };
 
 } // namespace nv
