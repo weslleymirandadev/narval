@@ -18,6 +18,9 @@
 #include "frontend/ast/statements/forever_stmt_node.hpp"
 #include "frontend/ast/statements/return_stmt_node.hpp"
 #include "frontend/comptime/c_import.hpp"
+#include "frontend/lexer/lexer.hpp"
+#include "frontend/lexer/lexer_error.hpp"
+#include "frontend/parser/parser.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -734,6 +737,14 @@ ComptimeValue ComptimeEvaluator::eval_builtin(BuiltinCallNode* node) {
         fail("@compileError: " + str_arg(0));
         return ComptimeValue::none();
     }
+    if (fn == "emit") {
+        // Queue generated source; expand_body parses it and splices the resulting
+        // statements right after the statement that emitted them. This is the
+        // AST-building primitive: a comptime macro can now produce real `def`s
+        // (COMPTIME_SPEC 5.11).
+        emitted_sources_.push_back(str_arg(0));
+        return ComptimeValue::void_value();
+    }
     if (fn == "typeName") return ComptimeValue::from_str(type_arg(0));
     if (fn == "TypeOf") {
         if (node->args.empty() || !node->args[0]) {
@@ -1259,6 +1270,14 @@ ComptimeValue ComptimeEvaluator::eval_block(const CodeBlock& body) {
                 }
                 break;
             }
+            case NodeType::BuiltinCall: {
+                // A comptime builtin used as a statement: evaluate for its side
+                // effect. `@emit(src)` is the interesting one — it queues source
+                // that expand_body splices in as real statements.
+                eval_builtin(static_cast<BuiltinCallNode*>(stmt));
+                if (failed_) return ComptimeValue::none();
+                break;
+            }
             case NodeType::FunctionStatement:
             case NodeType::ClassStatement:
             case NodeType::EnumStatement:
@@ -1424,6 +1443,46 @@ std::vector<std::unique_ptr<Stmt>> ComptimeEvaluator::expand_while(ComptimeWhile
     return out;
 }
 
+// ── @emit: comptime-generated source ───────────────────────────────────────
+// Parses every queued source and appends its statements to `out`. The text is
+// ordinary Narval source, so it goes through the same lexer/parser as a file and
+// the generated AST then flows through the normal checker/codegen — no separate
+// AST-building API to keep in sync with the frontend. Generated code is NOT
+// re-expanded (it must be plain Narval), which also removes any self-emitting
+// recursion hazard.
+void ComptimeEvaluator::drain_emitted(std::vector<std::unique_ptr<Stmt>>& out) {
+    if (emitted_sources_.empty()) return;
+
+    std::vector<std::string> sources;
+    sources.swap(emitted_sources_);
+
+    for (const auto& src : sources) {
+        CodeBlock parsed;
+        try {
+            Lexer lexer(src, "comptime[@emit]");
+            auto tokens = lexer.tokenize();
+            Parser parser;
+            auto ast = parser.produce_ast(tokens);
+            if (!ast || ast->kind != NodeType::Program) {
+                fail("@emit: generated source did not parse as a Narval program");
+                return;
+            }
+            auto* prog = static_cast<Program*>(ast.get());
+            for (auto& s : prog->body) parsed.push_back(std::move(s));
+        } catch (const std::exception& e) {
+            fail(std::string("@emit: generated source is not valid Narval: ") + e.what());
+            return;
+        }
+
+        if (emitted_stmts_ + parsed.size() > 10000) {
+            fail("@emit: generated more than 10000 statements");
+            return;
+        }
+        emitted_stmts_ += parsed.size();
+        for (auto& s : parsed) out.push_back(std::move(s));
+    }
+}
+
 CodeBlock ComptimeEvaluator::expand_body(CodeBlock body) {
     CodeBlock out;
     out.reserve(body.size());
@@ -1431,6 +1490,11 @@ CodeBlock ComptimeEvaluator::expand_body(CodeBlock body) {
     for (auto& stmt_ptr : body) {
         Stmt* stmt = stmt_ptr.get();
         if (!stmt) continue;
+
+        // Anything @emit queued while expanding the PREVIOUS statement belongs
+        // right before this one; the tail is drained after the loop.
+        drain_emitted(out);
+        if (failed_) return out;
 
         switch (stmt->kind) {
             case NodeType::ComptimeFuncDef: {
@@ -1532,6 +1596,18 @@ CodeBlock ComptimeEvaluator::expand_body(CodeBlock body) {
                 if (failed_) return out;
                 break;
             }
+            case NodeType::BuiltinCall: {
+                // `@emit(src)` in statement position: evaluate it (queues the
+                // source) and drop the statement — drain_emitted splices the
+                // generated statements in as real AST.
+                auto* bc = static_cast<BuiltinCallNode*>(stmt);
+                if (bc->name == "emit") {
+                    eval_builtin(bc);
+                    if (failed_) return out;
+                    continue;
+                }
+                break;
+            }
             case NodeType::DecoratorStatement:
                 // Interpreted by eval_block inside comptime bodies (e.g.
                 // @compileError); nothing to expand here.
@@ -1580,6 +1656,9 @@ CodeBlock ComptimeEvaluator::expand_body(CodeBlock body) {
 
         out.push_back(std::move(stmt_ptr));
     }
+
+    // Emissions from the last statement (and anything a nested block left queued).
+    drain_emitted(out);
     return out;
 }
 
@@ -1614,9 +1693,15 @@ void ComptimeEvaluator::rewrite_expr_impl(std::unique_ptr<Expr>* slot, Expr* e) 
             return;
         }
         case NodeType::BuiltinCall: {
-            ComptimeValue v = eval_builtin(static_cast<BuiltinCallNode*>(e));
+            auto* bc = static_cast<BuiltinCallNode*>(e);
+            ComptimeValue v = eval_builtin(bc);
             if (failed_) return;
-            if (slot) *slot = to_literal(v, e->position.get());
+            // `@emit(src)` is a statement-level side effect (it queues source); a
+            // Void value has no literal form, so fold it to a no-op None instead of
+            // tripping "cannot be materialised as a runtime literal".
+            if (slot) *slot = (bc->name == "emit")
+                ? std::unique_ptr<Expr>(std::make_unique<NoneLiteralNode>())
+                : to_literal(v, e->position.get());
             return;
         }
         case NodeType::TypeReflectExpr: {
