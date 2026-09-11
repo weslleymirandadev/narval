@@ -132,6 +132,9 @@ void nv_get_failure_err(Value* out, const Value* val) {
             if (s) msg = s;
         }
         create_error(out, msg);
+        // create_error copies the text (strdup), so the converted string is ours to
+        // release — nv_str_convert allocates a fresh object every call.
+        nv_decref(msg_val.obj);
     } else if (t == NVOptionNone_Type) {
         create_error(out, "None");
     } else {
