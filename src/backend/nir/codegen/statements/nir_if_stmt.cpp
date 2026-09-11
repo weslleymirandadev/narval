@@ -229,7 +229,7 @@ void IfStatementNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         return;
     }
 
-    if (!convertible || assigned.empty()) {
+    if (assigned.empty()) {
         emit_plain_if(nir_to_i1(ctx, loc, cond));
         return;
     }
@@ -239,15 +239,45 @@ void IfStatementNode::nir_codegen(nv::NIRGenerationContext& ctx) {
     incoming.reserve(assigned.size());
     for (const auto& name : assigned) {
         mlir::Value v = ctx.lookup(name);
-        if (!v) {  // declared inside the branch: keep the old behaviour
-            convertible = false;
-            break;
+        if (!v) {  // declared inside the branch: nothing escapes, keep the old form
+            emit_plain_if(nir_to_i1(ctx, loc, cond));
+            return;
         }
         incoming.push_back(v);
     }
 
     if (!convertible) {
-        emit_plain_if(nir_to_i1(ctx, loc, cond));
+        // Branches that are not convertible (a nested call, a loop, a compound
+        // assignment) still let their values escape: yield one value per variable
+        // and define them after the region. A result-carrying narval.if lowers to
+        // scf.if with results and gets its types repaired downstream
+        // (LowerNarvalControlFlowPass, FixSCFIfTypes), so only the taken branch
+        // runs and its writes survive. The select conversion above stays for the
+        // convertible case, where it avoids carrying anything through a region.
+        std::vector<mlir::Type> result_types(assigned.size(), vt);
+        auto if_op = ctx.emit_if(loc, nir_to_i1(ctx, loc, cond), result_types);
+        auto fill = [&](mlir::Block& block, const CodeBlock& body, bool runs) {
+            mlir::OpBuilder::InsertionGuard g(b);
+            b.setInsertionPointToStart(&block);
+            if (runs) {
+                ctx.push_scope();
+                nir_emit_body(body, ctx);
+            }
+            std::vector<mlir::Value> out;
+            out.reserve(assigned.size());
+            for (size_t i = 0; i < assigned.size(); ++i) {
+                // A branch that does not assign the name keeps the incoming value.
+                mlir::Value v = runs ? ctx.lookup(assigned[i]) : mlir::Value();
+                out.push_back(v ? v : incoming[i]);
+            }
+            if (runs) ctx.pop_scope();
+            ctx.emit_yield(loc, out);
+        };
+        fill(if_op.getThenRegion().front(), consequent, true);
+        fill(if_op.getElseRegion().front(), alternate, !alternate.empty());
+        b.setInsertionPointAfter(if_op);
+        for (size_t i = 0; i < assigned.size(); ++i)
+            ctx.define(assigned[i], if_op.getResult(i));
         return;
     }
 
