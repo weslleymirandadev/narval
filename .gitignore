@@ -1,10 +1,15 @@
-tests/
 build/
 .vscode/
 narval_program
-*.nv
-!stdlib/**/*.nv
-!tests/**/*.nv
+__pycache__/
+*.pyc
 *.o
 *.md
 !README.md
+
+# Loose .nv scratch files stay local. tests/ is NOT ignored: it is part of the
+# build (ctest narval_integration runs tests/integration/run.py), so the harness,
+# its fixtures and the manual probes are versioned.
+*.nv
+!stdlib/**/*.nv
+!tests/**/*.nv
