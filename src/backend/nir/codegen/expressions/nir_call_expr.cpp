@@ -39,7 +39,12 @@ void CallExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         auto* mem = static_cast<MemberExprNode*>(caller.get());
         if (mem->object && mem->property && mem->property->kind == NodeType::Identifier) {
             std::string method = static_cast<IdentifierNode*>(mem->property.get())->symbol;
-            std::string owner  = ctx.find_method_owner(method);
+            // The checker resolved the owner from the receiver's static type; the
+            // name-only lookup stays as a fallback for calls that did not go through it
+            // (it cannot tell two classes with the same method apart).
+            std::string owner  = mem->resolved_owner.empty()
+                               ? ctx.find_method_owner(method)
+                               : mem->resolved_owner;
             if (!owner.empty()) {
                 mem->object->nir_codegen(ctx);
                 llvm::SmallVector<mlir::Value> call_args;
