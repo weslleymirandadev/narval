@@ -97,7 +97,11 @@ void CallExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         {"recv",   "nv_channel_recv"},
         {"read",   "nv_read_builtin"},
         {"int",    "nv_int_builtin"},
+        {"int64",  "nv_int_builtin"},   // the width is a type-level discipline for now
+        {"int32",  "nv_int_builtin"},
         {"float",  "nv_float_builtin"},
+        {"float64","nv_float_builtin"},
+        {"float32","nv_float_builtin"},
         {"bool",   "nv_bool_builtin"},
         {"char",   "nv_char_builtin"},
         {"str",    "nv_str_builtin"},
