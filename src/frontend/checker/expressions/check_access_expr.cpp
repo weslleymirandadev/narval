@@ -122,6 +122,13 @@ std::shared_ptr<nv::Type>& check_access_expr(nv::Checker* ch, Node* node) {
         // Treat indexing such a value as retrieving a callable element.
         temp_result = expr_type;
         return temp_result;
+    } else if (expr_type->kind == nv::Kind::TENSOR && index_is_int) {
+        // Flat element access on a tensor: its numbers are contiguous, so `t[i]` is the
+        // i-th element. This is what makes an element-wise loop over tensors expressible
+        // at all (`c[i] = a[i] + b[i]`), which is exactly the shape @[vectorize] lowers to
+        // raw loads and stores. Float tensors (the type has a float element).
+        temp_result = ch->gettyptr("float");
+        return temp_result;
     } else {
         ch->error(access_expr->expr.get(), 
                   "Access expression requires array, vector, string, map, or tuple, but got '" + 
