@@ -175,6 +175,8 @@ struct InsertRuntimeDropsPass
             "nv_container_get", "nv_array_get", "nv_get_field",
             // spawn boxes the id, join hands back what the thread produced
             "nv_thread_spawn", "nv_thread_join",
+            // chan boxes the id, recv hands the message over to the receiver
+            "nv_channel_new", "nv_channel_recv",
         };
         for (const char* a : fresh)
             if (name == a) return true;
