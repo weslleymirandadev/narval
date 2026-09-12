@@ -1,4 +1,5 @@
 #include "frontend/parser/expressions/parse_array_map_expr.hpp"
+#include "frontend/parser/expressions/parse_range_expr.hpp"
 #include "frontend/parser/expressions/parse_vector_expr.hpp"
 #include "frontend/parser/expressions/parse_assignment_expr.hpp"
 #include "frontend/parser/expressions/parse_logical_expr.hpp"
@@ -100,7 +101,8 @@ std::unique_ptr<Node> parse_assignment_expr(Parser* parser) {
                 }
             } break;
             default: {
-                value = parse_logical_expr(parser);
+                // A range is accepted here too, so `v = 0..5` reads as a container.
+                value = parse_range_expr(parser);
             } break;
         }
 
