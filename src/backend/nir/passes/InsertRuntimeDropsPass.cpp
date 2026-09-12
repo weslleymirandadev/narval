@@ -173,6 +173,8 @@ struct InsertRuntimeDropsPass
             // reads return an owned reference (incref'd by the bridge), so the value
             // read has to be dropped like any other fresh object
             "nv_container_get", "nv_array_get", "nv_get_field",
+            // spawn boxes the id, join hands back what the thread produced
+            "nv_thread_spawn", "nv_thread_join",
         };
         for (const char* a : fresh)
             if (name == a) return true;
