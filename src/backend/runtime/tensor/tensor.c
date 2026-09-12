@@ -38,6 +38,62 @@ static void compute_strides(int32_t ndim, const int64_t* shape, int64_t* strides
 
 //  Allocate an NVTensor (no data initialisation) 
 
+//  Element types 
+// The storage keeps the width the dtype promises: an f32 tensor holds 4-byte floats, an i64
+// tensor 8-byte integers. Narrower data arriving from outside (an i8 or i16 buffer) is
+// widened at the boundary. Every element read and write goes through the helpers below, so
+// no call site has to remember which width it is looking at — assuming double* is how a
+// Tensor<int> used to come back as 0.0.
+typedef struct { int32_t size; int32_t is_float; const char* name; } NvDtypeInfo;
+
+static const NvDtypeInfo nv_dtype_table[] = {
+    { 1, 0, "int8"    },   // 0 (not produced by the language yet)
+    { 4, 0, "int32"   },   // 1  NV_INT_BASE
+    { 8, 1, "float64" },   // 2  NV_FLOAT_BASE
+    { 8, 0, "int64"   },   // 3  NV_DTYPE_INT64
+    { 4, 1, "float32" },   // 4  NV_DTYPE_FLOAT32
+    { 1, 0, "bool"    },   // 5  NV_DTYPE_BOOL
+};
+#define NV_DTYPE_COUNT ((int32_t)(sizeof(nv_dtype_table) / sizeof(nv_dtype_table[0])))
+
+static const NvDtypeInfo* dtype_info(int32_t dtype) {
+    if (dtype < 0 || dtype >= NV_DTYPE_COUNT) return &nv_dtype_table[NV_FLOAT_BASE];
+    return &nv_dtype_table[dtype];
+}
+static size_t dtype_size(int32_t dtype) { return (size_t)dtype_info(dtype)->size; }
+static int    dtype_is_float(int32_t dtype) { return dtype_info(dtype)->is_float; }
+
+const char* nv_tensor_dtype_name(int32_t dtype) { return dtype_info(dtype)->name; }
+
+// The element as a double and as an integer, whichever the storage holds.
+static double tensor_load(const NVTensor* t, int64_t flat) {
+    switch (t->dtype) {
+        case NV_DTYPE_FLOAT32: return (double)((float*)t->data)[flat];
+        case NV_FLOAT_BASE:   return ((double*)t->data)[flat];
+        case NV_DTYPE_BOOL:    return ((unsigned char*)t->data)[flat] ? 1.0 : 0.0;
+        case NV_DTYPE_INT64:   return (double)((int64_t*)t->data)[flat];
+        default:              return (double)((int32_t*)t->data)[flat];
+    }
+}
+static int64_t tensor_load_int(const NVTensor* t, int64_t flat) {
+    switch (t->dtype) {
+        case NV_DTYPE_FLOAT32: return (int64_t)((float*)t->data)[flat];
+        case NV_FLOAT_BASE:   return (int64_t)((double*)t->data)[flat];
+        case NV_DTYPE_BOOL:    return ((unsigned char*)t->data)[flat] ? 1 : 0;
+        case NV_DTYPE_INT64:   return ((int64_t*)t->data)[flat];
+        default:              return (int64_t)((int32_t*)t->data)[flat];
+    }
+}
+static void tensor_store(NVTensor* t, int64_t flat, double as_float, int64_t as_int) {
+    switch (t->dtype) {
+        case NV_DTYPE_FLOAT32: ((float*)t->data)[flat]         = (float)as_float; break;
+        case NV_FLOAT_BASE:   ((double*)t->data)[flat]        = as_float;        break;
+        case NV_DTYPE_BOOL:    ((unsigned char*)t->data)[flat] = as_int ? 1 : 0;  break;
+        case NV_DTYPE_INT64:   ((int64_t*)t->data)[flat]       = as_int;          break;
+        default:              ((int32_t*)t->data)[flat]       = (int32_t)as_int; break;
+    }
+}
+
 static NVTensor* tensor_alloc(int32_t dtype, int32_t ndim, const int64_t* shape) {
     NVTensor* t = (NVTensor*)malloc(sizeof(NVTensor));
     if (!t) return NULL;
@@ -52,7 +108,7 @@ static NVTensor* tensor_alloc(int32_t dtype, int32_t ndim, const int64_t* shape)
     memcpy(t->shape, shape, ndim * sizeof(int64_t));
     compute_strides(ndim, shape, t->strides);
     t->nelem = compute_nelem(ndim, shape);
-    size_t elem_sz = (dtype == NV_INT_BASE) ? sizeof(int32_t) : sizeof(double);
+    size_t elem_sz = dtype_size(dtype);
     t->data = malloc(t->nelem * elem_sz);
     if (!t->data) { free(t->shape); free(t->strides); free(t); return NULL; }
     return t;
@@ -92,7 +148,7 @@ int64_t nv_value_to_i64(Value* v) {
 Value nv_tensor_zeros(int32_t dtype, int32_t ndim, const int64_t* shape) {
     NVTensor* t = tensor_alloc(dtype, ndim, shape);
     if (!t) { Value v; v.obj = NULL; return v; }
-    size_t elem_sz = (dtype == NV_INT_BASE) ? sizeof(int32_t) : sizeof(double);
+    size_t elem_sz = dtype_size(dtype);
     memset(t->data, 0, t->nelem * elem_sz);
     return tensor_to_value(t);
 }
@@ -101,13 +157,7 @@ Value nv_tensor_zeros(int32_t dtype, int32_t ndim, const int64_t* shape) {
 Value nv_tensor_ones(int32_t dtype, int32_t ndim, const int64_t* shape) {
     NVTensor* t = tensor_alloc(dtype, ndim, shape);
     if (!t) { Value v; v.obj = NULL; return v; }
-    if (dtype == NV_INT_BASE) {
-        int32_t* p = (int32_t*)t->data;
-        for (int64_t i = 0; i < t->nelem; ++i) p[i] = 1;
-    } else {
-        double* p = (double*)t->data;
-        for (int64_t i = 0; i < t->nelem; ++i) p[i] = 1.0;
-    }
+    for (int64_t i = 0; i < t->nelem; ++i) tensor_store(t, i, 1.0, 1);
     return tensor_to_value(t);
 }
 
@@ -116,7 +166,7 @@ Value nv_tensor_from_data(int32_t dtype, int32_t ndim,
                            const int64_t* shape, const void* src_data) {
     NVTensor* t = tensor_alloc(dtype, ndim, shape);
     if (!t) { Value v; v.obj = NULL; return v; }
-    size_t elem_sz = (dtype == NV_INT_BASE) ? sizeof(int32_t) : sizeof(double);
+    size_t elem_sz = dtype_size(dtype);
     memcpy(t->data, src_data, t->nelem * elem_sz);
     return tensor_to_value(t);
 }
@@ -187,25 +237,28 @@ NvObject* nv_tensor_get_element(Value* v, int64_t flat) {
     NVTensor* t = unwrap_tensor(v);
     if (!t || flat < 0 || flat >= t->nelem) return NULL;
     Value out = {NULL};
-    if (t->dtype == NV_INT_BASE)
-        create_int(&out, ((int32_t*)t->data)[flat]);
+    if (dtype_is_float(t->dtype))
+        create_float(&out, tensor_load(t, flat));
     else
-        create_float(&out, ((double*)t->data)[flat]);
+        create_int(&out, tensor_load_int(t, flat));
     return out.obj;
 }
 
 void nv_tensor_set_element(Value* v, int64_t flat, NvObject* val) {
     NVTensor* t = unwrap_tensor(v);
     if (!t || !val || flat < 0 || flat >= t->nelem) return;
-    int is_float = val->ob_type == NVFloat_Type;
-    if (t->dtype == NV_INT_BASE)
-        ((int32_t*)t->data)[flat] = is_float
-            ? (int32_t)((NVFloat*)val)->value
-            : (int32_t)((NVInt*)val)->value;
-    else
-        ((double*)t->data)[flat] = is_float
-            ? ((NVFloat*)val)->value
-            : (double)((NVInt*)val)->value;
+    const int  from_float = val->ob_type == NVFloat_Type;
+    const double  as_float = from_float ? ((NVFloat*)val)->value
+                                        : (double)((NVInt*)val)->value;
+    const int64_t as_int   = from_float ? (int64_t)((NVFloat*)val)->value
+                                        : ((NVInt*)val)->value;
+    tensor_store(t, flat, as_float, as_int);
+}
+
+// The dtype of a tensor itself (not of a scalar value).
+int32_t nv_tensor_dtype_id(Value* v) {
+    NVTensor* t = unwrap_tensor(v);
+    return t ? t->dtype : NV_FLOAT_BASE;
 }
 
 //  Arithmetic (naive fallback — MLIR-generated versions override these) 
@@ -467,7 +520,7 @@ Value nv_tensor_transpose(Value* v) {
     if (!out) return bad;
 
     int64_t M = t->shape[0], N = t->shape[1];
-    size_t elem_sz = (t->dtype == NV_FLOAT_BASE) ? sizeof(double) : sizeof(int32_t);
+    size_t elem_sz = dtype_size(t->dtype);
     for (int64_t i = 0; i < M; ++i)
         for (int64_t j = 0; j < N; ++j)
             memcpy((char*)out->data + (j * M + i) * elem_sz,
@@ -508,10 +561,10 @@ static Value tensor_to_list_impl(NVTensor* t, int64_t* idx, int dim) {
             int64_t offset = 0;
             for (int d = 0; d < t->ndim; ++d) offset += idx[d] * t->strides[d];
             Value v = {NULL};
-            if (t->dtype == NV_FLOAT_BASE)
-                create_float(&v, ((double*)t->data)[offset]);
+            if (dtype_is_float(t->dtype))
+                create_float(&v, tensor_load(t, offset));
             else
-                create_int(&v, ((int32_t*)t->data)[offset]);
+                create_int(&v, tensor_load_int(t, offset));
             a->elements[j] = v;
         }
         return arr;
