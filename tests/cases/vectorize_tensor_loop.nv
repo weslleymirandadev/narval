@@ -1,0 +1,25 @@
+# `@[vectorize]` on an element-wise loop over float tensors is lowered to raw f64 loads,
+# arithmetic and stores (llvm.getelementptr / llvm.load / llvm.store) — the elements never
+# become objects. That is the whole point of the annotation: on the general path each
+# `a[i]` is a runtime call that boxes a value, and no vectorizer can see through an opaque
+# call per element. The second loop exercises a number literal in the expression.
+# Expected:
+# [2.000000, 2.000000, 2.000000, 2.000000]
+# [3.000000, 3.000000, 3.000000, 3.000000]
+
+a: Tensor<float, [4]> = Tensor.ones(4);
+b: Tensor<float, [4]> = Tensor.ones(4);
+
+c: Tensor<float, [4]> = Tensor.zeros(4);
+@[vectorize]
+for i in 0..4 {
+    c[i] = a[i] + b[i];
+}
+write(c.tolist());
+
+d: Tensor<float, [4]> = Tensor.zeros(4);
+@[vectorize]
+for i in 0..4 {
+    d[i] = a[i] * 3.0;
+}
+write(d.tolist());
