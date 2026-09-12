@@ -43,7 +43,10 @@ set(NARVAL_LSP_CORE_SOURCES
     transport.cpp
 )
 
-add_library(NarvalLspCore STATIC ${NARVAL_LSP_CORE_SOURCES})
+# EXCLUDE_FROM_ALL: the server links the whole front-end and needs non-PIC copies of it,
+# so it is minutes of work that nobody asked for when the target is the compiler. It stays
+# buildable on demand — `make NarvalLsp` — and out of `make` and `make Narval` entirely.
+add_library(NarvalLspCore STATIC EXCLUDE_FROM_ALL ${NARVAL_LSP_CORE_SOURCES})
 target_include_directories(NarvalLspCore PUBLIC
     ${PROJECT_SOURCE_DIR}/include
     ${NARVAL_NLOHMANN_JSON_INCLUDE_DIR}
@@ -60,7 +63,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 function(narval_add_lsp_target target_name)
-    add_executable(${target_name}
+    add_executable(${target_name} EXCLUDE_FROM_ALL
         ${CMAKE_CURRENT_SOURCE_DIR}/narval-lsp.cpp
     )
     set_target_properties(${target_name} PROPERTIES
@@ -79,9 +82,10 @@ function(narval_add_lsp_target target_name)
     endif()
 endfunction()
 
-if(NARVAL_BUILD_LSP)
-    narval_add_lsp_target(NarvalLsp)
-endif()
+# The target always exists so `make NarvalLsp` works; being EXCLUDE_FROM_ALL is what keeps
+# it out of a plain `make`. NARVAL_BUILD_LSP (default OFF) additionally makes `make Narval`
+# build it — for whoever wants the old behaviour.
+narval_add_lsp_target(NarvalLsp)
 
 function(narval_add_lsp_platform_target platform_name toolchain_file)
     string(SUBSTRING "${platform_name}" 0 1 _first)
