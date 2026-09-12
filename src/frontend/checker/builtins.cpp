@@ -18,6 +18,11 @@ namespace nv {
         // the same name, so the library started failing with an arity error.
         // The value wait brings back is whatever the body returned — dynamic, so the
         // checker sees it as int until the language has an "any" type.
+        // par_for(body, total): runs `body` over [0, total) split into chunks, one per worker,
+        // invoking it as (start, end). The body's iterations must be independent — closures
+        // capture BY VALUE, so a body that writes a captured variable would not propagate it,
+        // which is why @[optimize(parallelize)] is only accepted for the element-wise shape.
+        BuiltinFunction("par_for", {}, std::make_shared<Int>(), false, true, 2, 2),
         BuiltinFunction("spawn", {}, std::make_shared<Int>(), false, true, 1, 1),
         BuiltinFunction("wait",  {}, std::make_shared<Int>(), false, true, 1, 1),
         // Channels: chan() is an id, send puts a value in, recv takes the oldest one and
