@@ -1,4 +1,7 @@
 #include "frontend/checker/statements/check_program.hpp"
+#include "frontend/ast/expressions/closure_expr_node.hpp"
+#include "frontend/ast/expressions/call_expr_node.hpp"
+#include "frontend/ast/expressions/arg_node.hpp"
 #include "frontend/checker/statements/check_class_stmt.hpp"
 #include "frontend/checker/statements/check_enum_stmt.hpp"
 #include "frontend/checker/statements/check_interface_stmt.hpp"
@@ -386,11 +389,80 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
             };
             const bool wants_parallel = mentions("parallelize");
             const bool wants_unroll   = mentions("unroll");
-            if (wants_parallel || wants_unroll) {
+
+            // @[optimize(parallelize)] on an independent element-wise loop: desugar it into a
+            // call to the runtime bridge, with the loop body wrapped in a closure the bridge
+            // invokes once per chunk as (start, end). Nothing new is invented here — the
+            // closure, the invoke by arity and the bridge itself are what F1 proved with
+            // distinct thread ids — so this removes the serial loop instead of adding
+            // machinery. The body is MOVED into the closure, which empties the original loop:
+            // whatever ran serially now runs in parallel, and never both.
+            if (wants_parallel && !wants_unroll) {
+                auto* loop = dynamic_cast<ForStmtNode*>(target);
+                if (!loop || !loop->range_start || !loop->range_end || loop->bindings.empty()) {
+                    ch->comptime_error(el.get(), "CE004", "optimize hint not implemented",
+                        { "parallelize: the annotated statement is not a range loop over an index" });
+                } else {
+                    // First version: [0, N) only. The bridge covers [0, total), and a non-zero
+                    // lower bound would need the index shifted inside the closure — another
+                    // expression to get right. Refused with the reason, not guessed.
+                    bool zero_lower = false;
+                    if (loop->range_start->kind == NodeType::NumericLiteral) {
+                        const std::string& lo =
+                            static_cast<NumericLiteralNode*>(loop->range_start.get())->value;
+                        zero_lower = (lo == "0" || lo == "0.0");
+                    }
+                    if (!zero_lower) {
+                        ch->comptime_error(el.get(), "CE004", "optimize hint not implemented",
+                            { "parallelize: the loop must start at 0, since par_for covers [0, total)" });
+                    } else {
+                        auto closure = std::make_unique<ClosureExprNode>();
+                        closure->parameters = { {"lo", "int"}, {"hi", "int"} };
+                        if (target->position)
+                            closure->position = std::make_unique<PositionData>(*target->position);
+
+                        // Braces on a vector of unique_ptr pick the initializer_list constructor,
+                        // whose elements are const — it would try to copy a move-only type. Build
+                        // the binding list by push_back instead.
+                        std::vector<std::unique_ptr<Expr>> inner_bindings;
+                        inner_bindings.push_back(
+                            std::unique_ptr<Expr>(static_cast<Expr*>(loop->bindings[0].release())));
+                        auto inner = std::make_unique<ForStmtNode>(
+                            std::move(inner_bindings),
+                            std::make_unique<IdentifierNode>("lo"),
+                            std::make_unique<IdentifierNode>("hi"),
+                            false,
+                            nullptr,
+                            std::move(loop->body),
+                            std::vector<std::unique_ptr<Stmt>>{});
+                        if (loop->position)
+                            inner->position = std::make_unique<PositionData>(*loop->position);
+
+                        closure->body.push_back(
+                            std::unique_ptr<Stmt>(static_cast<Stmt*>(inner.release())));
+
+                        std::vector<std::unique_ptr<ArgNode>> call_args;
+                        call_args.push_back(std::make_unique<ArgNode>("", std::move(closure)));
+                        // A clone: the loop keeps its end bound, and what remains of it is an
+                        // empty loop that costs nothing.
+                        call_args.push_back(std::make_unique<ArgNode>("",
+                            std::unique_ptr<Expr>(static_cast<Expr*>(loop->range_end->clone()))));
+                        auto call = std::make_unique<CallExprNode>(
+                            std::make_unique<IdentifierNode>("par_for"), std::move(call_args));
+                        if (target->position)
+                            call->position = std::make_unique<PositionData>(*target->position);
+
+                        pending_inserts.push_back({ i + 1,
+                            std::unique_ptr<Node>(static_cast<Node*>(call.release())) });
+                    }
+                }
+            } else if (wants_unroll) {
+                // unroll=N stays refused on purpose: the LLVM backend unrolls by its own cost
+                // model and the count never reaches it, so accepting it would announce a
+                // capacity the compiler does not have — the same empty promise this walker
+                // now catches instead of making.
                 ch->comptime_error(el.get(), "CE004", "optimize hint not implemented", {
-                    wants_parallel
-                        ? "parallelize: collected into #narval.optimize and never consumed"
-                        : "unroll=N: the count is discarded, LLVM unrolls by its own cost model",
+                    "unroll=N: the count is discarded, LLVM unrolls by its own cost model",
                     "tile and vectorize are the hints the transform pass consumes today" });
             }
         }
