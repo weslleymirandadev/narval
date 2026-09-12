@@ -285,7 +285,13 @@ struct LowerForRangeOp : public OpConversionPattern<ForRangeOp> {
                             adaptor.getStep())
                         .getResult();
                     cont_vals.push_back(next);
-                    for (Value v : cur_vals) cont_vals.push_back(v);
+                    // A continue that carries its own values uses them; without operands the
+                    // iteration-entry rule stands.
+                    if (auto cont = dyn_cast<narval::ContinueOp>(e);
+                        cont && !cont.getValues().empty())
+                        for (Value v : cont.getValues()) cont_vals.push_back(v);
+                    else
+                        for (Value v : cur_vals) cont_vals.push_back(v);
                 }
                 r.create<cf::BranchOp>(loc, loop_blk, cont_vals);
             }
@@ -450,7 +456,10 @@ struct LowerWhileOp : public OpConversionPattern<WhileOp> {
                                       ? cur_vals
                                       : ValueRange(br.getValues());
                 r.create<cf::BranchOp>(loc, cont, vals);
-            } else
+            } else if (auto cont = dyn_cast<narval::ContinueOp>(e);
+                       cont && !cont.getValues().empty())
+                r.create<cf::BranchOp>(loc, loop_blk, ValueRange(cont.getValues()));
+            else
                 r.create<cf::BranchOp>(loc, loop_blk, cur_vals);
             r.eraseOp(e);
         }
