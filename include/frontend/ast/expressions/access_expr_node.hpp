@@ -6,6 +6,10 @@ class AccessExprNode : public Expr {
 public:
     std::unique_ptr<Expr> expr;
     std::unique_ptr<Expr> index;
+    // Set by the checker for `t[i, j]` on a tensor: several coordinates over one flat
+    // buffer. The codegen is untyped, so it needs to be told — it lowers this to a single
+    // row-major offset (nv_tensor_flat_index) and lets the ordinary flat access do the rest.
+    bool tensor_multi_index = false;
 
     AccessExprNode(std::unique_ptr<Expr> expr, std::unique_ptr<Expr> index)
         : Expr(NodeType::AccessExpression), expr(std::move(expr)), index(std::move(index)) {}
