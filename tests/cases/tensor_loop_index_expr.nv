@@ -1,0 +1,11 @@
+# The element-wise shape is what makes the lowering possible, not the annotation: a loop
+# whose value comes from the induction variable becomes raw memory work like any tensor
+# operand. Before this it fell to a CFG and the bufferizer refused it.
+# Expected:
+# [0.000000, 2.000000, 4.000000, 6.000000]
+
+def main(): None {
+    a: Tensor<float, [4]> = Tensor.zeros(4);
+    for i in 0..4 { a[i] = float(i) * 2.0; }
+    write(a.tolist());
+}
