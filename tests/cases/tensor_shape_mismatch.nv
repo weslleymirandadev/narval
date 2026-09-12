@@ -1,0 +1,7 @@
+# A tensor's shape is part of its type, so a literal of another shape has to be refused: a
+# 2x2 literal declared as Tensor<float, [2, 3]> would otherwise leave the runtime shape
+# disagreeing with the declared one — the mistake the typing is there to catch.
+# Error: tensor shape mismatch
+
+a: Tensor<float, [2, 3]> = Tensor({{1.0, 2.0}, {3.0, 4.0}});
+write(a.tolist());
