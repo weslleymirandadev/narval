@@ -98,9 +98,10 @@ NvObject* nv_tensor_get_ndim_bridge(NvObject* a) {
 }
 
 NvObject* nv_tensor_get_dtype_bridge(NvObject* a) {
-    (void)a;
-    // Always return "float64" for now — NVTensor is opaque in headers
-    Value r = {NULL}; create_str(&r, "float64"); return r.obj;
+    Value tv = {a};
+    Value r  = {NULL};
+    create_str(&r, nv_tensor_dtype_name(nv_tensor_dtype_id(&tv)));
+    return r.obj;
 }
 
 NvObject* nv_tensor_nelem_bridge(NvObject* a) {
