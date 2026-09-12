@@ -44,6 +44,10 @@ bool vector_shape_ok(nv::Checker* ch, Node* e, const std::string& index_name,
     if (ch->err && !had_error) { ch->err = false; return false; }
     auto resolved = type ? ch->unify_ctx.resolve(type) : nullptr;
     if (!resolved || resolved->kind != nv::Kind::TENSOR) return false;
+    // The vectorized loop reads the raw buffer as f64, so only a float tensor can take it —
+    // an integer tensor would be reinterpreted. Anything else keeps the general path (the
+    // annotation is a hint the backend may decline).
+    if (resolved->toString().find("float") == std::string::npos) return false;
     tensors.insert(name);
     return true;
 }
