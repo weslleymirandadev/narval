@@ -178,7 +178,9 @@ def Narval_BreakOp : Narval_Op<"break", [Pure, Terminator]> {
 // narval.continue — jump to the next iteration of the innermost loop.
 def Narval_ContinueOp : Narval_Op<"continue", [Pure, Terminator]> {
     let summary = "Continue to the next loop iteration";
-    let assemblyFormat = "attr-dict";
+    // The loop-carried values as of this continue, for the same reason narval.break has them.
+    let arguments = (ins Variadic<Narval_ValueType>:$values);
+    let assemblyFormat = "($values^)? attr-dict";
 }
 
 // Object model ops
