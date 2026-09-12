@@ -1,0 +1,9 @@
+# @[optimize(parallelize)] is accepted, stored in #narval.optimize and never consumed by
+# any pass, so it is refused with a location instead of silently doing nothing — the same
+# treatment @vectorize gives a loop it cannot lower. tile and vectorize keep working.
+# Error: CE004
+
+@[optimize(parallelize)]
+for i in 0..4 {
+    write(i);
+}
