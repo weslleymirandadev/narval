@@ -5,10 +5,21 @@
 #include "frontend/parser/statements/parse_stmt.hpp"
 #include "frontend/parser/statements/parse_block_util.hpp"
 
+// A binding position accepts "_" as well, the way match does; the binding is then named "_".
+static Token binding_token(Parser* parser, const std::string& errorMsg) {
+    auto token = parser->current_token();
+    if (token.type == TokenType::UNDERSCORE) {
+        parser->consume_token();
+        token.lexeme = "_";
+        return token;
+    }
+    return parser->expect(TokenType::IDENTIFIER, errorMsg);
+}
+
 static std::vector<std::unique_ptr<Expr>> parse_binding_list(Parser* parser) {
     std::vector<std::unique_ptr<Expr>> bindings;
 
-    auto first = parser->expect(TokenType::IDENTIFIER, "Expected identifier in for binding.");
+    auto first = binding_token(parser, "Expected identifier in for binding.");
     auto pos = std::make_unique<PositionData>(
         first.line,
         first.column_start, first.column_end,
@@ -18,7 +29,7 @@ static std::vector<std::unique_ptr<Expr>> parse_binding_list(Parser* parser) {
 
     while (parser->current_token().type == TokenType::COMMA) {
         parser->consume_token();
-        auto id = parser->expect(TokenType::IDENTIFIER, "Expected identifier after ','.");
+        auto id = binding_token(parser, "Expected identifier after ','.");
         auto id_pos = std::make_unique<PositionData>(
             id.line,
             id.column_start, id.column_end,
@@ -45,7 +56,8 @@ std::unique_ptr<Node> parse_for_stmt(Parser* parser) {
     std::unique_ptr<Expr> iterable = nullptr;
 
     bool has_bindings = false;
-    if (parser->current_token().type == TokenType::IDENTIFIER) {
+    if (parser->current_token().type == TokenType::IDENTIFIER ||
+        parser->current_token().type == TokenType::UNDERSCORE) {
         if (parser->next_token().type == TokenType::IN || parser->next_token().type == TokenType::COMMA) {
             has_bindings = true;
         }
