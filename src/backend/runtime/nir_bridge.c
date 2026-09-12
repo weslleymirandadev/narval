@@ -232,8 +232,28 @@ NvObject* nv_array_get(NvObject* arr_obj, NvObject* idx_obj) {
 // Generic container access dispatched on the receiver type: maps are keyed by
 // string (like field access), arrays/vectors/tuples by integer index.
 // Used by AccessExprNode (m["k"] / v[i]) which cannot know the static type.
+// Unbox a number as a double, for the tensor element paths (which store f64).
+static double nv_obj_to_f64(NvObject* obj) {
+    if (!obj) return 0.0;
+    if (obj->ob_type == NVFloat_Type) return ((NVFloat*)obj)->value;
+    if (obj->ob_type == NVInt_Type)   return (double)((NVInt*)obj)->value;
+    return 0.0;
+}
+
 NvObject* nv_container_get(NvObject* base_obj, NvObject* key_obj) {
     if (!base_obj || !key_obj) return NULL;
+    // A tensor: flat element access over its contiguous buffer. nv_tensor_data_ptr is NULL
+    // for anything that is not a float tensor, which is exactly the guard needed here.
+    {
+        Value tv = {base_obj};
+        void* data = nv_tensor_data_ptr(&tv);
+        if (data) {
+            int64_t i = obj_to_i32(key_obj);
+            Value out = {NULL};
+            create_float(&out, ((double*)data)[i]);
+            return out.obj;
+        }
+    }
     if (base_obj->ob_type == NVMap_Type) {
         if (key_obj->ob_type != NVStr_Type) return NULL;
         Value self = {base_obj}, out = {NULL};
@@ -267,6 +287,15 @@ NvObject* nv_container_get(NvObject* base_obj, NvObject* key_obj) {
 // field table, so its store is nv_object_set_field, exactly like the get above.
 void nv_container_set(NvObject* base_obj, NvObject* key_obj, NvObject* val_obj) {
     if (!base_obj || !key_obj) return;
+    // The tensor element is the one place a value is written as a plain f64.
+    {
+        Value tv = {base_obj};
+        void* data = nv_tensor_data_ptr(&tv);
+        if (data) {
+            ((double*)data)[obj_to_i32(key_obj)] = nv_obj_to_f64(val_obj);
+            return;
+        }
+    }
     if (base_obj->ob_type == NVMap_Type) {
         if (key_obj->ob_type != NVStr_Type) return;
         Value self = {base_obj}, val = {val_obj};
