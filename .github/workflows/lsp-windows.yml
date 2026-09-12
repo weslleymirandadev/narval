@@ -1,0 +1,57 @@
+name: LSP for Windows
+
+# The language server links MLIR, and this compiler builds against LLVM/MLIR 22.1.4
+# (MLIR_DIR=/usr/local/lib/cmake/mlir on the machines that build it). The official Windows
+# release of that exact version exists, but it is built with MSVC, and a MinGW build cannot
+# link MSVC C++ libraries — so the server cannot be cross-built from WSL. It has to be
+# produced natively on Windows, with the matching LLVM, which is what this job does.
+#
+# The artifact is the file the extension expects at bin/win32-x64/narval-lsp.exe.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "src/lsp/**"
+      - "include/lsp/**"
+      - "src/frontend/**"
+      - "src/backend/**"
+      - ".github/workflows/lsp-windows.yml"
+
+jobs:
+  narval-lsp-windows:
+    runs-on: windows-latest
+    env:
+      LLVM_VERSION: 22.1.4
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch the matching LLVM/MLIR (the msvc build)
+        shell: pwsh
+        run: |
+          $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$env:LLVM_VERSION/clang+llvm-$env:LLVM_VERSION-x86_64-pc-windows-msvc.tar.xz"
+          curl.exe -L --fail -o llvm.tar.xz $url
+          tar xf llvm.tar.xz
+          $root = (Get-ChildItem -Directory -Filter "clang+llvm-*" | Select-Object -First 1).FullName
+          if (-not (Test-Path "$root/lib/cmake/mlir")) { throw "MLIR config not found in $root" }
+          "LLVM_ROOT=$root" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S . -B build-win `
+            -DNARVAL_BUILD_LSP=ON `
+            "-DMLIR_DIR=$env:LLVM_ROOT/lib/cmake/mlir" `
+            "-DLLVM_DIR=$env:LLVM_ROOT/lib/cmake/llvm"
+
+      - name: Build the server
+        shell: pwsh
+        run: cmake --build build-win --target NarvalLsp --config Release -j 4
+
+      - name: Upload the server
+        uses: actions/upload-artifact@v4
+        with:
+          name: narval-lsp-win32-x64
+          path: build-win/**/narval-lsp.exe
+          if-no-files-found: error
