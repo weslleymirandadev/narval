@@ -1,0 +1,14 @@
+# Expected:
+# 1
+# 2
+# 3
+
+n = 0;
+
+forever {
+    n += 1;
+    write(n);
+    if (n >= 3) {
+        break;
+    }
+}
