@@ -1,0 +1,14 @@
+# Explicit conversions between the numeric widths. The conversion runs (int32(3.7) truncates
+# to 3) and the result keeps the declared width, which is what the next case pins down.
+# Expected:
+# 3
+# 3.500000
+# 7
+
+x: int32 = int32(3.7);
+y: float32 = float32(3.5);
+write(x);
+write(y);
+
+# A conversion is an ordinary expression, not an annotation-only spelling.
+write(int32(7.9));
