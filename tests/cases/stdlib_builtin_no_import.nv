@@ -1,0 +1,14 @@
+# The language's own modules need no import: strings, grammar and file are merged into
+# every program (macros and sqlite are the libraries you import on purpose). This one is
+# compiled in a directory that holds nothing else — no module file sits next to it — and
+# still reaches stdlib/strings.nv, which the compiler finds next to the executable.
+# Expected:
+# a-b-c
+# 3
+# oi
+# true
+
+write(join(["a", "b", "c"], "-"));
+write(len(split("a b c", " ")));
+write(trim("  oi  "));
+write(contains("banana", "nan"));
