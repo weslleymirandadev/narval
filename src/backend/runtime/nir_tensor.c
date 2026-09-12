@@ -160,6 +160,44 @@ NvObject* nv_tensor_reshape_bridge(NvObject* a, int64_t ndim,
 // nv_tensor_from_flat_array(flat_array, ndim, d0..d7) -> NvObject*
 // flat_array is an NVArray containing all elements in row-major order.
 // dtype is inferred: if any element is float, use float; else int.
+// Bridge: nv_tensor_from_flat_array_typed(dtype, flat_array, ndim, d0..d7) -> NvObject*
+// As nv_tensor_from_flat_array, but the caller says which storage the tensor has instead of
+// letting it be inferred: an annotated `Tensor<float32, ...>` must not end up holding
+// float64, or the type would be a lie about the buffer.
+NvObject* nv_tensor_from_flat_array_typed(int64_t dtype, NvObject* flat, int64_t ndim,
+                                          int64_t d0, int64_t d1, int64_t d2, int64_t d3,
+                                          int64_t d4, int64_t d5, int64_t d6, int64_t d7) {
+    if (!flat || flat->ob_type != NVArray_Type) { Value bad = {NULL}; return bad.obj; }
+    NVArray* src = (NVArray*)flat;
+    int64_t  shape[8] = {d0, d1, d2, d3, d4, d5, d6, d7};
+
+    const size_t sz = (dtype == NV_INT_BASE)       ? sizeof(int32_t)
+                    : (dtype == NV_DTYPE_FLOAT32)  ? sizeof(float)
+                    : (dtype == NV_DTYPE_BOOL)     ? 1
+                    : (dtype == NV_DTYPE_INT64)    ? sizeof(int64_t)
+                                                   : sizeof(double);
+    void* buf = calloc((size_t)src->size, sz);
+    if (!buf) { Value bad = {NULL}; return bad.obj; }
+
+    for (int32_t i = 0; i < src->size; i++) {
+        NvObject* e = src->elements[i].obj;
+        double  as_f = (e && e->ob_type == NVFloat_Type) ? ((NVFloat*)e)->value
+                     : (e && e->ob_type == NVInt_Type)   ? (double)((NVInt*)e)->value : 0.0;
+        int64_t as_i = (e && e->ob_type == NVInt_Type)   ? ((NVInt*)e)->value
+                     : (int64_t)as_f;
+        switch (dtype) {
+            case NV_INT_BASE:      ((int32_t*)buf)[i]       = (int32_t)as_i;  break;
+            case NV_DTYPE_FLOAT32: ((float*)buf)[i]         = (float)as_f;    break;
+            case NV_DTYPE_BOOL:    ((unsigned char*)buf)[i] = as_i ? 1 : 0;   break;
+            case NV_DTYPE_INT64:   ((int64_t*)buf)[i]       = as_i;           break;
+            default:               ((double*)buf)[i]        = as_f;           break;
+        }
+    }
+    Value r = nv_tensor_from_data((int32_t)dtype, (int32_t)ndim, shape, buf);
+    free(buf);
+    return r.obj;
+}
+
 NvObject* nv_tensor_from_flat_array(NvObject* flat, int64_t ndim,
                                      int64_t d0, int64_t d1, int64_t d2, int64_t d3,
                                      int64_t d4, int64_t d5, int64_t d6, int64_t d7) {
