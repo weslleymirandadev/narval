@@ -48,3 +48,8 @@ match '!' {
     '0'..='9' => write("digit"),
     _ => write("other"),
 }
+
+match 'C' {
+    'a'..='z' | 'A'..='Z' => write("inside"),
+    _ => write("other"),
+}

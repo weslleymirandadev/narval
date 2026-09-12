@@ -320,7 +320,6 @@ int compare_values(const Value* a, const Value* b) {
 }
 
 int is_null_value(const Value* v)  { return !v || !v->obj; }
-void create_null(Value* out)       { if (out) out->obj = NULL; }
 int validate_value(const Value* v) { if (!v || !v->obj) return 0; return is_valid_type(get_value_type(v)); }
 
 TypeInfo* get_value_type_info(const Value* v)         { (void)v; return NULL; }

@@ -541,19 +541,12 @@ int is_null_value(const Value* v);
 // a string/array/vector/tuple/map owns (see object.c). Call after the types exist.
 void nv_install_builtin_deallocs(void);
 
-// Criar valor nulo (legado)
-void create_null(Value* out);
-
-/* ============================================================= */
-/*                    FUNÇÕES DE GERENCIAMENTO DE MEMÓRIA       */
-/* ============================================================= */
-
 // Contagem de referências ATÔMICA (OWNERSHIP_DESIGN Fase 4). Sem isto, dois contextos de
 // execução mexendo no mesmo objeto ao mesmo tempo perdem uma das operações e liberam
-// duas vezes — é o que impede compartilhar valor entre threads (ver item 3 do
-// IMPLEMENTATION_FLOW). Relaxed no incremento (a ordem que importa vem de quem publica o
-// ponteiro) e acquire/release no decremento, que é quem pode liberar. Builtins do
-// compilador em vez de <stdatomic.h> porque este header também é incluído por C++.
+// twice — this is what prevents sharing values between threads. 
+// Relaxed on increment (the relevant ordering comes from whoever
+// publishes the pointer) and acquire/release on decrement, which may release it. Compiler
+// builtins instead of <stdatomic.h> because this header is also included by C++.
 static inline void nv_arc_inc(NvObject* obj) {
     if (obj) {
         __atomic_add_fetch(&obj->ref_count, 1, __ATOMIC_RELAXED);
@@ -570,7 +563,7 @@ static inline void nv_arc_dec(NvObject* obj) {
     }
 }
 
-// Nomes que o resto do runtime já usa: a partir daqui, atômicos.
+// Names already used by the rest of the runtime: atomic from this point onward.
 static inline void nv_incref(NvObject* obj) { nv_arc_inc(obj); }
 static inline void nv_decref(NvObject* obj) { nv_arc_dec(obj); }
 
