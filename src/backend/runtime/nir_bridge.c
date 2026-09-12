@@ -7,6 +7,7 @@
 
 #include "backend/runtime/nv_runtime.h"
 #include <pthread.h>
+#include <unistd.h>   // sysconf: how many cpus the parallel loop may use
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -794,6 +795,102 @@ NvObject* nv_thread_join(NvObject* id_obj) {
     g_threads[slot].result = NULL;
     g_threads[slot].live   = 0;
     return result;
+}
+
+// ── Parallel loops (@[optimize(parallelize)]) ─────────────────────────────────
+// The body of a loop whose iterations are independent, called once per chunk with (start,
+// end). The chunking lives here rather than in the IR because it is runtime policy: how many
+// workers exist and how big a chunk is are facts about the machine, not about the program.
+//
+// The caller is responsible for the independence check (the checker does it, the same one
+// @vectorize uses) — this bridge cannot see the body. Closures capture BY VALUE, so a body
+// that writes a captured variable would not propagate the write; that is why a loop that is
+// not independent must never reach here.
+#define NV_PAR_WORKERS_MAX 8
+
+typedef struct {
+    NvObject* closure;
+    int64_t   start;
+    int64_t   end;
+} NvParallelChunk;
+
+static void* nv_parallel_trampoline(void* raw) {
+    NvParallelChunk* c = (NvParallelChunk*)raw;
+    NvObject* start = nv_box_int(c->start);
+    NvObject* end   = nv_box_int(c->end);
+    NvObject* out = nv_invoke_closure_2(c->closure, start, end, NULL, NULL,
+                                        NULL, NULL, NULL, NULL);
+    if (out)   nv_decref(out);       // the body's own value is not used here
+    if (start) nv_decref(start);
+    if (end)   nv_decref(end);
+    nv_decref(c->closure);           // this thread's own reference
+    return NULL;
+}
+
+// Run [0, total) through the closure, chunk by chunk, on several threads. The closure is
+// invoked as (start, end) and every iteration belongs to exactly one chunk, so the result is
+// the serial loop's result — that is the contract, and the reason the caller must have
+// checked independence first.
+//
+// Workers: the host's cpu count, capped at NV_PAR_WORKERS_MAX and at the free slots of the
+// shared thread table, so a program that already spawns cannot have its budget taken away. If
+// no thread can be created the work still happens on this thread: a failed spawn must never
+// turn into silently missing iterations.
+NvObject* nv_parallel_for(NvObject* closure, NvObject* total_obj) {
+    if (!closure) return nv_box_int(-1);
+    int64_t total = obj_to_i32(total_obj);
+    if (total <= 0) return nv_box_int(0);
+
+    long cpus = sysconf(_SC_NPROCESSORS_ONLN);
+    int  workers = (cpus > 1) ? (int)cpus : 1;
+    if (workers > NV_PAR_WORKERS_MAX)  workers = NV_PAR_WORKERS_MAX;
+    if ((int64_t)workers > total)      workers = (int)total;
+
+    int free_slots = 0;
+    pthread_mutex_lock(&g_threads_lock);
+    for (int i = 0; i < NV_MAX_THREADS; i++) if (!g_threads[i].live) free_slots++;
+    pthread_mutex_unlock(&g_threads_lock);
+    if (workers > free_slots) workers = free_slots;
+    if (workers < 1) workers = 1;
+
+    NvParallelChunk chunks[NV_PAR_WORKERS_MAX];
+    pthread_t       tids[NV_PAR_WORKERS_MAX];
+    int             started = 0;
+
+    const int64_t per = (total + workers - 1) / workers;
+    for (int i = 0; i < workers; i++) {
+        int64_t start = (int64_t)i * per;
+        if (start >= total) break;
+        int64_t end = start + per;
+        if (end > total) end = total;
+        chunks[i].closure = closure;
+        chunks[i].start   = start;
+        chunks[i].end     = end;
+        nv_incref(closure);                     // the thread owns a reference while it runs
+        if (pthread_create(&tids[i], NULL, nv_parallel_trampoline, &chunks[i]) == 0) {
+            started = i + 1;
+        } else {
+            nv_decref(closure);
+            break;
+        }
+    }
+
+    // Whatever could not be given to a thread runs here, in order, so no iteration is lost.
+    for (int i = started; i < workers; i++) {
+        int64_t start = (int64_t)i * per;
+        if (start >= total) break;
+        int64_t end = start + per;
+        if (end > total) end = total;
+        NvObject* a = nv_box_int(start);
+        NvObject* b = nv_box_int(end);
+        NvObject* out = nv_invoke_closure_2(closure, a, b, NULL, NULL, NULL, NULL, NULL, NULL);
+        if (out) nv_decref(out);
+        if (a)   nv_decref(a);
+        if (b)   nv_decref(b);
+    }
+
+    for (int i = 0; i < started; i++) pthread_join(tids[i], NULL);
+    return nv_box_int(0);
 }
 
 // ── Channels ──────────────────────────────────────────────────────────────────
