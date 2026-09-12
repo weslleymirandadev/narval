@@ -90,6 +90,8 @@ void CallExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
     // Remap Narval builtins whose C names conflict with keywords
     static const std::pair<const char*, const char*> kBuiltinRemap[] = {
         {"write",  "nv_write_bridge"},
+        {"spawn",  "nv_thread_spawn"},
+        {"wait",   "nv_thread_join"},
         {"read",   "nv_read_builtin"},
         {"int",    "nv_int_builtin"},
         {"float",  "nv_float_builtin"},
