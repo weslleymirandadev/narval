@@ -1,5 +1,7 @@
 # Expected:
 # Diga seu nome: Oi vadia!
+# entre 3 e 6
+# maiuscula
 # Stdin:
 # mayk
 
@@ -12,4 +14,20 @@ match name {
         write("Exu caveira");
         write("Morte aos lele");
     }
+}
+
+num = 5;
+
+match num {
+    1 => write("um"),
+    3..6 => write("entre 3 e 6"),
+    _ => write("desconhecido")
+}
+
+letra = 'Q';
+
+match letra {
+    'A'..='Z' => write("maiuscula"),
+    'a'..='z' => write("minuscula"),
+    _ => write("outra")
 }
