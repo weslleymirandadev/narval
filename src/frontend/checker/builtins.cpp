@@ -65,12 +65,20 @@ namespace nv {
         
         // int: aceita 1 argumento de qualquer tipo, retorna int
         BuiltinFunction("int", {}, std::make_shared<Int>(), false, true, 1, 1),
+        // The numeric widths as conversions: the spec writes these spellings, so they must
+        // be usable on a value, not only as a tensor element type. The width is enforced by
+        // the type (int32 and int64 do not unify); the storage is the same 64-bit box, so
+        // this is a compile-time discipline, not a narrowing conversion.
+        BuiltinFunction("int64", {}, std::make_shared<Int>(64), false, true, 1, 1),
+        BuiltinFunction("int32", {}, std::make_shared<Int>(32), false, true, 1, 1),
 
         // char: tipo primitivo de 1 byte; conversão explícita vira char
         BuiltinFunction("char", {}, std::make_shared<Char>(), false, true, 1, 1),
         
         // float: aceita 1 argumento de qualquer tipo, retorna float
         BuiltinFunction("float", {}, std::make_shared<Float>(), false, true, 1, 1),
+        BuiltinFunction("float64", {}, std::make_shared<Float>(64), false, true, 1, 1),
+        BuiltinFunction("float32", {}, std::make_shared<Float>(32), false, true, 1, 1),
         
         // bool: aceita 1 argumento de qualquer tipo, retorna bool
         BuiltinFunction("bool", {}, std::make_shared<Boolean>(), false, true, 1, 1),
