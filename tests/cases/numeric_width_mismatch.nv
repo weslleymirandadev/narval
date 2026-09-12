@@ -1,0 +1,6 @@
+# The width is part of the type, so int32 and int64 do not unify: a value of one width is
+# not silently accepted where the other is expected. Without this the widths would be
+# decoration, the same way the tensor annotation used to be.
+# Error: cannot unify
+
+x: int32 = int64(7);
