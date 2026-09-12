@@ -1,0 +1,11 @@
+# The element type decides the storage: a float32 tensor keeps 4-byte floats and says so,
+# instead of every float tensor being float64 with the type claiming otherwise.
+# Expected:
+# float32
+# 2.500000
+# 4.000000
+
+a: Tensor<float32, [2]> = Tensor({1.5, 2.5});
+write(a.dtype);
+write(a[1]);
+write(a[0] + a[1]);
