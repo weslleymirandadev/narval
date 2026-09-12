@@ -268,12 +268,8 @@ NvObject* nv_container_get(NvObject* base_obj, NvObject* key_obj) {
     // for anything that is not a float tensor, which is exactly the guard needed here.
     {
         Value tv = {base_obj};
-        void* data = nv_tensor_data_ptr(&tv);
-        if (data) {
-            int64_t i = obj_to_i32(key_obj);
-            Value out = {NULL};
-            create_float(&out, ((double*)data)[i]);
-            return out.obj;
+        if (nv_tensor_data_ptr(&tv)) {          // NULL for anything that is not a tensor
+            return nv_tensor_get_element(&tv, obj_to_i32(key_obj));
         }
     }
     if (base_obj->ob_type == NVMap_Type) {
@@ -312,9 +308,8 @@ void nv_container_set(NvObject* base_obj, NvObject* key_obj, NvObject* val_obj) 
     // The tensor element is the one place a value is written as a plain f64.
     {
         Value tv = {base_obj};
-        void* data = nv_tensor_data_ptr(&tv);
-        if (data) {
-            ((double*)data)[obj_to_i32(key_obj)] = nv_obj_to_f64(val_obj);
+        if (nv_tensor_data_ptr(&tv)) {
+            nv_tensor_set_element(&tv, obj_to_i32(key_obj), val_obj);
             return;
         }
     }
