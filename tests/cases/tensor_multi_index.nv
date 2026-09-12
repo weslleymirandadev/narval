@@ -1,0 +1,18 @@
+# Multi-index element access on a tensor: `t[i, j]` is the element at row i, column j —
+# one coordinate per dimension. The offset is computed from the tensor's own shape at
+# runtime (row-major), so the same code covers any rank and needs no static shape.
+# Expected:
+# 4.000000
+# 9.000000
+# 5.000000
+# 6.000000
+
+a: Tensor<float, [2, 3]> = Tensor({{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}});
+write(a[1, 0]);
+a[0, 2] = 9.0;
+write(a[0, 2]);
+write(a[1, 1]);
+
+# Three dimensions, indexed by the flat offset the shape gives: 1*4 + 0*2 + 1 = 5.
+b: Tensor<float, [2, 2, 2]> = Tensor({{{1.0, 2.0}, {3.0, 4.0}}, {{5.0, 6.0}, {7.0, 8.0}}});
+write(b[1, 0, 1]);
