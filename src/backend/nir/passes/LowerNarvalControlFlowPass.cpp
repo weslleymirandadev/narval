@@ -269,8 +269,13 @@ struct LowerForRangeOp : public OpConversionPattern<ForRangeOp> {
             });
         for (Operation* e : exits) {
             r.setInsertionPoint(e);
-            if (isa<narval::BreakOp>(e)) {
-                r.create<cf::BranchOp>(loc, cont, cur_vals);
+            if (auto br = dyn_cast<narval::BreakOp>(e)) {
+                // A break that carries the values it held at the break point uses them; one
+                // without operands keeps the old iteration-entry rule.
+                ValueRange vals = br.getValues().empty()
+                                      ? cur_vals
+                                      : ValueRange(br.getValues());
+                r.create<cf::BranchOp>(loc, cont, vals);
             } else {
                 llvm::SmallVector<Value> cont_vals;
                 if (body_first) {
@@ -440,9 +445,12 @@ struct LowerWhileOp : public OpConversionPattern<WhileOp> {
             });
         for (Operation* e : exits) {
             r.setInsertionPoint(e);
-            if (isa<narval::BreakOp>(e))
-                r.create<cf::BranchOp>(loc, cont, cur_vals);
-            else
+            if (auto br = dyn_cast<narval::BreakOp>(e)) {
+                ValueRange vals = br.getValues().empty()
+                                      ? cur_vals
+                                      : ValueRange(br.getValues());
+                r.create<cf::BranchOp>(loc, cont, vals);
+            } else
                 r.create<cf::BranchOp>(loc, loop_blk, cur_vals);
             r.eraseOp(e);
         }
