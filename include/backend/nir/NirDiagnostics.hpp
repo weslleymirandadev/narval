@@ -12,6 +12,9 @@ namespace nv {
 // rewrites it (the only form that still reads like the source).
 inline bool& diag_emit_nir() { static bool on = false; return on; }
 
+
+inline bool& diag_emit_llvm() { static bool on = false; return on; }
+
 // --dump-passes: print the module after every pass of the pipeline.
 inline bool& diag_dump_passes() { static bool on = false; return on; }
 
