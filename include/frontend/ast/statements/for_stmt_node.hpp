@@ -5,6 +5,14 @@
 
 class ForStmtNode : public Stmt {
 public:
+    // Set by the checker: `@[vectorize]` on an element-wise loop over FLOAT TENSORS. The
+    // lowering takes the raw element pointers, so the shape and the types have to be
+    // settled before codegen (which is untyped) — anything else stays on the general path.
+    bool vectorize_ok = false;
+    // The annotation was seen (set by the attribute pass); vectorize_ok is the verdict,
+    // which needs the operand types and is therefore settled in check_for_stmt.
+    bool vectorize_attr = false;
+public:
     std::vector<std::unique_ptr<Expr>> bindings;
     std::unique_ptr<Expr> range_start;
     std::unique_ptr<Expr> range_end;
