@@ -131,6 +131,18 @@ static void collect_free_variables(const CodeBlock& body,
                 visit(while_stmt->condition.get());
                 for (const auto& child : while_stmt->body) visit(child.get());
             }
+            // A `for` body was not walked at all, so a capture used inside a loop was never
+            // collected: the closure body was emitted referencing a value from outside its
+            // function, which MLIR refuses ("using value defined outside the region"). It made
+            // spawn unusable for the worker pattern it exists for. The loop bindings are NOT
+            // visited — they are declared by the loop, not captured from outside.
+            if (auto* for_stmt = dynamic_cast<ForStmtNode*>(stmt)) {
+                if (for_stmt->range_start) visit(for_stmt->range_start.get());
+                if (for_stmt->range_end)   visit(for_stmt->range_end.get());
+                if (for_stmt->iterable)    visit(for_stmt->iterable.get());
+                for (const auto& child : for_stmt->body)       visit(child.get());
+                for (const auto& child : for_stmt->else_block) visit(child.get());
+            }
         }
     };
     
