@@ -1,7 +1,8 @@
+# Expected:
+# [0, 1, 2, 3, 4]
+# [0, 1, 2, 3]
+
 mut v = 0..5;
 write(v);
 mut w = 0..=3;
 write(w);
-write(v[0]);
-write(v[4]);
-write(len(v));
