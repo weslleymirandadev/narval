@@ -10,6 +10,7 @@
 #include "frontend/ast/expressions/assignment_expr_node.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
 #include <fstream>
+#include <sstream>
 #include <stdexcept>
 #include <iostream>
 #include <regex>
@@ -59,6 +60,31 @@ namespace {
 // A module is imported by name: `from "sqlite" import *;` for a bundled library,
 // `from "./nested_user.nv"` for a file next to the importer. The `.nv` extension is
 // optional — try the path as written, then with it.
+// The language's own modules: the code is Narval and lives in stdlib/, but a program uses
+// them WITHOUT importing — the compiler always pulls them in. `macros` and `sqlite` are
+// deliberately not here: those are libraries you import when you want them (macros
+// defines macros for your call site, sqlite loads libsqlite3 through dlopen).
+const std::vector<std::string>& builtin_modules() {
+    static const std::vector<std::string> names = {"strings", "grammar", "file"};
+    return names;
+}
+
+// Where stdlib/ is, so a program compiles from any directory: $NARVAL_STDLIB, next to the
+// executable, one level up from it (the build/ directory), or the current directory.
+std::string find_stdlib_dir() {
+    std::vector<std::filesystem::path> candidates;
+    if (const char* env = std::getenv("NARVAL_STDLIB")) candidates.emplace_back(env);
+    try {
+        std::filesystem::path exe = std::filesystem::read_symlink("/proc/self/exe");
+        candidates.push_back(exe.parent_path() / "stdlib");
+        candidates.push_back(exe.parent_path().parent_path() / "stdlib");
+    } catch (...) {}
+    candidates.emplace_back(std::filesystem::current_path() / "stdlib");
+    for (const auto& c : candidates)
+        if (std::filesystem::is_directory(c)) return c.string();
+    return "";
+}
+
 std::string resolve_module_path(const std::string& dir, const std::string& requested) {
     std::filesystem::path base(dir);
     std::filesystem::path as_written = base / requested;
@@ -120,6 +146,31 @@ const std::map<std::string, ModuleManager::Module>& ModuleManager::get_modules()
 }
 
 void ModuleManager::compile_module(const std::string& module_name, const std::string& file_path, int config) {
+    // Two compilation paths cannot take the standard library along: a freestanding
+    // (@[no_std]) program, which has no normal runtime, and the tensor/MLIR path, whose
+    // lowering only accepts structured control flow while the library modules use `while`
+    // (a pre-existing gap in that lowering, which the prelude exposed). Both markers are
+    // in the source — the same way the test runner decides — so read it here instead of
+    // threading a flag through every caller. When the tensor path learns to lower `while`,
+    // only the no_std case is left.
+    bool with_stdlib = true;
+    {
+        std::ifstream in(file_path);
+        std::stringstream buf;
+        buf << in.rdbuf();
+        const std::string source = buf.str();
+        with_stdlib = source.find("@[no_std]") == std::string::npos &&
+                      source.find("Tensor")   == std::string::npos;
+    }
+
+    const std::string stdlib = with_stdlib ? find_stdlib_dir() : "";
+    if (!stdlib.empty()) {
+        for (const auto& name : builtin_modules()) {
+            std::filesystem::path p = std::filesystem::path(stdlib) / (name + ".nv");
+            if (std::filesystem::exists(p) && modules.find(name) == modules.end())
+                load_module(name, p.string(), config);
+        }
+    }
     resolve_dependencies(module_name, file_path, config);
 }
 
@@ -162,6 +213,10 @@ std::unique_ptr<Node> ModuleManager::get_combined_ast(const std::string& main_mo
             }
         }
     }
+
+    // A builtin module is merged as if the program had written `from "<name>" import *`.
+    for (const auto& name : builtin_modules())
+        if (modules.count(name)) imported_symbols[name].insert("*");
 
     // Processar módulos em ordem topológica (dependências primeiro)
     // Usar um set para rastrear módulos já processados
@@ -270,6 +325,13 @@ std::unique_ptr<Node> ModuleManager::get_combined_ast(const std::string& main_mo
     
     // Processar módulo principal primeiro (se especificado)
     if (!main_module_name.empty() && modules.find(main_module_name) != modules.end()) {
+        // The language's own modules are a prelude: merged BEFORE the program, so their
+        // functions are checked while the program's globals do not exist yet. Merging them
+        // afterwards made `count_of` in strings.nv pick up a top-level `n` declared by the
+        // program (a module function body must not see the program's globals).
+        for (const auto& name : builtin_modules())
+            if (modules.count(name)) process_module(name, false);
+
         process_module(main_module_name, true);
     }
     
