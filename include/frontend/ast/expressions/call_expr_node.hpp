@@ -6,6 +6,11 @@
 
 class CallExprNode : public Expr {
 public:
+    // Set by the checker when this call is a tensor literal assigned to a declared tensor
+    // type: the declared element type decides the storage. Empty = infer from the values,
+    // which is what an unannotated literal does.
+    std::string tensor_dtype;
+
     std::unique_ptr<Expr> caller;
     std::vector<std::unique_ptr<ArgNode>> args;
 
