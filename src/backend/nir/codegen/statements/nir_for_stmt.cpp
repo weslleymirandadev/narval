@@ -9,6 +9,7 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "frontend/ast/expressions/access_expr_node.hpp"
 #include "frontend/ast/expressions/binary_expr_node.hpp"
+#include "frontend/ast/expressions/call_expr_node.hpp"
 #include "frontend/ast/expressions/numeric_literal_node.hpp"
 #include <algorithm>
 #include <map>
@@ -41,19 +42,40 @@ static std::string get_binding_name(const ForStmtNode& node) {
 // A term of the postfix program: a tensor element, a number, or the operator between them.
 struct VecTok {
     bool        is_op = false;
+    bool        is_index = false;   // the loop variable: a numeric operand like a literal
     char        op = 0;
     std::string name;
     double      literal = 0.0;
 };
 
 // Postfix order, so the tree shape survives (`(a+b)*(c+d)` is not `a+b*c+d`).
-static bool vec_postfix(const Node* e, std::vector<VecTok>& out) {
+static bool vec_postfix(const Node* e, std::vector<VecTok>& out, const std::string& index_name) {
     if (!e) return false;
+    if (e->kind == NodeType::Identifier) {
+        auto* id = static_cast<const IdentifierNode*>(e);
+        if (id->symbol != index_name) return false;
+        VecTok t; t.is_index = true;
+        out.push_back(t);
+        return true;
+    }
+    if (e->kind == NodeType::CallExpression) {
+        // A numeric conversion of a numeric operand (`float(i)`): the cast is what the raw
+        // path computes for the induction variable anyway.
+        auto* call = static_cast<const CallExprNode*>(e);
+        if (!call->caller || call->caller->kind != NodeType::Identifier) return false;
+        const std::string& fn = static_cast<const IdentifierNode*>(call->caller.get())->symbol;
+        if (fn != "float" && fn != "float32" && fn != "float64" &&
+            fn != "int32" && fn != "int64")
+            return false;
+        if (call->args.size() != 1 || !call->args[0]) return false;
+        return vec_postfix(call->args[0]->value.get(), out, index_name);
+    }
     if (e->kind == NodeType::BinaryExpression) {
         auto* b = static_cast<const BinaryExprNode*>(e);
         if (b->op.size() != 1 || std::string("+-*/").find(b->op[0]) == std::string::npos)
             return false;
-        if (!vec_postfix(b->left.get(), out) || !vec_postfix(b->right.get(), out))
+        if (!vec_postfix(b->left.get(), out, index_name) ||
+            !vec_postfix(b->right.get(), out, index_name))
             return false;
         VecTok t; t.is_op = true; t.op = b->op[0];
         out.push_back(t);
@@ -123,6 +145,10 @@ static bool emit_vectorized_loop(nv::NIRGenerationContext& ctx, mlir::Location l
         std::vector<mlir::Value> stack;
         for (const auto& t : code) {
             if (!t.is_op) {
+                if (t.is_index) {
+                    stack.push_back(mlir::arith::SIToFPOp::create(b, loc, f64, iv).getResult());
+                    continue;
+                }
                 if (t.name.empty()) {
                     stack.push_back(mlir::arith::ConstantOp::create(
                         b, loc, mlir::FloatAttr::get(f64, t.literal)).getResult());
@@ -226,7 +252,7 @@ void ForStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
             body[0]->kind == NodeType::AssignmentExpression) {
             auto* asg = static_cast<AssignmentExprNode*>(body[0].get());
             std::vector<VecTok> code;
-            if (asg->value && vec_postfix(asg->value.get(), code) && !code.empty() &&
+            if (asg->value && vec_postfix(asg->value.get(), code, var) && !code.empty() &&
                 asg->target && asg->target->kind == NodeType::AccessExpression) {
                 auto* acc = static_cast<const AccessExprNode*>(asg->target.get());
                 if (acc->expr && acc->expr->kind == NodeType::Identifier) {
