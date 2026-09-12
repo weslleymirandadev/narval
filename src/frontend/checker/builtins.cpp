@@ -12,6 +12,14 @@ namespace nv {
         
         // read: aceita 0 ou 1 argumento (prompt opcional), retorna string
         BuiltinFunction("read", {}, std::make_shared<String>(), false, true, 0, 1),
+        // Threads: spawn returns an id into the runtime's table of live threads and wait
+        // takes it back. NOT named `join`: the stdlib already has join(parts, sep) for
+        // strings, and builtin names are global — a builtin shadows a library function of
+        // the same name, so the library started failing with an arity error.
+        // The value wait brings back is whatever the body returned — dynamic, so the
+        // checker sees it as int until the language has an "any" type.
+        BuiltinFunction("spawn", {}, std::make_shared<Int>(), false, true, 1, 1),
+        BuiltinFunction("wait",  {}, std::make_shared<Int>(), false, true, 1, 1),
         
         // exit: encerra o processo com o código dado (int) -> None
         BuiltinFunction("exit", {std::make_shared<Int>()}, std::make_shared<None>(), false, false, 1, 1),
