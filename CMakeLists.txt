@@ -82,6 +82,11 @@ include(HandleLLVMOptions)
 include_directories(${MLIR_INCLUDE_DIRS})
 
 add_subdirectory(src/backend/nir)
+
+# The language server is built on demand: `make NarvalLsp`. Turning this ON makes a plain
+# `make` / `make Narval` build it too (it was ON in the cache, which is why every build
+# spent minutes linking it).
+option(NARVAL_BUILD_LSP "Also build the language server with the compiler" OFF)
 add_subdirectory(src/lsp)
 
 # ── Runtime embedded in the compiler ─────────────────────────────────────────
