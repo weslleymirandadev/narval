@@ -1,0 +1,50 @@
+# Expected:
+# one
+# two
+# three
+# lower
+# upper
+# digit
+# other
+# Stdin:
+
+match 1 {
+    0..1 => write("zero"),
+    1..=1 => write("one"),
+    _ => write("other"),
+}
+
+match 2 {
+    0..3 => write("two"),
+    _ => write("other"),
+}
+
+match 3 {
+    0..3 => write("low"),
+    3..=3 => write("three"),
+    _ => write("other"),
+}
+
+match 'q' {
+    'a'..='z' => write("lower"),
+    'A'..='Z' => write("upper"),
+    _ => write("other"),
+}
+
+match 'Q' {
+    'a'..='z' => write("lower"),
+    'A'..='Z' => write("upper"),
+    _ => write("other"),
+}
+
+match '7' {
+    '0'..='9' => write("digit"),
+    _ => write("other"),
+}
+
+match '!' {
+    'a'..='z' => write("lower"),
+    'A'..='Z' => write("upper"),
+    '0'..='9' => write("digit"),
+    _ => write("other"),
+}
