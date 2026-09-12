@@ -60,6 +60,13 @@ public:
     // pass calls register_user_derives() on the module body first and then
     // evaluates the derive with call_comptime_func().
     void register_user_derives(const CodeBlock& body);
+
+    // Register every `comptime def` (macro) declared in this body up front. The expansion
+    // registers one when it reaches it, so a macro is usable only after its own
+    // declaration — and a module merged in from stdlib can land after the code that calls
+    // its macro (`grammar!`). Registering the declarations first removes the order
+    // dependency.
+    void register_macros(const CodeBlock& body);
     bool has_comptime_func(const std::string& name) const {
         return comptime_funcs_.count(name) != 0;
     }
