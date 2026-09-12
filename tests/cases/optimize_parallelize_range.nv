@@ -1,0 +1,12 @@
+# @[optimize(parallelize)] needs the loop to start at 0: the bridge covers [0, total), and
+# a non-zero lower bound would need the index shifted inside the closure. Refused with the
+# reason instead of guessed.
+# Error: CE004
+
+def main(): None {
+    a: Tensor<float, [4]> = Tensor.zeros(4);
+    b: Tensor<float, [4]> = Tensor.ones(4);
+    @[optimize(parallelize)]
+    for i in 1..4 { a[i] = b[i]; }
+    write(a.tolist());
+}
