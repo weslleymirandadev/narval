@@ -2,6 +2,7 @@
 #include "frontend/ast/expressions/access_expr_node.hpp"
 #include "frontend/checker/unification.hpp"
 #include <stdexcept>
+#include "frontend/ast/expressions/tuple_expr_node.hpp"
 
 std::shared_ptr<nv::Type>& check_access_expr(nv::Checker* ch, Node* node) {
     static thread_local std::shared_ptr<nv::Type> temp_result;
@@ -37,7 +38,12 @@ std::shared_ptr<nv::Type>& check_access_expr(nv::Checker* ch, Node* node) {
         } catch (...) {}
     }
 
-    if (!index_is_int && !index_is_string) {
+    // A tensor addressed by several coordinates is the one case where the index is neither
+    // an int nor a string: the tuple is checked below, against the tensor's rank.
+    const bool tensor_coords = expr_type->kind == nv::Kind::TENSOR &&
+                               access_expr->index &&
+                               access_expr->index->kind == NodeType::TupleExpression;
+    if (!index_is_int && !index_is_string && !tensor_coords) {
         ch->error(access_expr->index.get(),
                   "Access index must be int or string, but got '" + index_type->toString() + "'");
         return ch->gettyptr("None");
@@ -121,6 +127,32 @@ std::shared_ptr<nv::Type>& check_access_expr(nv::Checker* ch, Node* node) {
         // Closure arrays currently flow through annotations like |x:int|:int[2].
         // Treat indexing such a value as retrieving a callable element.
         temp_result = expr_type;
+        return temp_result;
+    } else if (expr_type->kind == nv::Kind::TENSOR && access_expr->index &&
+               access_expr->index->kind == NodeType::TupleExpression) {
+        // Several coordinates into a tensor: one per dimension, and the shape is checked
+        // here because the checker is the only place that knows it. The offsets themselves
+        // come from the tensor's own shape at runtime, so dynamic dimensions are fine.
+        auto* tup = static_cast<TupleExprNode*>(access_expr->index.get());
+        auto* tensor_type = static_cast<nv::TensorType*>(expr_type.get());
+        if (tup->elements.size() != tensor_type->dims.size()) {
+            ch->error(access_expr->index.get(),
+                      "Tensor has " + std::to_string(tensor_type->dims.size()) +
+                      " dimension(s), but " + std::to_string(tup->elements.size()) +
+                      " index(es) were given.");
+            return ch->gettyptr("None");
+        }
+        for (auto& el : tup->elements) {
+            if (!el) continue;
+            auto et = ch->unify_ctx.resolve(ch->infer_expr(el.get()));
+            if (et && et->kind != nv::Kind::INT && et->kind != nv::Kind::FLOAT) {
+                ch->error(el.get(), "Tensor index must be an integer, but got '" +
+                                    et->toString() + "'.");
+                return ch->gettyptr("None");
+            }
+        }
+        access_expr->tensor_multi_index = true;
+        temp_result = tensor_type->element;
         return temp_result;
     } else if (expr_type->kind == nv::Kind::TENSOR && index_is_int) {
         // Flat element access on a tensor: its numbers are contiguous, so `t[i]` is the
