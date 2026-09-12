@@ -238,7 +238,7 @@ void nv_object_get_field(Value* out, Value* self, const char* key) {
             return;
         }
         if (strcmp(key, "dtype") == 0) {
-            create_str(out, (t->dtype == NV_FLOAT_BASE) ? "float32" : "int32");
+            create_str(out, nv_tensor_dtype_name(t->dtype));
             return;
         }
         if (strcmp(key, "size") == 0 || strcmp(key, "nelem") == 0) {
