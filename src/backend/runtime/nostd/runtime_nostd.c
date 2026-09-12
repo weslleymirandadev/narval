@@ -39,10 +39,29 @@ static int _ns_strcmp(const char* a, const char* b) {
 static char   _nv_ns_heap[NV_NS_HEAP_SIZE];
 static size_t _nv_ns_top = 0;
 
+/* The static arena is a starting point, not a ceiling. When it fills, the allocator asks the
+   kernel for another chunk with mmap and keeps bumping inside it, so a freestanding program
+   that needs more than 64 KB no longer gets a NULL back and carries on. Nothing is ever
+   freed, which is the same lifetime rule the arena always had. */
+#define NV_NS_GROW (1u << 20)
+
+static long _ns_syscall6(long, long, long, long, long, long, long);
+
+static char*  _nv_ns_chunk = _nv_ns_heap;        /* base of the chunk in use */
+static size_t _nv_ns_chunk_size = NV_NS_HEAP_SIZE;
+
 static void* _nv_ns_alloc(size_t n) {
-    n = (n + 7u) & ~7u;
-    if (_nv_ns_top + n > NV_NS_HEAP_SIZE) return (void*)0;
-    void* p = (void*)(_nv_ns_heap + _nv_ns_top);
+    n = (n + 15u) & ~(size_t)15u;
+    if (_nv_ns_top + n > _nv_ns_chunk_size) {
+        size_t chunk = n > NV_NS_GROW ? n : NV_NS_GROW;
+        /* mmap(NULL, chunk, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) */
+        long got = _ns_syscall6(9, 0, (long)chunk, 3, 0x22, -1, 0);
+        if (got <= 0) return (void*)0;           /* the kernel refused: the old failure mode */
+        _nv_ns_chunk      = (char*)got;
+        _nv_ns_chunk_size = chunk;
+        _nv_ns_top        = 0;
+    }
+    void* p = (void*)(_nv_ns_chunk + _nv_ns_top);
     _nv_ns_top += n;
     /* zero-initialise the returned block */
     char* b = (char*)p;
@@ -346,6 +365,19 @@ void nv_incref_impl(NvObject* obj) { (void)obj; }
 void nv_drop(NvObject* obj) { (void)obj; }
 
 /* ── Syscalls: the only way in/out without libc ──────────────────────────── */
+
+/* Six-argument syscall: mmap needs r10/r8/r9 for its arguments beyond the third. */
+static long _ns_syscall6(long n, long a, long b, long c, long d, long e, long f) {
+    long ret;
+    register long r10 __asm__("r10") = d;
+    register long r8  __asm__("r8")  = e;
+    register long r9  __asm__("r9")  = f;
+    __asm__ volatile("syscall"
+                     : "=a"(ret)
+                     : "a"(n), "D"(a), "S"(b), "d"(c), "r"(r10), "r"(r8), "r"(r9)
+                     : "rcx", "r11", "memory");
+    return ret;
+}
 
 static long _ns_syscall3(long n, long a, long b, long c) {
     long ret;
