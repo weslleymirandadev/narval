@@ -139,6 +139,9 @@ void WhileStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
     {
         mlir::OpBuilder::InsertionGuard g(b);
         b.setInsertionPointToStart(&while_op.getBodyRegion().front());
+        auto saved_carried = ctx.loop_carried_names;
+        ctx.loop_carried_names.clear();
+        for (auto& [name, _] : carried) ctx.loop_carried_names.push_back(name);
         ctx.push_scope();
         for (size_t i = 0; i < carried.size(); ++i)
             ctx.define(carried[i].first,
@@ -158,6 +161,7 @@ void WhileStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
             mlir::narval::YieldOp::create(b, loc, yv);
         }
         ctx.pop_scope();
+        ctx.loop_carried_names = saved_carried;
     }
 
     b.setInsertionPointAfter(while_op);
