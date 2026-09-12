@@ -1,0 +1,19 @@
+# 256 elements, so widening the loop is worth it: with a constant trip count the LLVM
+# vectorizer can choose a width and emit real SIMD. The IR then shows vector types
+# (<N x double>, fadd on them) and the machine code vaddpd; the 4-element case stays
+# scalar because it is too short for the vectorizer's cost model — correct either way,
+# and that is the point of the annotation being a hint the backend may take or leave.
+# Expected:
+# 3.000000
+# 3.000000
+
+a: Tensor<float, [256]> = Tensor.ones(256);
+e: Tensor<float, [256]> = Tensor.zeros(256);
+
+@[vectorize]
+for i in 0..256 {
+    e[i] = a[i] + 2.0;
+}
+
+write(e[0]);
+write(e[255]);
