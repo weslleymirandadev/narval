@@ -1,0 +1,11 @@
+# Expected:
+# tick
+# tick
+# tick
+# done
+
+for _ in 0..3 {
+    write("tick");
+}
+
+write("done");
