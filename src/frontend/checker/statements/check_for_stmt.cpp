@@ -27,6 +27,22 @@ bool vector_shape_ok(nv::Checker* ch, Node* e, const std::string& index_name,
                vector_shape_ok(ch, b->right.get(), index_name, tensors);
     }
     if (e->kind == NodeType::NumericLiteral) return true;
+    // The induction variable is a numeric operand like a literal: `a[i] = float(i) * 2.0` is
+    // the same element-wise work as `a[i] = b[i] * 2.0`, the value just comes from the counter
+    // instead of memory. The raw path works in f64, so the cast the language requires
+    // (`float(i)`) is exactly the conversion it would compute anyway.
+    if (e->kind == NodeType::Identifier)
+        return static_cast<IdentifierNode*>(e)->symbol == index_name;
+    if (e->kind == NodeType::CallExpression) {
+        auto* call = static_cast<CallExprNode*>(e);
+        if (!call->caller || call->caller->kind != NodeType::Identifier) return false;
+        const std::string& fn = static_cast<IdentifierNode*>(call->caller.get())->symbol;
+        if (fn != "float" && fn != "float32" && fn != "float64" &&
+            fn != "int32" && fn != "int64")
+            return false;
+        if (call->args.size() != 1 || !call->args[0]) return false;
+        return vector_shape_ok(ch, call->args[0]->value.get(), index_name, tensors);
+    }
     if (e->kind != NodeType::AccessExpression) return false;
 
     auto* a = static_cast<AccessExprNode*>(e);
