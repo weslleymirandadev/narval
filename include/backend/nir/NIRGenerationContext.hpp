@@ -58,6 +58,10 @@ private:
 
 class NIRGenerationContext {
 public:
+    // Names the innermost loop carries across iterations. A break reads them to hand the
+    // current values onward, since by lowering time only blocks and SSA remain.
+    std::vector<std::string> loop_carried_names;
+
     // MLIRContext and module are owned externally; the context is passed by ref.
     explicit NIRGenerationContext(mlir::MLIRContext& ctx,
                                   const std::string& source_file = "<input>");
