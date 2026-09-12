@@ -1,0 +1,20 @@
+# Expected:
+# [0, 1, 2, 3, 4]
+# 0
+# 4
+# 5
+# [0, 1, 2, 3]
+# [0, 1, 2, 3, 4, 5]
+# [0, 1, 2, 3]
+
+mut v = 0..5;
+write(v);
+write(v[0]);
+write(v[4]);
+write(len(v));
+mut w = 0..=3;
+write(w);
+c = 0..=5;
+write(c);
+d = 0..4;
+write(d);
