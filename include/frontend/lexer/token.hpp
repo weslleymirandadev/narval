@@ -28,6 +28,7 @@ enum class TokenType {
     INCLUSIVE_RANGE,
     RANGE,
     ARROW,
+    FAT_ARROW,
     PLUS,
     MINUS,
     MUL,
@@ -158,6 +159,7 @@ inline const char* get_token_name(TokenType type) {
         case TokenType::LESS_THAN_EQUALS: return "LESS_THAN_EQUALS";
         case TokenType::GREATER_THAN_EQUALS: return "GREATER_THAN_EQUALS";
         case TokenType::ARROW: return "ARROW";
+        case TokenType::FAT_ARROW: return "FAT_ARROW";
         case TokenType::PLUS: return "PLUS";
         case TokenType::MINUS: return "MINUS";
         case TokenType::MUL: return "MUL";
@@ -254,6 +256,7 @@ inline const char* get_token_display(TokenType type) {
         case TokenType::INCLUSIVE_RANGE: return "..=";
         case TokenType::RANGE: return "..";
         case TokenType::ARROW: return "->";
+        case TokenType::FAT_ARROW: return "=>";
         case TokenType::PLUS: return "+";
         case TokenType::MINUS: return "-";
         case TokenType::MUL: return "*";
