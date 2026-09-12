@@ -30,7 +30,7 @@ jobs:
       - name: Fetch the matching LLVM/MLIR (the msvc build)
         shell: pwsh
         run: |
-          $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$env:LLVM_VERSION/clang+llvm-$env:LLVM_VERSION-x86_64-pc-windows-msvc.tar.xz"
+          $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-${env:LLVM_VERSION}/clang+llvm-${env:LLVM_VERSION}-x86_64-pc-windows-msvc.tar.xz"
           curl.exe -L --fail -o llvm.tar.xz $url
           tar xf llvm.tar.xz
           $root = (Get-ChildItem -Directory -Filter "clang+llvm-*" | Select-Object -First 1).FullName
