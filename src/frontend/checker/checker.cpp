@@ -75,10 +75,14 @@ nv::Checker::Checker() {
     auto globalnamespace = std::make_shared<Namespace>();
     namespaces.push_back(globalnamespace);
     scope = globalnamespace;
-    types["int"] = std::make_shared<nv::Int>();
+    types["int"] = std::make_shared<nv::Int>();      // 64-bit, the language default
+    types["int64"]   = std::make_shared<nv::Int>(64);
+    types["int32"]   = std::make_shared<nv::Int>(32);
     types["str"] = std::make_shared<nv::String>();
     types["char"] = std::make_shared<nv::Char>();
-    types["float"] = std::make_shared<nv::Float>();
+    types["float"] = std::make_shared<nv::Float>();  // 64-bit, the language default
+    types["float64"] = std::make_shared<nv::Float>(64);
+    types["float32"] = std::make_shared<nv::Float>(32);
     types["bool"] = std::make_shared<nv::Boolean>();
     types["None"] = std::make_shared<nv::None>();
 
@@ -109,9 +113,13 @@ nv::Checker::Checker() {
 
     // Agora que os objetos Type estão dentro de shared_ptr, inicializar seus prototypes
     types["int"]->init_prototype();
+    types["int64"]->init_prototype();
+    types["int32"]->init_prototype();
     types["str"]->init_prototype();
     types["char"]->init_prototype();
     types["float"]->init_prototype();
+    types["float64"]->init_prototype();
+    types["float32"]->init_prototype();
     types["bool"]->init_prototype();
     types["None"]->init_prototype();
     
