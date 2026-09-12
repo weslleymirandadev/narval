@@ -1,0 +1,17 @@
+# A closure whose body contains a loop that writes a captured tensor: the worker->result
+# pattern spawn exists for. It failed for two separate reasons, fixed in this order: the
+# capture analysis never walked a `for` body (so the captured tensor was missing and MLIR
+# refused the body), and a loop touching a tensor had no structured lowering unless it was
+# annotated @[vectorize] (so it fell to a CFG the tensor path bufferizer refuses).
+# Expected:
+# [0.000000, 2.000000, 4.000000, 6.000000, 8.000000, 10.000000, 12.000000, 14.000000]
+
+def main(): None {
+    a: Tensor<float, [8]> = Tensor.zeros(8);
+    body = | | {
+        for i in 0..8 { a[i] = float(i) * 2.0; }
+    };
+    id = spawn(body);
+    wait(id);
+    write(a.tolist());
+}
