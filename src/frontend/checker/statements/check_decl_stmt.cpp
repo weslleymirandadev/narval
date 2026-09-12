@@ -2,6 +2,7 @@
 #include "frontend/checker/unification.hpp"
 #include "frontend/ast/ast.hpp"
 #include "frontend/ast/expressions/array_expr_node.hpp"
+#include "frontend/ast/expressions/call_expr_node.hpp"
 #include "frontend/ast/expressions/vector_expr_node.hpp"
 #include <stdexcept>
 #include <cstdio>
@@ -149,6 +150,16 @@ std::shared_ptr<nv::Type>& check_decl_stmt(Checker* ch, Node* node) {
         
         // Resolver tipo após unificação
         dtype = ch->unify_ctx.resolve(dtype);
+
+        // A tensor literal takes its storage from the element type it was declared with:
+        // without this the type would say float32 while the buffer held float64.
+        if (decl->value && decl->value->kind == NodeType::CallExpression &&
+            resolved_dtype->kind == nv::Kind::TENSOR) {
+            auto* call = static_cast<CallExprNode*>(decl->value.get());
+            auto* tt   = static_cast<nv::TensorType*>(resolved_dtype.get());
+            if (tt->element && call->tensor_dtype.empty())
+                call->tensor_dtype = tt->element->toString();
+        }
         ch->scope->put_key(name->symbol, dtype, decl->mutable_);
         return ch->scope->get_key(name->symbol);
     }
