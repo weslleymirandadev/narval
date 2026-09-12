@@ -217,8 +217,11 @@ void ForStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         }
         auto step = mlir::arith::ConstantIndexOp::create(b, loc, 1).getResult();
 
-        // @[vectorize] on the element-wise shape: the whole loop becomes raw f64 work.
-        if (vectorize && carried.empty() && vectorize_ok &&
+        // The element-wise shape over float tensors becomes raw f64 memory work. Annotated or
+        // not, this is the only lowering the tensor path accepts, so the gate is the verdict
+        // (and no carried values, which is the independence the shape implies) — the
+        // annotation itself only adds the SIMD marker after the loop.
+        if (carried.empty() && vectorize_ok &&
             body.size() == 1 && body[0] &&
             body[0]->kind == NodeType::AssignmentExpression) {
             auto* asg = static_cast<AssignmentExprNode*>(body[0].get());
