@@ -171,6 +171,10 @@ int64_t nv_tensor_dim(Value* v, int32_t axis) {
 int64_t nv_tensor_nelem(Value* v) {
     NVTensor* t = unwrap_tensor(v); return t ? t->nelem : 0;
 }
+// The raw element buffer. The @[vectorize] loop codegen takes this pointer and does the
+// loads and stores itself, so the elements never become objects — which is what lets the
+// vectorizer widen the loop instead of seeing an opaque call per element. The loop path
+// assumes float tensors (f64 elements).
 void* nv_tensor_data_ptr(Value* v) {
     NVTensor* t = unwrap_tensor(v); return t ? t->data : NULL;
 }
