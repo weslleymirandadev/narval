@@ -413,6 +413,14 @@ void ComptimeEvaluator::register_func(ComptimeFuncNode* node) {
     if (node) comptime_funcs_[node->name] = node;
 }
 
+void ComptimeEvaluator::register_macros(const CodeBlock& body) {
+    for (const auto& stmt : body) {
+        if (!stmt) continue;
+        if (stmt->kind == NodeType::ComptimeFuncDef)
+            register_func(static_cast<ComptimeFuncNode*>(stmt.get()));
+    }
+}
+
 void ComptimeEvaluator::register_func_signature(const std::string& name,
                                                 std::vector<bool> comptime_flags) {
     func_comptime_params_[name] = std::move(comptime_flags);
