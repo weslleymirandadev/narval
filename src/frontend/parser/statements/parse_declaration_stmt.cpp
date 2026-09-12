@@ -1,5 +1,6 @@
 #include "frontend/parser/statements/parse_declaration_stmt.hpp"
 #include "frontend/parser/expressions/parse_expr.hpp"
+#include "frontend/parser/expressions/parse_range_expr.hpp"
 #include "frontend/parser/expressions/parse_type.hpp"
 
 std::unique_ptr<Node> parse_declaration_stmt(Parser* parser, bool is_mutable) {
@@ -24,7 +25,8 @@ std::unique_ptr<Node> parse_declaration_stmt(Parser* parser, bool is_mutable) {
    
     if (parser->current_token().type == TokenType::ASSIGNMENT) {
         parser->consume_token();
-        value = parse_expr(parser);
+        // A range is accepted here too: `mut v = 0..5` builds a vector, `v = 0..5` an array.
+        value = parse_range_expr(parser);
     }
 
     parser->expect(TokenType::SEMICOLON, "Expected ';'.");
