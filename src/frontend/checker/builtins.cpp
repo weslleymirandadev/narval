@@ -20,6 +20,12 @@ namespace nv {
         // checker sees it as int until the language has an "any" type.
         BuiltinFunction("spawn", {}, std::make_shared<Int>(), false, true, 1, 1),
         BuiltinFunction("wait",  {}, std::make_shared<Int>(), false, true, 1, 1),
+        // Channels: chan() is an id, send puts a value in, recv takes the oldest one and
+        // blocks while empty. The value that comes out is dynamic (whatever was sent),
+        // so the checker sees it as int until the language has an "any" type.
+        BuiltinFunction("chan", {}, std::make_shared<Int>(),  false, true, 0, 0),
+        BuiltinFunction("send", {}, std::make_shared<None>(), false, true, 2, 2),
+        BuiltinFunction("recv", {}, std::make_shared<Int>(),  false, true, 1, 1),
         
         // exit: encerra o processo com o código dado (int) -> None
         BuiltinFunction("exit", {std::make_shared<Int>()}, std::make_shared<None>(), false, false, 1, 1),
