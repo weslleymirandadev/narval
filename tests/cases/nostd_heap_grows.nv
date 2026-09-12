@@ -1,0 +1,18 @@
+# The freestanding heap is not a 64 KB ceiling any more: the static arena is a starting
+# point and the allocator asks the kernel for another chunk with mmap when it fills. 3000
+# boxed values plus the array slots go well past 64 KB, which used to return NULL.
+# Expected:
+# 3000
+# 2999
+
+@[no_std]
+def _start(): None {
+    a = [];
+    i = 0;
+    while i < 3000 {
+        a.push(i);
+        i = i + 1;
+    }
+    write(len(a));
+    write(a[2999]);
+}
