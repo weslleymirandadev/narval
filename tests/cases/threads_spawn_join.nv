@@ -1,0 +1,39 @@
+# Threads. spawn(body) runs the body on another thread and returns an id; wait(id) waits
+# and hands back what the body returned (not `join`: that name belongs to the stdlib's
+# string join, and a builtin shadows a library function of the same name). The body runs as the same closure call the
+# codegen already emits (nv_invoke_closure_0), just on a new pthread. Closures only exist
+# inside a function, hence the wrapper, and a zero-parameter one needs the space: `| |`
+# because `||` is a single lexer token (or).
+# The last part spawns eight threads over the SAME closure object, so its reference count
+# is incremented from eight threads at once — the atomic count is what makes that safe —
+# and joins them in order, so the total is deterministic.
+# Expected:
+# 12
+# 7
+# 24
+# 96
+
+def run(): int {
+    f = | |: int { return 12; };
+    write(wait(spawn(f)));
+
+    g = | |: int { return 7; };
+    write(wait(spawn(g)));
+
+    n = 12;
+    h = | |: int { return n * 2; };
+    write(wait(spawn(h)));
+
+    total = 0;
+    ids = [];
+    for i in 0..8 {
+        ids.push(spawn(f));
+    }
+    for i in 0..8 {
+        total = total + wait(ids[i]);
+    }
+    write(total);
+    return 0;
+}
+
+run();
