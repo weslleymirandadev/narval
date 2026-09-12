@@ -495,6 +495,9 @@ Value  nv_tensor_mul(Value* a, Value* b);
 Value  nv_tensor_scalar_mul(Value* a, double scalar);
 int32_t nv_tensor_ndim(Value* v);
 int64_t nv_tensor_dim(Value* v, int32_t axis);
+// One element by flat index, boxed, read and written according to the tensor's own dtype.
+NvObject* nv_tensor_get_element(Value* v, int64_t flat);
+void      nv_tensor_set_element(Value* v, int64_t flat, NvObject* val);
 int64_t nv_tensor_nelem(Value* v);
 void*   nv_tensor_data_ptr(Value* v);
 double  nv_tensor_get_f(Value* v, int32_t ndim, const int64_t* idx);
