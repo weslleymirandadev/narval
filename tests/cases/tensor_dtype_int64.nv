@@ -1,0 +1,11 @@
+# `int` in this language is 64-bit, so a tensor of int has to carry 64 bits: 10^10 does not
+# fit in the int32 that every integer tensor used to be stored as.
+# Expected:
+# int64
+# 10000000000
+# 9999999998
+
+a: Tensor<int64, [2]> = Tensor({10000000000, 2});
+write(a.dtype);
+write(a[0]);
+write(a[0] - a[1]);
