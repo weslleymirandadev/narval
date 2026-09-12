@@ -1,5 +1,6 @@
 #include "../nir_codegen_utils.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
+#include "frontend/ast/expressions/range_expr_node.hpp"
 #include "frontend/ast/expressions/or_expr_node.hpp"
 #include "frontend/ast/statements/match_stmt_node.hpp"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -23,6 +24,18 @@ void MatchStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
     auto eq_fn_t = mlir::FunctionType::get(&ctx.get_mlir_context(), {vt, vt}, {i1});
     ctx.ensure_runtime_func("nv_value_eq_bool", eq_fn_t);
     auto eq_fn = ctx.get_module().lookupSymbol<mlir::func::FuncOp>("nv_value_eq_bool");
+    // A pattern may be a range: `x..y` (up to but not including y), `x..=y`, and the same for
+    // chars. Containment is two comparisons plus a truth test, all already in the runtime.
+    auto bin_fn_t = mlir::FunctionType::get(&ctx.get_mlir_context(), {vt, vt}, {vt});
+    ctx.ensure_runtime_func("nv_value_ge", bin_fn_t);
+    ctx.ensure_runtime_func("nv_value_lt", bin_fn_t);
+    ctx.ensure_runtime_func("nv_value_le", bin_fn_t);
+    auto truthy_fn_t = mlir::FunctionType::get(&ctx.get_mlir_context(), {vt}, {i1});
+    ctx.ensure_runtime_func("nv_value_is_truthy", truthy_fn_t);
+    auto ge_fn = ctx.get_module().lookupSymbol<mlir::func::FuncOp>("nv_value_ge");
+    auto lt_fn = ctx.get_module().lookupSymbol<mlir::func::FuncOp>("nv_value_lt");
+    auto le_fn = ctx.get_module().lookupSymbol<mlir::func::FuncOp>("nv_value_le");
+    auto truthy_fn = ctx.get_module().lookupSymbol<mlir::func::FuncOp>("nv_value_is_truthy");
 
     // Emit a chain of if/else for each arm.
     // After building each narval.if, the next arm goes into its else region.
@@ -55,10 +68,30 @@ void MatchStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
 
             for (Expr* alternative : alternatives) {
                 if (!alternative) continue;
-                alternative->nir_codegen(ctx);
-                mlir::Value alt_val = ctx.pop_value();
-                mlir::Value one = mlir::func::CallOp::create(b, loc, eq_fn,
-                    {subject, alt_val}).getResult(0);
+                mlir::Value one;
+                if (alternative->kind == NodeType::RangeExpression) {
+                    // start <= subject < end, or <= end when the range is written with ..=
+                    auto* range = static_cast<RangeExprNode*>(alternative);
+                    range->start->nir_codegen(ctx);
+                    mlir::Value lo = ctx.pop_value();
+                    range->end->nir_codegen(ctx);
+                    mlir::Value hi = ctx.pop_value();
+                    mlir::Value ge = mlir::func::CallOp::create(b, loc, ge_fn,
+                        {subject, lo}).getResult(0);
+                    mlir::Value lower = mlir::func::CallOp::create(b, loc, truthy_fn,
+                        {ge}).getResult(0);
+                    auto cmp_fn = range->inclusive ? le_fn : lt_fn;
+                    mlir::Value cmp = mlir::func::CallOp::create(b, loc, cmp_fn,
+                        {subject, hi}).getResult(0);
+                    mlir::Value upper = mlir::func::CallOp::create(b, loc, truthy_fn,
+                        {cmp}).getResult(0);
+                    one = mlir::arith::AndIOp::create(b, loc, lower, upper).getResult();
+                } else {
+                    alternative->nir_codegen(ctx);
+                    mlir::Value alt_val = ctx.pop_value();
+                    one = mlir::func::CallOp::create(b, loc, eq_fn,
+                        {subject, alt_val}).getResult(0);
+                }
                 matched = matched ? mlir::arith::OrIOp::create(b, loc, matched, one).getResult()
                                   : one;
             }
