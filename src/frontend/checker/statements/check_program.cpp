@@ -369,6 +369,32 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
         }
         if (!target) continue;
 
+        // @[optimize(parallelize, unroll=N)]: tile and vectorize are consumed by the
+        // transform pass, but parallelize is collected into #narval.optimize and never read,
+        // and unroll=N has its count discarded there ("handled by downstream LLVM pass" —
+        // LLVM unrolls by its own cost model, not by N). Accepting them silently announces
+        // capacity the compiler does not have, so they are refused with a location, the same
+        // treatment @vectorize gives a loop it cannot lower.
+        if (attr->has_attr("optimize")) {
+            auto mentions = [&](const char* what) {
+                for (auto& entry : attr->entries) {
+                    if (entry.name == what) return true;
+                    for (auto& arg : entry.args)
+                        if (arg.value == what) return true;
+                }
+                return false;
+            };
+            const bool wants_parallel = mentions("parallelize");
+            const bool wants_unroll   = mentions("unroll");
+            if (wants_parallel || wants_unroll) {
+                ch->comptime_error(el.get(), "CE004", "optimize hint not implemented", {
+                    wants_parallel
+                        ? "parallelize: collected into #narval.optimize and never consumed"
+                        : "unroll=N: the count is discarded, LLVM unrolls by its own cost model",
+                    "tile and vectorize are the hints the transform pass consumes today" });
+            }
+        }
+
         if (attr->has_attr("derive")) {
             std::vector<std::string> derives;
             for (auto& entry : attr->entries)
