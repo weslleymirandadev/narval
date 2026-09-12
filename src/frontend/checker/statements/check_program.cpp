@@ -460,6 +460,9 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
     // registered at this point, so type reflection can resolve them.
     {
         nv::ComptimeEvaluator ct(ch);
+        // Declarations first, so a macro is usable regardless of where its `comptime def`
+        // sits — a stdlib module merged in can land after the call site.
+        ct.register_macros(program->body);
         program->body = ct.expand_body(std::move(program->body));
         if (ct.failed()) {
             const std::string code = ct.error_code();
