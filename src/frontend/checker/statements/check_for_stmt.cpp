@@ -81,10 +81,13 @@ bool nv_vector_shape_ok(nv::Checker* ch, ForStmtNode* loop) {
 std::shared_ptr<nv::Type>& check_for_stmt(nv::Checker* ch, Node* node) {
     auto* for_stmt = static_cast<ForStmtNode*>(node);
 
-    // @[vectorize] on the element-wise shape over float tensors: the answer needs the
-    // operand types, which exist here and did not exist when the attribute was seen.
-    if (for_stmt->vectorize_attr)
-        for_stmt->vectorize_ok = nv_vector_shape_ok(ch, for_stmt);
+    // The element-wise shape over float tensors is what the tensor path can lower: it becomes
+    // raw memory work the bufferizer accepts, where the narval loop op lowers to a CFG it
+    // refuses outright. Computing the verdict only when the annotation is present left the
+    // same loop broken without it, so it is computed always; the annotation only decides
+    // whether the SIMD marker is emitted. Needs the operand types, which exist here and did
+    // not exist when the attribute was seen.
+    for_stmt->vectorize_ok = nv_vector_shape_ok(ch, for_stmt);
     
     // Criar novo escopo para o loop
     ch->push_scope();
