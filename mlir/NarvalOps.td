@@ -168,7 +168,11 @@ def Narval_ReturnOp : Narval_Op<"return", [Pure, Terminator, ReturnLike]> {
 // Lowered by LowerNarvalControlFlowPass to a branch out of the loop.
 def Narval_BreakOp : Narval_Op<"break", [Pure, Terminator]> {
     let summary = "Break out of the innermost loop";
-    let assemblyFormat = "attr-dict";
+    // The loop-carried values as of this break. A break sitting after an assignment has to
+    // hand the updated values to the continuation; with no operands the lowering can only
+    // pass the values the iteration started with, and that iteration's work is lost.
+    let arguments = (ins Variadic<Narval_ValueType>:$values);
+    let assemblyFormat = "($values^)? attr-dict";
 }
 
 // narval.continue — jump to the next iteration of the innermost loop.
