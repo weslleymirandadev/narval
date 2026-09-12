@@ -3,6 +3,7 @@
 #include "frontend/ast/expressions/identifier_node.hpp"
 #include "frontend/ast/expressions/member_expr_node.hpp"
 #include "frontend/ast/expressions/access_expr_node.hpp"
+#include "frontend/ast/expressions/tuple_expr_node.hpp"
 
 void AssignmentExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
     auto  loc = ctx.loc(position.get());
@@ -79,7 +80,28 @@ void AssignmentExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
             auto* acc = static_cast<AccessExprNode*>(target.get());
             mlir::Value container, index;
             if (acc->expr)  { acc->expr->nir_codegen(ctx);  container = ctx.pop_value(); }
-            if (acc->index) { acc->index->nir_codegen(ctx); index     = ctx.pop_value(); }
+            // `t[i, j] = v` on a tensor: one row-major offset, then the ordinary flat store.
+            // Twin of the read path in nir_access_expr.cpp; keep the two in step.
+            if (acc->tensor_multi_index && acc->index &&
+                acc->index->kind == NodeType::TupleExpression) {
+                auto* tup = static_cast<TupleExprNode*>(acc->index.get());
+                std::vector<mlir::Value> args;
+                args.push_back(container);
+                args.push_back(nir_emit_const(ctx, loc,
+                    ctx.get_builder().getI64IntegerAttr((int64_t)tup->elements.size())));
+                for (auto& el : tup->elements) {
+                    el->nir_codegen(ctx);
+                    args.push_back(ctx.has_value() ? ctx.pop_value() : mlir::Value{});
+                }
+                while (args.size() < 6) {
+                    args.push_back(nir_emit_const(ctx, loc,
+                        ctx.get_builder().getI64IntegerAttr(0)));
+                }
+                index = nir_call_runtime(ctx, loc, "nv_tensor_flat_index", args, {vt});
+            } else if (acc->index) {
+                acc->index->nir_codegen(ctx);
+                index = ctx.pop_value();
+            }
             if (container && index) {
                 ctx.ensure_runtime_func("nv_incref_bridge",
                     mlir::FunctionType::get(&ctx.get_mlir_context(), {vt}, {vt}));
