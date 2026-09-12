@@ -49,8 +49,16 @@ typedef struct NvTypeObject {
 #define NvObject_HEAD NvObject ob_base;
 
 // Tipos primitivos base (todos derivam destes)
-#define NV_INT_BASE    1
-#define NV_FLOAT_BASE  2
+#define NV_INT_BASE      1   // int32 storage
+#define NV_FLOAT_BASE    2   // float64 storage
+// The remaining tensor element types. Distinct names on purpose: NV_*_BASE below are ids of
+// *value* types (NV_BOOL_BASE is 3 there), and aliasing the two enums would silently
+// index the dtype table with a value id.
+#define NV_DTYPE_INT64    3  // `Tensor<int64, ...>` carries 64 bits
+#define NV_DTYPE_FLOAT32  4
+#define NV_DTYPE_BOOL     5
+// The name of a dtype and the dtype of a tensor, from the one table that knows the sizes.
+const char* nv_tensor_dtype_name(int32_t dtype);
 #define NV_BOOL_BASE   3
 #define NV_STR_BASE    4
 #define NV_ARRAY_BASE  5
@@ -494,6 +502,7 @@ Value  nv_tensor_sub(Value* a, Value* b);
 Value  nv_tensor_mul(Value* a, Value* b);
 Value  nv_tensor_scalar_mul(Value* a, double scalar);
 int32_t nv_tensor_ndim(Value* v);
+int32_t nv_tensor_dtype_id(Value* v);
 int64_t nv_tensor_dim(Value* v, int32_t axis);
 // One element by flat index, boxed, read and written according to the tensor's own dtype.
 NvObject* nv_tensor_get_element(Value* v, int64_t flat);
