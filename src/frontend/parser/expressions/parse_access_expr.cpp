@@ -11,6 +11,7 @@
 #include "frontend/parser/expressions/parse_postfix_expr.hpp"
 #include "frontend/ast/expressions/binary_expr_node.hpp"
 #include "frontend/ast/expressions/slice_expr_node.hpp"
+#include "frontend/ast/expressions/tuple_expr_node.hpp"
 
 std::unique_ptr<Node> parse_access_expr(Parser* parser, std::unique_ptr<Node> expr) {
     size_t line = parser->current_token().line;
@@ -44,6 +45,20 @@ std::unique_ptr<Node> parse_access_expr(Parser* parser, std::unique_ptr<Node> ex
             if (parser->current_token().type == TokenType::COLON) {
                 is_slice = true; // [expr:...] — start = first_expr
             }
+        }
+
+        // Multi-index: a[i, j]. Kept as a tuple so the checker can require one coordinate
+        // per dimension and the codegen can lower it to one flat offset.
+        if (!is_slice && first_expr && parser->current_token().type == TokenType::COMMA) {
+            std::vector<std::unique_ptr<Expr>> coords;
+            coords.push_back(std::unique_ptr<Expr>(static_cast<Expr*>(first_expr.release())));
+            while (parser->current_token().type == TokenType::COMMA) {
+                parser->consume_token();
+                auto next = parse_logical_expr(parser);
+                if (!next) break;
+                coords.push_back(std::unique_ptr<Expr>(static_cast<Expr*>(next.release())));
+            }
+            first_expr = std::make_unique<TupleExprNode>(std::move(coords));
         }
 
         if (is_slice) {
