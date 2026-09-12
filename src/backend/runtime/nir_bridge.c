@@ -240,6 +240,28 @@ static double nv_obj_to_f64(NvObject* obj) {
     return 0.0;
 }
 
+// Bridge: nv_tensor_flat_index(tensor, n, i0, i1, i2, i3) -> boxed flat index
+// The row-major offset of an element addressed by n coordinates, taken from the tensor's
+// own shape — so multi-index access needs no static shape and works with dynamic
+// dimensions. Coordinates past the rank are ignored, which lets the codegen pass a
+// fixed-width argument list for any rank.
+NvObject* nv_tensor_flat_index(NvObject* t, NvObject* n_obj,
+                               NvObject* i0, NvObject* i1,
+                               NvObject* i2, NvObject* i3) {
+    if (!t) return nv_box_int(0);
+    NvObject* coords[4] = {i0, i1, i2, i3};
+    Value     tv        = {t};
+    int32_t   ndim      = nv_tensor_ndim(&tv);
+    int32_t   n         = obj_to_i32(n_obj);
+    int64_t   flat      = 0;
+    for (int32_t k = 0; k < n && k < 4 && k < ndim; ++k) {
+        int64_t stride = 1;
+        for (int32_t d = k + 1; d < ndim; ++d) stride *= nv_tensor_dim(&tv, d);
+        flat += (int64_t)obj_to_i32(coords[k]) * stride;
+    }
+    return nv_box_int(flat);
+}
+
 NvObject* nv_container_get(NvObject* base_obj, NvObject* key_obj) {
     if (!base_obj || !key_obj) return NULL;
     // A tensor: flat element access over its contiguous buffer. nv_tensor_data_ptr is NULL
