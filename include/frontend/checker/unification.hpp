@@ -109,6 +109,25 @@ namespace nv {
                         // Vectors são sempre compatíveis entre si
                         return;
                     }
+                    case Kind::TENSOR: {
+                        // The shape is part of the type, so it has to be part of the check.
+                        // Accepting `Tensor<float, [2, 3]>` for a 2x2 literal left the
+                        // runtime shape disagreeing with the declared one, which is exactly
+                        // the mistake the typing exists to catch. -1 (dynamic) accepts any.
+                        auto s1 = std::static_pointer_cast<TensorType>(t1);
+                        auto s2 = std::static_pointer_cast<TensorType>(t2);
+                        if (s1->dims.size() != s2->dims.size()) {
+                            throw std::runtime_error("Type error: tensor rank mismatch");
+                        }
+                        for (size_t i = 0; i < s1->dims.size(); ++i) {
+                            if (s1->dims[i] != -1 && s2->dims[i] != -1 &&
+                                s1->dims[i] != s2->dims[i]) {
+                                throw std::runtime_error("Type error: tensor shape mismatch");
+                            }
+                        }
+                        unify(s1->element, s2->element);
+                        return;
+                    }
                     case Kind::TUPLE: {
                         auto tu1 = std::static_pointer_cast<Tuple>(t1);
                         auto tu2 = std::static_pointer_cast<Tuple>(t2);
