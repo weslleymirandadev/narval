@@ -397,12 +397,17 @@ std::shared_ptr<nv::Type>& check_program_stmt(nv::Checker* ch, Node* node) {
                                    { "@[vectorize] must annotate a for loop" });
                 continue;
             }
-            const std::string why =
-                loop_vectorize_refusal(static_cast<ForStmtNode*>(target));
+            auto* loop = static_cast<ForStmtNode*>(target);
+            const std::string why = loop_vectorize_refusal(loop);
             if (!why.empty()) {
                 ch->comptime_error(el.get(), "CE001", "loop is not vectorizable", { why });
                 continue;
             }
+            // Whether the body can become raw loads and stores depends on the operand
+            // types, and this pass runs before the program's declarations exist — probing
+            // here reported "Identifier not found" for a tensor declared a line above. The
+            // verdict is settled in check_for_stmt, where the types are in scope.
+            loop->vectorize_attr = true;
             continue;
         }
 
