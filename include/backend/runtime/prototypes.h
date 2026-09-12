@@ -503,6 +503,13 @@ Value  nv_tensor_mul(Value* a, Value* b);
 Value  nv_tensor_scalar_mul(Value* a, double scalar);
 int32_t nv_tensor_ndim(Value* v);
 int32_t nv_tensor_dtype_id(Value* v);
+// Like nv_tensor_from_flat_array, but the caller says which storage the tensor has instead of
+// letting it be inferred from the values (an annotated `Tensor<float32, ...>` must not end up
+// holding float64). A C caller without this prototype gets an implicit int return and the
+// pointer comes back truncated on 64-bit.
+NvObject* nv_tensor_from_flat_array_typed(int64_t dtype, NvObject* flat, int64_t ndim,
+                                          int64_t d0, int64_t d1, int64_t d2, int64_t d3,
+                                          int64_t d4, int64_t d5, int64_t d6, int64_t d7);
 int64_t nv_tensor_dim(Value* v, int32_t axis);
 // One element by flat index, boxed, read and written according to the tensor's own dtype.
 NvObject* nv_tensor_get_element(Value* v, int64_t flat);
