@@ -6,6 +6,7 @@
 // that the NIR-generated LLVM IR expects.
 
 #include "backend/runtime/nv_runtime.h"
+#include <pthread.h>
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -682,6 +683,72 @@ NV_INVOKE_CLOSURE(5)
 NV_INVOKE_CLOSURE(6)
 NV_INVOKE_CLOSURE(7)
 NV_INVOKE_CLOSURE(8)
+
+// ── Threads ───────────────────────────────────────────────────────────────────
+// There is no thread type in the language: spawn() returns a small integer id into a
+// fixed table of live threads and join() takes that id. Running the body is exactly the
+// closure call the codegen already emits (nv_invoke_closure_0), just on another pthread.
+// Sharing a VALUE between threads is safe because the reference count is atomic
+// (nv_arc_inc/nv_arc_dec); what a program does with the CONTENTS of a shared value is
+// still its own business — there is no data-race checking (IMPLEMENTATION_FLOW item 3).
+#define NV_MAX_THREADS 64
+
+typedef struct {
+    pthread_t tid;
+    int       live;
+    NvObject* closure;   // held while the thread runs
+    NvObject* result;    // whatever the body returned, owned by the slot until join
+} NvThreadSlot;
+
+static NvThreadSlot    g_threads[NV_MAX_THREADS];
+static pthread_mutex_t g_threads_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static void* nv_thread_trampoline(void* raw) {
+    NvThreadSlot* slot = (NvThreadSlot*)raw;
+    slot->result = nv_invoke_closure_0(slot->closure, NULL, NULL, NULL, NULL,
+                                       NULL, NULL, NULL, NULL);
+    nv_decref(slot->closure);
+    slot->closure = NULL;
+    return NULL;
+}
+
+// spawn(body) -> the slot id, or -1 when there is no room / no thread.
+NvObject* nv_thread_spawn(NvObject* closure) {
+    if (!closure) return nv_box_int(-1);
+    int slot = -1;
+    pthread_mutex_lock(&g_threads_lock);
+    for (int i = 0; i < NV_MAX_THREADS; i++)
+        if (!g_threads[i].live) { slot = i; break; }
+    if (slot >= 0) {
+        g_threads[slot].live    = 1;
+        g_threads[slot].result  = NULL;
+        g_threads[slot].closure = closure;
+    }
+    pthread_mutex_unlock(&g_threads_lock);
+    if (slot < 0) return nv_box_int(-1);
+
+    nv_incref(closure);   // the thread owns it while it runs
+    if (pthread_create(&g_threads[slot].tid, NULL, nv_thread_trampoline,
+                       &g_threads[slot]) != 0) {
+        nv_decref(closure);
+        g_threads[slot].closure = NULL;
+        g_threads[slot].live    = 0;
+        return nv_box_int(-1);
+    }
+    return nv_box_int(slot);
+}
+
+// join(id) -> what the body returned (owned by the caller), or nothing for a bad id.
+// pthread_join is also the synchronization point that makes the result visible.
+NvObject* nv_thread_join(NvObject* id_obj) {
+    int slot = obj_to_i32(id_obj);
+    if (slot < 0 || slot >= NV_MAX_THREADS || !g_threads[slot].live) return NULL;
+    pthread_join(g_threads[slot].tid, NULL);
+    NvObject* result = g_threads[slot].result;
+    g_threads[slot].result = NULL;
+    g_threads[slot].live   = 0;
+    return result;
+}
 
 // ── Narval builtin functions (NIR ABI wrappers) ───────────────────────────────
 // Called as: callee(NvObject* arg) -> NvObject*
