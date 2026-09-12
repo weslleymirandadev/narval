@@ -187,10 +187,13 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
                             auto* num = static_cast<NumericLiteralNode*>(el.get());
                             bool is_float = num->value.find('.') != std::string::npos;
                             if (!elem_type) {
+                                // Width 0: a literal does not decide the width, the tensor's
+                                // declared element type does (`Tensor<float32, …> =
+                                // Tensor({1.0})` must not fail because 1.0 is a float).
                                 if (is_float)
-                                    elem_type = std::make_shared<nv::Float>();
+                                    elem_type = std::make_shared<nv::Float>(0);
                                 else
-                                    elem_type = std::make_shared<nv::Int>();
+                                    elem_type = std::make_shared<nv::Int>(0);
                             }
                         } else {
                             return false;
