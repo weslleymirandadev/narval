@@ -750,6 +750,82 @@ NvObject* nv_thread_join(NvObject* id_obj) {
     return result;
 }
 
+// ── Channels ──────────────────────────────────────────────────────────────────
+// chan() returns an id into a fixed table of live channels, like spawn does for threads.
+// A channel is an unbounded FIFO with the two operations a worker/consumer pair needs:
+// send appends (and takes a reference of its own, so the sender keeps owning what it
+// passed) and recv blocks while the channel is empty, handing the reference over to the
+// receiver. That hand-over is what makes the pattern deterministic: every message is
+// received exactly once, whatever order the threads finish in.
+#define NV_MAX_CHANNELS 64
+
+typedef struct NvChanMsg {
+    NvObject*         value;
+    struct NvChanMsg* next;
+} NvChanMsg;
+
+typedef struct {
+    int             live;
+    pthread_mutex_t lock;
+    pthread_cond_t  not_empty;
+    NvChanMsg*      head;
+    NvChanMsg*      tail;
+} NvChanSlot;
+
+static NvChanSlot      g_channels[NV_MAX_CHANNELS];
+static pthread_mutex_t g_channels_lock = PTHREAD_MUTEX_INITIALIZER;
+
+// chan() -> channel id, or -1 when there is no room.
+NvObject* nv_channel_new(void) {
+    int slot = -1;
+    pthread_mutex_lock(&g_channels_lock);
+    for (int i = 0; i < NV_MAX_CHANNELS; i++)
+        if (!g_channels[i].live) { slot = i; break; }
+    if (slot >= 0) {
+        NvChanSlot* c = &g_channels[slot];
+        c->live  = 1;
+        c->head  = c->tail = NULL;
+        pthread_mutex_init(&c->lock, NULL);
+        pthread_cond_init(&c->not_empty, NULL);
+    }
+    pthread_mutex_unlock(&g_channels_lock);
+    return nv_box_int(slot);
+}
+
+// send(channel, value) -> nothing. The channel holds a reference of its own.
+NvObject* nv_channel_send(NvObject* id_obj, NvObject* value) {
+    int slot = obj_to_i32(id_obj);
+    if (slot < 0 || slot >= NV_MAX_CHANNELS || !g_channels[slot].live) return NULL;
+    NvChanSlot* c = &g_channels[slot];
+    NvChanMsg* msg = malloc(sizeof *msg);
+    if (!msg) return NULL;
+    nv_incref(value);
+    msg->value = value;
+    msg->next  = NULL;
+    pthread_mutex_lock(&c->lock);
+    if (c->tail) c->tail->next = msg; else c->head = msg;
+    c->tail = msg;
+    pthread_cond_signal(&c->not_empty);
+    pthread_mutex_unlock(&c->lock);
+    return NULL;
+}
+
+// recv(channel) -> the oldest message, waiting for one while the channel is empty.
+NvObject* nv_channel_recv(NvObject* id_obj) {
+    int slot = obj_to_i32(id_obj);
+    if (slot < 0 || slot >= NV_MAX_CHANNELS || !g_channels[slot].live) return NULL;
+    NvChanSlot* c = &g_channels[slot];
+    pthread_mutex_lock(&c->lock);
+    while (!c->head) pthread_cond_wait(&c->not_empty, &c->lock);
+    NvChanMsg* msg = c->head;
+    c->head = msg->next;
+    if (!c->head) c->tail = NULL;
+    pthread_mutex_unlock(&c->lock);
+    NvObject* value = msg->value;   // the reference the channel was holding
+    free(msg);
+    return value;
+}
+
 // ── Narval builtin functions (NIR ABI wrappers) ───────────────────────────────
 // Called as: callee(NvObject* arg) -> NvObject*
 // (NIR calls builtins by their Narval name, not nv_* name)
