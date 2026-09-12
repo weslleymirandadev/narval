@@ -1,0 +1,7 @@
+# One coordinate per dimension: a 2x3 tensor needs two, and giving one or three is a
+# compile-time error rather than a wrong element. The count is part of the type, so it is
+# checked where the type is known.
+# Error: dimension(s)
+
+a: Tensor<float, [2, 3]> = Tensor({{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}});
+write(a[1, 0, 2]);
