@@ -229,24 +229,42 @@ bool try_handle_call(nv::NIRGenerationContext& ctx, Node* node) {
                 nir_call_runtime(ctx, loc, "nv_array_set", {flat_arr, idx, flat_values[i]}, {});
             }
 
-            // Call nv_tensor_from_flat_array(flat_arr, ndim, d0..d7)
+            // An annotated literal passes the storage its element type asked for; without a
+            // dtype the runtime infers it from the values (float if any is a float). The
+            // numbers are the runtime's dtype ids (prototypes.h NV_*_BASE / NV_DTYPE_*); the
+            // codegen does not include that header, so they live here with their names.
+            int64_t dtype_id = -1;
+            if (!call->tensor_dtype.empty()) {
+                const std::string& dt = call->tensor_dtype;
+                dtype_id = dt == "float32" ? 4     // NV_DTYPE_FLOAT32
+                         : dt == "int32"   ? 1     // NV_INT_BASE
+                         : dt == "int64"   ? 3     // NV_DTYPE_INT64
+                         : dt == "bool"    ? 5     // NV_DTYPE_BOOL
+                         : 2;                      // NV_FLOAT_BASE (float64 / float)
+            }
+
+            // Call nv_tensor_from_flat_array[_typed]([dtype,] flat_arr, ndim, d0..d7)
             llvm::SmallVector<mlir::Type> fn_arg_types;
+            if (dtype_id >= 0) fn_arg_types.push_back(b.getIntegerType(64));
             fn_arg_types.push_back(vt);
             fn_arg_types.push_back(b.getIntegerType(64));
             for (int j = 0; j < 8; j++)
                 fn_arg_types.push_back(b.getIntegerType(64));
 
             llvm::SmallVector<mlir::Value> rt_args;
+            if (dtype_id >= 0) rt_args.push_back(i64_const(ctx, dtype_id));
             rt_args.push_back(flat_arr);
             rt_args.push_back(i64_const(ctx, (int64_t)dims.size()));
             for (int j = 0; j < 8; j++)
                 rt_args.push_back(i64_const(ctx, (j < (int)dims.size()) ? dims[j] : 0));
 
             auto fn_type = mlir::FunctionType::get(&ctx.get_mlir_context(), fn_arg_types, vt);
-            ctx.ensure_runtime_func("nv_tensor_from_flat_array", fn_type);
+            const char* bridge = dtype_id >= 0 ? "nv_tensor_from_flat_array_typed"
+                                               : "nv_tensor_from_flat_array";
+            ctx.ensure_runtime_func(bridge, fn_type);
             auto call_op = mlir::narval::CallRuntimeOp::create(
                 b, loc, mlir::TypeRange{vt},
-                mlir::SymbolRefAttr::get(&ctx.get_mlir_context(), "nv_tensor_from_flat_array"),
+                mlir::SymbolRefAttr::get(&ctx.get_mlir_context(), bridge),
                 rt_args);
             ctx.push_value(call_op.getResults()[0]);
             return true;
