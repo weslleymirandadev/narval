@@ -2,6 +2,7 @@
 #include "frontend/parser/expressions/parse_expr.hpp"
 #include "frontend/parser/expressions/parse_range_expr.hpp"
 #include "frontend/parser/expressions/parse_primary_expr.hpp"
+#include "frontend/ast/expressions/or_expr_node.hpp"
 #include "frontend/parser/statements/parse_stmt.hpp"
 #include <iostream>
 
@@ -23,21 +24,29 @@ std::unique_ptr<Node> parse_match_stmt(Parser* parser) {
 
     while (parser->not_eof() && parser->current_token().type != TokenType::CBRACE) {
         std::unique_ptr<Node> expr;
-        // Aceitar _ ou default como padrão catch-all
+        // Accepts "_" as default
         if (parser->current_token().type == TokenType::UNDERSCORE) {
             size_t line = parser->current_token().line;
             size_t column[2] = { parser->current_token().column_start, parser->current_token().column_end };
             size_t position[2] = { parser->current_token().position_start, parser->current_token().position_end };
             std::unique_ptr<PositionData> pos = std::make_unique<PositionData>(line, column[0], column[1], position[0], position[1]);
-            parser->consume_token(); // consume '_'
-            // Criar um IdentifierNode com símbolo "default" para compatibilidade com código existente
+            parser->consume_token(); 
             auto id_node = std::make_unique<IdentifierNode>("default");
             id_node->position = std::move(pos);
             expr = std::move(id_node);
         } else {
             expr = parse_range_expr(parser);
         }
-        parser->expect(TokenType::ARROW, "Expected '=>'.");
+        // A pattern may list alternatives separated by '|': "a" | "b" => ...
+        while (parser->current_token().type == TokenType::BITWISE_OR) {
+            parser->consume_token();
+            auto next_alt = parse_range_expr(parser);
+            auto current_alt = std::unique_ptr<Expr>(static_cast<Expr*>(expr.release()));
+            auto next_expr = std::unique_ptr<Expr>(static_cast<Expr*>(next_alt.release()));
+            expr = std::unique_ptr<Node>(
+                std::make_unique<OrExprNode>(std::move(current_alt), std::move(next_expr)).release());
+        }
+        parser->expect(TokenType::FAT_ARROW, "Expected '=>'.");
         bool has_braces = false;
         if (parser->current_token().type == TokenType::OBRACE) {
             parser->expect(TokenType::OBRACE, "Expected '{'.");
