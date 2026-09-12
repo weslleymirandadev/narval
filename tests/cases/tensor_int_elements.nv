@@ -1,0 +1,19 @@
+# An integer tensor keeps its values. Element access reads and writes according to the
+# tensor's own dtype — reading every tensor through a double* is how a Tensor<int> used to
+# come back as 0.0. The vectorized loop still reads the raw buffer as f64, so it stays on
+# float tensors; an int tensor simply keeps the general path.
+# Expected:
+# 5
+# 7
+# 42
+# 3
+
+a: Tensor<int, [2]> = Tensor({5, 7});
+write(a[0]);
+write(a[1]);
+a[0] = 42;
+write(a[0]);
+
+# Multi-index on an integer tensor goes through the same dtype-aware access.
+b: Tensor<int, [2, 2]> = Tensor({{1, 2}, {3, 4}});
+write(b[1, 0]);
