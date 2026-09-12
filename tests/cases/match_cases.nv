@@ -1,0 +1,15 @@
+# Expected:
+# Diga seu nome: Oi vadia!
+# Stdin:
+# mayk
+
+name = str(read("Diga seu nome: "));
+
+match name {
+    "weslley" => write("Oi Weslley!"),
+    "mayk" | "leao" => write("Oi vadia!"),
+    _ => {
+        write("Exu caveira");
+        write("Morte aos lele");
+    }
+}
