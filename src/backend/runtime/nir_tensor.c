@@ -21,6 +21,14 @@ Value nv_tensor_fill_nd(int64_t fill_val, int64_t ndim,
         return nv_tensor_ones(NV_FLOAT_BASE, ndim32, dims);
 }
 
+// Bridge: nv_tensor_data_ptr_bridge(NvObject*) -> void*
+// The raw element buffer, for the vectorized-loop codegen: it does the loads and stores
+// itself on this pointer, so the loop never boxes an element.
+void* nv_tensor_data_ptr_bridge(NvObject* t) {
+    Value v = {t};
+    return nv_tensor_data_ptr(&v);
+}
+
 // Bridge: nv_tensor_add_bridge(NvObject*, NvObject*) -> NvObject*
 NvObject* nv_tensor_add_bridge(NvObject* a, NvObject* b) {
     Value av = {a}, bv = {b};
