@@ -31,6 +31,10 @@
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Target/TargetMachine.h>
+#include "llvm/Analysis/CGSCCPassManager.h"
+#include "llvm/Analysis/LoopAnalysisManager.h"
+#include "llvm/IR/PassManager.h"
+#include "llvm/Passes/PassBuilder.h"
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Verifier.h>
@@ -548,6 +552,29 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
             llvm::errs() << "NIR module verification failed\n";
             return 1;
         }
+        // The middle-end, which the codegen pipeline alone does not include. Without it
+        // the loop the @[vectorize] codegen produced stays scalar: writing the loop so it
+        // CAN be widened is only half, this is the half that widens it.
+        {
+            llvm::LoopAnalysisManager     lam;
+            llvm::FunctionAnalysisManager fam;
+            llvm::CGSCCAnalysisManager    cgam;
+            llvm::ModuleAnalysisManager   mam;
+            llvm::PassBuilder             pb(nir_tm.get());
+            pb.registerModuleAnalyses(mam);
+            pb.registerCGSCCAnalyses(cgam);
+            pb.registerFunctionAnalyses(fam);
+            pb.registerLoopAnalyses(lam);
+            pb.crossRegisterProxies(lam, fam, cgam, mam);
+            llvm::ModulePassManager mpm =
+                pb.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O2);
+            mpm.run(nir_mod, mam);
+        }
+        if (nv::diag_emit_llvm()) {
+            nir_mod.print(llvm::outs(), nullptr);
+            llvm::outs() << "\n";
+        }
+
         llvm::legacy::PassManager nir_pm;
         if (nir_tm->addPassesToEmitFile(
                 nir_pm, dest, nullptr, llvm::CodeGenFileType::ObjectFile)) {
@@ -734,6 +761,8 @@ int main(int argc, char* argv[]) {
             build_target = arg.substr(std::string("--build=").size());
         } else if (arg == "--object" || arg == "-c") {
             object_only = true;
+        } else if (arg == "--emit-llvm") {
+            nv::diag_emit_llvm() = true;
         } else if (arg == "--emit-nir") {
             // Print the narval-dialect module (codegen output) instead of the final
             // binary IR: the form that still reads like the source.
@@ -761,6 +790,7 @@ int main(int argc, char* argv[]) {
             std::cout << "  --object, -c       Compile to .o without linking\n";
             std::cout << "  -L <lib>           Link an extra library (ex: ./libfoo.so)\n";
             std::cout << "  --emit-nir         Print the narval IR as codegen left it\n";
+            std::cout << "  --emit-llvm        Print the LLVM IR after the middle-end (with -b)\n";
             std::cout << "  --dump-passes      Print the IR after every lowering pass\n";
             std::cout << "  --explain-ownership  Report every drop decision (and why one was skipped)\n";
             std::cout << "  --help, -h         Show this help\n";
