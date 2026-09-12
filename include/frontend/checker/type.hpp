@@ -214,18 +214,42 @@ namespace nv {
         std::string toString() override { return "char"; }
     };
 
+    // bits: 64 is the language's `int`/`float` and the default, so every existing
+    // make_shared<nv::Int>() keeps its meaning; 32 is int32/float32; 0 is a numeric literal
+    // whose width the context has not decided yet, and it matches any width the way -1
+    // matches any dimension. Only tensor element types carry 32/0 today: scalar arithmetic
+    // is still 64-bit, which is what keeps the widths out of every expression in the
+    // checker.
     struct Int : public Type {
-        Int() : Type(Kind::INT) {}
+        int bits;
+        Int(int bits_ = 64) : Type(Kind::INT), bits(bits_) {}
         void init_prototype() override;
 
-        std::string toString() override { return "int"; };
+        std::string toString() override {
+            if (bits == 32) return "int32";
+            return bits == 64 ? "int64" : "int";
+        }
+        bool equals(const Type& other) const override {
+            if (other.kind != Kind::INT) return false;
+            const auto& o = static_cast<const Int&>(other);
+            return bits == 0 || o.bits == 0 || bits == o.bits;
+        }
     };
 
     struct Float : public Type {
-        Float() : Type(Kind::FLOAT) {}
+        int bits;
+        Float(int bits_ = 64) : Type(Kind::FLOAT), bits(bits_) {}
         void init_prototype() override;
 
-        std::string toString() override { return "float"; };
+        std::string toString() override {
+            if (bits == 32) return "float32";
+            return bits == 64 ? "float64" : "float";
+        }
+        bool equals(const Type& other) const override {
+            if (other.kind != Kind::FLOAT) return false;
+            const auto& o = static_cast<const Float&>(other);
+            return bits == 0 || o.bits == 0 || bits == o.bits;
+        }
     };
 
     struct Boolean : public Type {
