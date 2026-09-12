@@ -179,6 +179,35 @@ void* nv_tensor_data_ptr(Value* v) {
     NVTensor* t = unwrap_tensor(v); return t ? t->data : NULL;
 }
 
+//  Element access, dtype-aware 
+// One element, boxed, read and written according to the tensor's own dtype. The flat index
+// comes from the caller: a single index, or the several coordinates of nv_tensor_flat_index.
+// Reading every tensor through a double* is how a Tensor<int> came back as 0.0.
+NvObject* nv_tensor_get_element(Value* v, int64_t flat) {
+    NVTensor* t = unwrap_tensor(v);
+    if (!t || flat < 0 || flat >= t->nelem) return NULL;
+    Value out = {NULL};
+    if (t->dtype == NV_INT_BASE)
+        create_int(&out, ((int32_t*)t->data)[flat]);
+    else
+        create_float(&out, ((double*)t->data)[flat]);
+    return out.obj;
+}
+
+void nv_tensor_set_element(Value* v, int64_t flat, NvObject* val) {
+    NVTensor* t = unwrap_tensor(v);
+    if (!t || !val || flat < 0 || flat >= t->nelem) return;
+    int is_float = val->ob_type == NVFloat_Type;
+    if (t->dtype == NV_INT_BASE)
+        ((int32_t*)t->data)[flat] = is_float
+            ? (int32_t)((NVFloat*)val)->value
+            : (int32_t)((NVInt*)val)->value;
+    else
+        ((double*)t->data)[flat] = is_float
+            ? ((NVFloat*)val)->value
+            : (double)((NVInt*)val)->value;
+}
+
 //  Arithmetic (naive fallback — MLIR-generated versions override these) 
 
 // Matrix multiply: C = A @ B   (2-D only, float only)
