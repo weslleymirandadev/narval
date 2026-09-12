@@ -38,8 +38,13 @@ namespace nv {
             t1 = resolve(t1);
             t2 = resolve(t2);
             
-            // Se são iguais, nada a fazer
-            if (t1->equals(t2)) {
+            // If they are equal there is nothing to do.
+            // `*t2`, not `t2`: the base declares both equals() overloads and the composite
+            // types only override the `const Type&` one (TensorType compares element, rank
+            // and shape). Calling the shared_ptr overload fell back to the base's shallow
+            // `kind == kind`, which reported Tensor<float,[2,2]> and Tensor<float,[2,3]> as
+            // equal — which is what made a tensor annotation decorative.
+            if (t1->equals(*t2)) {
                 return;
             }
             
