@@ -45,7 +45,7 @@ std::shared_ptr<nv::Type>& check_range_expr(nv::Checker* ch, Node* node) {
         return ch->gettyptr("None");
     }
     
-    // Range expression não retorna um tipo diretamente (é usado em for/match)
-    // Retornar void por enquanto
-    return ch->gettyptr("None");
+    // A range used as a value (mut v = 0..5; v = 0..5) is a container of its bounds, so it takes
+    // the container type rather than None — that is what lets indexing, len and iteration type-check.
+    return ch->gettyptr("vector");
 }
