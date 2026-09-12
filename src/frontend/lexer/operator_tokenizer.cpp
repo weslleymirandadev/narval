@@ -102,7 +102,7 @@ Token tokenize_operator(const std::string& input, size_t& pos, size_t& line, siz
             value = candidate;
             pos += 2;
             column += 2;
-            return Token(TokenType::ARROW, value, line, start_column, column, start_position, pos, filename);
+            return Token(TokenType::FAT_ARROW, value, line, start_column, column, start_position, pos, filename);
         } else if (candidate == "..") {
             value = candidate;
             pos += 2;
