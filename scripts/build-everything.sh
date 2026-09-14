@@ -40,6 +40,10 @@ echo "  -> $BUILD_LINUX/narval   (ELF, todos os backends)"
 
 echo
 echo "=== Windows: narval-lsp.exe + narval.exe, MSVC nativo ==="
+# cmd.exe nao aceita um caminho WSL como pasta atual (avisa sobre caminho UNC e
+# padroniza para uma pasta do Windows). Chamar de /mnt/d evita o aviso; o .bat usa
+# caminhos absolutos, entao a pasta nao influencia o resultado.
+cd /mnt/d/llvm
 if cmd.exe /c "$BAT_WIN nopause" < /dev/null; then
     echo "  -> $EXT/bin/win32-x64/narval-lsp.exe"
     echo "  -> D:\\narval-src\\build-win\\Release\\narval.exe"
