@@ -10,7 +10,7 @@ public:
     VectorExprNode(std::vector<std::unique_ptr<Expr>> elements)
         : Expr(NodeType::VectorExpression), elements(std::move(elements)) {}
 
-    ~VectorExprNode() override = default;
+    ~VectorExprNode() override;
 
     Node* clone() const override {
         std::vector<std::unique_ptr<Expr>> cloned_elements;
