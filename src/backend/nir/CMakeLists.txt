@@ -120,6 +120,7 @@ set(MLIR_DIALECT_LIBS
 target_link_libraries(NarvalNirDialect
     PUBLIC
         NarvalProjectIncludes
+        NarvalAstAnchors
         ${MLIR_DIALECT_LIBS}
         LLVMOrcJIT
         LLVMJITLink
