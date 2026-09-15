@@ -10,7 +10,7 @@ public:
     TupleExprNode(std::vector<std::unique_ptr<Expr>> elements)
         : Expr(NodeType::TupleExpression), elements(std::move(elements)) {}
 
-    ~TupleExprNode() override = default;
+    ~TupleExprNode() override;
 
     Node* clone() const override {
         std::vector<std::unique_ptr<Expr>> cloned_elements;
