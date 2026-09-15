@@ -50,7 +50,7 @@ jobs:
             find llvm -maxdepth 2 -type d | head -40
             exit 1
           fi
-          prefix=$(dirname "$(dirname "$(dirname "$config")")")
+          prefix=${config%/lib/cmake/mlir/MLIRConfig.cmake}
           echo "LLVM_PREFIX=$PWD/$prefix" >> "$GITHUB_ENV"
           echo "$PWD/$prefix/bin" >> "$GITHUB_PATH"
           echo "LLVM ${LLVM_VERSION} in $prefix"
@@ -93,32 +93,25 @@ jobs:
           if-no-files-found: error
 
   windows-x86_64:
+    # LLVM's own Windows release publishes LLVM*.lib and no MLIR CMake package, so a Windows
+    # narval.exe cannot be produced from it. The one this repository ships is built on the Windows
+    # machine against an MLIR built for the purpose (D:\llvm\mlir-22.1.5-install, driven by
+    # D:\llvm\build-narval-lsp-windows.bat) and attached to the release with
+    # `gh release upload <tag> <archive>`. This job is that same build for the day a Windows MLIR
+    # is reachable from a runner (self-hosted, or built in CI): it reads the prefix from the
+    # repository variable NARVAL_WINDOWS_MLIR and does nothing while that is unset.
+    if: vars.NARVAL_WINDOWS_MLIR != ''
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch the MSVC build of LLVM/MLIR ${{ env.LLVM_VERSION }}
+      - name: Resolve the MLIR prefix
         shell: pwsh
         run: |
-          # The MSVC build, because a MinGW C++ compiler cannot link its libraries.
-          $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-${env:LLVM_VERSION}/clang+llvm-${env:LLVM_VERSION}-x86_64-pc-windows-msvc.tar.xz"
-          curl.exe -L --fail -o llvm.tar.xz $url
-          tar xf llvm.tar.xz
-          if ($LASTEXITCODE -ne 0) { throw "tar failed with exit code $LASTEXITCODE" }
-          $root = (Get-ChildItem -Directory -Filter "clang+llvm-*" | Select-Object -First 1).FullName
-          if (-not $root) { throw "the archive did not extract a clang+llvm-* directory" }
-          # The MLIR package inside the archive is what identifies the prefix to configure against,
-          # so the layout of a release is not assumed here.
-          $config = Get-Item "$root/lib/cmake/mlir/MLIRConfig.cmake" -ErrorAction SilentlyContinue
-          if (-not $config) {
-            $config = Get-ChildItem -Path $root -Recurse -Filter MLIRConfig.cmake -ErrorAction SilentlyContinue | Select-Object -First 1
+          $prefix = "${{ vars.NARVAL_WINDOWS_MLIR }}"
+          if (-not (Test-Path "$prefix/lib/cmake/mlir/MLIRConfig.cmake")) {
+            throw "NARVAL_WINDOWS_MLIR ($prefix) does not hold an MLIR build"
           }
-          if (-not $config) {
-            "top level:"; Get-ChildItem -Directory | Select-Object -ExpandProperty Name
-            "lib:"; Get-ChildItem "$root/lib" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
-            throw "no MLIRConfig.cmake in the archive"
-          }
-          $prefix = $config.Directory.Parent.Parent.FullName
           "LLVM_PREFIX=$prefix" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
           # llvm-config drives the project's compile and link flags; GITHUB_PATH applies to the
           # following steps, which is where cmake runs.
@@ -178,7 +171,9 @@ jobs:
 
   publish:
     needs: [linux-x86_64, windows-x86_64]
-    if: startsWith(github.ref, 'refs/tags/v')
+    # The Windows job is conditional, and a skipped job skips its dependents: the release is
+    # published whenever Linux succeeded.
+    if: always() && startsWith(github.ref, 'refs/tags/v') && needs.linux-x86_64.result == 'success'
     runs-on: ubuntu-24.04
     env:
       GH_REPO: ${{ github.repository }}
@@ -192,7 +187,10 @@ jobs:
       - name: Checksums
         run: |
           cd dist
-          sha256sum *.tar.gz *.zip > SHA256SUMS.txt
+          shopt -s nullglob
+          archives=(*.tar.gz *.zip)
+          if [ ${#archives[@]} -eq 0 ]; then echo "no archives to publish"; exit 1; fi
+          sha256sum "${archives[@]}" > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
       - name: Publish
