@@ -12,7 +12,7 @@ public:
     IfStatementNode(std::unique_ptr<Expr> cond, std::vector<std::unique_ptr<Stmt>> consequent_stmts, std::vector<std::unique_ptr<Stmt>> alternate_stmts)
         : Stmt(NodeType::IfStatement), condition(std::move(cond)), consequent(std::move(consequent_stmts)), alternate(std::move(alternate_stmts)) {}
 
-    ~IfStatementNode() override = default;
+    ~IfStatementNode() override;
 
     Node* clone() const override {
         auto cloned_condition = condition ? std::unique_ptr<Expr>(static_cast<Expr*>(condition->clone())) : nullptr;
