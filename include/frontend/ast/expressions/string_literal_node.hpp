@@ -9,7 +9,7 @@ public:
     StringLiteralNode(std::string val)
         : Expr(NodeType::StringLiteral), value(std::move(val)) {}
 
-    ~StringLiteralNode() override = default;
+    ~StringLiteralNode() override;
 
     Node* clone() const override {
         auto* node = new StringLiteralNode(value);
