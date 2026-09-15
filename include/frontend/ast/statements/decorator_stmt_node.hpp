@@ -27,6 +27,8 @@ struct DecoratorEntry {
 };
 
 struct DecoratorStmtNode : public Stmt {
+    ~DecoratorStmtNode() override;
+
     // New structured list (primary).
     std::vector<DecoratorEntry> entries;
 
