@@ -17,7 +17,7 @@ public:
     CallExprNode(std::unique_ptr<Expr> caller, std::vector<std::unique_ptr<ArgNode>> args)
         : Expr(NodeType::CallExpression), caller(std::move(caller)), args(std::move(args)) {}
 
-    ~CallExprNode() override = default;
+    ~CallExprNode() override;
 
     Node* clone() const override {
         auto cloned_caller = caller ? std::unique_ptr<Expr>(static_cast<Expr*>(caller->clone())) : nullptr;
