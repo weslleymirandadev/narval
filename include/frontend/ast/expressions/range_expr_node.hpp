@@ -16,7 +16,7 @@ public:
           end(std::move(end)),
           inclusive(inclusive) {}
 
-    ~RangeExprNode() override = default;
+    ~RangeExprNode() override;
 
     Node* clone() const override {
         auto s = start ? std::unique_ptr<Expr>(static_cast<Expr*>(start->clone())) : nullptr;
