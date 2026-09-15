@@ -6,6 +6,7 @@
 // Nó para expressão instanceof
 class InstanceofExprNode : public Expr {
 public:
+    ~InstanceofExprNode() override;
     std::unique_ptr<Expr> object;
     std::string class_name;
     
