@@ -165,10 +165,22 @@ static std::string canonicalize_requested_triple(const std::string& requested_ta
     return llvm::Triple::normalize(requested_target);
 }
 
+// What `native` resolves to. The object is linked by the system gcc (see the link step in
+// run_batch_mode), and on Windows that gcc is MinGW, so the object has to be a windows-gnu
+// one: the triple LLVM itself was built with there is windows-msvc, and mixing the two is
+// exactly the kind of mismatch that shows up as "unrecognised file format".
+static std::string narval_native_triple() {
+    llvm::Triple triple(llvm::sys::getDefaultTargetTriple());
+    if (triple.isOSWindows() && triple.getEnvironment() != llvm::Triple::GNU) {
+        triple.setEnvironment(llvm::Triple::GNU);
+    }
+    return triple.str();
+}
+
 static const std::map<std::string, BuildTarget>& get_build_targets() {
     static const std::map<std::string, BuildTarget> targets = {
-        {"native",      {"native",      llvm::sys::getDefaultTargetTriple(), "generic", true}},
-        {"host",        {"native",      llvm::sys::getDefaultTargetTriple(), "generic", true}},
+        {"native",      {"native",      narval_native_triple(),              "generic", true}},
+        {"host",        {"native",      narval_native_triple(),              "generic", true}},
         {"x86-64",      {"x86-64",      "x86_64-unknown-linux-gnu",          "generic", false}},
         {"x64",         {"x86-64",      "x86_64-unknown-linux-gnu",          "generic", false}},
         {"amd64",       {"x86-64",      "x86_64-unknown-linux-gnu",          "generic", false}},
@@ -431,6 +443,15 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
 
         if (no_std) nir_no_std_entry() = no_std_entry;
 
+        // The freestanding runtime is raw POSIX syscalls (mmap/read/write/exit) and there is
+        // no object for it on Windows: refuse here instead of emitting a binary that cannot
+        // possibly run.
+        if (no_std && target_triple.isOSWindows()) {
+            llvm::errs() << "error: @[no_std] is not supported on Windows targets "
+                            "(the freestanding runtime is POSIX-only)\n";
+            return 1;
+        }
+
         // Create checker for type inference
         nv::Checker checker;
         checker.apply_compilation_attributes(attrs);
@@ -471,6 +492,21 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
 
         nv::generate_ir_nir(std::move(ast), nir_ctx);
 
+        // On Windows the CRT owns the entry point and calls `main`, which the runtime defines
+        // as the trampoline into main.start (nir_bridge.c). A user `def main` would collide
+        // with that symbol ("multiple definition of main" at link time), so here the user's
+        // function is renamed — everything below refers to it by user_main.
+        const std::string user_main = target_triple.isOSWindows() ? "__narval_main" : "main";
+        if (target_triple.isOSWindows()) {
+            nir_ctx.get_module().walk([&](mlir::narval::FuncOp f) {
+                if (f.getSymName() == "main") f.setSymName("__narval_main");
+            });
+            nir_ctx.get_module().walk([&](mlir::narval::CallOp call) {
+                if (call.getCallee() == "main")
+                    call.setCallee("__narval_main");
+            });
+        }
+
         // C-like entry convention: top-level code runs first, then a
         // user-defined zero-arg `main` function is invoked (unless top-level
         // code already called it explicitly). Its return value is ignored —
@@ -479,21 +515,21 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
             bool main_called = false;
             entry_blk->walk([&](mlir::Operation* op) {
                 if (auto call = mlir::dyn_cast<mlir::narval::CallOp>(op))
-                    if (call.getCallee() == "main")
+                    if (call.getCallee() == user_main)
                         main_called = true;
             });
             if (!main_called) {
-                mlir::narval::FuncOp user_main = nullptr;
+                mlir::narval::FuncOp user_main_fn = nullptr;
                 nir_ctx.get_module().walk([&](mlir::narval::FuncOp f) {
-                    if (f.getSymName() == "main" &&
+                    if (f.getSymName() == user_main &&
                         f.getFunctionType().getNumInputs() == 0)
-                        user_main = f;
+                        user_main_fn = f;
                 });
-                if (user_main) {
+                if (user_main_fn) {
                     auto vt = nir_ctx.get_narval_value_type();
                     mlir::narval::CallOp::create(
                         b, ul, mlir::TypeRange{vt},
-                        mlir::SymbolRefAttr::get(&mlir_ctx, "main"),
+                        mlir::SymbolRefAttr::get(&mlir_ctx, user_main),
                         mlir::ValueRange{});
                 }
             }
@@ -617,7 +653,9 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
         const std::string rt_std_path   = blob_rt.empty() ? nir_runtime_path : blob_rt;
         const std::string rt_nostd_path = blob_rt.empty() ? nir_runtime_nostd_path : blob_rt;
 
-        std::string bin_path = build_only ? stem : ("narval_nir_tmp_" + stem);
+        // A PE image is only executable when the file name carries the .exe suffix.
+        const std::string exe_suffix = target_triple.isOSWindows() ? ".exe" : "";
+        std::string bin_path = (build_only ? stem : ("narval_nir_tmp_" + stem)) + exe_suffix;
 #if defined(__aarch64__) || defined(_M_ARM64)
         const char* nir_pie = "-pie";
 #else
@@ -632,7 +670,21 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
             nir_link_extra += " " + item;
 
         std::string nir_link_cmd;
-        if (no_std) {
+        if (target_triple.isOSWindows()) {
+            // PE/MinGW: the CRT owns the entry point and calls main, which the runtime
+            // defines as the trampoline into main.start (see nir_bridge.c). Nothing is
+            // exported from a PE image by default, and both the closures and the
+            // `comptime import_c` bridges resolve their target by name at run time, so
+            // --export-all-symbols is what makes dlsym/GetProcAddress find them.
+            // No -pthread/-ldl/-no-pie/--export-dynamic-symbol: none of those exist on MinGW,
+            // and nothing is position independent there.
+            nir_link_cmd =
+                std::string("gcc ") + rt_std_path + " " + obj_path + " -o " + bin_path +
+                " -static -Wl,--export-all-symbols -Wl,--gc-sections " +
+                (attrs.strip ? "-Wl,--strip-all " : "") +
+                (attrs.lto   ? "-flto "           : "") +
+                nir_link_extra;
+        } else if (no_std) {
             std::string nostd_rt = std::filesystem::exists(rt_nostd_path)
                 ? rt_nostd_path + " " : "";
             nir_link_cmd =
@@ -669,7 +721,12 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
         if (build_only) return 0;
 
         // Run the produced binary
+#ifdef _WIN32
+        // cmd.exe does not understand the ./ prefix the POSIX path uses.
+        int nir_exit = system(bin_path.c_str());
+#else
         int nir_exit = system(("./" + bin_path).c_str());
+#endif
         std::filesystem::remove(bin_path);
         return nir_exit;
     } catch (const std::exception& e) {
@@ -733,8 +790,16 @@ int main(int argc, char* argv[]) {
         nv_executable_path_storage = std::filesystem::absolute(argv[0]).lexically_normal().string();
     }
 
+#ifdef _WIN32
+    // Nothing of the runtime is linked into the compiler on Windows (it travels as an
+    // embedded MinGW object that the generated program links against), so there is no
+    // register_global_init in this process to call. The REPL loads runtime.dll and registers
+    // the nv_* symbols from it (see repl_state.cpp), and that library initialises its own
+    // builtin types on first use, so nothing is missing here.
+#else
     extern void register_global_init(void);
     register_global_init();
+#endif
     
     bool repl_mode = false;
     bool notebook_mode = false;
