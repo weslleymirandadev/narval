@@ -12,7 +12,7 @@ public:
     AssignmentExprNode(std::unique_ptr<Expr> tgt, std::string opr, std::unique_ptr<Expr> val)
         : Expr(NodeType::AssignmentExpression), target(std::move(tgt)), op(std::move(opr)), value(std::move(val)) {}
 
-    ~AssignmentExprNode() override = default;
+    ~AssignmentExprNode() override;
 
     Node* clone() const override {
         auto cloned_target = target ? std::unique_ptr<Expr>(static_cast<Expr*>(target->clone())) : nullptr;
