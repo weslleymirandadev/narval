@@ -26,7 +26,7 @@ public:
     ImportStmtNode(const std::string& module, const std::vector<ImportItem>& items, const std::string& file = "")
         : Stmt(NodeType::ImportStatement), module_path(module), imports(items), filename(file) {}
     
-    ~ImportStmtNode() override = default;
+    ~ImportStmtNode() override;
 
     Node* clone() const override {
         auto* node = new ImportStmtNode(this->module_path, this->imports, this->filename);
