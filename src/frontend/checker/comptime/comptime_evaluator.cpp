@@ -1153,6 +1153,10 @@ ComptimeValue ComptimeEvaluator::eval_block(const CodeBlock& body) {
     for (const auto& stmt_ptr : body) {
         Stmt* stmt = stmt_ptr.get();
         if (!stmt) continue;
+        // Statement-level failures (@compileError, an unsupported statement) point here; an
+        // expression failure inside overwrites it with the inner position, which is finer.
+        // Without this the diagnostic fell back to the top of the file (line 1, a comment).
+        if (stmt->position) error_pos_ = std::make_unique<PositionData>(*stmt->position);
         switch (stmt->kind) {
             case NodeType::ReturnStatement: {
                 auto* ret = static_cast<ReturnStmtNode*>(stmt);
@@ -1531,6 +1535,11 @@ CodeBlock ComptimeEvaluator::expand_body(CodeBlock body) {
     for (auto& stmt_ptr : body) {
         Stmt* stmt = stmt_ptr.get();
         if (!stmt) continue;
+
+        // Same as in eval_block: a failure while expanding this statement (an unknown
+        // identifier reached through a macro body, an @emit that does not parse) is reported
+        // at the statement that caused it, not at the start of the file.
+        if (stmt->position) error_pos_ = std::make_unique<PositionData>(*stmt->position);
 
         // Anything @emit queued while expanding the PREVIOUS statement belongs
         // right before this one; the tail is drained after the loop.
