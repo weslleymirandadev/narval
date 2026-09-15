@@ -1,8 +1,13 @@
 cmake_minimum_required(VERSION 3.20)
-project(Narval)
+project(Narval VERSION 0.1.0)
 include(CTest)
 include(GNUInstallDirs)
 include(cmake/NarvalSources.cmake)
+
+# Printed by `narval --version` and part of the directory the embedded assets are materialised
+# into (src/frontend/narval_home.cpp), so a new binary never links the previous one's runtime
+# or reads its stdlib. A release passes the git tag: -DNARVAL_VERSION=<tag>.
+set(NARVAL_VERSION "${PROJECT_VERSION}" CACHE STRING "Narval version")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -155,6 +160,16 @@ set(NARVAL_RUNTIME_BLOB_DEPS ${LIB_DIR}/runtime.o)
 if(NOT MSVC)
     list(APPEND NARVAL_RUNTIME_BLOB_DEPS ${LIB_DIR}/runtime_nostd.o)
 endif()
+# The standard library travels the same way: the embedded modules are what the compiler reads
+# when no stdlib/ directory sits next to the binary (src/frontend/narval_home.cpp writes them
+# out on first use, src/frontend/module_manager.cpp looks them up there).
+file(GLOB NARVAL_STDLIB_SOURCES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/stdlib/*.nv)
+set(NARVAL_STDLIB_NAMES "")
+foreach(stdlib_file IN LISTS NARVAL_STDLIB_SOURCES)
+    get_filename_component(stdlib_name ${stdlib_file} NAME)
+    list(APPEND NARVAL_STDLIB_NAMES ${stdlib_name})
+endforeach()
+list(APPEND NARVAL_RUNTIME_BLOB_DEPS ${NARVAL_STDLIB_SOURCES})
 add_custom_command(
     OUTPUT ${NARVAL_RUNTIME_BLOB_SRC}
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/generated
@@ -163,17 +178,20 @@ add_custom_command(
             "-DOUT=${NARVAL_RUNTIME_BLOB_SRC}"
             "-DSTD_OBJ=${LIB_DIR}/runtime.o"
             "-DNOSTD_OBJ=${LIB_DIR}/runtime_nostd.o"
+            "-DSTDLIB_DIR=${PROJECT_SOURCE_DIR}/stdlib"
+            "-DSTDLIB_FILES=${NARVAL_STDLIB_NAMES}"
             -P ${PROJECT_SOURCE_DIR}/cmake/NarvalEmbedBlob.cmake
     # Depend on the runtime OBJECT FILES, not only on the object libraries: the blob is
     # regenerated exactly when runtime.o / runtime_nostd.o change. Depending on the
     # custom targets instead would re-run this (2 MB of xxd + a recompile) every build.
     DEPENDS ${NARVAL_RUNTIME_BLOB_DEPS} ${PROJECT_SOURCE_DIR}/cmake/NarvalEmbedBlob.cmake
-    COMMENT "Embedding runtime objects into the compiler"
+    COMMENT "Embedding runtime objects and stdlib into the compiler"
     VERBATIM
 )
 set_source_files_properties(${NARVAL_RUNTIME_BLOB_SRC} PROPERTIES GENERATED TRUE)
 
 add_executable(Narval src/main.cpp
+    src/frontend/narval_home.cpp            # first run materialises the embedded assets
     ${NARVAL_RUNTIME_BLOB_SRC})   # runtime embedded in the compiler (see src/backend/runtime)
 
 # The REPL JITs the REPL program and resolves runtime symbols (nv_box_*, the
@@ -204,6 +222,10 @@ endif()
 # just the Narval target would otherwise leave them stale (the embedded copy is what
 # the linker uses, so a stale blob silently links an old runtime).
 add_dependencies(Narval NarvalRuntimeO NarvalRuntimeNostdO)
+# The version is the compiler's own (--version, and the home directory the embedded assets are
+# written to): defined on this target alone, so a release that passes a new tag rebuilds
+# main.cpp and narval_home.cpp instead of every object in the project.
+target_compile_definitions(Narval PRIVATE NARVAL_VERSION="${NARVAL_VERSION}")
 target_compile_definitions(Narval PRIVATE NARVAL_USE_NIR=1)
 target_include_directories(Narval PRIVATE ${CMAKE_BINARY_DIR}/src/backend/nir)
 
