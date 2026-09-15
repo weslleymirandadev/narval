@@ -11,7 +11,7 @@ public:
     WhileStmtNode(std::unique_ptr<Expr> condition, CodeBlock body)
         : Stmt(NodeType::WhileStatement), condition(std::move(condition)), body(std::move(body)) {}
 
-    ~WhileStmtNode() override = default;
+    ~WhileStmtNode() override;
 
     Node* clone() const override {
         auto cloned_condition = condition ? std::unique_ptr<Expr>(static_cast<Expr*>(condition->clone())) : nullptr;
