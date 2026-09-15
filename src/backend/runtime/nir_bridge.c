@@ -6,15 +6,20 @@
 // that the NIR-generated LLVM IR expects.
 
 #include "backend/runtime/nv_runtime.h"
+#include "backend/runtime/win32_compat.h"   // dlopen/dlsym and the cpu count on Windows
 #include <pthread.h>
+#ifndef _WIN32
 #include <unistd.h>   // sysconf: how many cpus the parallel loop may use
+#endif
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
 #include <stdarg.h>
+#ifndef _WIN32
 #include <dlfcn.h>
+#endif
 
 // Internal helpers declared in value.c but not in headers.
 void tuple_set_impl(Value* self, int32_t index, Value* elem);
@@ -841,7 +846,11 @@ NvObject* nv_parallel_for(NvObject* closure, NvObject* total_obj) {
     int64_t total = obj_to_i32(total_obj);
     if (total <= 0) return nv_box_int(0);
 
+#ifdef _WIN32
+    long cpus = nv_cpu_count();
+#else
     long cpus = sysconf(_SC_NPROCESSORS_ONLN);
+#endif
     int  workers = (cpus > 1) ? (int)cpus : 1;
     if (workers > NV_PAR_WORKERS_MAX)  workers = NV_PAR_WORKERS_MAX;
     if ((int64_t)workers > total)      workers = (int)total;
@@ -1113,6 +1122,21 @@ NvObject* nv_read_builtin(NvObject* prompt) {
 
 // NIR entry point: OS starts with RSP%16==0, but LLVM's main.start prologue
 // assumes RSP%16==8 (called via CALL). This stub subtracts 8 to fix alignment.
+#ifdef _WIN32
+// Windows the other way round: the PE entry point belongs to the CRT (which initialises the
+// runtime library the generated code calls into), and the CRT calls main. So main is the
+// trampoline into the narval top-level code, which lives in main.start. There is no
+// RSP offset to fix here — the CRT calls main like any other function — but main.start
+// still expects the SysV/Windows "called normally" alignment, hence the sub before the call.
+__asm__(
+    ".weak main.start\n"
+    ".globl main\n"
+    "main:\n"
+    "    sub $8, %rsp\n"
+    "    call main.start\n"
+    "    ret\n"
+);
+#else
 __asm__(
     ".weak main.start\n"
     ".globl _narval_entry\n"
@@ -1120,6 +1144,7 @@ __asm__(
     "    sub $8, %rsp\n"
     "    jmp main.start\n"
 );
+#endif /* _WIN32 */
 
 // Keeps a value alive across a store into a container: the statement's own reference
 // to it is released right after, which would leave the container pointing at freed
