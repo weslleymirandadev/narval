@@ -2,8 +2,9 @@
 #include "llvm/Support/raw_ostream.h"
 #include "frontend/ast/expressions/identifier_node.hpp"
 
-IdentifierNode::~IdentifierNode() = default;
-
+// The destructor moved to src/frontend/ast_node_anchors.cpp: it is the key function of this
+// class' vtable, and keeping the table in the front-end is what lets the language server link
+// without the NIR/MLIR back-end.
 void IdentifierNode::nir_codegen(nv::NIRGenerationContext& ctx) {
     mlir::Value v = ctx.lookup(symbol);
     if (!v && ctx.is_repl_global(symbol)) {
