@@ -20,9 +20,36 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 
 add_library(NarvalProjectIncludes INTERFACE)
 target_include_directories(NarvalProjectIncludes INTERFACE ${PROJECT_SOURCE_DIR}/include)
+# Paths every target needs: the REPL looks for the runtime relative to them and the module
+# manager for stdlib/. They used to be defined on the Narval target alone, so
+# NarvalInteractive fell back to the hardcoded POSIX path in repl_state.hpp.
+target_compile_definitions(NarvalProjectIncludes INTERFACE
+    NARVAL_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+    NARVAL_INCLUDE_DIR="${PROJECT_SOURCE_DIR}/include"
+    NARVAL_INSTALL_RUNTIME_DIR="${NARVAL_INSTALL_RUNTIME_DIR}"
+)
 
 add_library(NarvalFrontendUtils src/frontend/syntax_highlighter.cpp)
 target_link_libraries(NarvalFrontendUtils PUBLIC NarvalProjectIncludes)
+
+# The AST nodes' destructors — the vtable key functions — are defined here, in the front-end,
+# so the language server can link without the NIR/MLIR back-end (src/lsp/ast_codegen_stubs.cpp
+# is the other half of that). It is a library of its own because of link ORDER: the vtables
+# reference every nir_codegen() implementation, so ld has to read the users (parser/checker),
+# then these anchors, then NarvalNirDialect, which defines those functions. Inside
+# NarvalFrontendUtils.a the anchors were scanned before their users and dropped.
+add_library(NarvalAstAnchors STATIC src/frontend/ast_node_anchors.cpp)
+target_link_libraries(NarvalAstAnchors PUBLIC NarvalProjectIncludes)
+
+# NarvalAstAnchors, NarvalNirDialect and NarvalFrontendUtils are mutually dependent: the AST
+# vtables (anchors) reference every nir_codegen() implementation (NirDialect) and the codegen
+# objects reference the dtors again. ld scans archives left to right, so it needs a rescanning
+# group; MSVC's linker resolves across libraries and does not implement the feature.
+if(MSVC)
+    set(NARVAL_AST_LINK_GROUP NarvalAstAnchors NarvalNirDialect NarvalFrontendUtils)
+else()
+    set(NARVAL_AST_LINK_GROUP "$<LINK_GROUP:RESCAN,NarvalAstAnchors,NarvalNirDialect,NarvalFrontendUtils>")
+endif()
 
 execute_process(COMMAND llvm-config --cxxflags OUTPUT_VARIABLE LLVM_CXX_FLAGS)
 execute_process(COMMAND llvm-config --libs OUTPUT_VARIABLE LLVM_LIBS)
@@ -51,11 +78,27 @@ target_compile_definitions(NarvalCommon INTERFACE ${LLVM_DEFINITIONS})
 target_link_libraries(NarvalCommon INTERFACE ${LLVM_LIBS} ${LLVM_SYS_LIBS})
 
 add_library(NarvalAllCommon INTERFACE)
-target_link_libraries(NarvalAllCommon INTERFACE NarvalProjectIncludes NarvalCommon m)
+# libm is a separate library on POSIX only; the MSVC CRT already carries the math.
+if(MSVC)
+    target_link_libraries(NarvalAllCommon INTERFACE NarvalProjectIncludes NarvalCommon)
+else()
+    target_link_libraries(NarvalAllCommon INTERFACE NarvalProjectIncludes NarvalCommon m)
+endif()
 
 function(narval_add_test target_name)
-    add_executable(${target_name} ${ARGN})
-    target_link_libraries(${target_name} PRIVATE NarvalAllCommon NarvalLexer NarvalParser NarvalChecker NarvalRuntimeObjs NarvalNirDialect)
+    # Not built on Windows: the frontend tests link the runtime, and there the runtime is a
+    # MinGW relocatable object (cl.exe cannot even compile the POSIX C, so MSVC cannot link
+    # it). EXCLUDE_FROM_ALL keeps them out of the default build, which is how the Windows
+    # build stays limited to narval.exe and narval-lsp.exe (see scripts/); asking for one of
+    # them explicitly is what would fail.
+    set(_exclude_from_all)
+    if(MSVC)
+        message(STATUS "Test ${target_name}: EXCLUDE_FROM_ALL on Windows (MinGW runtime object)")
+        set(_exclude_from_all EXCLUDE_FROM_ALL)
+    endif()
+    add_executable(${target_name} ${_exclude_from_all} ${ARGN})
+    target_link_libraries(${target_name} PRIVATE NarvalAllCommon NarvalLexer NarvalParser NarvalChecker NarvalRuntimeObjs
+        ${NARVAL_AST_LINK_GROUP})
     target_include_directories(${target_name} PRIVATE ${PROJECT_SOURCE_DIR}/include)
     target_link_options(${target_name} PRIVATE -W -fPIE)
 endfunction()
@@ -95,16 +138,25 @@ add_subdirectory(src/lsp)
 # live here: add_custom_command is scoped to the directory of the target that
 # consumes its OUTPUT.
 set(NARVAL_RUNTIME_BLOB_SRC ${CMAKE_BINARY_DIR}/generated/narval_runtime_blobs.cpp)
+# The no_std runtime is POSIX-syscall based: it is only built where it can run, and the
+# compiler refuses @[no_std] on Windows (src/main.cpp), so its blob stays empty there.
+set(NARVAL_RUNTIME_BLOB_DEPS ${LIB_DIR}/runtime.o)
+if(NOT MSVC)
+    list(APPEND NARVAL_RUNTIME_BLOB_DEPS ${LIB_DIR}/runtime_nostd.o)
+endif()
 add_custom_command(
     OUTPUT ${NARVAL_RUNTIME_BLOB_SRC}
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/generated
-    COMMAND sh -c "printf '#include <cstddef>\\n' > ${NARVAL_RUNTIME_BLOB_SRC}"
-    COMMAND sh -c "xxd -i -n narval_runtime_obj ${LIB_DIR}/runtime.o >> ${NARVAL_RUNTIME_BLOB_SRC}"
-    COMMAND sh -c "xxd -i -n narval_runtime_nostd_obj ${LIB_DIR}/runtime_nostd.o >> ${NARVAL_RUNTIME_BLOB_SRC}"
+    # No sh/xxd: the Windows build has neither (see cmake/NarvalEmbedBlob.cmake).
+    COMMAND ${CMAKE_COMMAND}
+            "-DOUT=${NARVAL_RUNTIME_BLOB_SRC}"
+            "-DSTD_OBJ=${LIB_DIR}/runtime.o"
+            "-DNOSTD_OBJ=${LIB_DIR}/runtime_nostd.o"
+            -P ${PROJECT_SOURCE_DIR}/cmake/NarvalEmbedBlob.cmake
     # Depend on the runtime OBJECT FILES, not only on the object libraries: the blob is
     # regenerated exactly when runtime.o / runtime_nostd.o change. Depending on the
     # custom targets instead would re-run this (2 MB of xxd + a recompile) every build.
-    DEPENDS ${LIB_DIR}/runtime.o ${LIB_DIR}/runtime_nostd.o
+    DEPENDS ${NARVAL_RUNTIME_BLOB_DEPS} ${PROJECT_SOURCE_DIR}/cmake/NarvalEmbedBlob.cmake
     COMMENT "Embedding runtime objects into the compiler"
     VERBATIM
 )
@@ -121,7 +173,21 @@ set_target_properties(Narval PROPERTIES ENABLE_EXPORTS ON)
 set_target_properties(Narval PROPERTIES OUTPUT_NAME narval)
 target_link_options(Narval PRIVATE -W -fPIE)
 target_include_directories(Narval PRIVATE ${PROJECT_SOURCE_DIR}/include)
-target_link_libraries(Narval PRIVATE NarvalAllCommon NarvalLexer NarvalParser NarvalChecker NarvalInteractive NarvalRuntimeObjs NarvalRuntimeShared NarvalNirDialect)
+# On Windows the runtime is a MinGW object that travels EMBEDDED in narval.exe (the compiler
+# writes it out and links the program with gcc), so none of it is linked into the compiler
+# executable. Accepted consequence: the REPL/JIT cannot resolve the nv_* symbols there.
+if(MSVC)
+    target_link_libraries(Narval PRIVATE NarvalAllCommon NarvalLexer NarvalParser NarvalChecker NarvalInteractive
+        ${NARVAL_AST_LINK_GROUP})
+else()
+    target_link_libraries(Narval PRIVATE NarvalAllCommon NarvalLexer NarvalParser NarvalChecker NarvalInteractive NarvalRuntimeObjs NarvalRuntimeShared
+        ${NARVAL_AST_LINK_GROUP})
+endif()
+# Windows: the REPL resolves the nv_* symbols through runtime.dll, and the build script asks
+# only for the Narval target — without this dependency the DLL would never be produced there.
+if(MSVC AND TARGET NarvalRuntimeDll)
+    add_dependencies(Narval NarvalRuntimeDll)
+endif()
 # The runtime .o files have to be produced before the blob is generated, and building
 # just the Narval target would otherwise leave them stale (the embedded copy is what
 # the linker uses, so a stale blob silently links an old runtime).
@@ -138,12 +204,8 @@ if(NARVAL_BUILD_LSP_ALL_PLATFORMS)
 endif()
 
 if(TARGET Narval)
-    target_compile_definitions(Narval PRIVATE
-        NARVAL_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
-        NARVAL_INCLUDE_DIR="${PROJECT_SOURCE_DIR}/include"
-        NARVAL_INSTALL_RUNTIME_DIR="${NARVAL_INSTALL_RUNTIME_DIR}"
-        NARVAL_DEV_MODE=$<BOOL:${NARVAL_DEV_MODE}>
-    )
+    # The paths come from NarvalProjectIncludes; only the mode flag is per-target.
+    target_compile_definitions(Narval PRIVATE NARVAL_DEV_MODE=$<BOOL:${NARVAL_DEV_MODE}>)
 endif()
 
 if(BUILD_TESTING)
@@ -166,11 +228,15 @@ if(TARGET NarvalLsp)
     )
 endif()
 
-install(TARGETS NarvalRuntimeShared
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/narval
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/narval
-)
+# No POSIX o runtime tambem e' uma shared library (o REPL resolve nv_* por ela); no
+# Windows so' existe o objeto MinGW embutido no compilador.
+if(NOT MSVC)
+    install(TARGETS NarvalRuntimeShared
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/narval
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/narval
+    )
+endif()
 
 install(FILES ${LIB_DIR}/runtime.o
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/narval
