@@ -9,7 +9,7 @@ public:
 
     ForeverStmtNode(std::vector<std::unique_ptr<Stmt>> body) : Stmt(NodeType::ForeverStatement), body(std::move(body)) {}
 
-    ~ForeverStmtNode() override = default;
+    ~ForeverStmtNode() override;
     
     Node* clone() const override {
         std::vector<std::unique_ptr<Stmt>> cloned_body;
