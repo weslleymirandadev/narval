@@ -7,6 +7,7 @@
 // Nó para expressão new (instanciação de classe)
 class NewExprNode : public Expr {
 public:
+    ~NewExprNode() override;
     std::string class_name;      // pode ser "Box<int>" para genéricos
     std::string base_class_name; // sempre "Box" (sem type args) — usado no codegen
     std::vector<std::unique_ptr<Expr>> arguments;
