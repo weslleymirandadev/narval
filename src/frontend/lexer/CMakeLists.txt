@@ -7,6 +7,6 @@ add_library(NarvalLexer lexer.cpp
 target_link_libraries(NarvalLexer PUBLIC NarvalProjectIncludes NarvalFrontendUtils)
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/lexer.test.cpp")
-    narval_add_test(NarvalLexerTest lexer.test.cpp ../module_manager.cpp)
+    narval_add_test(NarvalLexerTest lexer.test.cpp)
     target_link_libraries(NarvalLexerTest PRIVATE NarvalLexer)
 endif()
