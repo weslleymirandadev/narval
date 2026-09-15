@@ -15,7 +15,7 @@ public:
     DeclarationStmtNode(std::unique_ptr<Expr> tgt, std::unique_ptr<Expr> val, std::string tyyp)
         : Stmt(NodeType::DeclarationStatement), target(std::move(tgt)), value(std::move(val)), typ(tyyp), mutable_(false) {};
     
-    ~DeclarationStmtNode() override = default;
+    ~DeclarationStmtNode() override;
 
     Node* clone() const override {
         auto cloned_target = target ? std::unique_ptr<Expr>(static_cast<Expr*>(target->clone())) : nullptr;
