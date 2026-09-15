@@ -135,6 +135,10 @@ std::shared_ptr<nv::Type>& check_decl_stmt(Checker* ch, Node* node) {
                           "Array size mismatch: type requires exactly " +
                           std::to_string(declared_size) + " element(s), but " +
                           std::to_string(actual_elements) + " were provided.");
+                // The name exists with the type the program declared it with: leaving it
+                // unregistered makes every later use of it report "Identifier not found" on
+                // top of this error, which reads as a second, unrelated mistake.
+                ch->scope->put_key(name->symbol, dtype, decl->mutable_);
                 return ch->gettyptr("None");
             }
         }
@@ -145,6 +149,10 @@ std::shared_ptr<nv::Type>& check_decl_stmt(Checker* ch, Node* node) {
         } catch (std::runtime_error& e) {
             ch->error(decl->value.get(), std::string("Expected type '") + dtype->toString() + 
                                    "', but got '" + vtype->toString() + "'. " + e.what());
+            // Same recovery: a declaration that does not match its annotation still declares
+            // the name (with the annotated type), so the rest of the file is checked against
+            // it instead of cascading "not found" errors that hide the real one.
+            ch->scope->put_key(name->symbol, dtype, decl->mutable_);
             return ch->gettyptr("None");
         }
         
