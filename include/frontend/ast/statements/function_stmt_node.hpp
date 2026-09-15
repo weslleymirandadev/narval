@@ -41,7 +41,7 @@ public:
           return_type(std::move(ret_type)),
           body(std::move(body_stmts)) {}
 
-    ~FunctionStmtNode() override = default;
+    ~FunctionStmtNode() override;
 
     Node* clone() const override {
         std::vector<std::unique_ptr<Stmt>> cloned_body;
