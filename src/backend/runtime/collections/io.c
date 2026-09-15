@@ -5,6 +5,9 @@
 #include <string.h>
 #include <stdio.h>
 
+// Defined below; nv_write prints nested arrays through it before the definition.
+void nv_write_no_nl(Value* v);
+
 void nv_write(Value* v) {
     if (!v || (uintptr_t)v < 0x1000 || !v->obj || (uintptr_t)v->obj < 0x1000) {
         printf("None\n"); return;
