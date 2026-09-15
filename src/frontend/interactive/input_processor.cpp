@@ -12,7 +12,9 @@ InputProcessor::InputProcessor(const REPLConfig& config) : config(config) {}
 
 std::string InputProcessor::read_input(bool in_multiline) {
     std::string line;
-#ifdef HAVE_READLINE
+    // Windows has no readline, but line_editor has its own raw-mode reader there: without
+    // this branch the REPL on Windows had no syntax highlighting at all.
+#if defined(HAVE_READLINE) || defined(_WIN32)
     if (config.enable_readline) {
         return line_editor::read_line(
             in_multiline ? config.multiline_prompt : config.prompt,
@@ -25,7 +27,7 @@ std::string InputProcessor::read_input(bool in_multiline) {
             std::cout.flush();
         }
         std::getline(std::cin, line);
-#ifdef HAVE_READLINE
+#if defined(HAVE_READLINE) || defined(_WIN32)
     }
 #endif
     return line;
