@@ -11,7 +11,7 @@ struct AwaitExprNode : public Expr {
     explicit AwaitExprNode(std::unique_ptr<Node> op)
         : Expr(NodeType::AwaitExpression), operand(std::move(op)) {}
 
-    ~AwaitExprNode() override = default;
+    ~AwaitExprNode() override;
 
     Node* clone() const override {
         auto* n = new AwaitExprNode(std::unique_ptr<Node>(operand->clone()));
