@@ -1,21 +1,9 @@
-# NarvalEmbedBlob.cmake — gera o .cpp que carrega os objetos do runtime dentro do compilador.
-#
-# Mesmo formato do `xxd -i` que isso substitui, mas sem depender de `sh` nem de `xxd` (que o
-# build do Windows nao tem). O compilador escreve o blob num arquivo temporario e linka o
-# programa contra ele, entao o conteudo tem que ser o objeto byte a byte.
-#
-# Uso:
-#   cmake -DOUT=<saida.cpp> -DSTD_OBJ=<runtime.o> -DNOSTD_OBJ=<runtime_nostd.o> \
-#         -P cmake/NarvalEmbedBlob.cmake
-#
-# Um objeto ausente vira um array de tamanho zero: e' o caso do runtime no_std no Windows
-# (syscalls Linux), onde o compilador recusa @[no_std] antes de tentar linkar.
-
 if(NOT OUT)
-    message(FATAL_ERROR "NarvalEmbedBlob: OUT nao definido")
+    message(FATAL_ERROR "NarvalEmbedBlob: OUT not defined")
 endif()
 
 set(blob "#include <cstddef>\n")
+string(APPEND blob "#include \"frontend/embedded_assets.hpp\"\n")
 
 foreach(pair IN ITEMS
         "narval_runtime_obj=${STD_OBJ}"
@@ -35,5 +23,38 @@ foreach(pair IN ITEMS
         string(APPEND blob "unsigned int ${name}_len = 0;\n")
     endif()
 endforeach()
+
+# The stdlib table: one array per file (name of the indexed symbol, to avoid depending on
+# valid identifier characters) and the list {name, bytes, size} that the runtime queries.
+if(STDLIB_FILES)
+    set(index 0)
+    set(entries "")
+    foreach(filename IN LISTS STDLIB_FILES)
+        set(path "${STDLIB_DIR}/${filename}")
+        if(NOT EXISTS "${path}")
+            message(FATAL_ERROR "NarvalEmbedBlob: stdlib file not found: ${path}")
+        endif()
+        file(READ "${path}" hex HEX)
+        string(LENGTH "${hex}" hexlen)
+        math(EXPR nbytes "${hexlen} / 2")
+        string(REGEX REPLACE "(..)" "0x\\1," bytes "${hex}")
+        string(APPEND blob "static unsigned char narval_stdlib_${index}_data[] = {${bytes}};\n")
+        string(APPEND blob
+            "static const unsigned int narval_stdlib_${index}_len = ${nbytes};\n")
+        string(APPEND blob
+            "static const char narval_stdlib_${index}_name[] = \"${filename}\";\n")
+        # The entry goes into the table (built at the end, after declarations).
+        set(entries "${entries}{narval_stdlib_${index}_name, narval_stdlib_${index}_data, narval_stdlib_${index}_len},\n")
+        math(EXPR index "${index} + 1")
+    endforeach()
+
+    # Without `static`: the header declares `extern const`, and the previous extern is what
+    # provides external linkage to a const object in namespace scope (by default it is internal).
+    string(APPEND blob "const narval::EmbeddedFile narval_stdlib_files[] = {\n${entries}};\n")
+    string(APPEND blob "const unsigned int narval_stdlib_files_count = ${index};\n")
+else()
+    string(APPEND blob "const narval::EmbeddedFile narval_stdlib_files[] = {{nullptr, nullptr, 0}};\n")
+    string(APPEND blob "const unsigned int narval_stdlib_files_count = 0;\n")
+endif()
 
 file(WRITE "${OUT}" "${blob}")
