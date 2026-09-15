@@ -1,27 +1,5 @@
 # Narval
 
-Linguagem de programação compilada multiparadigma de alto desempenho com tipagem inferida que usa o conceito de Ownership & Borrowing implícito e inferido (SIM, sem anotações explícitas, sem erros de borrow na cara do usuário). O compilador assume a responsabilidade por memória, paralelismo e segurança — sem impor um novo modelo mental ao programador.
+A high-performance, multiparadigm compiled programming language with inferred typing that uses implicit and inferred Ownership & Borrowing concepts (YES, without explicit annotations, without borrow errors in the user's face). The compiler assumes responsibility for memory, parallelism, and safety — without imposing a new mental model on the programmer.
 
-Narval transfere a responsabilidade operacional do código para o compilador, mantendo previsibilidade, performance e controle quando necessário. Se é possível provar que é seguro, Narval faz automaticamente. Diferente de Rust, Narval não tenta ensinar o programador a escrever código correto, ela tenta fazer código comum se comportar como código expert.
-
-# Features da linguagem
-
-- Compilada
-- Tipagem inferida
-- Multiparadigma
-- Paralelismo massivo
-- Interoperabilidade com C/C++, Assembly, Rust, Python e linguagens LLVM-based
-- Tooling completo
-- Modo REPL
-- Modo Notebooks (inspirado em Python)
-- Frontend própio
-- Backend LLVM
-- Geração de código altamente otimizada
-- Sem Garbage Collector
-- Ownership & Borrowing (inspirado em Rust)
-  - Sem anotações explícitas
-  - Sem erros de borrow na cara do usuário
-  - Infere ownership
-  - Decide move/borrow/clone
-  - Gerencia lifetime automaticamente
-  - Ownership explicável com flag `--explain-ownership` no build
+Narval transfers the operational responsibility of the code to the compiler, while preserving predictability, performance, and control when needed. If it can be proven safe, Narval does it automatically. Unlike Rust, Narval does not try to teach the programmer how to write correct code; it tries to make ordinary code behave like expert code.
