@@ -38,7 +38,7 @@ public:
         body(std::move(body)),
         else_block(std::move(else_block)) {}
 
-    ~ForStmtNode() override = default;
+    ~ForStmtNode() override;
 
     Node* clone() const override {
         std::vector<std::unique_ptr<Expr>> cloned_bindings;
