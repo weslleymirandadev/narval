@@ -9,6 +9,7 @@ struct Type;
 
 class ClosureExprNode : public Expr {
 public:
+    ~ClosureExprNode() override;
     std::vector<std::pair<std::string, std::string>> parameters;
     std::string return_type;
     CodeBlock body;
