@@ -4,6 +4,7 @@
 // Nó para expressão this
 class SelfExprNode : public Expr {
 public:
+    ~SelfExprNode() override;
     SelfExprNode() : Expr(NodeType::SelfExpression) {}
     
     Node* clone() const override {
