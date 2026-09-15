@@ -41,14 +41,30 @@ target_link_libraries(NarvalFrontendUtils PUBLIC NarvalProjectIncludes)
 add_library(NarvalAstAnchors STATIC src/frontend/ast_node_anchors.cpp)
 target_link_libraries(NarvalAstAnchors PUBLIC NarvalProjectIncludes)
 
-# NarvalAstAnchors, NarvalNirDialect and NarvalFrontendUtils are mutually dependent: the AST
-# vtables (anchors) reference every nir_codegen() implementation (NirDialect) and the codegen
-# objects reference the dtors again. ld scans archives left to right, so it needs a rescanning
-# group; MSVC's linker resolves across libraries and does not implement the feature.
+# Module resolution is an archive of its own: it is the front-end's module/stdlib search and the
+# language server links it too (it used to be a source of the compiler executable only, so the
+# server could not resolve a single stdlib import).
+add_library(NarvalModuleManager STATIC src/frontend/module_manager.cpp)
+target_link_libraries(NarvalModuleManager PUBLIC NarvalProjectIncludes)
+
+# The front-end archives are mutually dependent: the AST vtables (NarvalAstAnchors) reference
+# every nir_codegen() implementation (NarvalNirDialect) and the codegen references the dtors
+# again, module resolution references the lexer and the parser, and the parser and the checker
+# reference the vtables. ld scans an archive once, left to right, and where CMake happens to
+# place them is not something to rely on — a rescanning group states the dependency instead.
+# MSVC's linker resolves across libraries and does not implement the feature.
 if(MSVC)
-    set(NARVAL_AST_LINK_GROUP NarvalAstAnchors NarvalNirDialect NarvalFrontendUtils)
+    set(NARVAL_CORE_LINK
+        NarvalModuleManager NarvalFrontendUtils NarvalAstAnchors
+        NarvalLexer NarvalParser NarvalChecker NarvalInteractive NarvalNirDialect)
+    set(NARVAL_LSP_CORE_LINK
+        NarvalModuleManager NarvalFrontendUtils NarvalAstAnchors
+        NarvalLexer NarvalParser NarvalChecker)
 else()
-    set(NARVAL_AST_LINK_GROUP "$<LINK_GROUP:RESCAN,NarvalAstAnchors,NarvalNirDialect,NarvalFrontendUtils>")
+    set(NARVAL_CORE_LINK
+        "$<LINK_GROUP:RESCAN,NarvalModuleManager,NarvalFrontendUtils,NarvalAstAnchors,NarvalLexer,NarvalParser,NarvalChecker,NarvalInteractive,NarvalNirDialect>")
+    set(NARVAL_LSP_CORE_LINK
+        "$<LINK_GROUP:RESCAN,NarvalModuleManager,NarvalFrontendUtils,NarvalAstAnchors,NarvalLexer,NarvalParser,NarvalChecker>")
 endif()
 
 execute_process(COMMAND llvm-config --cxxflags OUTPUT_VARIABLE LLVM_CXX_FLAGS)
@@ -97,8 +113,7 @@ function(narval_add_test target_name)
         set(_exclude_from_all EXCLUDE_FROM_ALL)
     endif()
     add_executable(${target_name} ${_exclude_from_all} ${ARGN})
-    target_link_libraries(${target_name} PRIVATE NarvalAllCommon NarvalLexer NarvalParser NarvalChecker NarvalRuntimeObjs
-        ${NARVAL_AST_LINK_GROUP})
+    target_link_libraries(${target_name} PRIVATE NarvalAllCommon ${NARVAL_CORE_LINK} NarvalRuntimeObjs)
     target_include_directories(${target_name} PRIVATE ${PROJECT_SOURCE_DIR}/include)
     target_link_options(${target_name} PRIVATE -W -fPIE)
 endfunction()
@@ -162,7 +177,7 @@ add_custom_command(
 )
 set_source_files_properties(${NARVAL_RUNTIME_BLOB_SRC} PROPERTIES GENERATED TRUE)
 
-add_executable(Narval src/main.cpp src/frontend/module_manager.cpp
+add_executable(Narval src/main.cpp
     ${NARVAL_RUNTIME_BLOB_SRC})   # runtime embedded in the compiler (see src/backend/runtime)
 
 # The REPL JITs the REPL program and resolves runtime symbols (nv_box_*, the
@@ -177,11 +192,10 @@ target_include_directories(Narval PRIVATE ${PROJECT_SOURCE_DIR}/include)
 # writes it out and links the program with gcc), so none of it is linked into the compiler
 # executable. Accepted consequence: the REPL/JIT cannot resolve the nv_* symbols there.
 if(MSVC)
-    target_link_libraries(Narval PRIVATE NarvalAllCommon NarvalLexer NarvalParser NarvalChecker NarvalInteractive
-        ${NARVAL_AST_LINK_GROUP})
+    target_link_libraries(Narval PRIVATE NarvalAllCommon ${NARVAL_CORE_LINK})
 else()
-    target_link_libraries(Narval PRIVATE NarvalAllCommon NarvalLexer NarvalParser NarvalChecker NarvalInteractive NarvalRuntimeObjs NarvalRuntimeShared
-        ${NARVAL_AST_LINK_GROUP})
+    target_link_libraries(Narval PRIVATE NarvalAllCommon ${NARVAL_CORE_LINK}
+        NarvalRuntimeObjs NarvalRuntimeShared)
 endif()
 # Windows: the REPL resolves the nv_* symbols through runtime.dll, and the build script asks
 # only for the Narval target — without this dependency the DLL would never be produced there.
