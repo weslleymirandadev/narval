@@ -10,7 +10,7 @@ public:
     ThrowStatementNode(std::unique_ptr<Node> exception) 
         : Stmt(NodeType::ThrowStatement), exception(std::move(exception)) {}
     
-    ~ThrowStatementNode() override = default;
+    ~ThrowStatementNode() override;
     
     Node* clone() const override {
         auto cloned_exception = exception ? std::unique_ptr<Node>(exception->clone()) : nullptr;
