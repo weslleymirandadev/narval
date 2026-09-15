@@ -428,6 +428,14 @@ std::optional<SemanticToken> classify_token(const std::vector<Token>& tokens, si
     } else if (token.type == TokenType::NUMBER) {
         type = Number;
     } else if (is_operator(token.type)) {
+        // `<` and `>` are left to the grammar on purpose: TextMate tells a comparison
+        // (keyword.operator.comparison) from generic brackets (punctuation.definition.
+        // typeparameters), and a semantic token overrides both with the theme's
+        // keyword.operator — which is how the brackets of `Tensor<float, [2, 3]>` came out
+        // in the operator colour (red, in that theme) instead of the type-punctuation one.
+        if (token.type == TokenType::LT || token.type == TokenType::GT) {
+            return std::nullopt;
+        }
         type = Operator;
     } else if (token.type == TokenType::IDENTIFIER) {
         const Token* prev = index > 0 ? &tokens[index - 1] : nullptr;
