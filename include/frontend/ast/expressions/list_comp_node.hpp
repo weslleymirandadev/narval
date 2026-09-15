@@ -22,7 +22,7 @@ public:
         if_cond(std::move(cond)),
         else_expr(std::move(else_e)) {}
 
-    ~ListCompNode() override = default;
+    ~ListCompNode() override;
 
     Node* clone() const override {
         std::vector<std::pair<std::unique_ptr<Expr>, std::unique_ptr<Expr>>> cloned_gens;
