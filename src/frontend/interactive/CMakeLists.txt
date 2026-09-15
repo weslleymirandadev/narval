@@ -114,6 +114,8 @@ target_compile_definitions(NarvalInteractive PRIVATE
     JIT_OPTIMIZATION_LEVEL=1
     FAST_EXPRESSION_EVAL=1
     NARVAL_USE_NIR=1
+    # The REPL and the notebook prompts print it (include/frontend/version.hpp).
+    NARVAL_VERSION="${NARVAL_VERSION}"
 )
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
