@@ -11,7 +11,7 @@ public:
     KeyValueNode(std::unique_ptr<Expr> key, std::unique_ptr<Expr> value)
         : Expr(NodeType::KeyValue), key(std::move(key)), value(std::move(value)) {}
 
-    ~KeyValueNode() override = default;
+    ~KeyValueNode() override;
 
     Node* clone() const override {
         auto cloned_key = key ? std::unique_ptr<Expr>(static_cast<Expr*>(key->clone())) : nullptr;
