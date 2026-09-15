@@ -29,7 +29,7 @@ public:
         catches(std::move(catches)),
         finally_body(std::move(finally_body)) {}
 
-    ~TryStatementNode() override = default;
+    ~TryStatementNode() override;
 
     Node* clone() const override {
         std::vector<std::unique_ptr<Node>> cloned_try;
