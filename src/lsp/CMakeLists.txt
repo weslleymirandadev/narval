@@ -54,7 +54,18 @@ target_include_directories(NarvalLspCore PUBLIC
 # The server needs the front-end only: no file in src/lsp/ includes the NIR/MLIR side, and
 # since the AST nodes' vtables are emitted in the front-end (src/frontend/ast_node_anchors.cpp)
 # nothing references the back-end either.
-target_link_libraries(NarvalLspCore PUBLIC NarvalProjectIncludes ${NARVAL_LSP_CORE_LINK})
+# Ordered, not grouped: the server has no NIR/MLIR cycle to resolve (nothing here links
+# NarvalNirDialect), so naming the archives in dependency order is enough — module resolution
+# references the lexer and the parser, they reference the vtables in the anchors, and the
+# anchors' nir_codegen slots are satisfied by this executable's own ast_codegen_stubs.cpp.
+target_link_libraries(NarvalLspCore PUBLIC
+    NarvalProjectIncludes
+    NarvalModuleManager
+    NarvalLexer
+    NarvalParser
+    NarvalChecker
+    NarvalAstAnchors
+)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(NarvalLspCore PRIVATE -g0 -O2)
 endif()
