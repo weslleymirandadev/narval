@@ -1,5 +1,10 @@
 #include "frontend/interactive/repl_state.hpp"
+#ifdef _WIN32
+// POSIX dlfcn is unavailable on Windows: the shim maps it onto LoadLibrary/GetProcAddress.
+#include "backend/runtime/win32_compat.h"
+#else
 #include <dlfcn.h>
+#endif
 #include <fstream>
 #include <iostream>
 #include <filesystem>
@@ -10,6 +15,10 @@
 #include <llvm/Bitcode/BitcodeReader.h>
 
 namespace nv {
+
+#ifndef NARVAL_INSTALL_RUNTIME_DIR
+#define NARVAL_INSTALL_RUNTIME_DIR ""   // the build defines it (see CMakeLists.txt)
+#endif
 
 REPLState::REPLState()
     : llvm_context(std::make_unique<llvm::LLVMContext>()),
@@ -71,16 +80,26 @@ void REPLState::register_runtime_functions() {
     if (!dlsym(RTLD_DEFAULT, "nv_write")) {
         std::string runtime_path;
         const char* narval_home = std::getenv("NARVAL_HOME");
+#ifdef _WIN32
+        // Nothing of the runtime is linked into the compiler on Windows (it travels as an
+        // embedded MinGW object), so there the REPL needs the shared library on disk. Same
+        // layout as POSIX, with the DLL name.
+        const char* rt_lib = "runtime.dll";
+        const char* rt_build_dir = NARVAL_SOURCE_DIR "/build-win/lib/";
+#else
+        const char* rt_lib = "runtime.so";
+        const char* rt_build_dir = NARVAL_SOURCE_DIR "/build/lib/";
+#endif
         if (narval_home) {
-            runtime_path = std::string(narval_home) + "/runtime.so";
+            runtime_path = std::string(narval_home) + "/" + rt_lib;
         } else {
-            std::string dev_runtime = std::string(NARVAL_SOURCE_DIR) + "/build/lib/runtime.so";
+            std::string dev_runtime = std::string(rt_build_dir) + rt_lib;
             std::ifstream check_file(dev_runtime);
             if (check_file.good()) {
                 runtime_path = dev_runtime;
                 std::cout << "Using development runtime from: " << runtime_path << std::endl;
             } else {
-                runtime_path = "/usr/lib/narval/runtime.so";
+                runtime_path = std::string(NARVAL_INSTALL_RUNTIME_DIR) + "/" + rt_lib;
                 std::cout << "Using production runtime from: " << runtime_path << std::endl;
             }
             check_file.close();
