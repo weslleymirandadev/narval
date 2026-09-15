@@ -10,7 +10,7 @@ public:
     ArrayExprNode(std::vector<std::unique_ptr<Expr>> elements)
         : Expr(NodeType::ArrayExpression), elements(std::move(elements)) {}
 
-    ~ArrayExprNode() override = default;
+    ~ArrayExprNode() override;
 
     Node* clone() const override {
         std::vector<std::unique_ptr<Expr>> cloned_elements;
