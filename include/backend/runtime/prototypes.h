@@ -45,8 +45,9 @@ typedef struct NvTypeObject {
     
 } NvTypeObject;
 
-// Macro para header de NvObject
-#define NvObject_HEAD NvObject ob_base;
+// Macro para header de NvObject. Sem o ';' final: os usos escrevem "NvObject_HEAD;" e o
+// ';' duplicado dentro do struct e' erro em modo C no MSVC (C2059) — o GCC aceita calado.
+#define NvObject_HEAD NvObject ob_base
 
 // Tipos primitivos base (todos derivam destes)
 #define NV_INT_BASE      1   // int32 storage
@@ -547,6 +548,24 @@ void nv_install_builtin_deallocs(void);
 // Relaxed on increment (the relevant ordering comes from whoever
 // publishes the pointer) and acquire/release on decrement, which may release it. Compiler
 // builtins instead of <stdatomic.h> because this header is also included by C++.
+#if defined(_MSC_VER)
+#include <intrin.h>
+static inline void nv_arc_inc(NvObject* obj) {
+    if (obj) {
+        _InterlockedIncrement((volatile long*)&obj->ref_count);
+    }
+}
+
+static inline void nv_arc_dec(NvObject* obj) {
+    if (obj && _InterlockedDecrement((volatile long*)&obj->ref_count) == 0) {
+        if (obj->ob_type && obj->ob_type->tp_dealloc) {
+            obj->ob_type->tp_dealloc(obj);
+        } else {
+            free(obj);
+        }
+    }
+}
+#else
 static inline void nv_arc_inc(NvObject* obj) {
     if (obj) {
         __atomic_add_fetch(&obj->ref_count, 1, __ATOMIC_RELAXED);
@@ -562,6 +581,7 @@ static inline void nv_arc_dec(NvObject* obj) {
         }
     }
 }
+#endif
 
 // Names already used by the rest of the runtime: atomic from this point onward.
 static inline void nv_incref(NvObject* obj) { nv_arc_inc(obj); }
