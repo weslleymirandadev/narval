@@ -14,6 +14,7 @@ struct EnumVariant {
 
 class EnumStmtNode : public Stmt {
 public:
+    ~EnumStmtNode() override;
     std::string name;
     std::vector<EnumVariant> variants;
 
