@@ -2,7 +2,9 @@
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
-#include "backend/runtime/prototypes.h"
+// nv_runtime.h brings prototypes.h plus the value constructors (create_int/create_float)
+// this file calls; without it the declarations are implicit, which GCC >= 14 rejects.
+#include "backend/runtime/nv_runtime.h"
 
 //  NVTensor object 
 
