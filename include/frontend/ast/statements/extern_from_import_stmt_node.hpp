@@ -32,7 +32,7 @@ public:
           imports(std::move(items)),
           is_wildcard(wildcard), wildcard_alias(std::move(walias)) {}
 
-    ~ExternFromImportStmtNode() override = default;
+    ~ExternFromImportStmtNode() override;
 
     Node* clone() const override {
         auto* n = new ExternFromImportStmtNode(
