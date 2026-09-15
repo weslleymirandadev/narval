@@ -5,6 +5,7 @@
 #include "frontend/parser/parser.hpp"
 #include "frontend/module_manager.hpp"
 #include "frontend/embedded_assets.hpp"
+#include "frontend/version.hpp"
 #include "frontend/checker/checker.hpp"
 #include "frontend/attributes/attribute_mapper.hpp"
 #include "backend/nir/NIRGenerationContext.hpp"
@@ -750,7 +751,9 @@ int run_repl_mode() {
         config.show_prompt = true;
         config.show_errors = true;
         config.show_warnings = true;
-        config.prompt = ">>> ";
+        // Which compiler this session is: the prompt carries the version, so a screenshot or a
+        // pasted transcript says it without anyone having to ask.
+        config.prompt = nv::version_prefix() + " >>> ";
         config.multiline_prompt = "... ";
         config.output_prompt = "<<< ";
         config.label_write_output = true;
@@ -850,11 +853,13 @@ int main(int argc, char* argv[]) {
         } else if (arg.substr(0, 2) == "-L" && arg.size() > 2) {
             extra_libs += arg.substr(2) + " ";
         } else if (arg == "--version" || arg == "-v" || arg == "-V") {
-            std::cout << "narval " << NARVAL_VERSION
+            std::cout << nv::version_prefix()
                       << " (" << llvm::sys::getDefaultTargetTriple() << ")\n";
             return 0;
         } else if (arg == "--help" || arg == "-h") {
-            std::cout << "Usage: narval [options] [file.nv]\n";
+            std::cout << nv::version_prefix()
+                      << " (" << llvm::sys::getDefaultTargetTriple() << ")\n";
+            std::cout << "\nUsage: narval [options] [file.nv]\n";
             std::cout << "\nOptions:\n";
             std::cout << "  --version, -v      Show the version and the host triple\n";
             std::cout << "  --repl, -i, -r     Start the interactive REPL\n";
