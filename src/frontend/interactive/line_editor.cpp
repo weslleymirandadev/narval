@@ -1,6 +1,7 @@
 #include "frontend/interactive/line_editor.hpp"
 #include "frontend/syntax_highlighter.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstdio>
 #include <iostream>
@@ -15,12 +16,22 @@
 #endif
 #endif
 
+#ifdef _WIN32
+// windows.h defines min/max as macros, which turns std::min below into a syntax error.
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <conio.h>
+#endif
+
 namespace nv::line_editor {
 namespace {
 
-#ifdef HAVE_READLINE
+// ── Rendering ────────────────────────────────────────────────────────────────
+// Shared by both readers: the readline redisplay hook and the raw-mode reader used on
+// Windows (there is no readline there, so the line is redrawn by hand after every key).
 std::string active_prompt;
-bool key_bindings_installed = false;
 int rendered_rows = 0;
 constexpr int TAB_WIDTH = 4;
 
@@ -31,36 +42,6 @@ struct CursorPosition {
 
 CursorPosition rendered_cursor;
 CursorPosition rendered_end;
-
-int insert_tab(int, int) {
-    rl_insert_text("\t");
-    return 0;
-}
-
-void install_key_bindings() {
-    if (key_bindings_installed) {
-        return;
-    }
-
-    rl_bind_key('\t', insert_tab);
-
-    rl_bind_keyseq("\\e[D", rl_backward_char);
-    rl_bind_keyseq("\\e[C", rl_forward_char);
-    rl_bind_keyseq("\\e[A", rl_get_previous_history);
-    rl_bind_keyseq("\\e[B", rl_get_next_history);
-
-    rl_bind_keyseq("\\e[H", rl_beg_of_line);
-    rl_bind_keyseq("\\eOH", rl_beg_of_line);
-    rl_bind_keyseq("\\e[1~", rl_beg_of_line);
-    rl_bind_keyseq("\\e[7~", rl_beg_of_line);
-
-    rl_bind_keyseq("\\e[F", rl_end_of_line);
-    rl_bind_keyseq("\\eOF", rl_end_of_line);
-    rl_bind_keyseq("\\e[4~", rl_end_of_line);
-    rl_bind_keyseq("\\e[8~", rl_end_of_line);
-
-    key_bindings_installed = true;
-}
 
 int row_count(const std::string& text) {
     int rows = 1;
@@ -131,12 +112,8 @@ void finish_rendered_line() {
     std::cout.flush();
 }
 
-void highlighted_redisplay() {
-    const char* buffer = rl_line_buffer ? rl_line_buffer : "";
-    const size_t point = rl_point >= 0 ? static_cast<size_t>(rl_point) : 0;
-    const int end = rl_end >= 0 ? rl_end : 0;
-
-    std::string line(buffer, static_cast<size_t>(end));
+// Draw the prompt plus the highlighted line, leaving the cursor where `point` is.
+void render_line(const std::string& line, size_t point) {
     std::string plain_render = active_prompt + line;
     std::string highlighted = active_prompt + syntax_highlighter::highlight_source(line);
 
@@ -150,9 +127,129 @@ void highlighted_redisplay() {
     rendered_rows = row_count(plain_render);
     std::cout.flush();
 }
+
+#ifdef HAVE_READLINE
+bool key_bindings_installed = false;
+
+int insert_tab(int, int) {
+    rl_insert_text("\t");
+    return 0;
+}
+
+void install_key_bindings() {
+    if (key_bindings_installed) {
+        return;
+    }
+
+    rl_bind_key('\t', insert_tab);
+
+    rl_bind_keyseq("\\e[D", rl_backward_char);
+    rl_bind_keyseq("\\e[C", rl_forward_char);
+    rl_bind_keyseq("\\e[A", rl_get_previous_history);
+    rl_bind_keyseq("\\e[B", rl_get_next_history);
+
+    rl_bind_keyseq("\\e[H", rl_beg_of_line);
+    rl_bind_keyseq("\\eOH", rl_beg_of_line);
+    rl_bind_keyseq("\\e[1~", rl_beg_of_line);
+    rl_bind_keyseq("\\e[7~", rl_beg_of_line);
+
+    rl_bind_keyseq("\\e[F", rl_end_of_line);
+    rl_bind_keyseq("\\eOF", rl_end_of_line);
+    rl_bind_keyseq("\\e[4~", rl_end_of_line);
+    rl_bind_keyseq("\\e[8~", rl_end_of_line);
+
+    key_bindings_installed = true;
+}
+
+void highlighted_redisplay() {
+    const std::string line(rl_line_buffer ? rl_line_buffer : "",
+                           rl_end >= 0 ? static_cast<size_t>(rl_end) : 0);
+    render_line(line, rl_point >= 0 ? static_cast<size_t>(rl_point) : 0);
+}
+#endif
+
+#ifdef _WIN32
+// A console only interprets the ANSI escapes the highlighter emits after being asked to
+// (VT processing); without this the line comes out full of "←[38;2;...". CP_UTF8 keeps
+// accented source from turning into mojibake.
+void enable_colored_output_impl() {
+    HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD mode = 0;
+    if (out != INVALID_HANDLE_VALUE && out != nullptr && GetConsoleMode(out, &mode)) {
+        SetConsoleMode(out, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+    }
+    SetConsoleOutputCP(CP_UTF8);
+}
+
+// Raw-mode reader: no readline on Windows, so the console is switched to character-at-a-time
+// input and the line is re-rendered on every key, which is what makes the colours show up
+// there too. Arrow keys and function keys arrive as a 0/0xE0 prefix and are ignored (there is
+// no history to walk: that lives in readline).
+std::string read_line_windows(const std::string& prompt) {
+    HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
+    HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD in_mode = 0;
+    if (in == INVALID_HANDLE_VALUE || in == nullptr || out == INVALID_HANDLE_VALUE ||
+        out == nullptr || !GetConsoleMode(in, &in_mode)) {
+        // Redirected input/output (a script feeding the REPL): no editing, no colours.
+        std::cout << prompt;
+        std::cout.flush();
+        std::string line;
+        std::getline(std::cin, line);
+        return line;
+    }
+
+    enable_colored_output_impl();
+    SetConsoleMode(in, (in_mode & ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT))
+                           | ENABLE_EXTENDED_FLAGS);
+
+    active_prompt = prompt;
+    rendered_rows = 0;
+    rendered_cursor = {};
+    rendered_end = {};
+
+    std::string line;
+    render_line(line, 0);
+
+    for (;;) {
+        int ch = _getch();
+        if (ch == '\r' || ch == '\n') {
+            break;
+        }
+        if (ch == 3) {
+            // Ctrl+C cancels the line: the console is in raw mode, so it arrives as a
+            // character instead of killing the process. An empty line is a no-op for the REPL.
+            line.clear();
+            break;
+        }
+        if (ch == 8 || ch == 127) {
+            if (!line.empty()) line.pop_back();
+        } else if (ch == 0 || ch == 224) {
+            _getch();  // arrow/function key: the second byte carries no text
+            continue;
+        } else if (ch >= 32 || ch == '\t') {
+            line.push_back(static_cast<char>(ch));
+        }
+        render_line(line, line.size());
+    }
+
+    finish_rendered_line();
+    SetConsoleMode(in, in_mode);
+    active_prompt.clear();
+    rendered_rows = 0;
+    rendered_cursor = {};
+    rendered_end = {};
+    return line;
+}
 #endif
 
 } // namespace
+
+void enable_colored_output() {
+#ifdef _WIN32
+    enable_colored_output_impl();
+#endif
+}
 
 std::string read_line(const std::string& prompt, bool add_to_history_enabled) {
 #ifdef HAVE_READLINE
@@ -194,6 +291,9 @@ std::string read_line(const std::string& prompt, bool add_to_history_enabled) {
         add_history(line.c_str());
     }
     return line;
+#elif defined(_WIN32)
+    (void)add_to_history_enabled;  // history lives in readline, which Windows does not have
+    return read_line_windows(prompt);
 #else
     std::cout << prompt;
     std::cout.flush();
