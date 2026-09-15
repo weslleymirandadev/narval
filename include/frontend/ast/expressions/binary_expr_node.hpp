@@ -27,7 +27,7 @@ public:
     BinaryExprNode(std::string operator_, std::unique_ptr<Expr> lhs, std::unique_ptr<Expr> rhs)
         : Expr(NodeType::BinaryExpression), op(std::move(operator_)), left(std::move(lhs)), right(std::move(rhs)) {}
 
-    ~BinaryExprNode() override = default;
+    ~BinaryExprNode() override;
 
     Node* clone() const override {
         auto cloned_left = left ? std::unique_ptr<Expr>(static_cast<Expr*>(left->clone())) : nullptr;
