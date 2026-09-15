@@ -3,6 +3,7 @@
 
 class PropagateStmtNode : public Stmt {
 public:
+    ~PropagateStmtNode() override;
     PropagateStmtNode() : Stmt(NodeType::PropagateStatement) {}
 
     Node* clone() const override {
