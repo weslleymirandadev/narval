@@ -621,6 +621,23 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
 
         if (object_only) return 0;
 
+        // A cross target: the object is the deliverable and the host toolchain has no part in it.
+        // BuildTarget::link_with_host_toolchain names those targets (only native/host can be linked
+        // here — it was never read, so `narval --build=xtensa prog.nv` emitted an Xtensa object and
+        // then handed it to the host gcc). The name is the one the help documents: prog-xtensa.o.
+        if (!build_target.link_with_host_toolchain) {
+            const std::string cross_path =
+                stem + "-" + normalize_target_name(build_target.name) + ".o";
+            std::error_code rename_ec;
+            std::filesystem::rename(obj_path, cross_path, rename_ec);
+            if (rename_ec) {
+                llvm::errs() << "NIR: cannot write " << cross_path << ": "
+                             << rename_ec.message() << "\n";
+                return 1;
+            }
+            return 0;
+        }
+
         // Resolve runtime path
         std::string nir_runtime_path, nir_runtime_nostd_path;
         const char* narval_home_nir = std::getenv("NARVAL_HOME");
@@ -865,7 +882,7 @@ int main(int argc, char* argv[]) {
             std::cout << "  --repl, -i, -r     Start the interactive REPL\n";
             std::cout << "  --notebook, -n     Start the interactive notebook\n";
             std::cout << "  --build, -b        Compile for the current target without running\n";
-            std::cout << "  --build=<target>   Compile for another LLVM target (ex: --build=xtensa)\n";
+            std::cout << "  --build=<target>   Compile for another LLVM target (ex: --build=xtensa -> prog-xtensa.o)\n";
             std::cout << "  --enabled-targets  List LLVM targets/triples enabled in this build\n";
             std::cout << "  --object, -c       Compile to .o without linking\n";
             std::cout << "  -L <lib>           Link an extra library (ex: ./libfoo.so)\n";
