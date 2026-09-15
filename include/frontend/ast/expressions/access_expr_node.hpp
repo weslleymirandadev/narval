@@ -14,7 +14,7 @@ public:
     AccessExprNode(std::unique_ptr<Expr> expr, std::unique_ptr<Expr> index)
         : Expr(NodeType::AccessExpression), expr(std::move(expr)), index(std::move(index)) {}
 
-    ~AccessExprNode() override = default;
+    ~AccessExprNode() override;
 
     Node* clone() const override {
         auto cloned_expr = expr ? std::unique_ptr<Expr>(static_cast<Expr*>(expr->clone())) : nullptr;
