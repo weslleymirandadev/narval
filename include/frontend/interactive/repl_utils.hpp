@@ -8,7 +8,7 @@
 
 namespace nv {
 
-class Type;
+struct Type;
 
 namespace repl_utils {
 	bool is_brace_balanced(const std::string& input);
