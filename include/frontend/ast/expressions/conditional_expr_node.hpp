@@ -17,7 +17,7 @@ public:
         condition(std::move(c)),
         false_expr(std::move(f)) {}
 
-    ~ConditionalExprNode() override = default;
+    ~ConditionalExprNode() override;
 
     Node* clone() const override {
         auto* node = new ConditionalExprNode(
