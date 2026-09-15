@@ -12,7 +12,7 @@ class MatchStmtNode : public Stmt {
     MatchStmtNode(std::unique_ptr<Expr> tgt, std::vector<std::unique_ptr<Expr>> cases, std::vector<CodeBlock> bodies)
     : Stmt(NodeType::MatchStatement), target(std::move(tgt)), cases(std::move(cases)), bodies(std::move(bodies)) {}
 
-    ~MatchStmtNode() override = default;
+    ~MatchStmtNode() override;
     
     Node* clone() const override {
         std::unique_ptr<Expr> mark = std::unique_ptr<Expr>(static_cast<Expr*>(target->clone()));
