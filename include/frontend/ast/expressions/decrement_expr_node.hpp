@@ -9,7 +9,7 @@ public:
     DecrementExprNode(std::unique_ptr<Expr> operand)
         : Expr(NodeType::DecrementExpression), operand(std::move(operand)) {}
 
-    ~DecrementExprNode() override = default;
+    ~DecrementExprNode() override;
 
     Node* clone() const override {
         auto cloned_operand = operand ? std::unique_ptr<Expr>(static_cast<Expr*>(operand->clone())) : nullptr;
