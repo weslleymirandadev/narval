@@ -9,6 +9,6 @@ target_link_libraries(NarvalChecker PUBLIC NarvalProjectIncludes NarvalFrontendU
 include_directories(${PROJECT_SOURCE_DIR}/include)
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/checker.test.cpp")
-    narval_add_test(NarvalCheckerTest checker.test.cpp ../module_manager.cpp)
+    narval_add_test(NarvalCheckerTest checker.test.cpp)
     target_link_libraries(NarvalCheckerTest PRIVATE NarvalChecker)
 endif()
