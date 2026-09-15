@@ -5,7 +5,7 @@ class BreakStmtNode : public Stmt {
 public:
     BreakStmtNode() : Stmt(NodeType::BreakStatement) {}
 
-    ~BreakStmtNode() override = default;
+    ~BreakStmtNode() override;
     
     Node* clone() const override {
         auto* node = new BreakStmtNode();
