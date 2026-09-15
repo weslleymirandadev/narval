@@ -11,13 +11,17 @@
 // newlines and backslashes escaped as \t, \n and \\ so a value cannot break the
 // shape. stdlib/sqlite.nv splits that back into rows.
 
-#include <dlfcn.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef _WIN32
+#include <dlfcn.h>
+#endif
+// dlopen/dlsym on both platforms: POSIX dlfcn here, the Win32 shim on Windows.
 #include "backend/runtime/nv_runtime.h"
+#include "backend/runtime/win32_compat.h"
 
 typedef struct sqlite3 sqlite3;
 typedef struct sqlite3_stmt sqlite3_stmt;
@@ -60,8 +64,14 @@ static int (*p_changes)(sqlite3*);
 static int nv_sqlite_load(void) {
     if (g_loaded) return g_load_error[0] == '\0';
     g_loaded = 1;
+    // So-name on POSIX, plain name on Windows (nv_win_dlopen retries with .dll).
+#ifdef _WIN32
+    void* lib = dlopen("sqlite3", RTLD_NOW);
+    if (!lib) lib = dlopen("sqlite3.dll", RTLD_NOW);
+#else
     void* lib = dlopen("libsqlite3.so.0", RTLD_NOW);
     if (!lib) lib = dlopen("libsqlite3.so", RTLD_NOW);
+#endif
     if (!lib) {
         snprintf(g_load_error, sizeof(g_load_error), "cannot load libsqlite3: %s", dlerror());
         return 0;
