@@ -17,7 +17,7 @@ struct DeferStmtNode : public Stmt {
         defer_body(std::move(body)),
         remaining_body(std::move(remaining)) {}
 
-    ~DeferStmtNode() override = default;
+    ~DeferStmtNode() override;
 
     Node* clone() const override {
         std::vector<std::unique_ptr<Node>> cb;
