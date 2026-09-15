@@ -3,10 +3,11 @@
 // Linking a program needs the runtime object, and compiling one needs the standard library
 // modules. Both travel EMBEDDED in the narval binary (cmake/NarvalEmbedBlob.cmake), so a
 // release is a single file: the first run writes them into a per-user directory and every
-// later run reuses it (write_if_stale only rewrites a file whose size does not match the
+// later run reuses it (write_if_stale only rewrites a file whose bytes differ from the
 // embedded copy). Without this, an installed compiler only worked when a stdlib/ directory
 // sat next to it and when runtime.o was in the build tree or in NARVAL_HOME.
 #include "frontend/embedded_assets.hpp"
+#include "frontend/version.hpp"
 
 #include <cstdlib>
 #include <cstring>
@@ -21,13 +22,6 @@
 
 namespace narval {
 namespace {
-
-// The version the binary was built as (CMake, NARVAL_VERSION): part of the cache path, so a
-// new compiler never links the previous one's runtime or reads its stdlib.
-#ifndef NARVAL_VERSION
-#define NARVAL_VERSION "0.1.0"
-#endif
-constexpr const char* kVersion = NARVAL_VERSION;
 
 void export_env(const char* key, const std::string& value) {
 #ifdef _WIN32
@@ -89,7 +83,8 @@ std::vector<std::filesystem::path> home_candidates() {
         base = std::filesystem::temp_directory_path(ec) / "narval";
         if (ec) return candidates;
     }
-    candidates.push_back(base / kVersion);
+    // Versioned: a new compiler must not link its old runtime or read an old stdlib.
+    candidates.push_back(base / nv::kVersion);
     return candidates;
 }
 
