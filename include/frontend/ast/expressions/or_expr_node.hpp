@@ -5,6 +5,7 @@
 
 class OrExprNode : public Expr {
 public:
+    ~OrExprNode() override;
     std::unique_ptr<Expr> expr;
 
     // Block handler: `or { ... }`
