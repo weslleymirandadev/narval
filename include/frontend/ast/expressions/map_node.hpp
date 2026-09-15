@@ -10,7 +10,7 @@ public:
     MapNode(std::vector<std::unique_ptr<Expr>> properties)
         : Expr(NodeType::Map), properties(std::move(properties)) {}
 
-    ~MapNode() override = default;
+    ~MapNode() override;
 
     Node* clone() const override {
         std::vector<std::unique_ptr<Expr>> cloned_properties;
