@@ -13,6 +13,9 @@
 #include <time.h>
 #include <stdint.h>
 
+// dlfcn on POSIX; the import_c bridges resolve their C function by name here as well.
+#include "backend/runtime/win32_compat.h"
+
 extern NvTypeObject* NVInt_Type;
 extern NvTypeObject* NVFloat_Type;
 extern NvTypeObject* NVBool_Type;
@@ -137,7 +140,9 @@ NvObject* nv_ffi_clock(void)                              { return box_i((int32_
 // boxed string; the runtime resolves it with dlsym at call time, so
 // `comptime import_c("math.h")` does not need a hand-written wrapper per
 // function (unlike the fixed nv_ffi_<name> registry above).
+#ifndef _WIN32
 #include <dlfcn.h>
+#endif
 
 static void* cimp_sym(NvObject* name_obj) {
     const char* name = obj_to_s(name_obj);
