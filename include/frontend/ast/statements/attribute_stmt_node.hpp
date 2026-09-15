@@ -15,6 +15,8 @@ struct AttrEntry {
 };
 
 struct AttributeStmtNode : public Stmt {
+    ~AttributeStmtNode() override;
+
     std::vector<AttrEntry> entries;
 
     // Compat: lista de nomes simples para código legado (attribute_mapper)
