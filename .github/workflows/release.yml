@@ -28,26 +28,38 @@ jobs:
 
       - name: Fetch LLVM/MLIR ${{ env.LLVM_VERSION }}
         run: |
-          set -euo pipefail
-          # The asset name carries the Ubuntu it was built for, so ask the release for the URL
-          # instead of hardcoding the suffix.
+          set -uo pipefail
+          # The Linux asset is named LLVM-<version>-Linux-X64.tar.xz — clang+llvm-* is the Windows
+          # spelling — so ask the release for the URL instead of assembling the name here.
           api="https://api.github.com/repos/llvm/llvm-project/releases/tags/llvmorg-${LLVM_VERSION}"
-          url=$(curl -sSL "$api" \
-            | grep -o '"browser_download_url": *"[^"]*x86_64-linux-gnu[^"]*\.tar\.xz"' \
-            | head -1 | sed 's/.*"\(https[^"]*\)"/\1/')
-          test -n "$url" || { echo "no Linux x86_64 asset for LLVM ${LLVM_VERSION}"; exit 1; }
+          assets=$(curl -sSL -H "Authorization: Bearer ${{ github.token }}" "$api")
+          url=$(printf '%s' "$assets" | grep -o 'https://[^"]*Linux-X64\.tar\.xz' | head -1)
+          if [ -z "$url" ]; then
+            echo "no Linux-X64 asset for LLVM ${LLVM_VERSION}; the release publishes:"
+            printf '%s\n' "$assets" | grep -o '"name": *"[^"]*"' | head -40
+            exit 1
+          fi
           echo "using $url"
           curl -L --fail -o llvm.tar.xz "$url"
-          mkdir llvm && tar xf llvm.tar.xz -C llvm --strip-components=1
-          test -d llvm/lib/cmake/mlir || { echo "no MLIR inside $url"; exit 1; }
-          echo "LLVM_ROOT=$PWD/llvm" >> "$GITHUB_ENV"
-          echo "$PWD/llvm/bin" >> "$GITHUB_PATH"
+          mkdir -p llvm && tar xf llvm.tar.xz -C llvm
+          # The top-level directory of the archive has changed names between releases; the MLIR
+          # package inside it is what identifies the prefix to configure against.
+          config=$(find llvm -name MLIRConfig.cmake -print -quit)
+          if [ -z "$config" ]; then
+            echo "no MLIRConfig.cmake inside $url; the archive holds:"
+            find llvm -maxdepth 2 -type d | head -40
+            exit 1
+          fi
+          prefix=$(dirname "$(dirname "$(dirname "$config")")")
+          echo "LLVM_PREFIX=$PWD/$prefix" >> "$GITHUB_ENV"
+          echo "$PWD/$prefix/bin" >> "$GITHUB_PATH"
+          echo "LLVM ${LLVM_VERSION} in $prefix"
 
       - name: Configure
         run: |
           cmake -S . -B build \
-            -DMLIR_DIR="$LLVM_ROOT/lib/cmake/mlir" \
-            -DLLVM_DIR="$LLVM_ROOT/lib/cmake/llvm" \
+            -DMLIR_DIR="$LLVM_PREFIX/lib/cmake/mlir" \
+            -DLLVM_DIR="$LLVM_PREFIX/lib/cmake/llvm" \
             -DNARVAL_VERSION="${GITHUB_REF_NAME#v}"
 
       - name: Build
@@ -92,9 +104,26 @@ jobs:
           $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-${env:LLVM_VERSION}/clang+llvm-${env:LLVM_VERSION}-x86_64-pc-windows-msvc.tar.xz"
           curl.exe -L --fail -o llvm.tar.xz $url
           tar xf llvm.tar.xz
+          if ($LASTEXITCODE -ne 0) { throw "tar failed with exit code $LASTEXITCODE" }
           $root = (Get-ChildItem -Directory -Filter "clang+llvm-*" | Select-Object -First 1).FullName
-          if (-not (Test-Path "$root/lib/cmake/mlir")) { throw "MLIR config not found in $root" }
-          "LLVM_ROOT=$root" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          if (-not $root) { throw "the archive did not extract a clang+llvm-* directory" }
+          # The MLIR package inside the archive is what identifies the prefix to configure against,
+          # so the layout of a release is not assumed here.
+          $config = Get-Item "$root/lib/cmake/mlir/MLIRConfig.cmake" -ErrorAction SilentlyContinue
+          if (-not $config) {
+            $config = Get-ChildItem -Path $root -Recurse -Filter MLIRConfig.cmake -ErrorAction SilentlyContinue | Select-Object -First 1
+          }
+          if (-not $config) {
+            "top level:"; Get-ChildItem -Directory | Select-Object -ExpandProperty Name
+            "lib:"; Get-ChildItem "$root/lib" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
+            throw "no MLIRConfig.cmake in the archive"
+          }
+          $prefix = $config.Directory.Parent.Parent.FullName
+          "LLVM_PREFIX=$prefix" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          # llvm-config drives the project's compile and link flags; GITHUB_PATH applies to the
+          # following steps, which is where cmake runs.
+          "$prefix/bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+          "LLVM $($env:LLVM_VERSION) in $prefix"
 
       - name: MinGW-w64 gcc (embedded runtime object and linker for generated programs)
         shell: pwsh
@@ -117,8 +146,8 @@ jobs:
         run: |
           cmake -S . -B build-win `
             "-DNARVAL_VERSION=$($env:GITHUB_REF_NAME -replace '^v','')" `
-            "-DMLIR_DIR=$env:LLVM_ROOT/lib/cmake/mlir" `
-            "-DLLVM_DIR=$env:LLVM_ROOT/lib/cmake/llvm"
+            "-DMLIR_DIR=$env:LLVM_PREFIX/lib/cmake/mlir" `
+            "-DLLVM_DIR=$env:LLVM_PREFIX/lib/cmake/llvm"
 
       - name: Build
         shell: pwsh
