@@ -47,24 +47,19 @@ target_link_libraries(NarvalAstAnchors PUBLIC NarvalProjectIncludes)
 add_library(NarvalModuleManager STATIC src/frontend/module_manager.cpp)
 target_link_libraries(NarvalModuleManager PUBLIC NarvalProjectIncludes)
 
-# The front-end archives are mutually dependent: the AST vtables (NarvalAstAnchors) reference
-# every nir_codegen() implementation (NarvalNirDialect) and the codegen references the dtors
-# again, module resolution references the lexer and the parser, and the parser and the checker
-# reference the vtables. ld scans an archive once, left to right, and where CMake happens to
-# place them is not something to rely on — a rescanning group states the dependency instead.
+# Three archives are mutually dependent: the AST vtables (NarvalAstAnchors) reference every
+# nir_codegen() implementation (NarvalNirDialect) and the codegen objects reference the dtors
+# again. ld scans an archive once, left to right, so they need a rescanning group — kept to
+# those three on purpose: naming a library whose own dependencies reach MLIR/LLVM makes the
+# group rescan those too, and ld then reports "multiple definition" for LLVM (writeToOutput)
+# because it can pull the same member out of two copies of the same archive.
+# NarvalModuleManager is linked BEFORE the lexer: module resolution references it, and a
+# definition may come later than its use but never earlier.
 # MSVC's linker resolves across libraries and does not implement the feature.
 if(MSVC)
-    set(NARVAL_CORE_LINK
-        NarvalModuleManager NarvalFrontendUtils NarvalAstAnchors
-        NarvalLexer NarvalParser NarvalChecker NarvalInteractive NarvalNirDialect)
-    set(NARVAL_LSP_CORE_LINK
-        NarvalModuleManager NarvalFrontendUtils NarvalAstAnchors
-        NarvalLexer NarvalParser NarvalChecker)
+    set(NARVAL_AST_LINK_GROUP NarvalAstAnchors NarvalNirDialect NarvalFrontendUtils)
 else()
-    set(NARVAL_CORE_LINK
-        "$<LINK_GROUP:RESCAN,NarvalModuleManager,NarvalFrontendUtils,NarvalAstAnchors,NarvalLexer,NarvalParser,NarvalChecker,NarvalInteractive,NarvalNirDialect>")
-    set(NARVAL_LSP_CORE_LINK
-        "$<LINK_GROUP:RESCAN,NarvalModuleManager,NarvalFrontendUtils,NarvalAstAnchors,NarvalLexer,NarvalParser,NarvalChecker>")
+    set(NARVAL_AST_LINK_GROUP "$<LINK_GROUP:RESCAN,NarvalAstAnchors,NarvalNirDialect,NarvalFrontendUtils>")
 endif()
 
 execute_process(COMMAND llvm-config --cxxflags OUTPUT_VARIABLE LLVM_CXX_FLAGS)
@@ -113,7 +108,8 @@ function(narval_add_test target_name)
         set(_exclude_from_all EXCLUDE_FROM_ALL)
     endif()
     add_executable(${target_name} ${_exclude_from_all} ${ARGN})
-    target_link_libraries(${target_name} PRIVATE NarvalAllCommon ${NARVAL_CORE_LINK} NarvalRuntimeObjs)
+    target_link_libraries(${target_name} PRIVATE NarvalAllCommon NarvalModuleManager
+        NarvalLexer NarvalParser NarvalChecker NarvalRuntimeObjs ${NARVAL_AST_LINK_GROUP})
     target_include_directories(${target_name} PRIVATE ${PROJECT_SOURCE_DIR}/include)
     target_link_options(${target_name} PRIVATE -W -fPIE)
 endfunction()
@@ -192,10 +188,12 @@ target_include_directories(Narval PRIVATE ${PROJECT_SOURCE_DIR}/include)
 # writes it out and links the program with gcc), so none of it is linked into the compiler
 # executable. Accepted consequence: the REPL/JIT cannot resolve the nv_* symbols there.
 if(MSVC)
-    target_link_libraries(Narval PRIVATE NarvalAllCommon ${NARVAL_CORE_LINK})
+    target_link_libraries(Narval PRIVATE NarvalAllCommon NarvalModuleManager
+        NarvalLexer NarvalParser NarvalChecker NarvalInteractive ${NARVAL_AST_LINK_GROUP})
 else()
-    target_link_libraries(Narval PRIVATE NarvalAllCommon ${NARVAL_CORE_LINK}
-        NarvalRuntimeObjs NarvalRuntimeShared)
+    target_link_libraries(Narval PRIVATE NarvalAllCommon NarvalModuleManager
+        NarvalLexer NarvalParser NarvalChecker NarvalInteractive NarvalRuntimeObjs NarvalRuntimeShared
+        ${NARVAL_AST_LINK_GROUP})
 endif()
 # Windows: the REPL resolves the nv_* symbols through runtime.dll, and the build script asks
 # only for the Narval target — without this dependency the DLL would never be produced there.
