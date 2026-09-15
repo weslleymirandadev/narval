@@ -3,7 +3,7 @@
 
 class Node;
 namespace nv {
-    class Type;
+    struct Type;
     class Checker;
     std::shared_ptr<Type> check_interface_stmt(Checker* checker, Node* node);
 }
