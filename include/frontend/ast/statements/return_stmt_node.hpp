@@ -9,7 +9,7 @@ public:
     ReturnStmtNode(std::unique_ptr<Expr> val)
         : Stmt(NodeType::ReturnStatement), value(std::move(val)) {}
 
-    ~ReturnStmtNode() override = default;
+    ~ReturnStmtNode() override;
     
     Node* clone() const override {
         auto cloned_value = value ? std::unique_ptr<Expr>(static_cast<Expr*>(value->clone())) : nullptr;
