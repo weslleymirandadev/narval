@@ -87,14 +87,18 @@ static std::filesystem::path current_executable() {
 
 }  // namespace
 
-// Where stdlib/ is, so a program compiles from any directory: $NARVAL_STDLIB, next to the
-// executable, one level up from it (the build/ directory), the tree this compiler was built
-// from (on Windows the binary sits in build-win/Release, two levels down, so the two guesses
-// above do not reach stdlib/), or the current directory. Declared in the header: the language
-// server resolves its imports with the same search the compiler uses.
+// Where stdlib/ is, so a program compiles from any directory: $NARVAL_STDLIB, the one of
+// $NARVAL_HOME (the directory the compiler's embedded assets were written to — see
+// narval_home.cpp), next to the executable, one level up from it (the build/ directory), the
+// tree this compiler was built from (on Windows the binary sits in build-win/Release, two
+// levels down, so the two guesses above do not reach stdlib/), or the current directory.
+// Declared in the header: the language server resolves its imports with the same search the
+// compiler uses.
 std::string find_stdlib_dir() {
     std::vector<std::filesystem::path> candidates;
     if (const char* env = std::getenv("NARVAL_STDLIB")) candidates.emplace_back(env);
+    if (const char* home = std::getenv("NARVAL_HOME"); home && *home)
+        candidates.emplace_back(std::filesystem::path(home) / "stdlib");
     std::filesystem::path exe = current_executable();
     if (!exe.empty()) {
         candidates.push_back(exe.parent_path() / "stdlib");
@@ -124,6 +128,21 @@ std::string resolve_module_path(const std::string& dir, const std::string& reque
     if (std::ifstream(with_ext).good()) return with_ext.string();
     return as_written.string();  // the caller reports it as not found
 }
+
+// An import is looked up next to the importing module first (that is what makes
+// `from "./lib.nv"` work), then in the standard library. Without the second step
+// `from "sqlite" import *` — the spelling the modules are documented with — only resolved
+// when a copy of the module happened to sit next to the program.
+std::string resolve_import_path(const std::string& module_dir, const std::string& requested) {
+    const std::string local = resolve_module_path(module_dir, requested);
+    if (std::ifstream(local).good()) return local;
+    const std::string stdlib = find_stdlib_dir();
+    if (!stdlib.empty()) {
+        const std::string bundled = resolve_module_path(stdlib, requested);
+        if (std::ifstream(bundled).good()) return bundled;
+    }
+    return local;
+}
 }  // namespace
 
 void ModuleManager::resolve_dependencies(const std::string& module_name, const std::string& file_path, int config) {
@@ -142,7 +161,7 @@ void ModuleManager::resolve_dependencies(const std::string& module_name, const s
     // Usa import_infos para resolver dependências (nova sintaxe)
     for (const auto& import_info : module.import_infos) {
         std::string clean_dep = std::regex_replace(import_info.module_path, std::regex("\""), "");
-        std::string dep_path = resolve_module_path(module.directory, clean_dep);
+        std::string dep_path = resolve_import_path(module.directory, clean_dep);
         if (!std::ifstream(dep_path).good()) {
             throw std::runtime_error("Module " + import_info.module_path + " not found");
         }
@@ -161,7 +180,7 @@ void ModuleManager::resolve_dependencies(const std::string& module_name, const s
         }
         if (!already_processed) {
             std::string clean_dep = std::regex_replace(dep, std::regex("\""), "");
-            std::string dep_path = resolve_module_path(module.directory, clean_dep);
+            std::string dep_path = resolve_import_path(module.directory, clean_dep);
             if (!std::ifstream(dep_path).good()) {
                 throw std::runtime_error("Module " + dep + " not found");
             }
