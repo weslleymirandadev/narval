@@ -1,13 +1,18 @@
 cmake_minimum_required(VERSION 3.20)
-project(Narval VERSION 0.1.0)
+project(Narval VERSION 1.0.0)
 include(CTest)
 include(GNUInstallDirs)
 include(cmake/NarvalSources.cmake)
 
-# Printed by `narval --version` and part of the directory the embedded assets are materialised
-# into (src/frontend/narval_home.cpp), so a new binary never links the previous one's runtime
-# or reads its stdlib. A release passes the git tag: -DNARVAL_VERSION=<tag>.
-set(NARVAL_VERSION "${PROJECT_VERSION}" CACHE STRING "Narval version")
+# The version the compiler reports, in the help line, the REPL/notebook prompts
+# (include/frontend/version.hpp) and the directory the embedded assets are materialised into
+# (src/frontend/narval_home.cpp). A release passes its git tag: -DNARVAL_VERSION=<tag>.
+#
+# Deliberately not a cache entry: a cached default would freeze an older version in a build tree
+# that is reconfigured after a version bump, and the compiler would keep reporting it.
+if(NOT DEFINED NARVAL_VERSION)
+    set(NARVAL_VERSION "${PROJECT_VERSION}")
+endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
