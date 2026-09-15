@@ -22,7 +22,7 @@ public:
           stop(std::move(stop)),
           step(std::move(step)) {}
 
-    ~SliceExprNode() override = default;
+    ~SliceExprNode() override;
 
     Node* clone() const override {
         auto c_col   = collection ? std::unique_ptr<Expr>(static_cast<Expr*>(collection->clone())) : nullptr;
