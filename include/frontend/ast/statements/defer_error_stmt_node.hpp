@@ -18,7 +18,7 @@ struct DeferErrorStmtNode : public Stmt {
         handler_body(std::move(handler)),
         remaining_body(std::move(remaining)) {}
 
-    ~DeferErrorStmtNode() override = default;
+    ~DeferErrorStmtNode() override;
 
     Node* clone() const override {
         std::vector<std::unique_ptr<Node>> ch;
