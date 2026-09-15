@@ -506,6 +506,8 @@ void nv::Checker::comptime_error(Node* node, const std::string& code,
                   << ANSI_BOLD << ": " << title << ANSI_RESET << "\n";
     }
     error(node, title);
+    if (!notes.empty() && !diagnostics.empty())
+        diagnostics.back().notes = notes;
     if (emit_diagnostics) {
         for (const auto& note : notes)
             std::cerr << ANSI_BOLD << "  = note: " << ANSI_RESET << note << "\n";
@@ -524,6 +526,8 @@ void nv::Checker::comptime_error_at(const PositionData* pos, const std::string& 
         error_at(current_filename, pos->line, pos->col[0], pos->col[1], title);
     else
         error(nullptr, title);
+    if (!notes.empty() && !diagnostics.empty())
+        diagnostics.back().notes = notes;
     if (emit_diagnostics) {
         for (const auto& note : notes)
             std::cerr << ANSI_BOLD << "  = note: " << ANSI_RESET << note << "\n";
