@@ -40,6 +40,7 @@ public:
 // Nó para definição de classe
 class ClassStmtNode : public Stmt {
 public:
+    ~ClassStmtNode() override;
     std::string name;
     std::vector<std::string> type_params; // generic type parameters: class Foo<T, E>
     std::string parent_class;
