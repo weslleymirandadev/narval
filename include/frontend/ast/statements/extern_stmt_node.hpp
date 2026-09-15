@@ -28,7 +28,7 @@ struct ExternStmtNode : public Stmt {
           language(std::move(lang)),
           declarations(std::move(decls)) {}
 
-    ~ExternStmtNode() override = default;
+    ~ExternStmtNode() override;
 
     Node* clone() const override {
         auto* n = new ExternStmtNode(language, declarations);
