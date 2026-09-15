@@ -6,7 +6,7 @@ Narval transfers the operational responsibility of the code to the compiler, whi
 
 ## Install
 
-Binaries are published per platform (Linux x86-64, Windows x86-64) on the [releases page](https://github.com/weslleymirandadev/narval/releases). Unpack the archive anywhere and put `narval` on your `PATH`.
+Binaries are published per platform on the [releases page](https://github.com/weslleymirandadev/narval/releases). Unpack the archive anywhere and put `narval` on your `PATH`.
 
 The archive holds a single executable: the runtime object the compiler links against and the standard library modules travel inside it, so nothing has to be installed next to the binary. The first run writes them to a per-user directory — `~/.cache/narval/<version>` on Linux, `%LOCALAPPDATA%\Narval\<version>` on Windows — and every later run reuses it. Setting `NARVAL_HOME` moves that directory wherever you want it.
 
