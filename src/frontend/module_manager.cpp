@@ -16,6 +16,9 @@
 #include <regex>
 #include <filesystem>
 #include <functional>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 std::string ModuleManager::read_file(const std::string& file_path) {
     std::ifstream file(file_path);
@@ -69,16 +72,39 @@ const std::vector<std::string>& builtin_modules() {
     return names;
 }
 
+// The running executable. On Linux that is the only thing /proc/self/exe is good for; on
+// Windows there is no such link and read_symlink simply fails, so ask the loader instead —
+// without it an installed narval.exe would never see the stdlib/ next to it.
+static std::filesystem::path current_executable() {
+#ifdef _WIN32
+    wchar_t buf[MAX_PATH];
+    DWORD n = GetModuleFileNameW(NULL, buf, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) return {};
+    return std::filesystem::path(std::wstring(buf, n));
+#else
+    try {
+        return std::filesystem::read_symlink("/proc/self/exe");
+    } catch (...) {
+        return {};
+    }
+#endif
+}
+
 // Where stdlib/ is, so a program compiles from any directory: $NARVAL_STDLIB, next to the
-// executable, one level up from it (the build/ directory), or the current directory.
+// executable, one level up from it (the build/ directory), the tree this compiler was built
+// from (on Windows the binary sits in build-win/Release, two levels down, so the two guesses
+// above do not reach stdlib/), or the current directory.
 std::string find_stdlib_dir() {
     std::vector<std::filesystem::path> candidates;
     if (const char* env = std::getenv("NARVAL_STDLIB")) candidates.emplace_back(env);
-    try {
-        std::filesystem::path exe = std::filesystem::read_symlink("/proc/self/exe");
+    std::filesystem::path exe = current_executable();
+    if (!exe.empty()) {
         candidates.push_back(exe.parent_path() / "stdlib");
         candidates.push_back(exe.parent_path().parent_path() / "stdlib");
-    } catch (...) {}
+    }
+#ifdef NARVAL_SOURCE_DIR
+    candidates.emplace_back(std::filesystem::path(NARVAL_SOURCE_DIR) / "stdlib");
+#endif
     candidates.emplace_back(std::filesystem::current_path() / "stdlib");
     for (const auto& c : candidates)
         if (std::filesystem::is_directory(c)) return c.string();
