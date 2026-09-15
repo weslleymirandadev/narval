@@ -11,6 +11,15 @@
 #define ENABLE_CHECKING 2
 #define ENABLE_GENERATION 4
 
+// Directory holding the language's own modules (stdlib/), or "" when none is found. Same
+// search the compiler does: $NARVAL_STDLIB, next to the executable, one level up from it,
+// the tree this compiler was built from, then the current directory.
+std::string find_stdlib_dir();
+
+// Modules a program gets WITHOUT importing them (strings, grammar, file). `macros` and
+// `sqlite` are not here on purpose: those are libraries you import when you want them.
+const std::vector<std::string>& builtin_modules();
+
 class ModuleManager {
     public:
         struct Module {
