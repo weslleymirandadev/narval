@@ -3,6 +3,7 @@
 
 class NoneLiteralNode : public Expr {
 public:
+    ~NoneLiteralNode() override;
     NoneLiteralNode() : Expr(NodeType::NoneLiteral) {}
 
     Node* clone() const override {
