@@ -67,11 +67,6 @@ namespace {
 // them WITHOUT importing — the compiler always pulls them in. `macros` and `sqlite` are
 // deliberately not here: those are libraries you import when you want them (macros
 // defines macros for your call site, sqlite loads libsqlite3 through dlopen).
-const std::vector<std::string>& builtin_modules() {
-    static const std::vector<std::string> names = {"strings", "grammar", "file"};
-    return names;
-}
-
 // The running executable. On Linux that is the only thing /proc/self/exe is good for; on
 // Windows there is no such link and read_symlink simply fails, so ask the loader instead —
 // without it an installed narval.exe would never see the stdlib/ next to it.
@@ -90,10 +85,13 @@ static std::filesystem::path current_executable() {
 #endif
 }
 
+}  // namespace
+
 // Where stdlib/ is, so a program compiles from any directory: $NARVAL_STDLIB, next to the
 // executable, one level up from it (the build/ directory), the tree this compiler was built
 // from (on Windows the binary sits in build-win/Release, two levels down, so the two guesses
-// above do not reach stdlib/), or the current directory.
+// above do not reach stdlib/), or the current directory. Declared in the header: the language
+// server resolves its imports with the same search the compiler uses.
 std::string find_stdlib_dir() {
     std::vector<std::filesystem::path> candidates;
     if (const char* env = std::getenv("NARVAL_STDLIB")) candidates.emplace_back(env);
@@ -110,6 +108,13 @@ std::string find_stdlib_dir() {
         if (std::filesystem::is_directory(c)) return c.string();
     return "";
 }
+
+const std::vector<std::string>& builtin_modules() {
+    static const std::vector<std::string> names = {"strings", "grammar", "file"};
+    return names;
+}
+
+namespace {
 
 std::string resolve_module_path(const std::string& dir, const std::string& requested) {
     std::filesystem::path base(dir);
