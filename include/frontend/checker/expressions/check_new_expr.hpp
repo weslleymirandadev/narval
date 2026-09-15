@@ -4,7 +4,7 @@
 class Node;
 
 namespace nv {
-    class Type;
+    struct Type;
     class Checker;
     
     std::shared_ptr<Type> check_new_expr(Checker* checker, Node* node);
