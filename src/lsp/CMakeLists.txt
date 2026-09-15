@@ -51,12 +51,17 @@ target_include_directories(NarvalLspCore PUBLIC
     ${PROJECT_SOURCE_DIR}/include
     ${NARVAL_NLOHMANN_JSON_INCLUDE_DIR}
 )
+# The server needs the front-end only: no file in src/lsp/ includes the NIR/MLIR side, and
+# since the AST nodes' vtables are emitted in the front-end (src/frontend/ast_node_anchors.cpp)
+# nothing references the back-end either.
 target_link_libraries(NarvalLspCore PUBLIC
     NarvalProjectIncludes
     NarvalLexer
     NarvalParser
     NarvalChecker
-    NarvalNirDialect
+    # Last on purpose: ld reads the front-end's vtable references first and only then this
+    # archive, which defines those vtables (see the comment in the top-level CMakeLists).
+    NarvalAstAnchors
 )
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(NarvalLspCore PRIVATE -g0 -O2)
@@ -65,6 +70,14 @@ endif()
 function(narval_add_lsp_target target_name)
     add_executable(${target_name} EXCLUDE_FROM_ALL
         ${CMAKE_CURRENT_SOURCE_DIR}/narval-lsp.cpp
+        # Each AST vtable the front-end emits carries a nir_codegen() slot (see
+        # src/frontend/ast_node_anchors.cpp) and the server never runs codegen: these empty
+        # definitions are what keeps MLIR/LLVM out of the binary (163 MB -> 7 MB). They go in
+        # the server's own objects, not in an archive, because the linker reads those before
+        # the libraries — a stub inside NarvalLspCore.a was dropped before the vtable
+        # relocations from NarvalFrontendUtils.a showed up ("undefined reference to
+        # X::nir_codegen"), which is pure archive order.
+        ${CMAKE_CURRENT_SOURCE_DIR}/ast_codegen_stubs.cpp
     )
     set_target_properties(${target_name} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
