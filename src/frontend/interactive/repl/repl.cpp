@@ -3,6 +3,7 @@
 #include "frontend/interactive/compilation_engine.hpp"
 #include "frontend/interactive/command_handler.hpp"
 #include "frontend/module_manager.hpp"
+#include "frontend/interactive/line_editor.hpp"
 
 #ifdef HAVE_READLINE
 #include <readline/readline.h>
@@ -32,6 +33,9 @@ REPL::REPL(const REPLConfig& config) : config(config), state(std::make_unique<RE
 REPL::~REPL() = default;
 
 bool REPL::initialize() {
+    // Windows consoles only render the ANSI escapes the REPL and the highlighter emit after
+    // being asked to (see line_editor).
+    line_editor::enable_colored_output();
     if (!state->initialize()) {
         std::cerr << "Failed to initialize REPL" << std::endl;
         return false;
