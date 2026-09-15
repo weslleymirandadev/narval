@@ -7,7 +7,7 @@ class BooleanLiteralNode: public Expr {
 
         BooleanLiteralNode(bool val) :Expr(NodeType::BooleanLiteral), value(val) {}
 
-        ~BooleanLiteralNode() override = default;
+        ~BooleanLiteralNode() override;
 
         Node* clone() const override {
             auto* node = new BooleanLiteralNode(value);
