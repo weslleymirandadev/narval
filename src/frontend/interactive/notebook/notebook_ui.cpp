@@ -1,5 +1,6 @@
 #include "frontend/interactive/notebook/notebook_ui.hpp"
 #include "frontend/interactive/line_editor.hpp"
+#include "frontend/version.hpp"
 #include <iostream>
 #include <iomanip>
 #include <sstream>
@@ -13,9 +14,15 @@ std::string continuation_prompt(int execution_count) {
     return out.str();
 }
 
+// The version belongs in the prompt the same way it does in the REPL: it says which compiler the
+// session is running (include/frontend/version.hpp).
+std::string input_prompt(int execution_count) {
+    return version_prefix() + " In [" + std::to_string(execution_count) + "]: ";
+}
+
 } // namespace
 
-const std::string NotebookUI::PROMPT = "nb> ";
+const std::string NotebookUI::PROMPT = version_prefix() + " nb> ";
 const std::string NotebookUI::MULTILINE_PROMPT = " ";
 
 std::string NotebookUI::read_multiline() {
@@ -48,7 +55,7 @@ void NotebookUI::show_prompt() {
 }
 
 void NotebookUI::show_input_prompt(int execution_count) {
-    std::cout << "In [" << execution_count << "]: ";
+    std::cout << input_prompt(execution_count);
     std::cout.flush();
 }
 
@@ -58,7 +65,7 @@ void NotebookUI::show_continuation_prompt(int execution_count) {
 }
 
 std::string NotebookUI::read_input_line(int execution_count) {
-    return line_editor::read_line("In [" + std::to_string(execution_count) + "]: ", false);
+    return line_editor::read_line(input_prompt(execution_count), false);
 }
 
 std::string NotebookUI::read_continuation_line(int execution_count) {
