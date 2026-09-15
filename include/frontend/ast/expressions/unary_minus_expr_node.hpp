@@ -9,7 +9,7 @@ public:
     UnaryMinusExprNode(std::unique_ptr<Expr> operand)
         : Expr(NodeType::UnaryMinusExpression), operand(std::move(operand)) {}
 
-    ~UnaryMinusExprNode() override = default;
+    ~UnaryMinusExprNode() override;
 
     Node* clone() const override {
         auto cloned_operand = operand ? std::unique_ptr<Expr>(static_cast<Expr*>(operand->clone())) : nullptr;
