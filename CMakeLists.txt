@@ -71,11 +71,16 @@ execute_process(COMMAND llvm-config --cxxflags OUTPUT_VARIABLE LLVM_CXX_FLAGS)
 execute_process(COMMAND llvm-config --libs OUTPUT_VARIABLE LLVM_LIBS)
 execute_process(COMMAND llvm-config --system-libs OUTPUT_VARIABLE LLVM_SYS_LIBS)
 execute_process(COMMAND llvm-config --ldflags OUTPUT_VARIABLE LLVM_LDFLAGS)
+# Where those libraries are: the -lLLVM* names alone only resolve when LLVM sits in a directory
+# the linker searches by default, which is the case for this machine's /usr/local/lib. Against an
+# LLVM anywhere else (a release tarball, a second prefix) every one of them fails to link.
+execute_process(COMMAND llvm-config --libdir OUTPUT_VARIABLE LLVM_LIBRARY_DIRS)
 
 string(STRIP "${LLVM_CXX_FLAGS}" LLVM_CXX_FLAGS)
 string(STRIP "${LLVM_LIBS}" LLVM_LIBS)
 string(STRIP "${LLVM_SYS_LIBS}" LLVM_SYS_LIBS)
 string(STRIP "${LLVM_LDFLAGS}" LLVM_LDFLAGS)
+string(STRIP "${LLVM_LIBRARY_DIRS}" LLVM_LIBRARY_DIRS)
 
 set(LLVM_ENABLE_ZSTD OFF)
 set(LLVM_ENABLE_TERMINFO OFF)
