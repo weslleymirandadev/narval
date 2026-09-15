@@ -5,7 +5,7 @@ class ContinueStmtNode : public Stmt {
 public:
     ContinueStmtNode() : Stmt(NodeType::ContinueStatement) {}
 
-    ~ContinueStmtNode() override = default;
+    ~ContinueStmtNode() override;
     
     Node* clone() const override {
         auto* node = new ContinueStmtNode();
