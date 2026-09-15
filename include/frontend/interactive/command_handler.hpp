@@ -7,7 +7,7 @@
 namespace nv {
 
 struct REPLConfig;
-class REPLState;
+struct REPLState;
 
 class CommandHandler {
 public:
