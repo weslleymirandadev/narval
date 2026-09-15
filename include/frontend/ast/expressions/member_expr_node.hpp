@@ -15,7 +15,7 @@ public:
     MemberExprNode(std::unique_ptr<Expr> object, std::unique_ptr<Expr> property)
         : Expr(NodeType::MemberExpression), object(std::move(object)), property(std::move(property)) {}
 
-    ~MemberExprNode() override = default;
+    ~MemberExprNode() override;
 
     Node* clone() const override {
         auto cloned_object = object ? std::unique_ptr<Expr>(static_cast<Expr*>(object->clone())) : nullptr;
