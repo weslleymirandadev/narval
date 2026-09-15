@@ -12,7 +12,7 @@ The archive holds a single executable: the runtime object the compiler links aga
 
 Turning a Narval program into an executable ends in a link step that is driven by the platform's C toolchain: `gcc` on Linux, MinGW-w64 `gcc` on Windows. The compiler calls it, so it has to be on `PATH`; the runtime it links in is the embedded one, and no Narval headers or libraries are needed.
 
-LLVM and MLIR are linked into the compiler itself, so the executable depends only on the system libraries a desktop already carries — `libstdc++`, `libm`, `libz`, `libzstd` and `libreadline` 8 on Linux. It is about 190 MB on disk and 60 MB in the archive.
+LLVM and MLIR are linked into the compiler itself, so the executable depends only on the system libraries a desktop already carries: `libstdc++`, `libm`, `libz` and glibc 2.38 or newer on Linux (the archive is built on Ubuntu 24.04, so an older glibc will not load it). It is about 200 MB on disk and 70 MB in the archive.
 
 ## Build from source
 
