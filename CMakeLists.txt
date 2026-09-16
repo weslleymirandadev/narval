@@ -170,6 +170,14 @@ set(NARVAL_RUNTIME_BLOB_DEPS ${LIB_DIR}/runtime.o)
 if(NOT MSVC)
     list(APPEND NARVAL_RUNTIME_BLOB_DEPS ${LIB_DIR}/runtime_nostd.o)
 endif()
+# The REPL resolves the nv_* symbols from a shared runtime library, and on Windows nothing of the
+# runtime is linked into narval.exe (it travels as an embedded MinGW object) — so the DLL is
+# embedded too and the first run writes it next to the objects (src/frontend/narval_home.cpp).
+# Absent on POSIX, where those symbols live in the compiler process itself: the blob stays empty.
+set(NARVAL_RUNTIME_DLL ${LIB_DIR}/runtime.dll)
+if(TARGET NarvalRuntimeDll)
+    list(APPEND NARVAL_RUNTIME_BLOB_DEPS ${NARVAL_RUNTIME_DLL})
+endif()
 # The standard library travels the same way: the embedded modules are what the compiler reads
 # when no stdlib/ directory sits next to the binary (src/frontend/narval_home.cpp writes them
 # out on first use, src/frontend/module_manager.cpp looks them up there).
@@ -188,6 +196,7 @@ add_custom_command(
             "-DOUT=${NARVAL_RUNTIME_BLOB_SRC}"
             "-DSTD_OBJ=${LIB_DIR}/runtime.o"
             "-DNOSTD_OBJ=${LIB_DIR}/runtime_nostd.o"
+            "-DRUNTIME_DLL=${NARVAL_RUNTIME_DLL}"
             "-DSTDLIB_DIR=${PROJECT_SOURCE_DIR}/stdlib"
             "-DSTDLIB_FILES=${NARVAL_STDLIB_NAMES}"
             -P ${PROJECT_SOURCE_DIR}/cmake/NarvalEmbedBlob.cmake
