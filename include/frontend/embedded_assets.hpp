@@ -33,6 +33,12 @@ extern unsigned int  narval_runtime_obj_len;
 extern unsigned char narval_runtime_nostd_obj[];
 extern unsigned int  narval_runtime_nostd_obj_len;
 
+// The shared runtime library the REPL loads to resolve the nv_* symbols. Windows only: there
+// nothing of the runtime is linked into narval.exe, while on POSIX those symbols already live in
+// the compiler process and no library is needed (len 0).
+extern unsigned char narval_runtime_dll[];
+extern unsigned int  narval_runtime_dll_len;
+
 // The embedded standard library, e.g. { "file.nv", <bytes>, 4096 }.
 extern const narval::EmbeddedFile narval_stdlib_files[];
 extern const unsigned int        narval_stdlib_files_count;
