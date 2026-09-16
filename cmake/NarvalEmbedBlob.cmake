@@ -7,7 +7,8 @@ string(APPEND blob "#include \"frontend/embedded_assets.hpp\"\n")
 
 foreach(pair IN ITEMS
         "narval_runtime_obj=${STD_OBJ}"
-        "narval_runtime_nostd_obj=${NOSTD_OBJ}")
+        "narval_runtime_nostd_obj=${NOSTD_OBJ}"
+        "narval_runtime_dll=${RUNTIME_DLL}")
     string(REGEX REPLACE "=.*" ""  name "${pair}")
     string(REGEX REPLACE "^[^=]*=" "" objfile "${pair}")
 
