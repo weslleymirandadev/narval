@@ -194,4 +194,9 @@ jobs:
           cat SHA256SUMS.txt
 
       - name: Publish
-        run: gh release create "$GITHUB_REF_NAME" dist/* --title "Narval $GITHUB_REF_NAME" --generate-notes
+        # The release may already exist — the Windows and all-targets binaries are built on the
+        # machine that has the right LLVM and uploaded by hand — so an existing release is added
+        # to instead of failing the job.
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* --title "Narval $GITHUB_REF_NAME" --generate-notes \
+            || gh release upload "$GITHUB_REF_NAME" dist/* --clobber
