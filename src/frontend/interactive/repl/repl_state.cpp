@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iostream>
 #include <filesystem>
+#include <vector>
 
 #include <llvm/AsmParser/Parser.h>
 #include <llvm/Support/SourceMgr.h>
@@ -79,7 +80,6 @@ void REPLState::register_runtime_functions() {
     void* runtime_handle = RTLD_DEFAULT;
     if (!dlsym(RTLD_DEFAULT, "nv_write")) {
         std::string runtime_path;
-        const char* narval_home = std::getenv("NARVAL_HOME");
 #ifdef _WIN32
         // Nothing of the runtime is linked into the compiler on Windows (it travels as an
         // embedded MinGW object), so there the REPL needs the shared library on disk. Same
@@ -90,24 +90,30 @@ void REPLState::register_runtime_functions() {
         const char* rt_lib = "runtime.so";
         const char* rt_build_dir = NARVAL_SOURCE_DIR "/build/lib/";
 #endif
-        if (narval_home) {
-            runtime_path = std::string(narval_home) + "/" + rt_lib;
-        } else {
-            std::string dev_runtime = std::string(rt_build_dir) + rt_lib;
-            std::ifstream check_file(dev_runtime);
-            if (check_file.good()) {
-                runtime_path = dev_runtime;
-                std::cout << "Using development runtime from: " << runtime_path << std::endl;
-            } else {
-                runtime_path = std::string(NARVAL_INSTALL_RUNTIME_DIR) + "/" + rt_lib;
-                std::cout << "Using production runtime from: " << runtime_path << std::endl;
-            }
-            check_file.close();
-        }
+        // Candidates, in order: the per-user home (a release embeds the library and the first run
+        // writes it there — narval_home.cpp), the development build tree, then the install
+        // directory. The home alone is not enough: a development tree sets NARVAL_HOME while the
+        // library only exists under build/, so a miss there has to fall through.
+        std::vector<std::string> candidates;
+        if (const char* narval_home = std::getenv("NARVAL_HOME"))
+            candidates.push_back(std::string(narval_home) + "/" + rt_lib);
+        candidates.push_back(std::string(rt_build_dir) + rt_lib);
+        candidates.push_back(std::string(NARVAL_INSTALL_RUNTIME_DIR) + "/" + rt_lib);
 
-        runtime_handle = dlopen(runtime_path.c_str(), RTLD_LAZY);
-        if (!runtime_handle) {
-            std::cerr << "Failed to load runtime from " << runtime_path << ": " << dlerror() << std::endl;
+        for (const std::string& candidate : candidates) {
+            std::ifstream check_file(candidate);
+            if (!check_file.good()) continue;
+            runtime_handle = dlopen(candidate.c_str(), RTLD_LAZY);
+            if (runtime_handle) {
+                runtime_path = candidate;
+                break;
+            }
+            std::cerr << "Failed to load runtime from " << candidate << ": " << dlerror() << std::endl;
+        }
+        if (runtime_path.empty()) {
+            std::cerr << "Failed to load the runtime library (" << rt_lib
+                      << "): it is neither in the home directory, nor in the build tree, nor in "
+                         "the install directory" << std::endl;
             return;
         }
         std::cout << "Loaded runtime from: " << runtime_path << std::endl;
