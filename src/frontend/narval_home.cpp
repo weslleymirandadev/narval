@@ -108,6 +108,11 @@ std::string ensure_embedded_assets() {
         if (narval_runtime_nostd_obj_len)
             ok = write_if_stale(home / "runtime_nostd.o",
                                 narval_runtime_nostd_obj, narval_runtime_nostd_obj_len) && ok;
+        // The library the REPL loads to resolve the nv_* symbols, where the platform needs one on
+        // disk (Windows): it is looked up in this directory first (repl_state.cpp).
+        if (narval_runtime_dll_len)
+            ok = write_if_stale(home / "runtime.dll",
+                                narval_runtime_dll, narval_runtime_dll_len) && ok;
         for (unsigned int i = 0; i < narval_stdlib_files_count; ++i) {
             const auto& file = narval_stdlib_files[i];
             ok = write_if_stale(home / "stdlib" / file.name, file.data, file.len) && ok;
