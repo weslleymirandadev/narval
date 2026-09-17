@@ -17,12 +17,20 @@ void AssignmentExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
     // Compound assignment: read old value, apply op, produce new rhs
     if (op != "=" && !op.empty()) {
         llvm::StringRef fn;
-        if      (op == "+=") fn = "nv_add";
-        else if (op == "-=") fn = "nv_sub";
-        else if (op == "*=") fn = "nv_mul";
-        else if (op == "/=") fn = "nv_div";
-        else if (op == "%=") fn = "nv_mod";
-        else                 fn = "nv_add";
+        if      (op == "+=")  fn = "nv_add";
+        else if (op == "-=")  fn = "nv_sub";
+        else if (op == "*=")  fn = "nv_mul";
+        else if (op == "/=")  fn = "nv_div";
+        else if (op == "//=") fn = "nv_floor_div";
+        else if (op == "%=")  fn = "nv_mod";
+        else if (op == "**=") fn = "nv_pow";
+        else if (op == "&=")  fn = "nv_band";
+        else if (op == "|=")  fn = "nv_bor";
+        else if (op == "^=")  fn = "nv_bxor";
+        else if (op == "<<=") fn = "nv_shl";
+        else if (op == ">>=") fn = "nv_shr";
+        else if (op == "@=")  fn = "nv_tensor_matmul_bridge";  // `@` is the tensor product
+        else                  fn = "nv_add";
 
         mlir::Value lhs_val;
         if (target) {
@@ -39,6 +47,9 @@ void AssignmentExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
             // Simple variable assignment: redefine in current scope
             auto name = static_cast<IdentifierNode*>(target.get())->symbol;
             ctx.define(name, rhs);
+            // A top-level assignment also refreshes the runtime table (B8): the parser
+            // hands `K = 5` as an assignment, so this path is the one main.start takes.
+            nir_store_module_global(ctx, loc, name, rhs);
             if (ctx.is_repl_global(name)) {
                 // Keep it for the following REPL inputs, which get a fresh JIT.
                 auto& b   = ctx.get_builder();
