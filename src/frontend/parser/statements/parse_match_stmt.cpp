@@ -35,12 +35,21 @@ std::unique_ptr<Node> parse_match_stmt(Parser* parser) {
             id_node->position = std::move(pos);
             expr = std::move(id_node);
         } else {
+            // Inside a pattern `|` separates alternatives ("a" | "b" => ...), so the
+            // expression parser must leave it alone — otherwise the bitwise-or level
+            // swallows `'a'..='z' | 'A'..='Z'` and `=>` is never reached.
+            bool saved_pattern = parser->in_match_pattern;
+            parser->in_match_pattern = true;
             expr = parse_range_expr(parser);
+            parser->in_match_pattern = saved_pattern;
         }
         // A pattern may list alternatives separated by '|': "a" | "b" => ...
         while (parser->current_token().type == TokenType::BITWISE_OR) {
             parser->consume_token();
+            bool saved_pattern = parser->in_match_pattern;
+            parser->in_match_pattern = true;
             auto next_alt = parse_range_expr(parser);
+            parser->in_match_pattern = saved_pattern;
             auto current_alt = std::unique_ptr<Expr>(static_cast<Expr*>(expr.release()));
             auto next_expr = std::unique_ptr<Expr>(static_cast<Expr*>(next_alt.release()));
             expr = std::unique_ptr<Node>(
