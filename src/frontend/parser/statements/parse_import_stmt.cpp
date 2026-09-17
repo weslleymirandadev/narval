@@ -99,3 +99,41 @@ std::unique_ptr<Node> parse_import_stmt(Parser* parser) {
     );
     return node;
 }
+
+// `import name [as alias];` — the spelling without `from`. The lexer already booked
+// the dependency (it is looked up next to the file and in stdlib, as written and with
+// `.nv` appended), so this only builds the node: the whole module comes in, and the
+// optional alias names a namespace for it.
+std::unique_ptr<Node> parse_bare_import_stmt(Parser* parser) {
+    Token import_tok = parser->current_token();
+    parser->consume_token();  // 'import'
+
+    if (parser->current_token().type != TokenType::IDENTIFIER) {
+        parser->error("Expected a module name after 'import'");
+        return nullptr;
+    }
+    Token name_tok = parser->current_token();
+    parser->consume_token();
+
+    std::string alias;
+    if (parser->current_token().type == TokenType::AS) {
+        parser->consume_token();
+        if (parser->current_token().type == TokenType::IDENTIFIER) {
+            alias = parser->current_token().lexeme;
+            parser->consume_token();
+        } else {
+            parser->error("Expected an alias identifier after 'as'");
+        }
+    }
+    if (parser->current_token().type == TokenType::SEMICOLON)
+        parser->consume_token();
+
+    auto node = std::make_unique<ImportStmtNode>(name_tok.lexeme, std::vector<ImportItem>{}, name_tok.filename);
+    node->is_wildcard    = true;
+    node->wildcard_alias = alias;
+    node->position = std::make_unique<PositionData>(
+        import_tok.line,
+        import_tok.column_start, name_tok.column_end,
+        import_tok.position_start, name_tok.position_end);
+    return node;
+}
