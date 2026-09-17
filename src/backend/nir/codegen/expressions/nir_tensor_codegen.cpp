@@ -287,8 +287,12 @@ bool try_handle_call(nv::NIRGenerationContext& ctx, Node* node) {
 
         // ── Pattern 3: obj.item() / obj.tolist() / obj.reshape(dims) ─
         if (member->property && member->property->kind == NodeType::Identifier) {
-            auto* prop = static_cast<IdentifierNode*>(member->property.get());
-            const std::string& m = prop->symbol;
+            const std::string& m = static_cast<IdentifierNode*>(member->property.get())->symbol;
+            // Only the three methods this path implements. Everything else belongs to
+            // the generic call path, and evaluating the receiver first had a visible
+            // cost: on an import namespace (`ns.f(x)`) it codegen'd the alias as a
+            // value and warned "no value bound for 'ns'" before the real call.
+            if (m != "item" && m != "tolist" && m != "reshape") return false;
 
             // Evaluate the object
             if (member->object) member->object->nir_codegen(ctx);
@@ -299,10 +303,8 @@ bool try_handle_call(nv::NIRGenerationContext& ctx, Node* node) {
                 emit_simple_bridge(ctx, obj, bridge_name(m));
                 return true;
             }
-            if (m == "reshape") {
-                emit_reshape(ctx, obj, extract_dims(call->args));
-                return true;
-            }
+            emit_reshape(ctx, obj, extract_dims(call->args));
+            return true;
         }
     }
 
