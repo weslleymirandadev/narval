@@ -235,9 +235,20 @@ void* nv_tensor_data_ptr(Value* v) {
 // One element, boxed, read and written according to the tensor's own dtype. The flat index
 // comes from the caller: a single index, or the several coordinates of nv_tensor_flat_index.
 // Reading every tensor through a double* is how a Tensor<int> came back as 0.0.
+// An out-of-range index used to be silent: the read returned an empty value (`None`) and
+// the write was dropped, with no diagnostic at all. It now raises IndexError through the
+// `throw` path, so inside a `try` it is caught like any other error.
+static void tensor_index_error(NVTensor* t, int64_t flat) {
+    char msg[160];
+    snprintf(msg, sizeof(msg),
+             "tensor index %lld is out of range (%lld element(s) of storage)",
+             (long long)flat, (long long)(t ? t->nelem : 0));
+    nv_raise_nir_error("IndexError", msg);
+}
+
 NvObject* nv_tensor_get_element(Value* v, int64_t flat) {
     NVTensor* t = unwrap_tensor(v);
-    if (!t || flat < 0 || flat >= t->nelem) return NULL;
+    if (!t || flat < 0 || flat >= t->nelem) { tensor_index_error(t, flat); return NULL; }
     Value out = {NULL};
     if (dtype_is_float(t->dtype))
         create_float(&out, tensor_load(t, flat));
@@ -248,7 +259,8 @@ NvObject* nv_tensor_get_element(Value* v, int64_t flat) {
 
 void nv_tensor_set_element(Value* v, int64_t flat, NvObject* val) {
     NVTensor* t = unwrap_tensor(v);
-    if (!t || !val || flat < 0 || flat >= t->nelem) return;
+    if (!t || !val) return;
+    if (flat < 0 || flat >= t->nelem) { tensor_index_error(t, flat); return; }
     const int  from_float = val->ob_type == NVFloat_Type;
     const double  as_float = from_float ? ((NVFloat*)val)->value
                                         : (double)((NVInt*)val)->value;
@@ -408,16 +420,45 @@ Value nv_tensor_mul(Value* a_v, Value* b_v) {
 
 // Element-wise scalar multiply
 Value nv_tensor_scalar_mul(Value* a_v, double scalar) {
+    return nv_tensor_scalar_op(a_v, scalar, 2);
+}
+
+// Element-wise op against a scalar (op: 0=add 1=sub 2=mul 3=div). The storage
+// follows the tensor's dtype, the same widening nv_tensor_ew uses (float64
+// elements are doubles, int32 elements are ints), so `a * 2.0` on an int tensor
+// stays an int tensor instead of producing an empty value.
+Value nv_tensor_scalar_op(Value* a_v, double scalar, int op) {
     NVTensor* A = unwrap_tensor(a_v);
     Value bad; bad.obj = NULL;
     if (!A) return bad;
     NVTensor* C = tensor_alloc(A->dtype, A->ndim, A->shape);
     if (!C) return bad;
     if (A->dtype == NV_FLOAT_BASE) {
-        double* a = (double*)A->data; double* c = (double*)C->data;
-        for (int64_t i = 0; i < A->nelem; ++i) c[i] = a[i] * scalar;
+        const double* a = (const double*)A->data;
+        double* c = (double*)C->data;
+        for (int64_t i = 0; i < A->nelem; ++i) {
+            double x = a[i];
+            c[i] = (op == 0) ? x + scalar : (op == 1) ? x - scalar
+                 : (op == 2) ? x * scalar : x / scalar;
+        }
+    } else {
+        const int32_t* a = (const int32_t*)A->data;
+        int32_t* c = (int32_t*)C->data;
+        int32_t s = (int32_t)scalar;
+        for (int64_t i = 0; i < A->nelem; ++i) {
+            int32_t x = a[i];
+            c[i] = (op == 0) ? x + s : (op == 1) ? x - s
+                 : (op == 2) ? x * s : (s != 0 ? x / s : 0);
+        }
     }
     return tensor_to_value(C);
+}
+
+// Element-wise divide
+Value nv_tensor_div(Value* a_v, Value* b_v) {
+    NVTensor* A = unwrap_tensor(a_v);
+    NVTensor* B = unwrap_tensor(b_v);
+    return nv_tensor_ew(A, B, 3);
 }
 
 //  Type registration 
