@@ -1,0 +1,27 @@
+# Expected:
+# {"a": 7, "b": [1, 2.5, true, null]}
+# 7
+# [1, 2, 3]
+# 3
+# true
+# [1, "two", 3.5]
+# {"s": "linha\né"}
+
+# The `json` global (parse / parseString / stringify / dump). Before these cases nothing
+# was bound to `json` at run time: every call compiled with "no value bound for 'json'" and
+# evaluated to 0.
+m = json.parse("{\"a\": 7, \"b\": [1, 2.5, true, null]}");
+write(json.stringify(m));
+write(m["a"]);
+
+n = json.parseString("[1, 2, 3]");
+write(json.stringify(n));
+write(len(n));
+
+# dump writes the text and returns the bytes written (-1 when the file cannot be opened).
+write(json.dump(m, "narval_json_case.json") > 0);
+
+# heterogeneous lists and escaped strings (the declared signature of stringify is a
+# placeholder: the runtime takes any value).
+write(json.stringify([1, "two", 3.5]));
+write(json.stringify(json.parse("{\"s\": \"linha\\n\\u00e9\"}")));
