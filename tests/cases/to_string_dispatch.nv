@@ -12,14 +12,14 @@
 
 @[derive(debug)]
 class User {
-    name: str;
-    age: int;
+    public mut name: str;
+    public mut age: int;
 }
 
 @[derive(debug)]
 class Point {
-    x: int;
-    y: int;
+    public mut x: int;
+    public mut y: int;
 }
 
 u = new User();
