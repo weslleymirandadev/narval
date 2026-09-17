@@ -5,8 +5,8 @@
 # name
 
 class User {
-    name: str;
-    age: int;
+    public mut name: str;
+    public mut age: int;
 }
 write(@typeName(User));
 write(@hasField(User, "age"));
