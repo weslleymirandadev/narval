@@ -38,7 +38,15 @@ namespace {
             }
         }
 
-        if (!arg_type->equals(*param_type)) {
+        // An enum value IS the integer it holds (`Color.RED == 0` holds), so a parameter
+        // annotated with the enum accepts a variant — and the other way round. Without
+        // this the checker said "expected 'Color', got 'int64'" and the annotation was
+        // documentation only.
+        bool enum_int_pair =
+            (arg_type->kind == nv::Kind::ENUM && param_type->kind == nv::Kind::INT) ||
+            (arg_type->kind == nv::Kind::INT  && param_type->kind == nv::Kind::ENUM);
+
+        if (!enum_int_pair && !arg_type->equals(*param_type)) {
             ch->error(error_node,
                       label + " argument type error: expected '" +
                       call_type_name(param_type) + "', got '" +
@@ -297,10 +305,11 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
         // `vector.push(x)` — dynamic list append. The vector prototype carries
         // no push method, so accept it here; codegen lowers it to the runtime
         // nv_vector_push bridge (the same one vector literals use).
-        if (object_type->kind == nv::Kind::VECTOR && method_name == "push") {
+        if (object_type->kind == nv::Kind::VECTOR &&
+            (method_name == "push" || method_name == "append")) {
             if (call->args.size() != 1) {
                 ch->error(member_expr->property.get(),
-                          "push(x) expects exactly one argument");
+                          method_name + "(x) expects exactly one argument");
                 return ch->gettyptr("None");
             }
             if (call->args[0] && call->args[0]->value)
@@ -370,7 +379,17 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
         
         // Validar tipos dos argumentos. Chamadas são estritas: int não é aceito
         // como float implicitamente aqui, para o erro aparecer no checker.
-        for (size_t i = 0; i < call->args.size(); i++) {
+        //
+        // Exception: the `json` methods. The signature declared for them (`map<str, str>`)
+        // is a placeholder — the runtime takes any value (object, vector, scalar) because
+        // JSON is the language's interchange format, and refusing `json.stringify([1, 2])`
+        // or `json.stringify({"k": 1})` over the static type would make the builtin
+        // useless. Only the argument count is enforced.
+        const bool json_method =
+            member_expr->object && member_expr->object->kind == NodeType::Identifier &&
+            static_cast<IdentifierNode*>(member_expr->object.get())->symbol == "json";
+
+        for (size_t i = 0; !json_method && i < call->args.size(); i++) {
             Node* arg_node = call->args[i]->value ? call->args[i]->value.get() : const_cast<Node*>(node);
             if (!check_call_arg_type(ch, arg_node, arg_types[i], function->paramstype[i], "Method call")) {
                 return ch->gettyptr("None");
