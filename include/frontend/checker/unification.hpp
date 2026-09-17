@@ -78,6 +78,13 @@ namespace nv {
                 return;
             }
             
+            // An enum value IS an integer here (the variants are plain ints: `Color.RED
+            // == 0` holds), so a parameter annotated with the enum accepts a variant.
+            // Without this the checker said "expected 'Color', got 'int64'" and the
+            // annotation was documentation only.
+            if (t1->kind == Kind::ENUM && t2->kind == Kind::INT) return;
+            if (t1->kind == Kind::INT  && t2->kind == Kind::ENUM) return;
+
             // Unificar tipos compostos
             if (t1->kind == t2->kind) {
                 switch (t1->kind) {
