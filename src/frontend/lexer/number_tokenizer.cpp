@@ -1,6 +1,8 @@
 #include "frontend/lexer/number_tokenizer.hpp"
 
 #include <algorithm>
+#include <cctype>
+#include <climits>
 
 namespace {
 [[noreturn]] void throw_number_error(
@@ -103,7 +105,9 @@ Token tokenize_number(const std::string& input, size_t& pos, size_t& line, size_
     bool is_float = false;
     bool has_exponent = false;
 
+    bool negative = false;
     if (input[pos] == '-') {
+        negative = true;
         value += input[pos];
         ++pos;
         ++column;
@@ -111,20 +115,37 @@ Token tokenize_number(const std::string& input, size_t& pos, size_t& line, size_
 
     if (pos + 1 < input.size() && input[pos] == '0') {
         char next = input[pos + 1];
-        if (next == 'b' || next == 'o' || next == 'x') {
+        if (next == 'b' || next == 'B' || next == 'o' || next == 'O' || next == 'x' || next == 'X') {
+            const char prefix = (next == 'B') ? 'b' : (next == 'O') ? 'o' : (next == 'X') ? 'x' : next;
+            std::string digits;
             value += input[pos];
             ++pos;
             ++column;
-            value += input[pos];
-            ++pos;
+            ++pos;              // the base letter itself
             ++column;
-            if (next == 'b') {
-                consume_digits_with_separators(input, pos, column, value, 2, line, start_column, filename, "binary literal");
-            } else if (next == 'o') {
-                consume_digits_with_separators(input, pos, column, value, 8, line, start_column, filename, "octal literal");
-            } else if (next == 'x') {
-                consume_digits_with_separators(input, pos, column, value, 16, line, start_column, filename, "hex literal");
+            if (prefix == 'b') {
+                consume_digits_with_separators(input, pos, column, digits, 2, line, start_column, filename, "binary literal");
+            } else if (prefix == 'o') {
+                consume_digits_with_separators(input, pos, column, digits, 8, line, start_column, filename, "octal literal");
+            } else {
+                consume_digits_with_separators(input, pos, column, digits, 16, line, start_column, filename, "hex literal");
             }
+            // Every consumer downstream (checker, comptime evaluator, NIR codegen)
+            // reads the token text as decimal — std::stoll("0x10") is 0 — so the
+            // token carries the value in plain decimal.
+            unsigned long long magnitude = 0;
+            for (char c : digits) {
+                unsigned int d = (prefix == 'x') ? static_cast<unsigned int>(std::isdigit(static_cast<unsigned char>(c))
+                                                    ? c - '0'
+                                                    : (std::tolower(static_cast<unsigned char>(c)) - 'a' + 10))
+                                                 : static_cast<unsigned int>(c - '0');
+                magnitude = magnitude * ((prefix == 'x') ? 16u : (prefix == 'o') ? 8u : 2u) + d;
+            }
+            if (magnitude > static_cast<unsigned long long>(LLONG_MAX)) {
+                throw_number_error(filename, line, start_column, column,
+                                   "integer literal out of range in " + std::string(1, prefix) + "-based literal");
+            }
+            value = (negative ? "-" : "") + std::to_string(static_cast<long long>(magnitude));
             return Token(TokenType::NUMBER, value, line, start_column, column, start_position, pos, filename);
         }
     }
