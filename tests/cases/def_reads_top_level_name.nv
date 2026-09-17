@@ -1,0 +1,46 @@
+# Expected:
+# 10
+# 14
+# 0
+# 3
+# 5
+
+# A `def` body can read a top-level name now. Every `def` is emitted as its own func.func —
+# another region — so the value that lives in `main.start` could not be used there: the run
+# died with "'narval.return' op using value defined outside the region". A top-level binding
+# is also stored in the runtime table and the body reads it back, which is also what makes a
+# later reassignment visible to the function.
+K = 5;
+def twice(): int {
+    return K * 2;
+}
+write(twice());
+K = 7;
+write(twice());
+
+# The same fix covers an enum variant: the type value is read from the table too.
+enum E { A, B }
+def first(): E {
+    return E.A;
+}
+write(first());
+
+# ... and a top-level instance.
+class Point {
+    public mut n: int;
+    public new(n: int): None {
+        self.n = n;
+    }
+}
+origin = new Point(3);
+def origin_n(): int {
+    return origin.n;
+}
+write(origin_n());
+
+# A local inside the function is still a local, not a table entry.
+def local_only(): int {
+    v = 5;
+    return v;
+}
+write(local_only());
