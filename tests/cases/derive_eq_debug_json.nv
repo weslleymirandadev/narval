@@ -6,8 +6,8 @@
 
 @[derive(eq, debug, json)]
 class User {
-    name: str;
-    age: int;
+    public mut name: str;
+    public mut age: int;
 }
 a = new User();
 a.name = "bob";
