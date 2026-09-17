@@ -7,8 +7,8 @@
 
 @[derive(eq, hash, ord)]
 class P {
-    x: int;
-    y: int;
+    public mut x: int;
+    public mut y: int;
 }
 a = new P();
 a.x = 1;
