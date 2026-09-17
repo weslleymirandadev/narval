@@ -20,6 +20,7 @@ namespace nv {
         private:
             std::unordered_map<std::string, std::shared_ptr<Type>> names;
             std::unordered_map<std::string, bool> consts;
+            std::unordered_set<std::string> comptime_names;
             std::unordered_map<std::string, DeclPos> decl_positions;
             std::shared_ptr<Namespace> parent;
 
@@ -29,6 +30,14 @@ namespace nv {
             std::shared_ptr<Type>& get_key(const std::string& k);
             bool has_key(std::string k);
             bool is_const(std::string k);
+
+            // `comptime` names of this scope. Assigning to one is refused, but only in
+            // THIS scope: the same name in another scope is another variable (a shadow),
+            // and a name-keyed global set refused the `i` counters of the prelude
+            // functions because of the `i` of a `comptime for`.
+            void mark_comptime(const std::string& k);
+            bool has_comptime(const std::string& k);   // só este escopo
+            bool is_comptime(const std::string& k);    // este escopo ou um pai
             void put_key(const std::string& k, const std::shared_ptr<Type>& v, bool ismutable);
             void put_key(const std::string& k, const std::shared_ptr<Type>& v);
             void set_key(const std::string& k, const std::shared_ptr<Type>& v);
