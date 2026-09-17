@@ -108,6 +108,12 @@ int32_t nv_get_iterable_length(Value* self) {
         return ((NVArray*)obj)->size;
     if (obj->ob_type == NVStr_Type)
         return (int32_t)((NVStr*)obj)->len;
+    // A map and a tuple report their entry/field count: reporting 0 made
+    // `len({"a": 1})` zero and `for k in m` run zero times.
+    if (obj->ob_type == NVMap_Type)
+        return ((NVMap*)obj)->size;
+    if (obj->ob_type == NVTuple_Type)
+        return ((NVTuple*)obj)->field_count;
     return 0;
 }
 
@@ -128,6 +134,28 @@ void nv_collection_slice(Value* out, Value* self, int32_t start, int32_t stop, i
     if (out) memset(out, 0, sizeof(Value));
     if (!self || !self->obj) { create_vector(out, 0); return; }
     NvObject* obj = self->obj;
+
+    // Slicing a string gives back a string. It used to fall into the empty-vector
+    // case, so `s[0:5]` printed nothing at all.
+    if (obj->ob_type == NVStr_Type) {
+        const char* s = ((NVStr*)obj)->value;
+        int32_t size = s ? (int32_t)strlen(s) : 0;
+        if (step == NV_SLICE_NONE) step = 1;
+        if (step <= 0) { create_str(out, ""); return; }
+        if (start == NV_SLICE_NONE) start = 0;
+        else { if (start < 0) start += size; if (start < 0) start = 0; if (start > size) start = size; }
+        if (stop == NV_SLICE_NONE) stop = size;
+        else { if (stop < 0) stop += size; if (stop < 0) stop = 0; if (stop > size) stop = size; }
+        char* buf = (char*)malloc((size_t)(stop > start ? (stop - start) / step + 1 : 1) + 1);
+        if (!buf) { create_str(out, ""); return; }
+        int32_t n = 0;
+        for (int32_t i = start; i < stop; i += step) buf[n++] = s[i];
+        buf[n] = '\0';
+        create_str(out, buf);
+        free(buf);
+        return;
+    }
+
     Value* elems = NULL; int size = 0;
     if (obj->ob_type == NVVector_Type) { NVVector* v = (NVVector*)obj; elems = v->elements; size = v->size; }
     else if (obj->ob_type == NVArray_Type) { NVArray* a = (NVArray*)obj; elems = a->elements; size = a->size; }
