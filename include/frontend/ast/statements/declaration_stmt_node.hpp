@@ -9,6 +9,10 @@ public:
     std::unique_ptr<Expr> value;
     std::string typ;
     bool mutable_;
+    // true when the declaration came from the ComptimeEvaluator (the value is already
+    // folded). Assigning to a `comptime` name is refused by the checker; the original
+    // declaration, the one carrying this mark, still counts.
+    bool from_comptime = false;
     DeclarationStmtNode(std::unique_ptr<Expr> tgt, std::unique_ptr<Expr> val, std::string tyyp, bool mutable_)
         : Stmt(NodeType::DeclarationStatement), target(std::move(tgt)), value(std::move(val)), typ(tyyp), mutable_(mutable_) {};
     
@@ -21,6 +25,7 @@ public:
         auto cloned_target = target ? std::unique_ptr<Expr>(static_cast<Expr*>(target->clone())) : nullptr;
         auto cloned_value = value ? std::unique_ptr<Expr>(static_cast<Expr*>(value->clone())) : nullptr;
         auto* node = new DeclarationStmtNode(std::move(cloned_target), std::move(cloned_value), this->typ, this->mutable_);
+        node->from_comptime = this->from_comptime;
         if (position) {
             node->position = std::make_unique<PositionData>(*position);
         }
