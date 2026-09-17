@@ -10,9 +10,9 @@
 
 @[derive(debug, clone, from_json)]
 class User {
-    name: str;
-    age: int;
-    admin: bool;
+    public mut name: str;
+    public mut age: int;
+    public mut admin: bool;
 }
 a = new User();
 a.name = "bob";
