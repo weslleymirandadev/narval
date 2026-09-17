@@ -138,6 +138,7 @@ std::unique_ptr<Node> parse_stmt(Parser* parser) {
                 return parse_defer_error_stmt(parser);
             return parse_defer_stmt(parser);
         }
+        case TokenType::IMPORT: return parse_bare_import_stmt(parser);
         case TokenType::EXTERN: return parse_extern_stmt(parser);
         case TokenType::FROM:
             if (parser->next_token().type == TokenType::EXTERN)
