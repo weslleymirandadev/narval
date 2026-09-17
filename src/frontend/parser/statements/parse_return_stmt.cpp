@@ -8,7 +8,16 @@ std::unique_ptr<Node> parse_return_stmt(Parser* parser) {
     std::unique_ptr<PositionData> pos = std::make_unique<PositionData>(line, column[0], column[1], position[0], position[1]);
     
     parser->consume_token(); // 'return'
-    
+
+    // `return;` — a bare return out of a function typed None. It used to be a
+    // parse error ("Unexpected token in primary expression: ';'").
+    if (parser->current_token().type == TokenType::SEMICOLON) {
+        parser->consume_token();
+        auto bare = std::make_unique<ReturnStmtNode>(nullptr);
+        bare->position = std::move(pos);
+        return bare;
+    }
+
     auto value = parse_expr(parser);
     parser->expect(TokenType::SEMICOLON, "Expected ';'.");
     if (value && value->position) {
