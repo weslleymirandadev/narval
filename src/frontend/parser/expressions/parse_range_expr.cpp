@@ -11,12 +11,16 @@ std::unique_ptr<Node> parse_range_expr(Parser* parser) {
     // Parse the left side as a normal logical expression
     auto left = parse_logical_expr(parser);
 
-    // If there is a range operator, consume and parse the right side
+    // If there is a range operator, consume and parse the right side.
+    // `...` is the third spelling and means the same as `..=` (inclusive): the
+    // lexer always knew the token, but no rule used it, so `for i in 1...4` was
+    // refused with "Expected '{', but got token: '...'".
     if (
         parser->current_token().type == TokenType::INCLUSIVE_RANGE ||
-        parser->current_token().type == TokenType::RANGE
+        parser->current_token().type == TokenType::RANGE ||
+        parser->current_token().type == TokenType::ELIPSIS
     ) {
-        bool inclusive = (parser->current_token().type == TokenType::INCLUSIVE_RANGE);
+        bool inclusive = (parser->current_token().type != TokenType::RANGE);
         parser->consume_token();
         auto right = parse_logical_expr(parser);
 
