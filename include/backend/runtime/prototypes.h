@@ -492,6 +492,9 @@ int compare_values(const Value* a, const Value* b);
 //  Tensor runtime 
 extern NvTypeObject* NVTensor_Type;
 int64_t nv_value_to_i64(Value* v);
+
+// Counterpart of nv_box_int, for the code paths that need a raw i64 (inline assembly).
+int64_t nv_unbox_int(NvObject* obj);
 void   nv_tensor_init_type(void);
 Value  nv_tensor_zeros(int32_t dtype, int32_t ndim, const int64_t* shape);
 Value  nv_tensor_ones(int32_t dtype, int32_t ndim, const int64_t* shape);
@@ -501,7 +504,11 @@ Value  nv_tensor_matmul(Value* a, Value* b);
 Value  nv_tensor_add(Value* a, Value* b);
 Value  nv_tensor_sub(Value* a, Value* b);
 Value  nv_tensor_mul(Value* a, Value* b);
+Value  nv_tensor_div(Value* a, Value* b);
 Value  nv_tensor_scalar_mul(Value* a, double scalar);
+// Element-wise op against a scalar: op 0=add 1=sub 2=mul 3=div. nv_tensor_scalar_mul
+// is the op==2 case of it.
+Value  nv_tensor_scalar_op(Value* a, double scalar, int op);
 int32_t nv_tensor_ndim(Value* v);
 int32_t nv_tensor_dtype_id(Value* v);
 // Like nv_tensor_from_flat_array, but the caller says which storage the tensor has instead of
@@ -513,6 +520,9 @@ NvObject* nv_tensor_from_flat_array_typed(int64_t dtype, NvObject* flat, int64_t
                                           int64_t d4, int64_t d5, int64_t d6, int64_t d7);
 int64_t nv_tensor_dim(Value* v, int32_t axis);
 // One element by flat index, boxed, read and written according to the tensor's own dtype.
+// A core runtime error the language can see (flag/throw path, catchable).
+void nv_raise_nir_error(const char* kind, const char* msg);
+
 NvObject* nv_tensor_get_element(Value* v, int64_t flat);
 void      nv_tensor_set_element(Value* v, int64_t flat, NvObject* val);
 int64_t nv_tensor_nelem(Value* v);
