@@ -6,7 +6,7 @@
 # upper
 # digit
 # other
-# Stdin:
+# inside
 
 match 1 {
     0..1 => write("zero"),
