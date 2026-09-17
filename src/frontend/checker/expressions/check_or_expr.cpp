@@ -49,7 +49,14 @@ namespace nv {
                 if (stmt) checker->check_node(stmt.get());
             checker->or_block_depth--;
         } else if (or_node->value_handler) {
+            // `x = Err("bad") or err` — the value-handler form names the error the
+            // same way the block form does, so `err` is legal here too. The guard in
+            // check_primary_expr only consults or_block_depth, which the block form
+            // increments, so the value form was refused with "'err' can only be used
+            // inside 'or' expressions" while sitting inside an 'or' expression.
+            checker->or_block_depth++;
             checker->check_node(or_node->value_handler.get());
+            checker->or_block_depth--;
         }
 
         checker->pop_scope();
