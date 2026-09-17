@@ -55,9 +55,17 @@ std::unique_ptr<Node> parse_comptime_if(Parser* parser) {
     CodeBlock else_body;
     if (parser->current_token().type == TokenType::ELSE) {
         parser->consume_token();
-        parser->expect(TokenType::OBRACE, "Expected '{' after 'else'");
-        else_body = parse_body(parser);
-        parser->expect(TokenType::CBRACE, "Expected '}' to close comptime else body");
+        if (parser->current_token().type == TokenType::IF) {
+            // `else if` after a `comptime if`. It used to be refused with
+            // "Expected '{', but got token: 'if'"; a nested comptime if is the
+            // same statement, so it goes in as the single else-body statement.
+            auto nested = parse_comptime_if(parser);
+            else_body.push_back(std::unique_ptr<Stmt>(static_cast<Stmt*>(nested.release())));
+        } else {
+            parser->expect(TokenType::OBRACE, "Expected '{' after 'else'");
+            else_body = parse_body(parser);
+            parser->expect(TokenType::CBRACE, "Expected '}' to close comptime else body");
+        }
     }
 
     auto node = std::make_unique<ComptimeIfNode>(
