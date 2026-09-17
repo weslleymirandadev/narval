@@ -11,12 +11,15 @@ public:
     std::string name;
     std::string type;
     bool is_mutable;
-    
-    ClassFieldNode(const std::string& name, const std::string& type, bool is_mutable = false)
-        : Expr(NodeType::ClassField), name(name), type(type), is_mutable(is_mutable) {}
+    std::string access_modifier;   // "public", "private" (default) or "protected"
+
+    ClassFieldNode(const std::string& name, const std::string& type, bool is_mutable = false,
+                   const std::string& access_modifier = "private")
+        : Expr(NodeType::ClassField), name(name), type(type), is_mutable(is_mutable),
+          access_modifier(access_modifier) {}
     
     Node* clone() const override {
-        return new ClassFieldNode(name, type, is_mutable);
+        return new ClassFieldNode(name, type, is_mutable, access_modifier);
     }
 };
 
