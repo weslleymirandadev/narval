@@ -24,6 +24,16 @@ std::shared_ptr<nv::Type>& check_return_stmt(nv::Checker* ch, Node* node) {
         
         // Resolver tipo de retorno esperado
         auto expected_return_type = ch->unify_ctx.resolve(ch->current_return_type);
+
+        // `return None;` in a function typed None: None carries no payload, so the
+        // value is dropped and the return is emitted as a bare (void) one. Keeping
+        // it made the backend reject the module with "Found return instr that
+        // returns non-void in Function of void return type".
+        if (expected_return_type && expected_return_type->kind == nv::Kind::NONE &&
+            return_value_type && return_value_type->kind == nv::Kind::NONE) {
+            return_stmt->value.reset();
+            return ch->gettyptr("None");
+        }
         
         // Verificar coerção implícita int -> float
         bool return_is_int = return_value_type->kind == nv::Kind::INT;
