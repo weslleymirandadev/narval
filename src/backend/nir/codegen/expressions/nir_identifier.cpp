@@ -22,6 +22,22 @@ void IdentifierNode::nir_codegen(nv::NIRGenerationContext& ctx) {
             mlir::ValueRange{name_val});
         v = call.getResults()[0];
     }
+    if (v && ctx.is_module_global(symbol) && ctx.value_outside_region(v)) {
+        // Inside a function body, and the name is a module-scope binding: the value belongs
+        // to the module's region and cannot be used here. Read it from the runtime store,
+        // where the top-level declaration put it.
+        auto& b   = ctx.get_builder();
+        auto  loc = ctx.loc(position.get());
+        auto  vt  = ctx.get_narval_value_type();
+        ctx.ensure_runtime_func("nv_global_get",
+            mlir::FunctionType::get(&ctx.get_mlir_context(), {vt}, {vt}));
+        mlir::Value name_val = nir_emit_const(ctx, loc, b.getStringAttr(symbol));
+        auto call = mlir::narval::CallRuntimeOp::create(
+            b, loc, mlir::TypeRange{vt},
+            mlir::SymbolRefAttr::get(&ctx.get_mlir_context(), "nv_global_get"),
+            mlir::ValueRange{name_val});
+        v = call.getResults()[0];
+    }
     if (!v) {
         // The type checker accepted the name but codegen has no binding for it at
         // this point - typically the first assignment sits inside a nested block
