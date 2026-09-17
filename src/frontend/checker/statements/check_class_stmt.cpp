@@ -122,7 +122,7 @@ namespace nv {
 
         for (const auto& field : class_stmt->fields) {
             auto field_type = checker->gettyptr(field->type, node);
-            class_type->add_field(field->name, field_type, field->is_mutable);
+            class_type->add_field(field->name, field_type, field->is_mutable, field->access_modifier);
         }
 
         std::string previous_class = checker->current_class_name;
