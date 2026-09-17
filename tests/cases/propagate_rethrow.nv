@@ -1,0 +1,33 @@
+# Expected:
+# a
+# b
+# 5
+# inner
+# outer
+# end
+
+# `propagate` with no pending error does nothing (the wiki's example prints a, b, 5 — which
+# is the correct behaviour: there is nothing to re-throw).
+def work(): int {
+    write("a");
+    propagate;
+    write("b");
+    return 5;
+}
+write(work());
+
+# With a pending error, `propagate` inside a catch re-throws it to the enclosing handler.
+# It used to go through the legacy setjmp handler, which the NIR never pushes: the error
+# escaped the whole program (the outer catch never ran) and was never reported.
+try {
+    try {
+        throw "boom";
+    } catch Error e {
+        write("inner");
+        propagate;
+        write("não deve aparecer");
+    }
+} catch Error e2 {
+    write("outer");
+}
+write("end");
