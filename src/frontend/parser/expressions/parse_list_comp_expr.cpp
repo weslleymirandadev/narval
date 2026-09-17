@@ -1,5 +1,6 @@
 #include "frontend/parser/expressions/parse_list_comp_expr.hpp"
 #include "frontend/parser/expressions/parse_logical_expr.hpp"
+#include "frontend/parser/expressions/parse_range_expr.hpp"
 #include "frontend/parser/expressions/parse_expr.hpp"
 #include "frontend/parser/expressions/parse_conditional_expr.hpp"
 #include "frontend/parser/expressions/parse_primary_expr.hpp"
@@ -85,9 +86,11 @@ std::unique_ptr<Node> parse_list_comp_expr(Parser* parser, std::unique_ptr<Expr>
         
         parser->expect(TokenType::IN, "Expected 'in'.");
         
-        // Usar parse_logical_expr em vez de parse_expr para evitar que o `if` do
-        // filter seja consumido como ternário pelo parse_assignment_expr
-        auto source_node = parse_logical_expr(parser);
+        // parse_logical_expr instead of parse_expr, so the filter's `if` is not eaten as a
+        // ternary by parse_assignment_expr. parse_range_expr is what makes the `for x in
+        // 0..5` of the comprehension work: it only adds the range operator on top of the
+        // same parse_logical_expr.
+        auto source_node = parse_range_expr(parser);
         auto source = std::unique_ptr<Expr>(static_cast<Expr*>(source_node.release()));
         
         generators.push_back(std::make_pair(
