@@ -193,6 +193,9 @@ namespace nv {
         std::vector<std::shared_ptr<nv::Type>> push_params = {push_param_type};
         auto push_type = std::make_shared<nv::Function>(push_params, std::make_shared<nv::None>());
         prototype->put_key("push", push_type, true);
+        // `append` is the same operation under the name the docs use; both reach the
+        // nv_vector_push bridge.
+        prototype->put_key("append", push_type, true);
         
         // pop: não aceita argumentos, retorna o elemento removido (tipo genérico)
         // O tipo de retorno será inferido durante a verificação de tipos
