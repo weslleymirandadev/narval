@@ -248,13 +248,15 @@ NvObject* nv_ffi_call_sis(NvObject* n, NvObject* a, NvObject* b) {
 // Every REPL input is JIT'd into a fresh JIT, so a variable's value cannot stay in
 // a register between lines. The codegen emits nv_repl_set / nv_repl_get for the
 // names assigned at the top level of the REPL, and the store keeps them alive.
-#define NV_REPL_SLOTS 64
-
+// The table grows on demand: it also carries the module scope bindings read from inside
+// a function body (see nv_global_set), and a fixed 64 slots silently dropped the value of
+// the 65th name (nv_global_set returned None and the read got nothing).
 static struct {
     char* name;
     NvObject* value;
-} g_repl_slots[NV_REPL_SLOTS];
+} *g_repl_slots = NULL;
 static int g_repl_used = 0;
+static int g_repl_capacity = 0;
 
 static int repl_slot(const char* name) {
     if (!name) return -1;
@@ -278,7 +280,13 @@ NvObject* nv_repl_set(NvObject* name_obj, NvObject* value) {
     if (!name || !value) return box_none();
     int i = repl_slot(name);
     if (i < 0) {
-        if (g_repl_used >= NV_REPL_SLOTS) return box_none();
+        if (g_repl_used >= g_repl_capacity) {
+            const int grown = g_repl_capacity ? g_repl_capacity * 2 : 32;
+            void* moved = realloc(g_repl_slots, (size_t)grown * sizeof(*g_repl_slots));
+            if (!moved) return box_none();
+            g_repl_slots  = moved;
+            g_repl_capacity = grown;
+        }
         i = g_repl_used++;
         g_repl_slots[i].name = strdup(name);
         g_repl_slots[i].value = NULL;
@@ -289,3 +297,11 @@ NvObject* nv_repl_set(NvObject* name_obj, NvObject* value) {
     g_repl_slots[i].value = value;
     return value;
 }
+
+// The same store, reached from the module scope. A binding assigned at the top level goes
+// in here too (nir_declaration_stmt.cpp) because a `def` body is its own func.func, i.e.
+// another region: the body cannot use the value that lives in `main.start`, so it reads it
+// back at run time. Without this, reading a top-level name inside a function failed with
+// "'narval.return' op using value defined outside the region".
+NvObject* nv_global_get(NvObject* name_obj) { return nv_repl_get(name_obj); }
+NvObject* nv_global_set(NvObject* name_obj, NvObject* value) { return nv_repl_set(name_obj, value); }
