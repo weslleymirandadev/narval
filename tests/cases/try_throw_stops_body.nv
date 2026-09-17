@@ -1,0 +1,43 @@
+# Expected:
+# 1
+# c1
+# end
+# a
+# c
+# end
+# c
+# end
+
+# `throw` stops the `try` body: the statements after it no longer run (they used to, and
+# the catch was only evaluated at the end of the body). The handling is flag based, so the
+# check runs after every statement of the body.
+try {
+    write("1");
+    throw "boom";
+    write("2");
+} catch Error e {
+    write("c1");
+}
+write("end");
+
+# A throw inside a function called by the body stops the body as well.
+def bad(): int {
+    throw "deep";
+    return 1;
+}
+try {
+    write("a");
+    x = bad();
+    write("b");
+} catch Error e {
+    write("c");
+}
+write("end");
+
+# A throw as the last statement still works.
+try {
+    throw "last";
+} catch Error e {
+    write("c");
+}
+write("end");
