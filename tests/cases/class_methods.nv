@@ -4,8 +4,8 @@
 # bob@42
 
 class User {
-    mut name: str;
-    mut age: int;
+    public mut name: str;
+    public mut age: int;
     public greet(): str {
         return "hi " + self.name;
     }
