@@ -123,6 +123,26 @@ public:
     void set_c_import_sigs(std::unordered_map<std::string, std::string> sigs) {
         c_import_sigs_ = std::move(sigs);
     }
+
+    // Import aliases (`from "m" import square as sq`), filled from the checker. The
+    // merged AST keeps the module's own names, so a use of `sq` has to be translated
+    // back to `square` before anything is emitted.
+    void set_symbol_aliases(std::unordered_map<std::string, std::string> aliases) {
+        symbol_aliases_ = std::move(aliases);
+    }
+    const std::string& resolve_symbol_alias(const std::string& name) const {
+        auto it = symbol_aliases_.find(name);
+        return it == symbol_aliases_.end() ? name : it->second;
+    }
+
+    // Import namespace aliases (`import m as ns;`, `from "x" import * as ns`):
+    // `ns.f(a)` is a call to the module's function `f`, not a value `ns`.
+    void set_namespace_aliases(std::unordered_set<std::string> names) {
+        namespace_aliases_ = std::move(names);
+    }
+    bool is_namespace_alias(const std::string& name) const {
+        return namespace_aliases_.count(name) != 0;
+    }
     const std::unordered_map<std::string, std::string>& get_c_import_sigs() const {
         return c_import_sigs_;
     }
@@ -187,6 +207,29 @@ public:
     //  Control-flow emit helpers (Phase 2) 
 
     // Names assigned at the top level of the REPL. Each input is JIT'd on its own,
+    // Inside a function body? A `def` is emitted as its own func.func (another region), so
+    // a binding declared at module scope cannot be used there: the declaration stores it in
+    // the runtime table and the body reads it back (B8/B9 in WIKI_BUGS_FIX.md).
+    void set_in_function(bool v) { in_function_ = v; }
+    bool in_function() const     { return in_function_; }
+
+    // Names a top-level declaration put in the runtime store.
+    void note_module_global(const std::string& name) { module_globals_.insert(name); }
+    bool is_module_global(const std::string& name) const {
+        return module_globals_.count(name) != 0;
+    }
+
+    // A value defined in another region than the one being emitted — the case a function
+    // body hits when it references a module-scope value.
+    bool value_outside_region(mlir::Value v) {
+        if (!v) return false;
+        mlir::Operation* def = v.getDefiningOp();
+        if (!def) return false;                       // block argument: local by construction
+        mlir::Block* use_block = get_builder().getInsertionBlock();
+        if (!use_block) return false;
+        return def->getParentRegion() != use_block->getParent();
+    }
+
     // so those values live in the runtime store (nv_repl_set / nv_repl_get) instead
     // of a register that dies with the input.
     void set_repl_globals(const std::vector<std::string>& names) {
@@ -270,9 +313,13 @@ private:
     std::string                          source_file_;
     std::vector<std::string>             extra_link_items_;
     std::unordered_map<std::string, std::string> c_import_sigs_;
+    std::unordered_map<std::string, std::string> symbol_aliases_;
+    std::unordered_set<std::string>          namespace_aliases_;
     std::vector<mlir::Value>             value_stack_;
     std::unordered_map<std::string, std::string> ffi_remaps_;
     std::vector<std::string> repl_globals_;
+    bool in_function_ = false;
+    std::unordered_set<std::string> module_globals_;
 };
 
 } // namespace nv
