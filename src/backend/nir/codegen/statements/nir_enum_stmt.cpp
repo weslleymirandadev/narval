@@ -22,4 +22,8 @@ void EnumStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
     }
 
     ctx.define(name, enum_map);
+
+    // Same reason as a declaration: a `def` body that names a variant (`return E.A`)
+    // reads the type value from the runtime table instead of the module's region.
+    nir_store_module_global(ctx, ctx.loc(position.get()), name, enum_map);
 }
