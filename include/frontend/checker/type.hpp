@@ -290,6 +290,8 @@ namespace nv {
         std::unordered_map<std::string, std::shared_ptr<Type>> fields;
         std::unordered_map<std::string, std::shared_ptr<Type>> methods;
         std::unordered_map<std::string, std::string> method_access; // method_name -> "public"/"private"/"protected"
+        std::unordered_map<std::string, std::string> field_access;  // field_name -> "public"/"private"/"protected"
+        std::unordered_map<std::string, bool> field_mutable;        // field_name -> assigned after construction?
         
         Class(const std::string& class_name) : Type(Kind::CLASS), name(class_name) {}
         
@@ -307,8 +309,14 @@ namespace nv {
             return name == other_class->name;
         }
         
-        void add_field(const std::string& field_name, std::shared_ptr<Type> field_type, bool is_mutable = false) {
+        // A field of a class written in Narval is private unless it says `public`; the
+        // default here is public because this is also how the builtin classes (Error and
+        // friends) declare theirs, and check_class_stmt passes the source modifier.
+        void add_field(const std::string& field_name, std::shared_ptr<Type> field_type,
+                       bool is_mutable = false, const std::string& access = "public") {
             fields[field_name] = field_type;
+            field_access[field_name] = access;
+            field_mutable[field_name] = is_mutable;
         }
         
         void add_method(const std::string& method_name, std::shared_ptr<Type> method_type, const std::string& access = "public") {
@@ -324,6 +332,33 @@ namespace nv {
             return from_class == name;
         }
         
+        // Class that declares the field (the receiver itself, or an ancestor).
+        const Class* declaring_class(const std::string& field_name) const {
+            if (fields.count(field_name)) return this;
+            if (parent_class) return parent_class->declaring_class(field_name);
+            return nullptr;
+        }
+
+        // Only the class itself reaches a private or protected field.
+        bool is_field_accessible(const std::string& field_name, const std::string& from_class) const {
+            const Class* owner = declaring_class(field_name);
+            if (!owner) return true;                       // no info: builtin, accessible
+            auto it = owner->field_access.find(field_name);
+            if (it == owner->field_access.end()) return true;
+            if (it->second == "public") return true;
+            return from_class == owner->name;
+        }
+
+        // `mut` is what allows an assignment after construction. A builtin-derived class has
+        // no source modifier to consult, so it stays as permissive as it was.
+        bool is_field_mutable(const std::string& field_name) const {
+            const Class* owner = declaring_class(field_name);
+            if (!owner || owner->is_builtin_derived) return true;
+            auto it = owner->field_mutable.find(field_name);
+            if (it == owner->field_mutable.end()) return false;
+            return it->second;
+        }
+
         std::shared_ptr<Type> get_field(const std::string& field_name) const {
             auto it = fields.find(field_name);
             if (it != fields.end()) {
