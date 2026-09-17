@@ -1,0 +1,17 @@
+# Expected:
+# None
+# pegou
+# end
+
+# The IndexError of an out-of-range index is catchable like any other error.
+# Note: the access that failed still yields the empty value of that read (`None`) and the
+# statement in progress finishes — the error model is flag based and the check happens at
+# statement boundaries, so the interruption lands on the following statement.
+a: Tensor<float, [2, 3]> = Tensor({{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}});
+try {
+    write(a[9]);
+    write("não deve aparecer");
+} catch IndexError e {
+    write("pegou");
+}
+write("end");
