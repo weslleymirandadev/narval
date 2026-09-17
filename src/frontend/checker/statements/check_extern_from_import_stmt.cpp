@@ -1,6 +1,7 @@
 #include "frontend/checker/statements/check_extern_from_import_stmt.hpp"
 #include "frontend/ast/statements/extern_from_import_stmt_node.hpp"
 #include "frontend/checker/type.hpp"
+#include "frontend/ffi/c_lib_registry.hpp"
 
 // Registra os símbolos importados no escopo do checker.
 // Python e demais linguagens: bypass total de verificação de tipos via python_namespaces.
@@ -16,6 +17,15 @@ std::shared_ptr<nv::Type>& check_extern_from_import_stmt(nv::Checker* checker, N
 
     if (stmt->is_wildcard && !stmt->wildcard_alias.empty()) {
         register_dynamic(stmt->wildcard_alias);
+        return checker->gettyptr("None");
+    }
+
+    // `from extern "C:math" import *` — register every function of the library. The
+    // list is the same one the codegen uses to build the `nv_ffi_<name>` bridges, so
+    // what the checker accepts is exactly what the backend can lower.
+    if (stmt->is_wildcard) {
+        for (const auto& fn : nv::ffi::c_lib_registry(stmt->library))
+            register_dynamic(fn.name);
         return checker->gettyptr("None");
     }
 
