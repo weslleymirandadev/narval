@@ -311,6 +311,64 @@ std::vector<Token> Lexer::tokenize()
             continue;
         }
 
+        // `import name [as alias];` — the spelling without `from`. Booked the same way
+        // (so the module is loaded and merged) and emitted as IMPORT IDENT [AS IDENT]
+        // [;]; the parser builds the same ImportStmtNode from those tokens. A bare
+        // `import` used to fall through to the generic tokenizer and the parser
+        // reported "Unexpected token in primary expression: 'import'".
+        if (c == 'i' && std::distance(current, input.cend()) >= 6 &&
+            input.substr(position, 6) == "import" &&
+            (position + 6 >= input.size() ||
+             !(std::isalnum(static_cast<unsigned char>(input[position + 6])) || input[position + 6] == '_')) &&
+            (tokens.empty() || (tokens.back().type != TokenType::FROM &&
+                                tokens.back().type != TokenType::EXTERN &&
+                                tokens.back().type != TokenType::STRING)))
+        {
+            size_t start_pos = position;
+            size_t start_col = column;
+            size_t start_line = line;
+            for (int i = 0; i < 6; ++i) advance();
+            tokens.emplace_back(TokenType::IMPORT, "import", start_line, start_col, column, start_pos, position, filename);
+            skip_whitespace();
+
+            if (!is_eof() && (std::isalpha(static_cast<unsigned char>(peek())) || peek() == '_')) {
+                Token name_tok = tokenize_identifier_or_keyword(input, position, line, column, filename);
+                current = input.cbegin() + position;
+                std::string module_path = name_tok.lexeme;
+                tokens.push_back(name_tok);
+
+                ImportInfo import_info(module_path);
+                import_info.is_wildcard = true;
+                skip_whitespace();
+
+                if (!is_eof() && std::isalpha(static_cast<unsigned char>(peek()))) {
+                    Token maybe_as = tokenize_identifier_or_keyword(input, position, line, column, filename);
+                    current = input.cbegin() + position;
+                    if (maybe_as.type == TokenType::AS) {
+                        tokens.push_back(maybe_as);
+                        skip_whitespace();
+                        Token alias_tok = tokenize_identifier_or_keyword(input, position, line, column, filename);
+                        current = input.cbegin() + position;
+                        if (alias_tok.type == TokenType::IDENTIFIER) {
+                            import_info.wildcard_alias = alias_tok.lexeme;
+                            tokens.push_back(alias_tok);
+                        }
+                    }
+                }
+
+                skip_whitespace();
+                if (!is_eof() && peek() == ';') {
+                    size_t semi_pos = position, semi_col = column;
+                    advance();
+                    tokens.emplace_back(TokenType::SEMICOLON, ";", line, semi_col, column, semi_pos, position, filename);
+                }
+
+                import_infos.push_back(import_info);
+                imported_modules.push_back(module_path);
+            }
+            continue;
+        }
+
         // from "module" import items — detectar cedo para resolver dependências,
         // mas emitir tokens individuais para que o parser parseia normalmente.
         if (c == 'f' && std::distance(current, input.cend()) >= 4 &&
