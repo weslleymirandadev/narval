@@ -139,10 +139,12 @@ namespace nv {
             );
             json_type->prototype->put_key("parseString", parse_string_func_type, true);
             
-            // Método dump: (Map, string) -> None
+            // dump method: (value, path) -> int (bytes written, -1 when the file cannot be
+            // opened). The declared return used to be None, but the runtime returns the
+            // count and `n = json.dump(...)` was refused for reading a None result.
             auto dump_func_type = std::make_shared<Function>(
                 std::vector<std::shared_ptr<Type>>{json_type, checker.gettyptr("str")},
-                checker.gettyptr("None")
+                checker.gettyptr("int")
             );
             json_type->prototype->put_key("dump", dump_func_type, true);
             
