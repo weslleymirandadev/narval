@@ -145,7 +145,7 @@ std::unique_ptr<Node> parse_class_stmt(Parser* parser) {
                 parser->consume_token();
                 std::string field_type = parse_type(parser);
                 
-                auto field = std::make_unique<ClassFieldNode>(member_name, field_type, is_mutable_field);
+                auto field = std::make_unique<ClassFieldNode>(member_name, field_type, is_mutable_field, access_modifier);
                 class_node->fields.push_back(std::move(field));
                 parser->expect(TokenType::SEMICOLON, "Expected ';' after field declaration");
             }
