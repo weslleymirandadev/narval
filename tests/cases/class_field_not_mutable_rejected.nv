@@ -1,0 +1,15 @@
+# Error: is not mutable
+
+# A field that is reachable from outside still cannot be assigned there unless it says `mut`,
+# so `name` is readable but only the class writes it.
+class User {
+    public name: str;
+
+    public new(name: str): None {
+        self.name = name;
+    }
+}
+
+u = new User("bob");
+write(u.name);
+u.name = "ana";
