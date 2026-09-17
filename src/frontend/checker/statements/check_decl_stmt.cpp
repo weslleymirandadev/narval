@@ -79,6 +79,19 @@ std::shared_ptr<nv::Type>& check_decl_stmt(Checker* ch, Node* node) {
     auto* decl = static_cast<DeclarationStmtNode*>(node);
     auto* name = static_cast<IdentifierNode*>(decl->target.get());
 
+    // At statement level the language does not tell assignment from declaration: `N = 6` is
+    // a declaration, which is also why reassigning a `comptime` name went through silently.
+    // The declaration the ComptimeEvaluator generates marks the name in this scope; a later
+    // declaration of the same name HERE is the refused reassignment. In another scope the
+    // name is another variable (a shadow) and is fine.
+    if (decl->from_comptime) {
+        ch->scope->mark_comptime(name->symbol);
+    } else if (ch->scope->has_comptime(name->symbol)) {
+        ch->error(node, "Cannot assign to '" + name->symbol +
+                        "'; a `comptime` binding is a constant");
+        return ch->gettyptr("None");
+    }
+
     record_and_check_redecl(ch, node, name, decl->typ);
 
     if (decl->typ == "automatic") {
