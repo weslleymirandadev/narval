@@ -1,0 +1,14 @@
+# Error: is private in class 'Account'
+
+# A field is private to its class until it says `public`, so code outside the class does not
+# reach it — reading it here used to work, because fields had no visibility at all.
+class Account {
+    balance: int;
+
+    public new(balance: int): None {
+        self.balance = balance;
+    }
+}
+
+a = new Account(3);
+write(a.balance);
