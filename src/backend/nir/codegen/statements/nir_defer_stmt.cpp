@@ -1,23 +1,33 @@
 #include "../nir_codegen_utils.hpp"
 #include "frontend/ast/statements/defer_stmt_node.hpp"
 
-// `defer { body }` — emit remaining_body first (normal flow),
-// then wrap in nv_defer_push/pop around the body block.
-// For NIR, we emit remaining_body inline and defer_body via a runtime push.
+// `defer { body }` — the parser hands the node the rest of its block
+// (remaining_body) and the deferred statements (defer_body). The runtime has no
+// scope unwinding, so the deferred body is emitted once the rest of the block has
+// been emitted.
+//
+// The one case that needs care is a `return` in the rest of the block: emitting
+// the deferred body after the return put ops behind a terminator and the module
+// failed to lower ("Terminator found in the middle of a basic block"). The
+// deferred statements run BEFORE the return instead, which is what "runs when the
+// block finishes" means.
 void DeferStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
-    // Emit the deferred body as a no-arg closure registered with the runtime.
-    // The runtime calls it when the scope exits.
-    // For simplicity, emit the defer body inline after remaining_body (conservative).
+    auto emit_deferred = [&]() {
+        ctx.push_scope();
+        for (const auto& s : defer_body)
+            if (s) s->nir_codegen(ctx);
+        ctx.pop_scope();
+    };
 
-    // Emit the rest of the enclosing block first.
-    ctx.push_scope();
-    for (const auto& s : remaining_body)
-        if (s) s->nir_codegen(ctx);
-    ctx.pop_scope();
+    bool deferred_done = false;
+    for (const auto& s : remaining_body) {
+        if (!s) continue;
+        if (!deferred_done && s->kind == NodeType::ReturnStatement) {
+            emit_deferred();
+            deferred_done = true;
+        }
+        s->nir_codegen(ctx);
+    }
 
-    // Then run the deferred body (simplified: no scope unwinding support yet).
-    ctx.push_scope();
-    for (const auto& s : defer_body)
-        if (s) s->nir_codegen(ctx);
-    ctx.pop_scope();
+    if (!deferred_done) emit_deferred();
 }
