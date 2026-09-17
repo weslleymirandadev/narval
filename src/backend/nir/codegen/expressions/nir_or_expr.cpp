@@ -38,11 +38,19 @@ void OrExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         mlir::Value fallback;
         if (is_block_handler) {
             ctx.push_scope();
+            // `err` is the checker's binding for the error the base expression
+            // carries, and the handler may read it — without this definition the
+            // identifier was unbound (warning + 0) and `x = Err("bad") or { err };`
+            // bound 0.
+            ctx.define("err", nir_call_runtime(ctx, loc, "nv_or_error", {base}, {vt}));
             nir_emit_body(block_stmts, ctx);
             ctx.pop_scope();
             fallback = ctx.has_value() ? ctx.pop_value() : mlir::Value{};
         } else if (value_handler) {
+            ctx.push_scope();
+            ctx.define("err", nir_call_runtime(ctx, loc, "nv_or_error", {base}, {vt}));
             value_handler->nir_codegen(ctx);
+            ctx.pop_scope();
             fallback = ctx.pop_value();
         }
         if (!fallback) fallback = nir_emit_const(ctx, loc, b.getI64IntegerAttr(0));
