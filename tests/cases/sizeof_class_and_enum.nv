@@ -1,0 +1,44 @@
+# Expected:
+# 8
+# 1
+# 1
+# 2
+# 4
+# 17
+# 9
+# 8
+# 0
+# 8
+
+# @sizeOf knows the primitives, and now a class and an enum too. A class adds up the
+# storage of its declared fields, recursively (an instance in this runtime is a map of
+# boxed values, so the fields are the payload it accounts for); an enum is the integer its
+# variant holds. Before this, anything that was not a primitive was refused with
+# "@sizeOf: unsupported type 'User'" (see WIKI_BUGS_FIX.md, item F1).
+write(@sizeOf(int));
+write(@sizeOf(bool));
+write(@sizeOf(char));
+write(@sizeOf(u16));
+write(@sizeOf(i32));
+
+class User {
+    name: str;
+    age: int;
+    ok: bool;
+}
+write(@sizeOf(User));
+
+class Inner { a: int; }
+class Outer { i: Inner; b: char; }
+write(@sizeOf(Outer));
+
+enum Color { RED, GREEN }
+write(@sizeOf(Color));
+
+class Empty { }
+write(@sizeOf(Empty));
+
+# Still foldable into a `comptime` binding.
+class Node { n: int; }
+comptime S = @sizeOf(Node);
+write(S);
