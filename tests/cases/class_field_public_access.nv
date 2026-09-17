@@ -1,0 +1,36 @@
+# Expected:
+# 3
+# 8
+# savings
+
+# A field is private to its class until it says `public`, and it can only be assigned after
+# construction when it says `mut`. This is the side that has to keep working: the class itself
+# reaches its own fields, and outside code reaches the ones that opted in.
+class Account {
+    balance: int;
+
+    public mut label: str;
+
+    public new(balance: int): None {
+        self.balance = balance;
+        self.label = "account";
+    }
+
+    public deposit(amount: int): None {
+        self.balance = self.balance + amount;
+    }
+
+    public get(): int {
+        return self.balance;
+    }
+}
+
+a = new Account(3);
+write(a.get());
+
+a.deposit(5);
+write(a.get());
+
+# `public mut`: assignable from outside the class.
+a.label = "savings";
+write(a.label);
