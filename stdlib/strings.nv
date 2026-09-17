@@ -8,6 +8,12 @@
 # return -1 / "" instead of raising, since the language has no exceptions.
 # Statements in a `def` body are terminated with `;`.
 
+# A whitespace character. The trim helpers used to compare against " " only, so
+# a tab or a newline counted as text and `trim_left("\thi")` came back unchanged.
+def nv_is_space(c: str): bool {
+    return c == " " || c == "\t" || c == "\n" || c == "\r";
+}
+
 # Index of the first character, skipping leading spaces.
 def nv_first_nonspace(s: str): int {
     i = 0;
@@ -16,7 +22,7 @@ def nv_first_nonspace(s: str): int {
         if i >= len(s) {
             found = true;
         } else {
-            if s[i] == " " {
+            if nv_is_space(s[i]) {
                 i = i + 1;
             } else {
                 found = true;
@@ -34,7 +40,7 @@ def nv_last_nonspace(s: str): int {
         if stop <= 0 {
             trimming = false;
         } else {
-            if s[stop - 1] == " " {
+            if nv_is_space(s[stop - 1]) {
                 stop = stop - 1;
             } else {
                 trimming = false;
