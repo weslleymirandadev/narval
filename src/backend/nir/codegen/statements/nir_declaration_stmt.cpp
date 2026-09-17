@@ -62,19 +62,10 @@ void DeclarationStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
 
     if (!binding.empty()) {
         ctx.define(binding, rhs);
-        if (ctx.is_repl_global(binding)) {
-            // In the REPL this declaration is the line that gave the variable its
-            // value; the following inputs get a fresh JIT, so keep it in the runtime
-            // store (nv_repl_get reads it back there).
-            auto& b  = ctx.get_builder();
-            auto  vt = ctx.get_narval_value_type();
-            ctx.ensure_runtime_func("nv_repl_set",
-                mlir::FunctionType::get(&ctx.get_mlir_context(), {vt, vt}, {vt}));
-            mlir::Value name_val = nir_emit_const(ctx, loc, b.getStringAttr(binding));
-            mlir::narval::CallRuntimeOp::create(
-                b, loc, mlir::TypeRange{vt},
-                mlir::SymbolRefAttr::get(&ctx.get_mlir_context(), "nv_repl_set"),
-                mlir::ValueRange{name_val, rhs});
-        }
+
+        // A top-level binding goes into the runtime store too (see
+        // nir_store_module_global); in the REPL the same store carries the value between
+        // inputs, since each line gets a fresh JIT.
+        nir_store_module_global(ctx, loc, binding, rhs);
     }
 }
