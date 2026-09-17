@@ -1,6 +1,8 @@
 #include "frontend/parser/expressions/parse_additive_expr.hpp"
 #include "frontend/parser/expressions/parse_unary_expr.hpp"
 #include "frontend/parser/expressions/parse_postfix_expr.hpp"
+#include "frontend/ast/expressions/binary_expr_node.hpp"
+#include "frontend/ast/expressions/numeric_literal_node.hpp"
 
 std::unique_ptr<Node> parse_unary_expr(Parser* parser) {
     size_t line = parser->current_token().line;
@@ -47,6 +49,30 @@ std::unique_ptr<Node> parse_unary_expr(Parser* parser) {
             unary_node->position = std::move(pos);
 
             expr = std::move(unary_node);
+            break;
+        }
+        case TokenType::BITWISE_NOT: {
+            // `~x` is `x ^ -1` in two's complement, so no new AST node is
+            // needed: the operand is parsed at unary precedence and the
+            // exclusive-or (which the codegen lowers to nv_bxor) does the work.
+            parser->consume_token();
+
+            auto operand = parse_unary_expr(parser);
+
+            auto binary_node = std::make_unique<BinaryExprNode>(
+                "^",
+                std::unique_ptr<Expr>(static_cast<Expr*>(operand.release())),
+                std::make_unique<NumericLiteralNode>("-1")
+            );
+
+            if (operand && operand->position) {
+                pos->col[1] = operand->position->col[1];
+                pos->pos[1] = operand->position->pos[1];
+            }
+
+            binary_node->position = std::move(pos);
+
+            expr = std::move(binary_node);
             break;
         }
         case TokenType::INCREMENT: {
