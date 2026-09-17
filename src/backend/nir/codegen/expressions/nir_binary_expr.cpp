@@ -19,8 +19,20 @@ void BinaryExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
             result = nir_call_runtime(ctx, loc, "nv_tensor_matmul_bridge", {lhs, rhs}, {vt});
         else if (tensor_op == "add")
             result = nir_call_runtime(ctx, loc, "nv_tensor_add_bridge", {lhs, rhs}, {vt});
-        else if (tensor_op == "mul" || tensor_op == "scalar_mul")
+        else if (tensor_op == "sub")
+            result = nir_call_runtime(ctx, loc, "nv_tensor_sub_bridge", {lhs, rhs}, {vt});
+        else if (tensor_op == "mul")
             result = nir_call_runtime(ctx, loc, "nv_tensor_mul_bridge", {lhs, rhs}, {vt});
+        else if (tensor_op == "div")
+            result = nir_call_runtime(ctx, loc, "nv_tensor_div_bridge", {lhs, rhs}, {vt});
+        else if (tensor_op == "scalar_add")
+            result = nir_call_runtime(ctx, loc, "nv_tensor_scalar_add_bridge", {lhs, rhs}, {vt});
+        else if (tensor_op == "scalar_sub")
+            result = nir_call_runtime(ctx, loc, "nv_tensor_scalar_sub_bridge", {lhs, rhs}, {vt});
+        else if (tensor_op == "scalar_mul")
+            result = nir_call_runtime(ctx, loc, "nv_tensor_scalar_mul_bridge", {lhs, rhs}, {vt});
+        else if (tensor_op == "scalar_div")
+            result = nir_call_runtime(ctx, loc, "nv_tensor_scalar_div_bridge", {lhs, rhs}, {vt});
         else
             result = nir_call_runtime(ctx, loc, "nv_tensor_add_bridge", {lhs, rhs}, {vt});
 
@@ -40,7 +52,14 @@ void BinaryExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
     else if (op == "-")              fn = "nv_sub";
     else if (op == "*")              fn = "nv_mul";
     else if (op == "/")              fn = "nv_div";
+    else if (op == "//")             fn = "nv_floor_div";
     else if (op == "%")              fn = "nv_mod";
+    else if (op == "**")             fn = "nv_pow";
+    else if (op == "&")              fn = "nv_band";
+    else if (op == "|")              fn = "nv_bor";
+    else if (op == "^")              fn = "nv_bxor";
+    else if (op == "<<")             fn = "nv_shl";
+    else if (op == ">>")             fn = "nv_shr";
     else if (op == "==")             fn = "nv_value_eq";
     else if (op == "!=")             fn = "nv_value_ne";
     else if (op == "<")              fn = "nv_value_lt";
