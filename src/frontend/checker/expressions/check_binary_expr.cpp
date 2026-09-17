@@ -125,16 +125,21 @@ std::shared_ptr<nv::Type> check_binary_expr(nv::Checker* ch, Node* node) {
 
         // Element-wise arithmetic: +, -, *, /
         if (bin->op == "+" || bin->op == "-" || bin->op == "*" || bin->op == "/") {
-            // Scalar broadcast: Tensor op scalar
+            // Scalar broadcast: Tensor op scalar. The operator travels with the
+            // node — tagging every scalar case "scalar_mul" made `a + 1.0` and
+            // `a / 2.0` multiply.
+            const std::string scalar_op = (bin->op == "+") ? "scalar_add"
+                                        : (bin->op == "-") ? "scalar_sub"
+                                        : (bin->op == "*") ? "scalar_mul" : "scalar_div";
             if (lt && !rt) {
-                mut_bin->tensor_op      = "scalar_mul";
+                mut_bin->tensor_op      = scalar_op;
                 mut_bin->lhs_tensor_dims = lt->dims;
                 auto res = std::make_shared<nv::TensorType>(lt->element, lt->dims);
                 ch->types[res->toString()] = res;
                 return ch->types[res->toString()];
             }
             if (rt && !lt) {
-                mut_bin->tensor_op      = "scalar_mul";
+                mut_bin->tensor_op      = scalar_op;
                 mut_bin->lhs_tensor_dims = rt->dims;
                 auto res = std::make_shared<nv::TensorType>(rt->element, rt->dims);
                 ch->types[res->toString()] = res;
@@ -208,6 +213,21 @@ std::shared_ptr<nv::Type> check_binary_expr(nv::Checker* ch, Node* node) {
         }
     }
     
+    // Bitwise and shift operators: both operands are integers, the result is an
+    // integer. They are checked before the generic unification so that a str or
+    // float operand reports the operator instead of a unification failure.
+    if (bin->op == "&" || bin->op == "|" || bin->op == "^" ||
+        bin->op == "<<" || bin->op == ">>") {
+        try {
+            ch->unify_ctx.unify(left_type, ch->gettyptr("int"));
+            ch->unify_ctx.unify(right_type, ch->gettyptr("int"));
+        } catch (std::runtime_error&) {
+            ch->error(node, "Operator '" + bin->op + "' requires integer operands");
+            return ch->gettyptr("None");
+        }
+        return ch->gettyptr("int");
+    }
+
     // Se um é int e outro é float, promover int para float
     if (left_is_int && right_is_float) {
         left_type = ch->gettyptr("float");
@@ -232,7 +252,11 @@ std::shared_ptr<nv::Type> check_binary_expr(nv::Checker* ch, Node* node) {
         // Operadores aritméticos retornam o tipo dos operandos (promovido se necessário)
         return left_type;
     } else if (bin->op == "**") {
-        // O operador de potência (**) sempre retorna float no codegen (usa llvm.pow.f64)
+        // An integer base and exponent stay integers (2 ** 10 is 1024); a float
+        // operand or a negative exponent goes through pow() and is a float.
+        if (left_is_int && right_is_int) {
+            return ch->gettyptr("int");
+        }
         return ch->gettyptr("float");
     } else if (bin->op == "==" || bin->op == "!=" || bin->op == "<" || 
                bin->op == ">" || bin->op == "<=" || bin->op == ">=") {
