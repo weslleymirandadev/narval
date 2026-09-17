@@ -313,10 +313,20 @@ std::unique_ptr<Node> ModuleManager::get_combined_ast(const std::string& main_mo
                 // Se for o módulo principal, incluir todos os statements, exceto imports (já resolvidos)
                 if (is_main) {
                     if (stmt->kind == NodeType::ImportStatement) {
-                        // Manter imports wildcard com alias no combined AST para que o checker
-                        // possa registrar o namespace alias no escopo principal
+                        // The module's contents are already combined, so a plain import
+                        // ("from X import foo") does not need to reach the checker. One
+                        // with an alias does: the checker is what registers `sq`/`m` in the
+                        // scope (the original name `square` alone would leave `Identifier
+                        // 'sq' not found`). Same for the `import * as m` namespace.
                         auto* import = static_cast<ImportStmtNode*>(stmt.get());
-                        if (import->is_wildcard && !import->wildcard_alias.empty()) {
+                        bool registers_a_name =
+                            !import->wildcard_alias.empty();
+                        if (!registers_a_name) {
+                            for (const auto& item : import->imports) {
+                                if (!item.alias.empty()) { registers_a_name = true; break; }
+                            }
+                        }
+                        if (registers_a_name) {
                             combined_program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
                         }
                     } else {
