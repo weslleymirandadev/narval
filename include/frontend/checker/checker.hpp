@@ -48,6 +48,9 @@ namespace nv {
             std::shared_ptr<Type> current_return_type = nullptr;
             // Rastrear classe atual sendo verificada (para controle de acesso)
             std::string current_class_name = "";
+            // true while the target of an assignment is being inferred: that is what tells
+            // reading `obj.field` from writing to it, and writing has its own rule (`mut`).
+            bool inferring_assignment_target = false;
             // Rastrear se estamos dentro de um bloco `or { }` (return é permitido lá)
             int or_block_depth = 0;
             // Rastrear se a função atual é falível (usa propagate → retorna Result<T>)
@@ -73,6 +76,10 @@ namespace nv {
             // `comptime import_c` — imported C prototypes: name -> signature shape
             // (ret + params as chars: i=int, d=double, s=str, v=void).
             std::unordered_map<std::string, std::string> c_import_sigs;
+            // import alias -> original name in the module ("from X import square as sq"
+            // records sq -> square). The codegen needs the same translation: without it
+            // the call becomes a symbol `sq` that nobody defines.
+            std::unordered_map<std::string, std::string> import_aliases;
             // Extra linker items collected during checking (e.g. -lfoo from
             // import_c); main.cpp forwards them to the NIR context.
             std::vector<std::string> extra_link_items;
