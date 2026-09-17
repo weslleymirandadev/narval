@@ -1,0 +1,16 @@
+# Expected:
+# 5
+# 6
+
+# A `comptime` binding is a constant: reassigning it used to be accepted, silently turning
+# the constant into a runtime variable (the checker never looked at the mark). It is now
+# refused with "Cannot assign to 'N'; a `comptime` binding is a constant".
+comptime N = 5;
+write(N);
+
+# An ordinary variable is still reassignable — and the same name in ANOTHER scope is
+# another variable: the protection is per scope, not per name (a name-keyed global set
+# refused the `i` counters of the prelude functions because of a `comptime for i`).
+x = 5;
+x = 6;
+write(x);
