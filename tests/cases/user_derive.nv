@@ -13,8 +13,8 @@ comptime def derive_log(cls: str, fields: array): str {
 }
 @[derive(log, debug)]
 class Pessoa {
-    id: int;
-    nome: str;
+    public mut id: int;
+    public mut nome: str;
 }
 p = new Pessoa();
 p.id = 7;
