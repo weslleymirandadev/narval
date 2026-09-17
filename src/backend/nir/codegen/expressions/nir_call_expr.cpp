@@ -33,9 +33,39 @@ void CallExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         arg_vals.push_back(ctx.pop_value());
     }
 
+    // ── Step 3a: namespace member call — `ns.f(a)` where `ns` is an imported module
+    // namespace (`import m as ns;` / `from "x" import * as ns`). It is a call to the
+    // module's own function `f`; the alias itself never becomes a value (it used to
+    // read as unbound and print 0).
+    std::string callee;
+    if (caller && caller->kind == NodeType::MemberExpression) {
+        auto* mem = static_cast<MemberExprNode*>(caller.get());
+        if (mem->object && mem->object->kind == NodeType::Identifier &&
+            mem->property && mem->property->kind == NodeType::Identifier &&
+            ctx.is_namespace_alias(static_cast<IdentifierNode*>(mem->object.get())->symbol)) {
+            callee = static_cast<IdentifierNode*>(mem->property.get())->symbol;
+        }
+    }
+
+    // ── Step 3b: the `json` global — `json.parse(text)`, `json.parseString(text)`,
+    // `json.stringify(value)`, `json.dump(value, path)`. The checker declares the name
+    // and its four methods, but nothing was bound to `json` at run time, so every call
+    // warned "no value bound for 'json'" and evaluated to 0.
+    if (callee.empty() && caller && caller->kind == NodeType::MemberExpression) {
+        auto* mem = static_cast<MemberExprNode*>(caller.get());
+        if (mem->object && mem->object->kind == NodeType::Identifier &&
+            mem->property && mem->property->kind == NodeType::Identifier &&
+            static_cast<IdentifierNode*>(mem->object.get())->symbol == "json") {
+            const std::string& m = static_cast<IdentifierNode*>(mem->property.get())->symbol;
+            if (m == "parse" || m == "parseString")  callee = "nv_json_parse";
+            else if (m == "stringify")               callee = "nv_json_stringify";
+            else if (m == "dump")                    callee = "nv_json_dump";
+        }
+    }
+
     // ── Step 3: Method call — obj.method(args) → __method_<Class>_<method> ──
     // The receiver becomes the implicit first argument (self).
-    if (caller && caller->kind == NodeType::MemberExpression) {
+    if (callee.empty() && caller && caller->kind == NodeType::MemberExpression) {
         auto* mem = static_cast<MemberExprNode*>(caller.get());
         if (mem->object && mem->property && mem->property->kind == NodeType::Identifier) {
             std::string method = static_cast<IdentifierNode*>(mem->property.get())->symbol;
@@ -69,10 +99,11 @@ void CallExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
                 return;
             }
 
-            // vector.push(x) — no class owns the name, so this is the dynamic
-            // list append; lower it to the bridge the vector literals use. The
+            // vector.append(x) / vector.push(x) — no class owns either name, so this is
+            // the dynamic list append; lower it to the bridge the vector literals use. The
             // expression still yields None so statements keep their stack shape.
-            if (owner.empty() && method == "push" && arg_vals.size() == 1) {
+            if (owner.empty() && (method == "push" || method == "append") &&
+                arg_vals.size() == 1) {
                 mem->object->nir_codegen(ctx);
                 mlir::Value vec = ctx.pop_value();
                 if (vec) nir_call_runtime(ctx, loc, "nv_vector_push", {vec, arg_vals[0]}, {});
@@ -82,10 +113,14 @@ void CallExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         }
     }
 
-    // Resolve callee name
-    std::string callee;
-    if (caller && caller->kind == NodeType::Identifier)
+    // Resolve callee name (a namespace member call already resolved it above)
+    if (callee.empty() && caller && caller->kind == NodeType::Identifier) {
         callee = static_cast<IdentifierNode*>(caller.get())->symbol;
+        // `from "m" import square as sq; sq(6)` — the merged module defines `square`,
+        // so the alias has to be translated or the link fails with "undefined
+        // reference to `sq'".
+        callee = ctx.resolve_symbol_alias(callee);
+    }
 
     // Remap Narval builtins whose C names conflict with keywords
     static const std::pair<const char*, const char*> kBuiltinRemap[] = {
