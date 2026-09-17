@@ -1,5 +1,6 @@
 #include "../nir_codegen_utils.hpp"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "frontend/ast/statements/function_stmt_node.hpp"
 
 void FunctionStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
@@ -63,7 +64,40 @@ void FunctionStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
 
     bool is_no_std_entry = !nir_no_std_entry().empty() && name == nir_no_std_entry();
     ctx.set_in_no_std_entry(is_no_std_entry);
-    nir_emit_body(body, ctx);
+
+    // From here on the codegen is inside a function body, i.e. another region: a top-level
+    // binding cannot be used directly (the module-scope declaration also stores it in the
+    // runtime table, and the identifier reads it back from there).
+    const bool was_in_function = ctx.in_function();
+    ctx.set_in_function(true);
+    if (is_naked_asm && !naked_asm_body.empty()) {
+        // `naked_asm def NAME: asm { return `...`; }`: the body IS the instruction
+        // sequence, so it goes out as one llvm.inline_asm with no operands and no result
+        // and the program is inside a function body until then. The template ends the
+        // function itself (a `ret`, or a `syscall` on a no_std entry), which is why the
+        // fall-through handling below still runs only when the template is empty.
+        // A naked body has no operands at all, so every `$` in it is a literal — LLVM's
+        // inline asm reads `$` as the operand marker and rejected the wiki's own example
+        // ("Invalid $ operand number in inline asm string") until each one was doubled.
+        // `mov $60, %rax` is therefore written as-is.
+        std::string naked_template;
+        naked_template.reserve(naked_asm_body.size() * 2);
+        for (const char c : naked_asm_body) {
+            naked_template += c;
+            if (c == '$') naked_template += '$';
+        }
+        mlir::LLVM::InlineAsmOp::create(
+            b, loc, mlir::TypeRange{}, mlir::ValueRange{},
+            naked_template, "",
+            /*has_side_effects=*/true,
+            /*is_align_stack=*/false,
+            mlir::LLVM::tailcallkind::TailCallKind::None,
+            mlir::LLVM::AsmDialectAttr{},
+            mlir::ArrayAttr{});
+    } else {
+        nir_emit_body(body, ctx);
+    }
+    ctx.set_in_function(was_in_function);
     ctx.set_in_no_std_entry(false);
 
     // @[no_std] entry that falls off the end: terminate through the exit syscall
