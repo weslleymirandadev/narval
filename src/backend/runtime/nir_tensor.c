@@ -50,6 +50,41 @@ NvObject* nv_tensor_matmul_bridge(NvObject* a, NvObject* b) {
     return r.obj;
 }
 
+// Bridge: nv_tensor_sub_bridge / nv_tensor_div_bridge — the `-` and `/` kernels.
+// This switch used to have no case for sub/div, so both fell through to the add
+// kernel and `b - a` computed `a + b`.
+NvObject* nv_tensor_sub_bridge(NvObject* a, NvObject* b) {
+    Value av = {a}, bv = {b};
+    Value r = nv_tensor_sub(&av, &bv);
+    return r.obj;
+}
+
+NvObject* nv_tensor_div_bridge(NvObject* a, NvObject* b) {
+    Value av = {a}, bv = {b};
+    Value r = nv_tensor_div(&av, &bv);
+    return r.obj;
+}
+
+// A boxed number as a C double (the scalar side of a tensor/scalar op).
+static double nv_obj_to_double(NvObject* o) {
+    if (!o) return 0.0;
+    if (o->ob_type == NVFloat_Type) return ((NVFloat*)o)->value;
+    if (o->ob_type == NVInt_Type)   return (double)((NVInt*)o)->value;
+    if (o->ob_type == NVBool_Type)  return (double)((NVBool*)o)->value;
+    return 0.0;
+}
+
+static NvObject* nv_tensor_scalar_bridge(NvObject* t, NvObject* s, int op) {
+    Value tv = {t};
+    Value r = nv_tensor_scalar_op(&tv, nv_obj_to_double(s), op);
+    return r.obj;
+}
+
+NvObject* nv_tensor_scalar_add_bridge(NvObject* t, NvObject* s) { return nv_tensor_scalar_bridge(t, s, 0); }
+NvObject* nv_tensor_scalar_sub_bridge(NvObject* t, NvObject* s) { return nv_tensor_scalar_bridge(t, s, 1); }
+NvObject* nv_tensor_scalar_mul_bridge(NvObject* t, NvObject* s) { return nv_tensor_scalar_bridge(t, s, 2); }
+NvObject* nv_tensor_scalar_div_bridge(NvObject* t, NvObject* s) { return nv_tensor_scalar_bridge(t, s, 3); }
+
 // Bridge: nv_tensor_transpose_bridge(NvObject*) -> NvObject*
 NvObject* nv_tensor_transpose_bridge(NvObject* a) {
     Value av = {a};
