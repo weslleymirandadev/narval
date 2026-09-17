@@ -526,16 +526,24 @@ ComptimeValue ComptimeEvaluator::eval_binary(BinaryExprNode* node) {
             return ComptimeValue::from_float(std::floor(lf / rf));
         }
         if (ri == 0) { fail("comptime division by zero"); return ComptimeValue::none(); }
-        int64_t q = li / ri;
-        if ((li % ri != 0) && ((li < 0) != (ri < 0))) q -= 1;
-        return ComptimeValue::from_int(q);
+        // Truncating, like the runtime: `a == b*(a//b) + a%b` must hold for both
+        // signs, and the runtime's `%` is C's. The evaluator used to floor here
+        // while the runtime truncated, so a comptime-folded expression and the
+        // same expression at run time could disagree.
+        return ComptimeValue::from_int(li / ri);
     }
     if (op == "%") {
         if (as_float) { fail("comptime '%' requires integer operands"); return ComptimeValue::none(); }
         if (ri == 0) { fail("comptime modulo by zero"); return ComptimeValue::none(); }
-        int64_t rem = li % ri;
-        if (rem != 0 && ((rem < 0) != (ri < 0))) rem += ri;
-        return ComptimeValue::from_int(rem);
+        return ComptimeValue::from_int(li % ri);
+    }
+    if (op == "&" || op == "|" || op == "^" || op == "<<" || op == ">>") {
+        if (as_float) { fail("comptime operator '" + op + "' requires integer operands"); return ComptimeValue::none(); }
+        if (op == "&")  return ComptimeValue::from_int(li & ri);
+        if (op == "|")  return ComptimeValue::from_int(li | ri);
+        if (op == "^")  return ComptimeValue::from_int(li ^ ri);
+        if (op == "<<") return ComptimeValue::from_int((int64_t)((uint64_t)li << (ri & 63)));
+        return ComptimeValue::from_int(li >> (ri & 63));
     }
     if (op == "**") {
         if (as_float) return ComptimeValue::from_float(std::pow(lf, rf));
@@ -772,13 +780,67 @@ ComptimeValue ComptimeEvaluator::eval_builtin(BuiltinCallNode* node) {
         }
     }
     if (fn == "sizeOf") {
+        // Storage size of a type, in bytes. A primitive has a fixed size; a class adds up
+        // the storage of its declared fields, recursively, because an instance in this
+        // runtime is a map of boxed values and the fields are the payload it accounts for
+        // (there is no layout to report, and the map's own bookkeeping is a runtime
+        // detail). An enum is the integer its variant holds. Anything else is refused, as
+        // before, with the name in the message.
+        std::function<bool(const std::string&, int, int64_t&)> size_of =
+            [&](const std::string& t, int depth, int64_t& out) -> bool {
+            auto primitive = [](const std::string& s) -> int64_t {
+                // The names are the checker's own (`Type::toString`): a bool is "boolean",
+                // a 64-bit int is "int64" or "int", and so on.
+                if (s == "int" || s == "int64" || s == "float" || s == "float64" ||
+                    s == "str" || s == "usize" || s == "isize" || s == "None") return 8;
+                if (s == "bool" || s == "boolean" || s == "char" || s == "u8" || s == "i8") return 1;
+                if (s == "i16" || s == "u16") return 2;
+                if (s == "i32" || s == "u32" || s == "int32" || s == "float32") return 4;
+                return -1;
+            };
+            int64_t prim = primitive(t);
+            if (prim >= 0) { out += prim; return true; }
+            if (depth > 16) return false;          // a class that (transitively) contains itself
+
+            // The reflection calls fail() for a name it does not know; probe it quietly, so
+            // an unknown type still comes back as "@sizeOf: unsupported type 'X'" instead of
+            // "type.kind: unknown type 'X'".
+            const bool saved_failed = failed_;
+            const std::string saved_error = error_;
+            const std::string saved_code = error_code_;
+
+            auto restore = [&]() {
+                failed_ = saved_failed;
+                error_ = saved_error;
+                error_code_ = saved_code;
+            };
+
+            TypeReflectExprNode kind_refl("kind", t);
+            ComptimeValue kind = eval_type_reflect(&kind_refl);
+            bool kind_ok = !failed_;
+            restore();
+            if (kind_ok && kind.tag == ComptimeValue::Tag::Str && kind.s_val == "enum") {
+                out += 8;                          // the variant's integer
+                return true;
+            }
+
+            TypeReflectExprNode fields_refl("fields", t);
+            ComptimeValue fields = eval_type_reflect(&fields_refl);
+            bool fields_ok = !failed_;
+            restore();
+            if (!fields_ok || fields.tag != ComptimeValue::Tag::Array) return false;
+            for (auto& f : fields.arr_val) {
+                auto it = f.struct_val.find("type_name");
+                if (it == f.struct_val.end() || it->second.tag != ComptimeValue::Tag::Str)
+                    return false;
+                if (!size_of(it->second.s_val, depth + 1, out)) return false;
+            }
+            return true;
+        };
+
         std::string t = type_arg(0);
-        if (t == "int" || t == "float" || t == "str" || t == "usize" || t == "isize")
-            return ComptimeValue::from_int(8);
-        if (t == "bool" || t == "char" || t == "u8" || t == "i8")
-            return ComptimeValue::from_int(1);
-        if (t == "i16" || t == "u16") return ComptimeValue::from_int(2);
-        if (t == "i32" || t == "u32") return ComptimeValue::from_int(4);
+        int64_t total = 0;
+        if (size_of(t, 0, total)) return ComptimeValue::from_int(total);
         fail("@sizeOf: unsupported type '" + t + "'");
         return ComptimeValue::none();
     }
@@ -1385,10 +1447,12 @@ std::unique_ptr<Expr> ComptimeEvaluator::to_literal(const ComptimeValue& val, co
 std::unique_ptr<Stmt> ComptimeEvaluator::make_const_decl(const std::string& name,
                                                          const ComptimeValue& val,
                                                          const PositionData* pos) {
+
     auto target = std::make_unique<IdentifierNode>(name);
     if (pos) target->position = std::make_unique<PositionData>(*pos);
     auto decl = std::make_unique<DeclarationStmtNode>(
         std::move(target), to_literal(val, pos), "automatic", false);
+    decl->from_comptime = true;
     if (pos) decl->position = std::make_unique<PositionData>(*pos);
     return decl;
 }
