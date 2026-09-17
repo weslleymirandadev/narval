@@ -84,3 +84,16 @@ void nv::Namespace::collect_free_vars(std::unordered_set<int>& free_vars) const 
         parent->collect_free_vars(free_vars);
     }
 }
+
+void nv::Namespace::mark_comptime(const std::string& k) {
+    comptime_names.insert(k);
+}
+
+bool nv::Namespace::has_comptime(const std::string& k) {
+    return comptime_names.count(k) != 0;
+}
+
+bool nv::Namespace::is_comptime(const std::string& k) {
+    if (comptime_names.count(k) != 0) return true;
+    return parent ? parent->is_comptime(k) : false;
+}
