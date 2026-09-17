@@ -1,0 +1,26 @@
+# Expected:
+# [1, 2, 3]
+# [1, 2, 3, 4]
+# 4
+# [1, 2, 3, 4, 0, 1, 2]
+# 3
+
+# `append` adds one element to the end of a vector, and so does `push`: they are the same
+# operation, lowered to the runtime bridge the vector literals use.
+v = [1, 2, 3];
+write(v);
+v.append(4);
+write(v);
+write(len(v));
+
+# In a loop, which is the case that matters for a dynamic vector.
+w = [1, 2, 3, 4];
+for i in 0..3 {
+    w.append(i);
+}
+write(w);
+
+# The element keeps its own type, and the vector is heterogeneous.
+mixed = [1, "two"];
+mixed.append(3.5);
+write(len(mixed));
