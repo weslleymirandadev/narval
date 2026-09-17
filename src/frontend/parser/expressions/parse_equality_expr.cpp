@@ -1,4 +1,4 @@
-#include "frontend/parser/expressions/parse_relational_expr.hpp"
+#include "frontend/parser/expressions/parse_bitwise_expr.hpp"
 #include "frontend/parser/expressions/parse_equality_expr.hpp"
 
 std::unique_ptr<Node> parse_equality_expr(Parser* parser) {
@@ -7,14 +7,14 @@ std::unique_ptr<Node> parse_equality_expr(Parser* parser) {
     size_t position[2] = { parser->current_token().position_start, parser->current_token().position_end };
     std::unique_ptr<PositionData> pos = std::make_unique<PositionData>(line, column[0], column[1], position[0], position[1]);
 
-    auto left = parse_relational_expr(parser);
+    auto left = parse_bitwise_or_expr(parser);
     
     while (
         parser->current_token().type == TokenType::EQUALS ||
         parser->current_token().type == TokenType::DIFFERENT
     ) {
         std::string opToken = parser->consume_token().lexeme;
-        auto right = parse_relational_expr(parser);
+        auto right = parse_bitwise_or_expr(parser);
         
         auto binaryNode = std::make_unique<BinaryExprNode>(
             opToken,
