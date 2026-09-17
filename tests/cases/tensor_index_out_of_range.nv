@@ -1,0 +1,9 @@
+# Expected:
+
+# An out-of-range tensor index is no longer silent: the read used to return an empty value
+# (`None`) and the write was dropped, with no diagnostic. The core now raises IndexError
+# through the `throw` path, so the program stops with the diagnostic instead of carrying on
+# with a wrong value — and inside a `try` the error is catchable.
+a: Tensor<float, [2, 3]> = Tensor({{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}});
+write(a[9]);
+write("não deve aparecer");
