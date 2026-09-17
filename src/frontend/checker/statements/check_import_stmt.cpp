@@ -13,6 +13,7 @@
 #include "frontend/parser/parser.hpp"
 #include "frontend/checker/checker.hpp"
 #include "frontend/checker/checker_meth.hpp"
+#include "frontend/module_manager.hpp"   // find_stdlib_dir: the loader's own module lookup
 #include <filesystem>
 #include <fstream>
 #include <regex>
@@ -338,6 +339,24 @@ std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
     
     // Normalizar o caminho lexicamente (resolve . e .. sem verificar se o arquivo existe)
     full_path_obj = full_path_obj.lexically_normal();
+
+    // The same two steps the ModuleManager uses to load: as written, with `.nv`, and in
+    // the stdlib. Without them an `import libmath;` (no extension) that was already loaded
+    // and merged was refused here with "Failed to open file libmath".
+    if (!std::filesystem::exists(full_path_obj)) {
+        std::filesystem::path with_ext = full_path_obj;
+        with_ext += ".nv";
+        if (std::filesystem::exists(with_ext)) full_path_obj = with_ext;
+    }
+    if (!std::filesystem::exists(full_path_obj)) {
+        const std::string stdlib = find_stdlib_dir();
+        if (!stdlib.empty()) {
+            std::filesystem::path bundled = std::filesystem::path(stdlib) / full_path_obj.filename();
+            if (!std::filesystem::exists(bundled)) bundled += ".nv";
+            if (std::filesystem::exists(bundled)) full_path_obj = bundled;
+        }
+    }
+
     std::string full_path = full_path_obj.string();
     
     // Tentar obter caminho canônico se possível (para garantir que temos o caminho correto)
@@ -533,6 +552,12 @@ std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
             std::string scope_name = item.alias.empty() ? item.name : item.alias;
             
             // Registrar o símbolo no escopo atual usando o alias (ou nome original)
+            if (scope_name != item.name) {
+                // The codegen needs the same translation: the combined AST only has the
+                // module's own name (`square`), so a use of `sq` would become a symbol
+                // nobody defines ("undefined reference to `sq'").
+                ch->import_aliases[scope_name] = item.name;
+            }
             ch->scope->put_key(scope_name, symbol_type, is_constant);
         }
         
