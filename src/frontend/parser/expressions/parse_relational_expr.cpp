@@ -1,5 +1,5 @@
 #include "frontend/parser/expressions/parse_relational_expr.hpp"
-#include "frontend/parser/expressions/parse_logical_not_expr.hpp"
+#include "frontend/parser/expressions/parse_shift_expr.hpp"
 
 std::unique_ptr<Node> parse_relational_expr(Parser* parser) {
     size_t line = parser->current_token().line;
@@ -7,7 +7,7 @@ std::unique_ptr<Node> parse_relational_expr(Parser* parser) {
     size_t position[2] = { parser->current_token().position_start, parser->current_token().position_end };
     std::unique_ptr<PositionData> pos = std::make_unique<PositionData>(line, column[0], column[1], position[0], position[1]);
 
-    auto left = parse_logical_not_expr(parser);
+    auto left = parse_shift_expr(parser);
         
     while (
         parser->current_token().type == TokenType::LESS_THAN_EQUALS ||
@@ -16,7 +16,7 @@ std::unique_ptr<Node> parse_relational_expr(Parser* parser) {
         parser->current_token().type == TokenType::GT
     ) {
         std::string opToken = parser->consume_token().lexeme;
-        auto right = parse_logical_not_expr(parser);
+        auto right = parse_shift_expr(parser);
         
         auto binaryNode = std::make_unique<BinaryExprNode>(
             opToken,
