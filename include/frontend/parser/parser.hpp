@@ -32,6 +32,10 @@ class Parser {
         std::vector<nv::Diagnostic> diagnostics;
 
         bool not_eof() const;
+
+        // True while a `match` arm pattern is being parsed. Inside a pattern `|` is
+        // the alternatives separator, not bitwise or.
+        bool in_match_pattern = false;
         Token current_token() const;
         Token consume_token();
         Token next_token() const;
