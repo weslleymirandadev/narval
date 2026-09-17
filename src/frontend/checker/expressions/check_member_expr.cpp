@@ -75,6 +75,20 @@ std::shared_ptr<nv::Type>& check_member_expr(nv::Checker* ch, Node* node) {
         // Primeiro verificar se é um campo
         auto field_type = class_type->get_field(prop_name);
         if (field_type) {
+            // Fields of a class written in Narval are private until it says `public`, and a
+            // field is only assignable after construction when it says `mut` — the language
+            // had neither rule, so any code reached and changed any field.
+            const bool inside_the_class = (ch->current_class_name == class_type->name);
+            if (!inside_the_class && !class_type->is_field_accessible(prop_name, ch->current_class_name)) {
+                ch->error(member_expr->property.get(),
+                          "Field '" + prop_name + "' is private in class '" + class_type->name +
+                          "' (declare it `public` to reach it from outside)");
+            } else if (ch->inferring_assignment_target && !inside_the_class &&
+                       !class_type->is_field_mutable(prop_name)) {
+                ch->error(member_expr->property.get(),
+                          "Field '" + prop_name + "' of class '" + class_type->name +
+                          "' is not mutable (declare it `mut` to assign it)");
+            }
             temp_result = field_type;
             return temp_result;
         }
