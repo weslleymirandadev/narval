@@ -1,0 +1,17 @@
+# Expected:
+# body
+# fin
+
+# An error that matches no catch is no longer swallowed: the `finally` runs and, at the end
+# of the try, the error is reported (here the program stops with `Error: b`; the
+# `write("end")` does not run). The flag used to be cleared unconditionally at the end of
+# the catch chain and the error vanished silently.
+try {
+    write("body");
+    throw "b";
+} catch ValueError e {
+    write("não casa");
+} finally {
+    write("fin");
+}
+write("end");
