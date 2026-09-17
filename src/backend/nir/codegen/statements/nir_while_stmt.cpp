@@ -1,4 +1,5 @@
 #include "../nir_codegen_utils.hpp"
+#include "frontend/ast/statements/defer_stmt_node.hpp"
 #include "backend/nir/NarvalOps.h"
 #include "frontend/ast/statements/while_stmt_node.hpp"
 #include "frontend/ast/statements/declaration_stmt_node.hpp"
@@ -61,6 +62,17 @@ std::vector<std::string> assigned_in(const CodeBlock& body) {
                 case NodeType::ForeverStatement:
                     walk(static_cast<ForeverStmtNode*>(stmt.get())->body);
                     break;
+                case NodeType::DeferStatement: {
+                    // A `defer` node carries the rest of its block in remaining_body
+                    // (a CodeBlock, so the walker can descend into it) plus its own
+                    // deferred statements in defer_body (a plain Node list). The
+                    // assignments that keep a loop going are in remaining_body — with
+                    // them missing from the carried set, `defer` inside a `while`
+                    // looped forever (`i = i + 1` was never carried).
+                    auto* d = static_cast<DeferStmtNode*>(stmt.get());
+                    walk(d->remaining_body);
+                    break;
+                }
                 case NodeType::MatchStatement: {
                     auto* m = static_cast<MatchStmtNode*>(stmt.get());
                     for (auto& cb : m->bodies) walk(cb);
