@@ -1,0 +1,9 @@
+# Error: a `comptime` binding is a constant
+
+# Reassigning a `comptime` name is refused by the checker. At statement level the language
+# does not tell assignment from declaration (`N = 6` is a declaration), so the check lives
+# in the declaration: the one the ComptimeEvaluator generated marks the name in the scope,
+# and a later declaration of the same name in that scope is this reassignment.
+comptime N = 5;
+N = 6;
+write(N);
