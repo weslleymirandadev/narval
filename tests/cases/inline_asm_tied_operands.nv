@@ -1,0 +1,25 @@
+# Expected:
+# 1
+# 1
+# 1
+
+# The inline assembly statement is lowered now. `x -> r` is the in/out pair: r comes back
+# holding the value the register tied to x had. The template is architecture assembly, so
+# this case sticks to `nop`, which every supported target accepts (an x86-64 example with a
+# real instruction is in 10-Modules-and-FFI of the wiki).
+def tied(): None {
+    x = 1;
+    asm { "nop" } input { reg x; } output { x -> r; }
+    write(r);
+}
+tied();
+
+# More than one output rides inside a single LLVM struct result.
+def tied_two(): None {
+    a = 1;
+    b = 1;
+    asm { "nop" } input { reg a; reg b; } output { a -> ra; b -> rb; }
+    write(ra);
+    write(rb);
+}
+tied_two();
