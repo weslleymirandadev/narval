@@ -15,8 +15,8 @@ comptime def derive_csv(cls: str, fields: array): str {
 
 @[derive(debug, eq, csv)]
 class User {
-    name: str;
-    age: int;
+    public mut name: str;
+    public mut age: int;
 }
 
 a = new User();
