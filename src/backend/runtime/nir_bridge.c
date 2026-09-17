@@ -12,6 +12,7 @@
 #include <unistd.h>   // sysconf: how many cpus the parallel loop may use
 #endif
 #include <ctype.h>
+#include <math.h>     // floor/pow: `//` and `**`
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -60,6 +61,18 @@ NvObject* nv_box_int(int64_t v) {
     Value out = {NULL};
     create_int(&out, v);
     return out.obj;
+}
+
+// Raw integer behind a boxed value, the counterpart of nv_box_int. Inline assembly (and
+// anything else that hands a value to a raw instruction) needs an i64 operand, and the
+// tensor helper nv_value_to_i64 is not usable here: it takes the internal `Value*` wrapper,
+// not the `NvObject*` the NIR ABI passes, so it read past the box and returned 0.
+int64_t nv_unbox_int(NvObject* obj) {
+    if (!obj) return 0;
+    if (obj->ob_type == NVInt_Type)   return (int64_t)((NVInt*)obj)->value;
+    if (obj->ob_type == NVFloat_Type) return (int64_t)((NVFloat*)obj)->value;
+    if (obj->ob_type == NVBool_Type)  return ((NVBool*)obj)->value ? 1 : 0;
+    return 0;
 }
 
 NvObject* nv_box_float(double v) {
@@ -112,6 +125,102 @@ NvObject* nv_div(NvObject* a, NvObject* b) {
 NvObject* nv_mod(NvObject* a, NvObject* b) {
     Value va = {a}, vb = {b}, out = {NULL};
     nv_value_mod(&out, &va, &vb);
+    return out.obj;
+}
+
+// ── Integer division, power and bitwise operators ────────────────────────────
+//
+// These had no case in the codegen's operator table, so `//`, `**`, `&`, `|`,
+// `^`, `<<` and `>>` all fell through to the `+` default: `7 // 2` printed 9 and
+// `2 ** 10` printed 12.
+
+// A boxed integer-ish value as a C int64 (a float operand truncates, like C).
+static int64_t nv_obj_to_i64(NvObject* o) {
+    if (!o) return 0;
+    NvTypeObject* t = o->ob_type;
+    if (t == NVInt_Type)   return ((NVInt*)o)->value;
+    if (t == NVFloat_Type) return (int64_t)((NVFloat*)o)->value;
+    if (t == NVBool_Type)  return (int64_t)((NVBool*)o)->value;
+    if (t == NVChar_Type)  return (int64_t)((NVChar*)o)->value;
+    return 0;
+}
+
+// Defined further down, next to the tensor element helpers.
+static double nv_obj_to_f64(NvObject* o);
+
+static int nv_obj_is_float(NvObject* o) {
+    return o && o->ob_type == NVFloat_Type;
+}
+
+// `//`: the integer quotient. Truncating, to agree with `%` (a == b*(a//b) + a%b
+// holds for both signs). With a float operand it is the floored quotient, which
+// is what a float division without the fraction means.
+NvObject* nv_floor_div(NvObject* a, NvObject* b) {
+    Value out = {NULL};
+    if (nv_obj_is_float(a) || nv_obj_is_float(b)) {
+        double vb = nv_obj_to_f64(b);
+        if (vb == 0.0) return NULL;
+        create_float(&out, floor(nv_obj_to_f64(a) / vb));
+        return out.obj;
+    }
+    int64_t vb = nv_obj_to_i64(b);
+    if (vb == 0) return NULL;
+    create_int(&out, nv_obj_to_i64(a) / vb);
+    return out.obj;
+}
+
+// `**`: integer base and exponent stay integers (2 ** 10 is 1024, exact while it
+// fits); a negative exponent or a float operand goes through pow().
+NvObject* nv_pow(NvObject* a, NvObject* b) {
+    Value out = {NULL};
+    if (!nv_obj_is_float(a) && !nv_obj_is_float(b)) {
+        int64_t base = nv_obj_to_i64(a);
+        int64_t exp  = nv_obj_to_i64(b);
+        if (exp >= 0) {
+            int64_t result = 1;
+            int64_t factor = base;
+            while (exp > 0) {
+                if (exp & 1) result *= factor;
+                exp >>= 1;
+                if (exp) factor *= factor;
+            }
+            create_int(&out, result);
+            return out.obj;
+        }
+    }
+    create_float(&out, pow(nv_obj_to_f64(a), nv_obj_to_f64(b)));
+    return out.obj;
+}
+
+NvObject* nv_band(NvObject* a, NvObject* b) {
+    Value out = {NULL};
+    create_int(&out, nv_obj_to_i64(a) & nv_obj_to_i64(b));
+    return out.obj;
+}
+
+NvObject* nv_bor(NvObject* a, NvObject* b) {
+    Value out = {NULL};
+    create_int(&out, nv_obj_to_i64(a) | nv_obj_to_i64(b));
+    return out.obj;
+}
+
+NvObject* nv_bxor(NvObject* a, NvObject* b) {
+    Value out = {NULL};
+    create_int(&out, nv_obj_to_i64(a) ^ nv_obj_to_i64(b));
+    return out.obj;
+}
+
+// Shifts are masked to the width of the left operand, so `1 << 64` is `1 << 0`
+// instead of undefined behavior.
+NvObject* nv_shl(NvObject* a, NvObject* b) {
+    Value out = {NULL};
+    create_int(&out, (int64_t)((uint64_t)nv_obj_to_i64(a) << (nv_obj_to_i64(b) & 63)));
+    return out.obj;
+}
+
+NvObject* nv_shr(NvObject* a, NvObject* b) {
+    Value out = {NULL};
+    create_int(&out, nv_obj_to_i64(a) >> (nv_obj_to_i64(b) & 63));
     return out.obj;
 }
 
@@ -243,6 +352,8 @@ static double nv_obj_to_f64(NvObject* obj) {
     if (!obj) return 0.0;
     if (obj->ob_type == NVFloat_Type) return ((NVFloat*)obj)->value;
     if (obj->ob_type == NVInt_Type)   return (double)((NVInt*)obj)->value;
+    if (obj->ob_type == NVBool_Type)  return (double)((NVBool*)obj)->value;
+    if (obj->ob_type == NVChar_Type)  return (double)((NVChar*)obj)->value;
     return 0.0;
 }
 
@@ -268,6 +379,20 @@ NvObject* nv_tensor_flat_index(NvObject* t, NvObject* n_obj,
     return nv_box_int(flat);
 }
 
+// A map key as text. Map keys are C strings, so a scalar key has to be rendered:
+// without this, `m = {1: "one"}; m[1]` found nothing (the lookup accepted strings
+// only) while `m[1] = v` silently stored nothing.
+static const char* nv_map_key_text(NvObject* key_obj, char* buf, size_t buf_size) {
+    if (!key_obj) return NULL;
+    NvTypeObject* t = key_obj->ob_type;
+    if (t == NVStr_Type)   return ((NVStr*)key_obj)->value;
+    if (t == NVInt_Type)   { snprintf(buf, buf_size, "%lld", (long long)((NVInt*)key_obj)->value); return buf; }
+    if (t == NVBool_Type)  { snprintf(buf, buf_size, "%s", ((NVBool*)key_obj)->value ? "true" : "false"); return buf; }
+    if (t == NVChar_Type)  { snprintf(buf, buf_size, "%c", ((NVChar*)key_obj)->value); return buf; }
+    if (t == NVFloat_Type) { snprintf(buf, buf_size, "%g", ((NVFloat*)key_obj)->value); return buf; }
+    return NULL;
+}
+
 NvObject* nv_container_get(NvObject* base_obj, NvObject* key_obj) {
     if (!base_obj || !key_obj) return NULL;
     // A tensor: flat element access over its contiguous buffer. nv_tensor_data_ptr is NULL
@@ -279,9 +404,14 @@ NvObject* nv_container_get(NvObject* base_obj, NvObject* key_obj) {
         }
     }
     if (base_obj->ob_type == NVMap_Type) {
-        if (key_obj->ob_type != NVStr_Type) return NULL;
+        // A map is a table of names, but a key may be any scalar: 1 and "1" name
+        // the same entry. Refusing a non-string key made `m = {1: "one"}; m[1]`
+        // read nothing at all.
+        char key_buf[64];
+        const char* key = nv_map_key_text(key_obj, key_buf, sizeof(key_buf));
+        if (!key) return NULL;
         Value self = {base_obj}, out = {NULL};
-        nv_object_get_field(&out, &self, ((NVStr*)key_obj)->value);
+        nv_object_get_field(&out, &self, key);
         nv_incref(out.obj);   // promoted to an owner, like nv_array_get above
         return out.obj;
     }
@@ -320,9 +450,11 @@ void nv_container_set(NvObject* base_obj, NvObject* key_obj, NvObject* val_obj) 
         }
     }
     if (base_obj->ob_type == NVMap_Type) {
-        if (key_obj->ob_type != NVStr_Type) return;
+        char key_buf[64];
+        const char* key = nv_map_key_text(key_obj, key_buf, sizeof(key_buf));
+        if (!key) return;
         Value self = {base_obj}, val = {val_obj};
-        nv_object_set_field(&self, ((NVStr*)key_obj)->value, &val);
+        nv_object_set_field(&self, key, &val);
         return;
     }
     if (base_obj->ob_type == NVStr_Type) return;  // strings are immutable
@@ -361,18 +493,44 @@ void nv_tuple_set(NvObject* tup_obj, NvObject* idx_obj, NvObject* elem_obj) {
 
 void nv_map_set_dynamic(NvObject* map_obj, NvObject* key_obj, NvObject* val_obj) {
     if (!map_obj || !key_obj) return;
-    const char* key = NULL;
-    if (key_obj->ob_type == NVStr_Type)
-        key = ((NVStr*)key_obj)->value;
+    char key_buf[64];
+    const char* key = nv_map_key_text(key_obj, key_buf, sizeof(key_buf));
     if (!key) return;
     Value map = {map_obj}, val = {val_obj};
     nv_object_set_field(&map, key, &val);
+}
+
+// A range value is the map nv_make_range builds: __type__ == "range" with
+// start/end/inclusive. Iterating it must walk the numbers — with the map's own
+// length and key-at-index behaviour, `[x for x in 0..5]` produced the four field
+// names instead of 0..4.
+static int nv_range_of(NvObject* obj, int64_t* first, int64_t* count) {
+    if (!obj || obj->ob_type != NVMap_Type) return 0;
+    Value self = {obj};
+    Value tag = {NULL};
+    nv_object_get_field(&tag, &self, "__type__");
+    if (!tag.obj || tag.obj->ob_type != NVStr_Type) return 0;
+    const char* name = ((NVStr*)tag.obj)->value;
+    if (!name || strcmp(name, "range") != 0) return 0;
+
+    Value s = {NULL}, e = {NULL}, inc = {NULL};
+    nv_object_get_field(&s, &self, "start");
+    nv_object_get_field(&e, &self, "end");
+    nv_object_get_field(&inc, &self, "inclusive");
+    int64_t from = nv_obj_to_i64(s.obj);
+    int64_t to   = nv_obj_to_i64(e.obj);
+    if (inc.obj && nv_obj_to_i64(inc.obj)) to += 1;
+    *first = from;
+    *count = to > from ? to - from : 0;
+    return 1;
 }
 
 // ── Iteration ─────────────────────────────────────────────────────────────────
 
 int32_t nv_len(NvObject* obj) {
     if (!obj) return 0;
+    int64_t first = 0, count = 0;
+    if (nv_range_of(obj, &first, &count)) return (int32_t)count;
     Value v = {obj};
     return nv_get_iterable_length(&v);
 }
@@ -386,8 +544,40 @@ NvObject* nv_len_builtin(NvObject* obj) {
     return out.obj;
 }
 
+// Generic index read for the for-in lowering and dynamic indexing: the receiver
+// decides what an index means. A string yields a one-character string, a map
+// yields its i-th key (so `for k in m` walks the keys), a tuple its i-th field.
+// Strings and maps calling into array_get_index_v read the object as a vector:
+// `for c in "abc"` segfaulted and `for k in m` ran zero times.
 NvObject* nv_get_at(NvObject* arr_obj, int32_t idx) {
     if (!arr_obj) return NULL;
+    int64_t first = 0, count = 0;
+    if (nv_range_of(arr_obj, &first, &count)) {
+        if (idx < 0 || (int64_t)idx >= count) return nv_box_int(0);
+        return nv_box_int(first + idx);
+    }
+    if (arr_obj->ob_type == NVStr_Type) {
+        const char* s = ((NVStr*)arr_obj)->value;
+        Value out = {NULL};
+        if (!s || idx < 0 || (size_t)idx >= strlen(s)) { create_str(&out, ""); return out.obj; }
+        char buf[2] = { s[idx], '\0' };
+        create_str(&out, buf);
+        return out.obj;
+    }
+    if (arr_obj->ob_type == NVMap_Type) {
+        NVMap* m = (NVMap*)arr_obj;
+        Value out = {NULL};
+        if (idx < 0 || idx >= m->size) { create_str(&out, ""); return out.obj; }
+        create_str(&out, m->keys[idx] ? m->keys[idx] : "");
+        return out.obj;
+    }
+    if (arr_obj->ob_type == NVTuple_Type) {
+        NVTuple* t = (NVTuple*)arr_obj;
+        Value out = {NULL};
+        if (idx < 0 || idx >= t->field_count) return NULL;
+        out = t->fields[idx];
+        return out.obj;
+    }
     Value arr = {arr_obj}, out = {NULL};
     array_get_index_v(&out, &arr, idx);
     return out.obj;
@@ -428,6 +618,14 @@ NvObject* nv_make_range(NvObject* start_obj, NvObject* end_obj, NvObject* inc_ob
     Value vi = {NULL};
     if (inc_obj) vi.obj = inc_obj; else create_bool(&vi, 0);
 
+    // The map owns what it stores: without the references the ownership pass freed
+    // the boxed bounds right after the nv_make_range call (their last use), and
+    // every later read of the range saw zeroed fields — `[x for x in 1..4]` came
+    // back as three zeros.
+    nv_incref(vt.obj);
+    nv_incref(vs.obj);
+    nv_incref(ve.obj);
+    nv_incref(vi.obj);
     nv_object_set_field(&range, "__type__",  &vt);
     nv_object_set_field(&range, "start",     &vs);
     nv_object_set_field(&range, "end",       &ve);
@@ -496,13 +694,24 @@ NvObject* nv_make_none(void) {
     return out.obj;
 }
 
-NvObject* nv_value_is_some_or_ok(NvObject* obj) {
+// Returns a plain int 0/1, like nv_value_is_truthy: the codegen reads the result
+// as i1, and a boxed bool is a POINTER — the low bit of an aligned address
+// decided the branch, so `Some(7) or 42` always printed 42 (the fallback).
+int nv_value_is_some_or_ok(NvObject* obj) {
+    return (obj && (obj->ob_type == NVOptionSome_Type ||
+                    obj->ob_type == NVResultOk_Type)) ? 1 : 0;
+}
+
+// The error an `or` handler sees: the payload of an Err, None otherwise. This is
+// what `err` is bound to inside `x = Err("bad") or { err }` / `... or err`.
+NvObject* nv_or_error(NvObject* base) {
     Value out = {NULL};
-    int ok = obj &&
-             (obj->ob_type == NVOptionSome_Type ||
-              obj->ob_type == NVResultOk_Type);
-    create_bool(&out, ok);
-    return out.obj;
+    if (base && base->ob_type == NVResultErr_Type) {
+        out = ((NVResultErr*)base)->inner;
+        nv_incref(out.obj);   // the handler owns its own reference
+        return out.obj;
+    }
+    return nv_make_none();
 }
 
 // ── Instanceof ────────────────────────────────────────────────────────────────
@@ -566,6 +775,21 @@ NvObject* Error(NvObject* msg)           { return nir_make_exception("Error",   
 
 void nv_throw(NvObject* exc_obj) {
     Value exc = {exc_obj};
+
+    // `throw "boom"` throws a plain value, not an Error. nv_throw_exception casts
+    // the object to NVError and reads ->message/->traceback, which for a string is
+    // whatever follows the struct: the uncaught case printed "str: boom" and then
+    // died with SIGSEGV. Wrapping gives the catch path and the uncaught path the
+    // same object.
+    if (exc.obj && !is_exception(&exc)) {
+        const char* msg = "thrown value";
+        if (exc.obj->ob_type == NVStr_Type && ((NVStr*)exc.obj)->value)
+            msg = ((NVStr*)exc.obj)->value;
+        Value wrapped = {NULL};
+        nv_create_exception(&wrapped, "Error", msg);
+        if (wrapped.obj) { exc = wrapped; nv_incref(exc.obj); }
+    }
+
     if (nv_nir_try_depth > 0) {
         // Inside a NIR try block: save exception without longjmp so execution
         // continues linearly until nv_catch_check is reached after the body.
@@ -600,9 +824,39 @@ NvObject* nv_catch_check(NvObject* type_name_obj) {
     return out.obj;
 }
 
+// A runtime error raised by the CORE (e.g. a tensor index out of range) that the language
+// can observe: it creates the exception of the requested kind and follows the same path as
+// `throw` — the flag inside a `try`, an abort with a traceback outside it. Unlike
+// nv_raise_value_error, which prints and calls exit(1) on the spot and so bypasses the
+// language's own error handling.
+void nv_raise_nir_error(const char* kind, const char* msg) {
+    Value wrapped = {NULL};
+    nv_create_exception(&wrapped, kind, msg);
+    if (!wrapped.obj) return;
+    nv_incref(wrapped.obj);
+
+    if (nv_nir_try_depth > 0) nv_save_exception(&wrapped);
+    else                      nv_throw_exception(&wrapped);
+}
+
+// Is an error pending? `nv_has_exception` is static inside exceptions.c, and "Error" is the
+// runtime's catch-all — so `nv_exception_matches("Error")` answers exactly that question.
+// The try body calls this after every statement: the handling is flag based (no longjmp),
+// so without the check a `throw` in the middle of the body did not stop what followed it.
+NvObject* nv_has_pending_error(void) {
+    Value out = {NULL};
+    create_bool(&out, nv_exception_matches("Error"));
+    return out.obj;
+}
+
+// The pending error, as a value the catch clause can hold. The incref matters:
+// nv_get_current_exception_into hands back the runtime's own reference, and the
+// ownership pass frees the catch variable's value at its last use — reading `e`
+// in `catch Error e { write(e); }` then read freed memory and segfaulted.
 NvObject* nv_get_current_error(void) {
     Value out = {NULL};
     nv_get_current_exception_into(&out);
+    if (out.obj) nv_incref(out.obj);
     return out.obj;
 }
 
@@ -614,8 +868,61 @@ NvObject* nv_had_error(void) {
     return out.obj;
 }
 
+// A catch body TAKES OVER the error: the codegen stores the object here and clears the
+// flag, so "an error is pending" inside the body means "this handler raised it". Without
+// that, the first check of the body (which exists so a `propagate` in the middle of it
+// stops the rest) saw the flag still set from the error just handled, skipped the whole
+// body — including the `propagate` itself.
+#define NV_HANDLER_ERROR_MAX 64
+static NvObject* nv_outer_error_stack[NV_HANDLER_ERROR_MAX];
+static NvObject* nv_handled_error = NULL;   // erro que o handler atual assume
+static int       nv_handler_error_depth = 0;
+
+void nv_push_handler_error(NvObject* err) {
+    Value cur = {NULL};
+    nv_get_current_exception_into(&cur);
+
+    if (nv_handler_error_depth < NV_HANDLER_ERROR_MAX)
+        nv_outer_error_stack[nv_handler_error_depth++] = cur.obj;
+    nv_clear_current_exception();
+
+    if (err) nv_incref(err);                // o slot segura o objeto enquanto o corpo roda
+    nv_handled_error = err;
+}
+
+void nv_pop_handler_error(void) {
+    if (nv_handled_error) nv_decref(nv_handled_error);
+    nv_handled_error = (nv_handler_error_depth > 0)
+                     ? nv_outer_error_stack[--nv_handler_error_depth]
+                     : NULL;
+}
+
+// `propagate` re-throws the current handler's error (or the pending one, outside a catch).
+// It used to call nv_rethrow_current_exception, i.e. the legacy setjmp handler that the NIR
+// codegen never pushes: inside a nested `try` the error escaped the whole program instead
+// of reaching the catch outside.
 void nv_propagate(void) {
-    nv_rethrow_current_exception();
+    Value exc = { nv_handled_error };
+    if (!exc.obj) nv_get_current_exception_into(&exc);
+    if (!exc.obj) return;                   // nada pendente: `propagate` não tem o que fazer
+
+    if (nv_nir_try_depth > 0) nv_save_exception(&exc);
+    else                      nv_throw_exception(&exc);
+}
+
+// Called at the end of the `try` (after the `finally`, which always runs). The handler
+// cleared the flag when it took the error over, so anything pending here was raised inside
+// a handler (a `propagate`, a fresh `throw`) or matched no catch, and belongs to the
+// enclosing handler. With none outside it is an uncaught error and has to be reported —
+// the unconditional clear this used to do swallowed it silently.
+void nv_finish_try(void) {
+    Value exc = {NULL};
+    nv_get_current_exception_into(&exc);
+    if (!exc.obj) return;
+
+    if (nv_nir_try_depth > 0) return;       // o handler de fora vai olhar
+    nv_clear_current_exception();
+    nv_throw_exception(&exc);
 }
 
 int nv_had_error_i1(void) {
