@@ -56,7 +56,10 @@ std::shared_ptr<nv::Type>& check_assignment_expr(nv::Checker* ch, Node* node) {
     }
 
     try {
-        ch->unify_ctx.unify(left_type, right_type);
+        // Assigning a class value to a binding typed by the interface it implements (the
+        // reverse — an interface value in a class-typed slot — stays an error).
+        if (!nv::value_fits_slot(right_type, left_type))
+            ch->unify_ctx.unify(left_type, right_type);
     } catch (std::runtime_error& e) {
         ch->error(node, "Assignment type error: " + std::string(e.what()));
         result = ch->gettyptr("None");
