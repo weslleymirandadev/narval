@@ -734,8 +734,11 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
                 " -lc -w -Wl,--gc-sections " +
                 // Closures resolve their function symbols (__closure_fn_N) via
                 // dlsym at runtime; export those symbols so the dynamic lookup
-                // works and gc-sections keeps them.
-                "-Wl,--export-dynamic-symbol=__closure_fn_* " +
+                // works and gc-sections keeps them. Class methods
+                // (__method_<Class>_<name>) are looked up the same way when the
+                // call goes through an interface-typed value.
+                "-Wl,--export-dynamic-symbol=__closure_fn_* "
+                "-Wl,--export-dynamic-symbol=__method_* " +
                 (attrs.strip ? "-Wl,--strip-all " : "") +
                 (attrs.lto   ? "-flto "           : "") +
                 nir_link_extra;
