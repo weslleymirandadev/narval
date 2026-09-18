@@ -1,0 +1,104 @@
+# A call through an interface-typed value dispatches on the object at run time: the
+# class implementing the interface is a run-time fact, so the same call site gives each
+# class its own method. Two classes implement the same interface here on purpose — a
+# compiler that resolved the owner statically would answer with one of them only.
+# Expected:
+# rola777
+# 1945
+# buceta47
+# 1945
+# pif!
+# 1
+# red:pif!
+# 8
+
+interface IGun {
+    setYear(year: int): None;
+    setName(name: str): None;
+    getYear(): int;
+    getName(): str;
+    paint(color: str): str;
+}
+
+class Gun implements IGun {
+    year: int;
+    name: str;
+
+    new(year: int, name: str) {
+        self.year = year;
+        self.name = name;
+    }
+
+    public setYear(year: int): None {
+        self.year = year;
+    }
+
+    public setName(name: str): None {
+        self.name = name;
+    }
+
+    public getYear(): int {
+        return self.year;
+    }
+
+    public getName(): str {
+        return self.name;
+    }
+
+    public paint(color: str): str {
+        return color + ":" + self.name;
+    }
+}
+
+class Toy implements IGun {
+    year: int;
+    name: str;
+
+    new(name: str) {
+        self.name = name;
+        self.year = 0;
+    }
+
+    public setYear(year: int): None {
+        self.year = year;
+    }
+
+    public setName(name: str): None {
+        self.name = name;
+    }
+
+    public getYear(): int {
+        return self.year + 1;
+    }
+
+    public getName(): str {
+        return self.name + "!";
+    }
+
+    public paint(color: str): str {
+        return color + ":" + self.name + "!";
+    }
+}
+
+def describe(gun: IGun): None {
+    write(gun.getName());
+    write(gun.getYear());
+}
+
+def rename(gun: IGun, name: str): None {
+    gun.setName(name);
+}
+
+def painted(gun: IGun, color: str): None {
+    write(gun.paint(color));
+}
+
+g = new Gun(1945, "rola777");
+t = new Toy("pif");
+
+describe(g);
+rename(g, "buceta47");
+describe(g);
+describe(t);
+painted(t, "red");
+write(len(g.getName()));
