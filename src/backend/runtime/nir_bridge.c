@@ -1043,6 +1043,88 @@ NV_INVOKE_CLOSURE(6)
 NV_INVOKE_CLOSURE(7)
 NV_INVOKE_CLOSURE(8)
 
+// ── Interface dispatch ────────────────────────────────────────────────────────
+// A call through an interface-typed value: the interface proves the method EXISTS, the
+// class behind the value is a run-time fact (every class that says `implements I`), so
+// the codegen cannot pick __method_<Class>_<name> itself as it does for a class-typed
+// receiver. The instance carries its class in __class_name__ (see NewExprNode's codegen)
+// and the class methods are exported by the final link
+// (-Wl,--export-dynamic-symbol=__method_*), so the lookup is a dlsym of the mangled
+// name — the same mechanism the closure bridges above use. The compiled method takes
+// (self, a0..aN-1) as individual pointers, hence one bridge per arity.
+//
+// This needs the LINK step (the default mode and -b): the method symbols must be in the
+// dynamic table of the program. In the REPL the module is JIT'd, so its symbols are not
+// in the process's dynamic table and the lookup fails — the same limitation the closure
+// bridges above have.
+typedef NvObject* (*NvMethod0)(NvObject*);
+typedef NvObject* (*NvMethod1)(NvObject*, NvObject*);
+typedef NvObject* (*NvMethod2)(NvObject*, NvObject*, NvObject*);
+typedef NvObject* (*NvMethod3)(NvObject*, NvObject*, NvObject*, NvObject*);
+typedef NvObject* (*NvMethod4)(NvObject*, NvObject*, NvObject*, NvObject*, NvObject*);
+typedef NvObject* (*NvMethod5)(NvObject*, NvObject*, NvObject*, NvObject*, NvObject*,
+                               NvObject*);
+typedef NvObject* (*NvMethod6)(NvObject*, NvObject*, NvObject*, NvObject*, NvObject*,
+                               NvObject*, NvObject*);
+typedef NvObject* (*NvMethod7)(NvObject*, NvObject*, NvObject*, NvObject*, NvObject*,
+                               NvObject*, NvObject*, NvObject*);
+typedef NvObject* (*NvMethod8)(NvObject*, NvObject*, NvObject*, NvObject*, NvObject*,
+                               NvObject*, NvObject*, NvObject*, NvObject*);
+
+// The receiver's class name, as stored by the `new` codegen; NULL when the value is not
+// a class instance (a map that never went through `new`, or a non-object).
+static void* nv_lookup_method(NvObject* self, NvObject* name_ref) {
+    if (!self || !name_ref || name_ref->ob_type != NVStr_Type) return NULL;
+    Value obj = {self}, cls = {NULL};
+    nv_object_get_field(&cls, &obj, "__class_name__");
+    if (!cls.obj || cls.obj->ob_type != NVStr_Type) return NULL;
+    const char* class_name  = ((NVStr*)cls.obj)->value;
+    const char* method_name = ((NVStr*)name_ref)->value;
+    if (!class_name || !method_name) return NULL;
+
+    char symbol[512];
+    snprintf(symbol, sizeof(symbol), "__method_%s_%s", class_name, method_name);
+    void* fn = dlsym(RTLD_DEFAULT, symbol);
+    if (!fn)
+        fprintf(stderr, "nv_dispatch_method: symbol '%s' not found\n", symbol);
+    return fn;
+}
+
+// nv_dispatch_method_N(self, name, a0..aN-1): `self` is the receiver, `name` the method
+// as a boxed str; the declared arguments follow with their real arity.
+#define NV_DISPATCH_METHOD(N, PARAMS, ARGS)                                   \
+    NvObject* nv_dispatch_method_##N PARAMS {                                 \
+        void* fn = nv_lookup_method(self, name);                              \
+        if (!fn) return NULL;                                                 \
+        return ((NvMethod##N)fn) ARGS;                                        \
+    }
+
+NV_DISPATCH_METHOD(0, (NvObject* self, NvObject* name), (self))
+NV_DISPATCH_METHOD(1, (NvObject* self, NvObject* name, NvObject* a0),
+                   (self, a0))
+NV_DISPATCH_METHOD(2, (NvObject* self, NvObject* name, NvObject* a0, NvObject* a1),
+                   (self, a0, a1))
+NV_DISPATCH_METHOD(3, (NvObject* self, NvObject* name, NvObject* a0, NvObject* a1,
+                       NvObject* a2),
+                   (self, a0, a1, a2))
+NV_DISPATCH_METHOD(4, (NvObject* self, NvObject* name, NvObject* a0, NvObject* a1,
+                       NvObject* a2, NvObject* a3),
+                   (self, a0, a1, a2, a3))
+NV_DISPATCH_METHOD(5, (NvObject* self, NvObject* name, NvObject* a0, NvObject* a1,
+                       NvObject* a2, NvObject* a3, NvObject* a4),
+                   (self, a0, a1, a2, a3, a4))
+NV_DISPATCH_METHOD(6, (NvObject* self, NvObject* name, NvObject* a0, NvObject* a1,
+                       NvObject* a2, NvObject* a3, NvObject* a4, NvObject* a5),
+                   (self, a0, a1, a2, a3, a4, a5))
+NV_DISPATCH_METHOD(7, (NvObject* self, NvObject* name, NvObject* a0, NvObject* a1,
+                       NvObject* a2, NvObject* a3, NvObject* a4, NvObject* a5,
+                       NvObject* a6),
+                   (self, a0, a1, a2, a3, a4, a5, a6))
+NV_DISPATCH_METHOD(8, (NvObject* self, NvObject* name, NvObject* a0, NvObject* a1,
+                       NvObject* a2, NvObject* a3, NvObject* a4, NvObject* a5,
+                       NvObject* a6, NvObject* a7),
+                   (self, a0, a1, a2, a3, a4, a5, a6, a7))
+
 // ── Threads ───────────────────────────────────────────────────────────────────
 // There is no thread type in the language: spawn() returns a small integer id into a
 // fixed table of live threads and join() takes that id. Running the body is exactly the
