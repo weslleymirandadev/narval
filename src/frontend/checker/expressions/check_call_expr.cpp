@@ -46,7 +46,12 @@ namespace {
             (arg_type->kind == nv::Kind::ENUM && param_type->kind == nv::Kind::INT) ||
             (arg_type->kind == nv::Kind::INT  && param_type->kind == nv::Kind::ENUM);
 
-        if (!enum_int_pair && !arg_type->equals(*param_type)) {
+        // A class value in an interface-typed parameter: the class implements the
+        // interface (or inherits that), so the argument fits. Without this, passing the
+        // object the interface describes was refused with "expected 'IGun', got 'Gun'".
+        const bool class_implements_interface = nv::value_fits_slot(arg_type, param_type);
+
+        if (!enum_int_pair && !class_implements_interface && !arg_type->equals(*param_type)) {
             ch->error(error_node,
                       label + " argument type error: expected '" +
                       call_type_name(param_type) + "', got '" +
@@ -332,6 +337,20 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
                           "Method '" + method_name + "' is private in class '" + class_type->name + "'");
                 return ch->gettyptr("None");
             }
+        } else if (object_type->kind == nv::Kind::INTERFACE) {
+            // A call through an interface-typed value. The interface declares the
+            // signature (its own methods, then the parents'); the implementation only
+            // exists in the classes that implement it, so the codegen dispatches by method
+            // name at run time (nv_dispatch_method_N). This used to be refused outright
+            // with "Type 'IGun' does not have method 'getName'" — an interface could be
+            // declared and implemented, never used.
+            auto* iface = static_cast<nv::Interface*>(object_type.get());
+            auto declared = iface->all_methods(ch->types);
+            auto found = declared.find(method_name);
+            if (found != declared.end()) {
+                method_type = found->second;
+                member_expr->interface_dispatch = iface->name;
+            }
         } else {
             if (!object_type->prototype) {
                 try { object_type->init_prototype(); } catch (...) {}
@@ -355,7 +374,14 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
         }
         
         auto function = std::static_pointer_cast<nv::Function>(method_type);
-        
+
+        // A method typed None has no value: the run-time dispatch returns whatever the
+        // compiled method left in the result register, so the call site keeps an explicit
+        // None instead.
+        if (!member_expr->interface_dispatch.empty())
+            member_expr->interface_void_result =
+                function->returntype && function->returntype->kind == nv::Kind::NONE;
+
         // Verificar cada argumento
         std::vector<std::shared_ptr<nv::Type>> arg_types;
         for (const auto& arg : call->args) {
