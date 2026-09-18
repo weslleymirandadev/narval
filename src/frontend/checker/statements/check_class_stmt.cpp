@@ -184,6 +184,9 @@ namespace nv {
                 continue;
             }
             auto* iface = static_cast<nv::Interface*>(it->second.get());
+            // Recorded so a class value is accepted in an interface-typed slot (argument,
+            // declaration, assignment, return) and calls through it dispatch at run time.
+            class_type->interfaces.push_back(iface_name);
             auto required = iface->all_methods(checker->types);
             for (const auto& [mname, mtype] : required) {
                 bool found = class_type->methods.find(mname) != class_type->methods.end();
