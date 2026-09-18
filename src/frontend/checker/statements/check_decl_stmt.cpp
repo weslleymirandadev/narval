@@ -158,7 +158,11 @@ std::shared_ptr<nv::Type>& check_decl_stmt(Checker* ch, Node* node) {
         
         // Unificar tipo inferido com tipo declarado
         try {
-            ch->unify_ctx.unify(vtype, dtype);
+            // `g: IGun = gun;` — a class value declared as the interface it implements.
+            // The interface knows the methods, not the class, so plain unification refuses
+            // it; everywhere else the strict rule stays.
+            if (!nv::value_fits_slot(vtype, dtype))
+                ch->unify_ctx.unify(vtype, dtype);
         } catch (std::runtime_error& e) {
             ch->error(decl->value.get(), std::string("Expected type '") + dtype->toString() + 
                                    "', but got '" + vtype->toString() + "'. " + e.what());
