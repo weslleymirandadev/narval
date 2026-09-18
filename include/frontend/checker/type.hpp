@@ -292,8 +292,20 @@ namespace nv {
         std::unordered_map<std::string, std::string> method_access; // method_name -> "public"/"private"/"protected"
         std::unordered_map<std::string, std::string> field_access;  // field_name -> "public"/"private"/"protected"
         std::unordered_map<std::string, bool> field_mutable;        // field_name -> assigned after construction?
+        // Interfaces the class listed in `implements` (the names only: the interface
+        // objects live in the checker's type table). A class value is an interface value
+        // through this list.
+        std::vector<std::string> interfaces;
         
         Class(const std::string& class_name) : Type(Kind::CLASS), name(class_name) {}
+
+        // True when the class declares `implements <iface_name>`, or inherits it from a
+        // parent class. The required methods were validated when the class was checked.
+        bool implements(const std::string& iface_name) const {
+            for (const auto& listed : interfaces)
+                if (listed == iface_name) return true;
+            return parent_class && parent_class->implements(iface_name);
+        }
         
         std::string toString() override { return name; }
         
@@ -742,4 +754,18 @@ namespace nv {
     
     // Criar string de tipo função a partir de parâmetros e retorno
     std::string create_function_type_string(const std::vector<std::pair<std::string, std::string>>& params, const std::string& return_type);
+
+    // The one compatibility rule that is not structural: a class VALUE fits an
+    // interface-typed SLOT when the class says it implements the interface (the checker
+    // validated the required methods when the class was checked). Everything else keeps
+    // the strict `equals` rule. Callers that know which side is the slot use this before
+    // rejecting a mismatch; the reverse direction (an interface value in a class slot) is
+    // NOT accepted — the interface only proves the methods, not the class.
+    inline bool value_fits_slot(const std::shared_ptr<Type>& value,
+                                const std::shared_ptr<Type>& slot) {
+        if (!value || !slot) return false;
+        if (value->kind != Kind::CLASS || slot->kind != Kind::INTERFACE) return false;
+        const auto* cls = static_cast<const Class*>(value.get());
+        return cls->implements(static_cast<const Interface*>(slot.get())->name);
+    }
 };
