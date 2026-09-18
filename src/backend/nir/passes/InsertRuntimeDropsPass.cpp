@@ -204,6 +204,11 @@ struct InsertRuntimeDropsPass
             name != "nv_set_global") return true;
         // create_closure_cN snapshots its capture arguments into cells.
         if (name.rfind("nv_create_closure", 0) == 0) return true;
+        // A method dispatched by name runs a USER method, and every operand of the call is
+        // something it may store (a setter keeps its argument in a field, the receiver is
+        // the container it writes into) with no incref on that call. Treat them all as
+        // stored: the worst case is a leak, never a free under the method.
+        if (name.rfind("nv_dispatch_method", 0) == 0) return true;
         return false;
     }
 
@@ -262,7 +267,8 @@ struct InsertRuntimeDropsPass
                     // nv_array_set, and the pass read that as "the array was stored
                     // somewhere", so neither it nor its elements were ever released.
                     // Closure captures are all captures: there every operand counts.
-                    const bool captures_all = cname.rfind("nv_create_closure", 0) == 0;
+                    const bool captures_all = cname.rfind("nv_create_closure", 0) == 0 ||
+                                              cname.rfind("nv_dispatch_method", 0) == 0;
                     const bool is_stored_value =
                         uc.getNumOperands() > 0 &&
                         uc.getOperand(uc.getNumOperands() - 1) == v;
