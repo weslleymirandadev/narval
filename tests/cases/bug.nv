@@ -1,0 +1,46 @@
+# A class implementing an interface, handed to a function typed by that interface: the
+# method call on the parameter is dispatched on the object's class.
+# Expected:
+# buceta47
+
+interface IGun {
+    setYear(year: int): None;
+    setName(name: str): None;
+    getYear(): int;
+    getName(): str;
+}
+
+class Gun implements IGun {
+    year: int;
+    name: str;
+
+    new(year: int, name: str) {
+        self.year = year;
+        self.name = name;
+    }
+
+    public setYear(year: int): None {
+        self.year = year;
+    }
+
+    public setName(name: str): None {
+        self.name = name;
+    }
+
+    public getYear(): int {
+        return self.year;
+    }
+
+    public getName(): str {
+        return self.name;
+    }
+}
+
+def printGun(gun: IGun): None {
+    write(gun.getName());
+}
+
+g = new Gun(1945, "rola777");
+
+g.setName("buceta47");
+printGun(g);
