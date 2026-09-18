@@ -51,7 +51,10 @@ std::shared_ptr<nv::Type>& check_return_stmt(nv::Checker* ch, Node* node) {
         // Funções falíveis retornam Result<T> — não verificar correspondência exata do tipo.
         if (!ch->in_fallible_function) {
             try {
-                ch->unify_ctx.unify(return_value_type, expected_return_type);
+                // Returning the class a function declared to return the interface it
+                // implements: the same slot rule as an argument or a declaration.
+                if (!nv::value_fits_slot(return_value_type, expected_return_type))
+                    ch->unify_ctx.unify(return_value_type, expected_return_type);
             } catch (std::runtime_error& e) {
                 ch->error(return_stmt->value.get(),
                           "Return type mismatch: expected '" + expected_return_type->toString() +
