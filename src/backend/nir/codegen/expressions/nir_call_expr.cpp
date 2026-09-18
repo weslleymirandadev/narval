@@ -63,6 +63,47 @@ void CallExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         }
     }
 
+    // ── Step 3c: interface-typed receiver — dispatch by name at run time ──────
+    // An interface proves the method exists, not which class provides it: any class that
+    // says `implements I` may be behind the value (subclasses included), so the call
+    // cannot be resolved to __method_<Class>_<name> at compile time. The bridge reads the
+    // receiver's __class_name__ and dlsym()s the method symbol — the link exports
+    // __method_* the same way it exports the closure functions.
+    if (callee.empty() && caller && caller->kind == NodeType::MemberExpression) {
+        auto* mem = static_cast<MemberExprNode*>(caller.get());
+        if (mem->object && mem->property && mem->property->kind == NodeType::Identifier &&
+            !mem->interface_dispatch.empty()) {
+            const std::string method =
+                static_cast<IdentifierNode*>(mem->property.get())->symbol;
+            if (arg_vals.size() > 8) {
+                mlir::emitError(loc, "interface dispatch of '" + method +
+                                     "' with more than 8 arguments is not supported");
+                ctx.push_value(nir_emit_const(ctx, loc,
+                    ctx.get_builder().getI64IntegerAttr(0)));
+                return;
+            }
+
+            mem->object->nir_codegen(ctx);
+            llvm::SmallVector<mlir::Value> rt_args;
+            if (ctx.has_value()) rt_args.push_back(ctx.pop_value());
+            rt_args.push_back(mlir::narval::ConstantOp::create(
+                ctx.get_builder(), loc, vt,
+                mlir::StringAttr::get(&ctx.get_mlir_context(), method)).getResult());
+            for (auto& v : arg_vals) rt_args.push_back(v);
+
+            std::string bridge =
+                "nv_dispatch_method_" + std::to_string(arg_vals.size());
+            mlir::Value dispatched = nir_call_runtime(ctx, loc, bridge, rt_args, {vt});
+
+            // A method typed None returns nothing, so there is no result to keep: the
+            // value in the register is whatever the callee left there.
+            ctx.push_value(mem->interface_void_result
+                ? nir_call_runtime(ctx, loc, "nv_make_none", {}, {vt})
+                : dispatched);
+            return;
+        }
+    }
+
     // ── Step 3: Method call — obj.method(args) → __method_<Class>_<method> ──
     // The receiver becomes the implicit first argument (self).
     if (callee.empty() && caller && caller->kind == NodeType::MemberExpression) {
