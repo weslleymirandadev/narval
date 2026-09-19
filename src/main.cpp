@@ -414,6 +414,10 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
     try {
         module_manager.compile_module(module_name, filename, true);
         auto ast = module_manager.get_combined_ast(module_name);
+        // What the merge took from other files (the stdlib prelude, imported modules):
+        // the ownership report uses it to report the program's own functions only.
+        nv::diag_prelude_functions() = module_manager.functions_from_other_files();
+        nv::diag_prelude_classes()   = module_manager.classes_from_other_files();
         nv::CompilationAttributes attrs = nv::map_compilation_attributes(ast.get());
         const bool no_std = attrs.no_std;
         // Tells the codegen which function is the @[no_std] entry, so it can be
@@ -824,6 +828,10 @@ int main(int argc, char* argv[]) {
         nv_executable_path_storage = std::filesystem::absolute(argv[0]).lexically_normal().string();
     }
 
+    // Diagnostics that only exist as environment variables (they are only useful while
+    // working on the compiler itself).
+    nv::diag_dump_locs() = std::getenv("NARVAL_DUMP_LOCS") != nullptr;
+
 #ifdef _WIN32
     // Nothing of the runtime is linked into the compiler on Windows (it travels as an
     // embedded MinGW object that the generated program links against), so there is no
@@ -870,11 +878,26 @@ int main(int argc, char* argv[]) {
             // Accepted for symmetry with the MLIR naming used elsewhere in the
             // compiler: --emit-nir is the module at codegen, this is every stage.
             nv::diag_dump_passes() = true;
-        } else if (arg == "--explain-ownership") {
-            // Per value: whether nv_drop was inserted, and which use blocked it when
-            // it was not.
-            nv::diag_explain_ownership() = true;
-        } else if ((arg == "-L" || arg == "--link") && i + 1 < argc) {
+        } else if (arg == "--explain-ownership" || arg.rfind("--explain-ownership=", 0) == 0) {
+            // The source-level ownership report: own/borrow/share/move/mut/drop/keep per
+            // value, anchored on the .nv file. `=all` adds the functions the program
+            // merged from other files (the stdlib prelude), `=ir` adds the IR behind each
+            // event.
+            std::string mode = arg.rfind("--explain-ownership=", 0) == 0
+                ? arg.substr(std::string("--explain-ownership=").size()) : "";
+            if (mode.empty()) {
+                nv::diag_ownership_report() = nv::OwnershipReport::UserFile;
+            } else if (mode == "all") {
+                nv::diag_ownership_report() = nv::OwnershipReport::AllFiles;
+            } else if (mode == "ir") {
+                nv::diag_ownership_report() = nv::OwnershipReport::UserFile;
+                nv::diag_ownership_ir() = true;
+            } else {
+                llvm::errs() << "error: unknown --explain-ownership mode '" << mode
+                             << "' (use --explain-ownership, =all or =ir)\n";
+                return 1;
+            }
+        } else if (arg == "-L" || arg == "--link") {
             extra_libs += std::string(argv[++i]) + " ";
         } else if (arg.substr(0, 2) == "-L" && arg.size() > 2) {
             extra_libs += arg.substr(2) + " ";
@@ -898,7 +921,10 @@ int main(int argc, char* argv[]) {
             std::cout << "  --emit-nir         Print the narval IR as codegen left it\n";
             std::cout << "  --emit-llvm        Print the LLVM IR after the middle-end (with -b)\n";
             std::cout << "  --dump-passes      Print the IR after every lowering pass\n";
-            std::cout << "  --explain-ownership  Report every drop decision (and why one was skipped)\n";
+            std::cout << "  --explain-ownership  Ownership report for this file: own, borrow,\n";
+            std::cout << "                       share, move, mut, drop, and what was kept (why)\n";
+            std::cout << "  --explain-ownership=all  Same report, including the stdlib it merged\n";
+            std::cout << "  --explain-ownership=ir   Same report plus the IR behind each event\n";
             std::cout << "  --help, -h         Show this help\n";
             std::cout << "\nExamples:\n";
             std::cout << "  narval              # open the REPL\n";
