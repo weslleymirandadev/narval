@@ -479,6 +479,24 @@ std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
                 // A resolução de membros via ALIAS.foo é feita via ch->import_namespaces, não por tipo
                 ch->scope->put_key(import_stmt->wildcard_alias, ch->gettyptr("None"), false);
 
+                // Os símbolos do módulo importado TÊM de entrar no namespace do alias: sem
+                // isto, `from "m" import * as m; m.f()` não achava nada (`Namespace m has no
+                // member f`) porque só o placeholder era registrado — os símbolos iam parar
+                // soltos no escopo do programa. Módulo de runtime (crypto, ...) não tem
+                // símbolos de arquivo; a superfície dele vem da tabela, na linha de baixo.
+                for (const auto& sym_name : exported_symbols) {
+                    std::shared_ptr<nv::Type> sym_type = nullptr;
+                    try {
+                        sym_type = module_checker.scope->get_key(sym_name);
+                    } catch (std::runtime_error&) {
+                        auto ty_it = module_checker.types.find(sym_name);
+                        if (ty_it != module_checker.types.end()) sym_type = ty_it->second;
+                    }
+                    if (sym_type) {
+                        ch->import_namespaces[import_stmt->wildcard_alias][sym_name] = sym_type;
+                    }
+                }
+
                 nv_inject_runtime_module(ch, module_path, import_stmt->wildcard_alias);
             }
             return ch->gettyptr("None");
