@@ -62,6 +62,10 @@ void DeclarationStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
 
     if (!binding.empty()) {
         ctx.define(binding, rhs);
+        // Name the value that was created for this binding: the ownership report reads
+        // the name back off the producer's location instead of saying "the value on
+        // line 7" (see NIRGenerationContext::name_value).
+        ctx.name_value(rhs, binding, position.get());
 
         // A top-level binding goes into the runtime store too (see
         // nir_store_module_global); in the REPL the same store carries the value between
