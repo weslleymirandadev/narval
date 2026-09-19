@@ -1,0 +1,30 @@
+# Frame: length-prefixed messages over a real TCP stream (two sockets, one process) and a
+# payload carrying a NUL byte, which only survives because the frame travels as hex.
+# Expected:
+# 0
+# 0
+# hello frame
+# 1
+# bin ok
+from "net" import *;
+
+srv = new TcpListener();
+write(srv.bind("127.0.0.1", 0));
+
+c = new TcpStream();
+write(c.connect("127.0.0.1", srv.port(), 2000));
+s = new TcpStream();
+s.adopt(srv.accept(2000));
+
+f = new Frame();
+sent = f.send(c.handle, "hello frame");
+write(f.recv(s.handle));
+write(f.ok());
+
+f.send_hex(c.handle, "00ff10");
+got = f.recv_hex(s.handle);
+if got == "00ff10" { write("bin ok"); }
+
+c.close();
+s.close();
+srv.close();
