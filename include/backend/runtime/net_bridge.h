@@ -94,6 +94,19 @@ const char* nv_net_peer_addr(int handle);
 // CSV of handles; mode "r"/"w"/"rw"; millisecond timeout. Returns the ready handles as CSV.
 const char* nv_net_poll(const char* handles_csv, const char* mode, int timeout_ms);
 
+// ── Byte codec (Packet / Frame): hex text in, value out; pure, no handles ──
+int nv_net_hex_valid(const char* hex);
+int nv_net_hex_len(const char* hex);                 // byte count (0 when malformed)
+const char* nv_net_str_to_hex(const char* text);
+const char* nv_net_hex_to_str(const char* hex);      // NULs truncate the Narval string
+const char* nv_net_pack_int(const char* hex, long long value, int nbytes, int le);
+long long nv_net_unpack_int(const char* hex, int pos, int nbytes, int le);
+const char* nv_net_unpack_hex(const char* hex, int pos, int nbytes);
+const char* nv_net_platform_name(void);              // "linux" / "windows" / "unix"
+const char* nv_net_caps(void);                       // csv of what this build can do
+int nv_net_send_hex(int handle, const char* hex);            // bytes behind hex -> socket
+const char* nv_net_recv_exact_hex(int handle, int nbytes);   // exactly n bytes as hex
+
 // ── Narval-facing wrappers (values in, values out) ──────────────────────────
 NvObject* nv_net_tcp_listen_builtin(NvObject* host, NvObject* port);
 NvObject* nv_net_tcp_connect_builtin(NvObject* host, NvObject* port, NvObject* timeout_ms);
@@ -123,6 +136,17 @@ NvObject* nv_net_local_port_builtin(NvObject* h);
 NvObject* nv_net_local_addr_builtin(NvObject* h);
 NvObject* nv_net_peer_addr_builtin(NvObject* h);
 NvObject* nv_net_poll_builtin(NvObject* handles, NvObject* mode, NvObject* timeout_ms);
+NvObject* nv_net_hex_valid_builtin(NvObject* hex);
+NvObject* nv_net_hex_len_builtin(NvObject* hex);
+NvObject* nv_net_str_to_hex_builtin(NvObject* text);
+NvObject* nv_net_hex_to_str_builtin(NvObject* hex);
+NvObject* nv_net_pack_int_builtin(NvObject* hex, NvObject* value, NvObject* nbytes, NvObject* le);
+NvObject* nv_net_unpack_int_builtin(NvObject* hex, NvObject* pos, NvObject* nbytes, NvObject* le);
+NvObject* nv_net_unpack_hex_builtin(NvObject* hex, NvObject* pos, NvObject* nbytes);
+NvObject* nv_net_platform_builtin(void);
+NvObject* nv_net_caps_builtin(void);
+NvObject* nv_net_send_hex_builtin(NvObject* handle, NvObject* hex);
+NvObject* nv_net_recv_exact_hex_builtin(NvObject* handle, NvObject* nbytes);
 
 #ifdef __cplusplus
 }
