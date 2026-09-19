@@ -1,0 +1,51 @@
+# The ownership report must read like the source: every event is anchored on a line of
+# this file and names the value the way the code does, never the C bridge behind it
+# (that was the bug: `drop nv_box_int after its last use`, with no line, no name, and
+# the whole stdlib prelude mixed in). The program itself prints as usual; the report
+# goes to stderr, which is what the "# Stderr:" lines check (one substring each).
+# Flags: --explain-ownership
+# Expected:
+# 30
+# 102
+# Stderr:
+# [ownership]
+# module scope (top-level code)
+# def add_and_scale
+# method Counter.bump
+# own     "base" — a new value
+# mut     field "n" of self written
+# mut     variable "base" in the module store written
+# share   field "n" of "self" — the read takes a second reference of it
+# move    "base" — stored into variable "base" in the module store (the destination owns it)
+# borrow  "total" — read by an arithmetic operator
+# drop    "base" — released after its last use
+# summary: 11 own · 6 drop · 7 borrow · 8 move · 2 share · 3 mut · 2 keep
+# 23 function(s) of other files skipped: nv_is_space
+# kept at line
+# not reclaimed: a call carries no ownership annotation across its boundary
+# function(s) of other files skipped
+# summary:
+
+class Counter {
+    n: int;
+
+    new(n: int) {
+        self.n = n;
+    }
+
+    public bump(by: int): int {
+        self.n = self.n + by;
+        return self.n;
+    }
+}
+
+base = 4;
+
+def add_and_scale(x: int): int {
+    total = x + base;
+    return total * 3;
+}
+
+c = new Counter(10);
+write(c.bump(5) + 15);
+write(add_and_scale(30));
