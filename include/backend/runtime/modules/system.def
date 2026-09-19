@@ -1,0 +1,13 @@
+// system.def — o módulo `system`: o que o processo sabe do ambiente em que roda.
+//
+// Mesmo formato dos outros módulos (uma linha por função; ver RUNTIME_MODULES_DESIGN.md):
+//   NV_FN(nome, (params), retorno, aridade)
+//
+// Aqui os tokens `bytes` são TEXTO, não hex: o token diz "string do Narval" para o checker,
+// e quem carrega hex é o crypto (que documenta isso no próprio .def). Cada módulo diz o que
+// a sua string significa.
+
+// Valor da variável de ambiente, "" quando ela não existe (o chamador decide o default).
+NV_FN(env,  (bytes), bytes, 1)
+// Diretório do usuário: HOME no POSIX, USERPROFILE no Windows. "" se não houver.
+NV_FN(home, (),      bytes, 0)
