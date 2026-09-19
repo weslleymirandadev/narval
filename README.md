@@ -70,15 +70,19 @@ Diagnostics: `--emit-nir` prints the module in the Narval dialect as codegen lef
 `--explain-ownership` reports what the compiler decided about ownership **in terms of your file**: one line per value, anchored on the source line that produced it, with the value named the way the code names it (`b = a + 1`, not `nv_box_int`):
 
 ```
-[ownership] prog.nv — 6 owned value(s): 4 released, 1 moved, 1 not reclaimed
-[ownership] module scope (top-level code)
-[ownership]    7 | b = a + 1;
-[ownership]      |   own     "b" — a new value
-[ownership]      |   borrow  "a" — read by an arithmetic operator
-[ownership]      |   drop    "b" — released after its last use
+prog.nv — 6 value(s) created in this file
+own=fresh value · borrow=temporary read · share=a second reference · move=ownership leaves · mut=place written · drop=released · keep=not reclaimed
+
+module scope (top-level code)  (line 7)
+ 7 | b = a + 1;
+   |   own     "b" — a new value
+   |   borrow  "a" — read by an arithmetic operator
+   |   drop    "b" — released after its last use
+
+summary: 6 own · 4 drop · 3 borrow · 1 move · 2 share · 1 mut · 1 keep
 ```
 
-The events are `own` (a fresh value), `borrow` (a temporary read), `share` (a second reference keeps the object alive), `move` (ownership leaves the binding), `mut` (a place is written), `drop` (the owner was released) and `keep` (not reclaimed here, with the reason). `--explain-ownership=all` includes the library functions the program merged (the stdlib prelude) and `--explain-ownership=ir` adds the IR behind each event. Only your file is reported by default: every program carries the stdlib, and reporting it buries your code in someone else's. `NARVAL_DROPS_DEBUG=1` still prints the raw per-IR-value trace, and `NARVAL_DUMP_LOCS=1` makes `--emit-nir`/`--dump-passes` print the source locations (the MLIR printer hides them otherwise).
+The events are `own` (a fresh value), `borrow` (a temporary read), `share` (a second reference keeps the object alive), `move` (ownership leaves the binding), `mut` (a place is written), `drop` (the owner was released) and `keep` (not reclaimed here, with the reason). The line-number gutter is as wide as the largest number reported, so every `|` lines up, and the report is colored when it goes to a terminal (the source line per token, the event, the names in quotes) — `NO_COLOR=1` turns it off, `NARVAL_COLOR=1` forces it on. `--explain-ownership=all` includes the library functions the program merged (the stdlib prelude) and `--explain-ownership=ir` adds the IR behind each event. Only your file is reported by default: every program carries the stdlib, and reporting it buries your code in someone else's. `NARVAL_DROPS_DEBUG=1` still prints the raw per-IR-value trace, and `NARVAL_DUMP_LOCS=1` makes `--emit-nir`/`--dump-passes` print the source locations (the MLIR printer hides them otherwise).
 
 Environment: `NARVAL_HOME` (where the runtime object lives), `NARVAL_STDLIB` (a standard library directory of your own), `NARVAL_LINK_EXTRA` (extra flags for the link step).
 
