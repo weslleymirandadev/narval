@@ -284,9 +284,14 @@ public:
     bool         has_value()  const { return !value_stack_.empty(); }
     mlir::Value  peek_value() const { return value_stack_.empty() ? mlir::Value{} : value_stack_.back(); }
 
-    //  NIR dump
+    //  Dump / print
     void dump_nir();
     void print_nir(llvm::raw_ostream& os);
+
+    // Tag the value `v` (the right-hand side of a binding) with the binding's name, so
+    // diagnostics can name it the way the source does. `pos` is the binding's position:
+    // only a value created on that very line is named (an alias `c = b` keeps b's name).
+    void name_value(mlir::Value v, const std::string& name, const PositionData* pos);
 
     //  Pipeline: lower NIR → LLVM IR
     // Runs the full pass pipeline (narval → std → llvm dialect → LLVM IR).
