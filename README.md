@@ -65,7 +65,20 @@ narval --enabled-targets       list the targets this build can emit
 narval --version, --help
 ```
 
-Diagnostics: `--emit-nir` prints the module in the Narval dialect as codegen left it, `--dump-passes` prints it after every lowering pass, `--emit-llvm` prints the LLVM IR after the middle-end, and `--explain-ownership` reports every reclamation decision and the reason a drop was skipped. `-L` (or `--link`) adds a library to the link line.
+Diagnostics: `--emit-nir` prints the module in the Narval dialect as codegen left it, `--dump-passes` prints it after every lowering pass, and `--emit-llvm` prints the LLVM IR after the middle-end. `-L` (or `--link`) adds a library to the link line.
+
+`--explain-ownership` reports what the compiler decided about ownership **in terms of your file**: one line per value, anchored on the source line that produced it, with the value named the way the code names it (`b = a + 1`, not `nv_box_int`):
+
+```
+[ownership] prog.nv — 6 owned value(s): 4 released, 1 moved, 1 not reclaimed
+[ownership] module scope (top-level code)
+[ownership]    7 | b = a + 1;
+[ownership]      |   own     "b" — a new value
+[ownership]      |   borrow  "a" — read by an arithmetic operator
+[ownership]      |   drop    "b" — released after its last use
+```
+
+The events are `own` (a fresh value), `borrow` (a temporary read), `share` (a second reference keeps the object alive), `move` (ownership leaves the binding), `mut` (a place is written), `drop` (the owner was released) and `keep` (not reclaimed here, with the reason). `--explain-ownership=all` includes the library functions the program merged (the stdlib prelude) and `--explain-ownership=ir` adds the IR behind each event. Only your file is reported by default: every program carries the stdlib, and reporting it buries your code in someone else's. `NARVAL_DROPS_DEBUG=1` still prints the raw per-IR-value trace, and `NARVAL_DUMP_LOCS=1` makes `--emit-nir`/`--dump-passes` print the source locations (the MLIR printer hides them otherwise).
 
 Environment: `NARVAL_HOME` (where the runtime object lives), `NARVAL_STDLIB` (a standard library directory of your own), `NARVAL_LINK_EXTRA` (extra flags for the link step).
 
