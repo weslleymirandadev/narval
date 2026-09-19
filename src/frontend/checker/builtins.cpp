@@ -65,7 +65,39 @@ namespace nv {
         BuiltinFunction("nv_file_read_line", {}, std::make_shared<String>(), false, true, 1, 1),
         BuiltinFunction("nv_file_write",     {}, std::make_shared<Int>(),    false, true, 2, 2),
         BuiltinFunction("nv_file_exists",    {}, std::make_shared<Int>(),    false, true, 1, 1),
-        BuiltinFunction("nv_file_remove",    {}, std::make_shared<Int>(),    false, true, 1, 1),        // len(x) — length of a string/vector/map; boxed int at runtime.
+        BuiltinFunction("nv_file_remove",    {}, std::make_shared<Int>(),    false, true, 1, 1),
+
+        // Network: primitives of the portable runtime layer (POSIX + Winsock). The friendly
+        // API is TcpListener/TcpStream/UdpSocket in stdlib/net.nv; these nv_net_* calls are
+        // what a protocol of your own uses directly (framing, poll).
+        BuiltinFunction("nv_net_tcp_listen",     {}, std::make_shared<Int>(), false, true, 2, 2),
+        BuiltinFunction("nv_net_tcp_connect",    {}, std::make_shared<Int>(), false, true, 3, 3),
+        BuiltinFunction("nv_net_accept",         {}, std::make_shared<Int>(), false, true, 2, 2),
+        BuiltinFunction("nv_net_udp_bind",       {}, std::make_shared<Int>(), false, true, 2, 2),
+        BuiltinFunction("nv_net_udp_send_to",    {}, std::make_shared<Int>(), false, true, 4, 4),
+        BuiltinFunction("nv_net_udp_recv_from",  {}, std::make_shared<String>(), false, true, 2, 2),
+        BuiltinFunction("nv_net_send",           {}, std::make_shared<Int>(), false, true, 2, 2),
+        BuiltinFunction("nv_net_recv",           {}, std::make_shared<String>(), false, true, 2, 2),
+        BuiltinFunction("nv_net_recv_until",     {}, std::make_shared<String>(), false, true, 3, 3),
+        BuiltinFunction("nv_net_recv_exact",     {}, std::make_shared<String>(), false, true, 2, 2),
+        BuiltinFunction("nv_net_shutdown",       {}, std::make_shared<Int>(), false, true, 2, 2),
+        BuiltinFunction("nv_net_close",          {}, std::make_shared<Int>(), false, true, 1, 1),
+        BuiltinFunction("nv_net_set_timeout",    {}, std::make_shared<Int>(), false, true, 2, 2),
+        BuiltinFunction("nv_net_set_option",     {}, std::make_shared<Int>(), false, true, 3, 3),
+        BuiltinFunction("nv_net_get_option",     {}, std::make_shared<Int>(), false, true, 2, 2),
+        BuiltinFunction("nv_net_status",         {}, std::make_shared<Int>(), false, true, 1, 1),
+        BuiltinFunction("nv_net_last_error",     {}, std::make_shared<String>(), false, true, 0, 0),
+        BuiltinFunction("nv_net_last_len",       {}, std::make_shared<Int>(), false, true, 0, 0),
+        BuiltinFunction("nv_net_addr_parse",     {}, std::make_shared<String>(), false, true, 1, 1),
+        BuiltinFunction("nv_net_resolve",        {}, std::make_shared<String>(), false, true, 1, 1),
+        BuiltinFunction("nv_net_resolve_all",    {}, std::make_shared<String>(), false, true, 1, 1),
+        BuiltinFunction("nv_net_hostname",       {}, std::make_shared<String>(), false, true, 0, 0),
+        BuiltinFunction("nv_net_host_of",        {}, std::make_shared<String>(), false, true, 1, 1),
+        BuiltinFunction("nv_net_port_of",        {}, std::make_shared<Int>(),    false, true, 1, 1),
+        BuiltinFunction("nv_net_local_port",     {}, std::make_shared<Int>(), false, true, 1, 1),
+        BuiltinFunction("nv_net_local_addr",     {}, std::make_shared<String>(), false, true, 1, 1),
+        BuiltinFunction("nv_net_peer_addr",      {}, std::make_shared<String>(), false, true, 1, 1),
+        BuiltinFunction("nv_net_poll",           {}, std::make_shared<String>(), false, true, 3, 3),        // len(x) — length of a string/vector/map; boxed int at runtime.
         BuiltinFunction("len", {}, std::make_shared<Int>(), false, true, 1, 1),
         
         // int: aceita 1 argumento de qualquer tipo, retorna int
