@@ -308,6 +308,24 @@ struct InsertRuntimeDropsPass
         // temporary — `n = len(s)` where n is never read — leaks.
         if (uses.empty()) {
             Operation* def = v.getDefiningOp();
+            // A block argument is an ALIAS of a value some other block still carries. When
+            // the block passes values on (it has successors), the loop's exit block takes
+            // the object from the header — not from this body — and the back edge rebinds
+            // the same object. Releasing it here frees an object the exit still returns:
+            // that was the `while` bug (a body with a Narval call + an assignment to a
+            // carried variable returned a freed box: a wrong value in one shape, a
+            // segfault when the freed box became an index). Only a block that cannot pass
+            // the value on may release it: an exit block, where the drop really is the
+            // last use.
+            if (!def) {
+                if (auto arg = dyn_cast<BlockArgument>(v))
+                    if (arg.getOwner()->getNumSuccessors() > 0) {
+                        if (debug_on)
+                            llvm::errs() << "[ownership] keep " << producer_label(v)
+                                         << ": a value carried into a block that passes it on\n";
+                        return 0;
+                    }
+            }
             Location loc = def ? def->getLoc() : b.getUnknownLoc();
             if (def)            b.setInsertionPointAfter(def);
             else if (!def_block->empty()) b.setInsertionPointToStart(def_block);
@@ -355,11 +373,54 @@ struct InsertRuntimeDropsPass
         // Every block of the function, regions included: a result-carrying scf.if
         // keeps its body in a region, and those blocks are NOT in the function's own
         // block list, so a temporary produced inside one was dropped by nobody.
+        // Values this function does NOT own: its entry arguments, and every block argument
+        // that can arrive from one of them. A Narval binding is an ALIAS, not a copy — the
+        // objects are boxed and shared — so `mut i = start` makes a loop's carried variable
+        // the CALLER's own box. Dropping such a value frees memory the caller still uses:
+        // that was the crash where `substr` freed the caller's loop counter (and the same
+        // shape returned a wrong value instead of crashing when the freed box was an
+        // integer the caller only compared). Conservative on purpose: ANY incoming edge
+        // bringing a borrowed value marks the argument borrowed, so a mixed edge (parameter
+        // on the first pass, a fresh box on the back edge) is never released here.
+        DenseSet<Value> borrowed;
+        auto collect_borrowed = [&](Block& entry) {
+            borrowed.clear();
+            for (Value arg : entry.getArguments()) borrowed.insert(arg);
+            bool changed = true;
+            while (changed) {
+                changed = false;
+                for (Block& block : entry.getParent()->getBlocks()) {
+                    for (Value arg : block.getArguments()) {
+                        if (borrowed.count(arg)) continue;
+                        for (Block* pred : block.getPredecessors()) {
+                            Operation* term = pred->getTerminator();
+                            if (!term) continue;
+                            for (Value operand : term->getOperands())
+                                if (borrowed.count(operand)) {
+                                    borrowed.insert(arg);
+                                    changed = true;
+                                    break;
+                                }
+                            if (borrowed.count(arg)) break;
+                        }
+                    }
+                }
+            }
+        };
+
         std::function<void(Block&, bool)> visit = [&](Block& block, bool is_entry) {
             if (!is_entry) {
-                for (Value arg : block.getArguments())
+                for (Value arg : block.getArguments()) {
+                    if (borrowed.count(arg)) {
+                        if (debug_on)
+                            llvm::errs() << "[ownership] keep " << producer_label(arg)
+                                         << ": it is borrowed (an alias of an argument, the "
+                                            "caller owns it)\n";
+                        continue;
+                    }
                     total += try_drop(arg, &block, b, drop_fn,
                                       /*from_call=*/true, debug_on);
+                }
             }
             for (Operation& o : block) {
                 if (!o.hasTrait<OpTrait::IsTerminator>()) {
@@ -380,6 +441,7 @@ struct InsertRuntimeDropsPass
             if (debug_on)
                 llvm::errs() << "[ownership] func @" << func.getName() << "\n";
             Block& entry = func.front();
+            collect_borrowed(entry);
             for (Block& block : func.getBlocks())
                 visit(block, &block == &entry);
         }
@@ -396,4 +458,5 @@ std::unique_ptr<mlir::Pass> createInsertRuntimeDropsPass() {
     return std::make_unique<InsertRuntimeDropsPass>();
 }
 
-} // namespace nv
+} // namespace nv#include "llvm/ADT/DenseSet.h"
+
