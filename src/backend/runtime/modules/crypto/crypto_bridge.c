@@ -160,6 +160,16 @@ int nv_crypto_poly1305_verify(const char* tag, const char* msg, const char* key)
 
 // Ciphertext is message + 32 bytes (TweetNaCl's padded layout), which is what
 // secretbox_open expects back.
+// WARNING (vendored API pitfall): the ed25519.h wrappers take the MESSAGE length,
+// not the ciphertext length — `ed25519_secretbox_open(m, c, n, ...)` calls
+// `crypto_secretbox_open(buf, c, n + 32, ...)` internally, and its callers pass
+// `blen - 32`. Passing the ciphertext length here made TweetNaCl read 32 extra bytes
+// and caused opening to fail with the CORRECT key (the "!" in the round trip) — exactly
+// what the vectors caught. The 1024 limit is the wrapper's buffer (`buf[1024 + 32]` when
+// opening; encryption has 2048 and fails SILENTLY above that): both sides reject equally
+// here, instead of one truncating while the other overflows.
+#define NV_CRYPTO_BOX_MAX 1024
+
 const char* nv_crypto_secretbox(const char* msg, const char* nonce, const char* key) {
     arena_reset();
     size_t mn = 0, nn = 0, kn = 0;
@@ -167,6 +177,7 @@ const char* nv_crypto_secretbox(const char* msg, const char* nonce, const char* 
     unsigned char* no = hex_in(nonce, &nn);
     unsigned char* k = hex_in(key, &kn);
     if (!m || !no || !k || nn != 24 || kn != 32) return NV_CRYPTO_FAIL;
+    if (mn > NV_CRYPTO_BOX_MAX) return NV_CRYPTO_FAIL;
     unsigned char* c = arena_alloc(mn + 32);
     if (!c) return NV_CRYPTO_FAIL;
     ed25519_secretbox(c, m, mn, no, k);
@@ -180,10 +191,12 @@ const char* nv_crypto_secretbox_open(const char* cipher, const char* nonce, cons
     unsigned char* no = hex_in(nonce, &nn);
     unsigned char* k = hex_in(key, &kn);
     if (!c || !no || !k || nn != 24 || kn != 32 || cn < 32) return NV_CRYPTO_FAIL;
-    unsigned char* m = arena_alloc(cn - 32 ? cn - 32 : 1);
+    const size_t mlen = cn - 32;                       // a API dele quer a mensagem, nao o ciphertext
+    if (mlen > NV_CRYPTO_BOX_MAX) return NV_CRYPTO_FAIL;
+    unsigned char* m = arena_alloc(mlen ? mlen : 1);
     if (!m) return NV_CRYPTO_FAIL;
-    if (ed25519_secretbox_open(m, c, cn, no, k) != 0) return NV_CRYPTO_FAIL;
-    return hex_out(m, cn - 32);
+    if (ed25519_secretbox_open(m, c, mlen, no, k) != 0) return NV_CRYPTO_FAIL;
+    return hex_out(m, mlen);
 }
 
 const char* nv_crypto_scalarmult(const char* secret, const char* point) {
