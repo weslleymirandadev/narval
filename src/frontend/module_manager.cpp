@@ -1,4 +1,5 @@
 #include "frontend/module_manager.hpp"
+#include "backend/runtime/modules/module_registry.hpp"
 #include "frontend/lexer/lexer.hpp"
 #include "frontend/parser/parser.hpp"
 #include "frontend/checker/checker.hpp"
@@ -163,6 +164,11 @@ void ModuleManager::resolve_dependencies(const std::string& module_name, const s
         std::string clean_dep = std::regex_replace(import_info.module_path, std::regex("\""), "");
         std::string dep_path = resolve_import_path(module.directory, clean_dep);
         if (!std::ifstream(dep_path).good()) {
+            // Módulo de runtime (crypto, net, ...): é VIRTUAL, não tem arquivo. A
+            // superfície vem da tabela do compilador e entra no sítio do import, no
+            // checker. Sem esta saída, usar o módulo exigiria um .nv vazio só para o
+            // caminho resolver — arquivo de mentira que ninguém quer manter.
+            if (nv::find_runtime_module(nv::runtime_module_name_of_import(clean_dep))) continue;
             throw std::runtime_error("Module " + import_info.module_path + " not found");
         }
         resolve_dependencies(clean_dep, dep_path, config);
@@ -182,6 +188,7 @@ void ModuleManager::resolve_dependencies(const std::string& module_name, const s
             std::string clean_dep = std::regex_replace(dep, std::regex("\""), "");
             std::string dep_path = resolve_import_path(module.directory, clean_dep);
             if (!std::ifstream(dep_path).good()) {
+                if (nv::find_runtime_module(nv::runtime_module_name_of_import(clean_dep))) continue;
                 throw std::runtime_error("Module " + dep + " not found");
             }
             resolve_dependencies(clean_dep, dep_path, config);
