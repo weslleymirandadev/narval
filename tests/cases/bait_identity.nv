@@ -12,6 +12,7 @@
 # ee02a50225
 # bybkkarfws5kugfai4hntp6h3qbs6fze
 # bybkkarfws5kugfai4hntp6h3qbs6fze.bait
+# 8e.02.a5.02.25
 from "crypto" import * as crypto;
 from "bait" import * as bait;
 
@@ -29,3 +30,9 @@ write(bait.addr_of_digest(d, "D"));
 write(bait.addr_of_digest(d, "E"));
 write(bait.label_of_digest(d));
 write(bait.name_of_digest(d));
+
+# Caminho reverso: do label (o nome) volta-se ao endereco — o mesmo que o `ipv69 addr`
+# imprime, e o mesmo que o digest deu. Um label de outro alfabeto nao produz endereco.
+label = bait.label_of_digest(d);
+write(bait.addr_dotted_of_label(label, "C"));
+
