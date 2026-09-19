@@ -1,0 +1,9 @@
+# A keyword in the member-name position must say WHY it is rejected: `err` is reserved by
+# the error-handling syntax, and "Expected class member" alone sent the reader looking for a
+# missing brace instead of a renamed field.
+# Expected:
+# Error: 'err' is a reserved keyword
+
+class Broken {
+    err: str;
+}
