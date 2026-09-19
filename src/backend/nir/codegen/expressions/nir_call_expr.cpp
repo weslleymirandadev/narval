@@ -1,6 +1,7 @@
 #include "../nir_codegen_utils.hpp"
 #include "backend/nir/nir_tensor_codegen.hpp"
 #include "frontend/ast/expressions/call_expr_node.hpp"
+#include "backend/runtime/modules/module_registry.hpp"
 #include "frontend/ast/expressions/identifier_node.hpp"
 #include "frontend/ast/expressions/member_expr_node.hpp"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -31,6 +32,29 @@ void CallExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         static_cast<IdentifierNode*>(caller.get())->symbol == "read") {
         ctx.push_value(nir_call_runtime(ctx, loc, "nv_make_none", {}, {vt}));
         arg_vals.push_back(ctx.pop_value());
+    }
+
+    // ── Step 3a-pre: módulo de RUNTIME — `crypto.sha512(x)` vem da tabela do módulo
+    // (`module_registry.hpp`, uma linha por função no `.def`) e vira call_runtime ao
+    // símbolo do módulo: sem receptor, sem `nv_*` à vista e sem passar pelo caminho de
+    // função Narval. Vem ANTES do Step 3a, que resolve namespace de módulo `.nv` como
+    // chamada à função de mesmo nome — nome nenhum existe do lado C, era daí que saía
+    // "undefined reference to `sha512'".
+    if (caller && caller->kind == NodeType::MemberExpression) {
+        auto* mem = static_cast<MemberExprNode*>(caller.get());
+        if (mem->object && mem->object->kind == NodeType::Identifier &&
+            mem->property && mem->property->kind == NodeType::Identifier) {
+            const std::string module_name =
+                static_cast<IdentifierNode*>(mem->object.get())->symbol;
+            if (const auto* mod = nv::find_runtime_module(module_name)) {
+                const std::string fn_name =
+                    static_cast<IdentifierNode*>(mem->property.get())->symbol;
+                if (const auto* fn = mod->find(fn_name)) {
+                    ctx.push_value(nir_call_runtime(ctx, loc, fn->c_symbol, arg_vals, {vt}));
+                    return;
+                }
+            }
+        }
     }
 
     // ── Step 3a: namespace member call — `ns.f(a)` where `ns` is an imported module
@@ -110,6 +134,7 @@ void CallExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         auto* mem = static_cast<MemberExprNode*>(caller.get());
         if (mem->object && mem->property && mem->property->kind == NodeType::Identifier) {
             std::string method = static_cast<IdentifierNode*>(mem->property.get())->symbol;
+
             // The checker resolved the owner from the receiver's static type; the
             // name-only lookup stays as a fallback for calls that did not go through it
             // (it cannot tell two classes with the same method apart).
