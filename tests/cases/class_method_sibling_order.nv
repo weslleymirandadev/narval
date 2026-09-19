@@ -1,0 +1,30 @@
+# A method may call a sibling declared BELOW it. The symbol only used to appear when that
+# sibling's own body was emitted (source order), so the call errored with "has no body to
+# call" and silently produced 0 — the diagnostic said nothing about ordering, so this case
+# pins both the message and the value.
+# Expected:
+# 6
+# hi!
+# 6
+class Counter {
+    public n: int;
+    public new() { self.n = 0; }
+    public set(v: int): int { self.n = v; return 0; }
+
+    # sibling declared after this one
+    public doubled(): int { return self.double_of(self.n); }
+    public double_of(v: int): int { return v * 2; }
+
+    # sibling after this one, and a method call used as an argument
+    public label(): str { return self.tag() + "!"; }
+    public tag(): str { return "hi"; }
+
+    public sum_to(): int { return self.step(3); }
+    public step(k: int): int { return k + self.n; }
+}
+
+c = new Counter();
+c.set(3);
+write(c.doubled());
+write(c.label());
+write(c.sum_to());
