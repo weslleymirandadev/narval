@@ -1,0 +1,26 @@
+# Poll: the portable event loop — nothing ready means 0, a pending connection means the
+# listener shows up as readable.
+# Expected:
+# 0
+# 0
+# 1
+# 1
+from "net" import *;
+
+srv = new TcpListener();
+write(srv.bind("127.0.0.1", 0));
+
+p = new Poll();
+p.add(srv.handle);
+write(p.wait(50));
+
+c = new TcpStream();
+c.connect("127.0.0.1", srv.port(), 500);
+write(p.wait(1000));
+write(p.is_ready(srv.handle));
+
+s = new TcpStream();
+s.adopt(srv.accept(1000));
+c.close();
+s.close();
+srv.close();
