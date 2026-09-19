@@ -217,7 +217,16 @@ std::unique_ptr<Node> parse_class_stmt(Parser* parser) {
             }
         }
         else {
-            parser->error("Expected class member");
+            // A keyword in the member-name position is the usual mistake (`err: str;`).
+            // "Expected class member" alone does not explain why the name was rejected, so
+            // say it — `err` is reserved by the error-handling syntax and can never name a
+            // field or method.
+            Token tok = parser->current_token();
+            if (!tok.lexeme.empty())
+                parser->error("Expected class member: '" + tok.lexeme +
+                              "' is a reserved keyword and cannot name a field or method");
+            else
+                parser->error("Expected class member");
             break;
         }
     }
