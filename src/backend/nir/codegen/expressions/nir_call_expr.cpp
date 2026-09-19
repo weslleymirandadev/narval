@@ -231,6 +231,18 @@ void CallExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         {"nv_net_local_addr", "nv_net_local_addr_builtin"},
         {"nv_net_peer_addr", "nv_net_peer_addr_builtin"},
         {"nv_net_poll", "nv_net_poll_builtin"},
+    // Byte codec for Packet/Frame (net_pack.c), same names on both sides.
+    {"nv_net_hex_valid", "nv_net_hex_valid_builtin"},
+    {"nv_net_hex_len", "nv_net_hex_len_builtin"},
+    {"nv_net_str_to_hex", "nv_net_str_to_hex_builtin"},
+    {"nv_net_hex_to_str", "nv_net_hex_to_str_builtin"},
+    {"nv_net_pack_int", "nv_net_pack_int_builtin"},
+    {"nv_net_unpack_int", "nv_net_unpack_int_builtin"},
+    {"nv_net_unpack_hex", "nv_net_unpack_hex_builtin"},
+    {"nv_net_platform", "nv_net_platform_builtin"},
+    {"nv_net_caps", "nv_net_caps_builtin"},
+    {"nv_net_send_hex",       "nv_net_send_hex_builtin"},
+    {"nv_net_recv_exact_hex", "nv_net_recv_exact_hex_builtin"},
         // Option/Result constructors: the checker accepts them as `Some(x)` etc, but the
         // codegen emitted the bare name as the callee, which is a symbol nothing defines
         // — every compiled program using them failed to link. The runtime builds the
