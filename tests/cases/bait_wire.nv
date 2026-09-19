@@ -1,0 +1,33 @@
+# O header de wire do IPv69, byte a byte. O vetor esperado NÃO foi escrito à mão: veio do
+# código dele — um gerador que inclui `include/IPv69/header.h`/`endian.h` e usa os helpers
+# dele (`wr_be16`, `ipv69_addr_put`) para montar o mesmo header que o `ip69d.c` monta no
+# caminho de datagrama. Aqui os campos são remontados, o header sai igual, e a volta confere.
+# Expected:
+# 690000031234014001001f904e20000000078e02a502250000ffffffffff0000
+# 1
+# dgram
+# 8e.02.a5.02.25
+# ff.ff.ff.ff.ff
+from "bait" import *;
+
+# Campos idênticos aos do gerador de referência.
+wh = new WireHdr();
+wh.payload_len = 3;
+wh.flow_id = 0x1234;
+wh.next_header = 1;
+wh.hop_limit = 64;
+wh.flags = 1;
+wh.src_port = 0x1f90;
+wh.dst_port = 0x4e20;
+wh.sequence = "00000007";
+wh.source = "8e02a50225";
+wh.dest = "ffffffffff";
+
+write(wh.pack());
+
+# E o caminho de volta, nos mesmos bytes.
+parsed = wire_hdr_parse(wh.pack());
+if parsed.pack() == wh.pack() { write("1"); }
+if parsed.next_header == 1 { write("dgram"); }
+write(addr_dotted(parsed.source));
+write(addr_dotted(parsed.dest));
