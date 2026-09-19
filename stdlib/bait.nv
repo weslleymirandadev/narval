@@ -1,0 +1,80 @@
+# Identidade do bait para Narval — endereço derivado e nome `.bait`, a partir do DIGEST da
+# chave pública (SHA-512 dela). Endereço e nome saem do mesmo digest:
+#
+#   addr  = 5 bytes (40 bits): byte 0 com a máscara da classe, bytes 1..4 do digest
+#   label = base32 (RFC 4648, minúsculo, sem padding) dos primeiros 160 bits do digest
+#   fqdn  = label + ".bait"
+#
+# Mesma chave = mesmo endereço e mesmo nome em qualquer lugar. A spec é
+# `docs/bait-names-spec.md` do repo do IPv69 (`src/BITE/baitname.c`); isto é o porte.
+#
+#     from "crypto" import * as crypto;
+#     from "bait" import * as bait;
+#
+#     d = crypto.sha512(pub_hex);              # o digest de identidade
+#     bait.addr_of_digest(d, "C");             # "8e02a50225"
+#     bait.addr_dotted_of_digest(d, "C");      # "8e.02.a5.02.25" (o do `ipv69 addr`)
+#     bait.name_of_digest(d);                  # "bybkkarfws5kugfai4hntp6h3qbs6fze.bait"
+#
+# Este arquivo NÃO importa `crypto`: um arquivo de módulo ainda não consegue importar módulo
+# de runtime (módulo `.nv` só enxerga módulos `.nv`), então o digest entra pronto. É também o
+# corte que interessa — aqui é aritmética de bits e formatação, lá é primitiva criptográfica.
+
+from "strings" import *;
+
+def bait_hex_digits(): str { return "0123456789abcdef"; }
+
+def bait_b32_alphabet(): str { return "abcdefghijklmnopqrstuvwxyz234567"; }
+
+# Valor de um dígito hex (0-15), ou -1 quando não é hex.
+def bait_nib(c: str): int { return index_of(bait_hex_digits(), c); }
+
+# Máscara da classe no byte 0 do digest: A 00|b&3f, B 40|b&3f, C 80|b&3f,
+# D c0|b&1f, E e0|b&1f — a classe é o topo do byte e o digest preenche o resto.
+def bait_class_byte(hi: int, lo: int, cls: str): int {
+    if cls == "A" { return (hi & 3) * 16 + lo; }
+    if cls == "B" { return ((hi & 3) | 4) * 16 + lo; }
+    if cls == "D" { return ((hi & 1) | 12) * 16 + lo; }
+    if cls == "E" { return ((hi & 1) | 14) * 16 + lo; }
+    return ((hi & 3) | 8) * 16 + lo;                   # 'C' é o padrão
+}
+
+# Endereço de 40 bits em 10 dígitos hex (5 bytes). Classe 'C' quando não se pede outra.
+def addr_of_digest(digest_hex: str, cls: str): str {
+    d = digest_hex;
+    b0 = bait_class_byte(bait_nib(substr(d, 0, 1)), bait_nib(substr(d, 1, 1)), cls);
+    return substr(bait_hex_digits(), (b0 >> 4) & 15, 1) + substr(bait_hex_digits(), b0 & 15, 1) + substr(d, 2, 8);
+}
+
+# O mesmo endereço pontuado byte a byte, como o `ipv69 addr` imprime.
+def addr_dotted_of_digest(digest_hex: str, cls: str): str {
+    a = addr_of_digest(digest_hex, cls);
+    return substr(a, 0, 2) + "." + substr(a, 2, 2) + "." + substr(a, 4, 2) + "." + substr(a, 6, 2) + "." + substr(a, 8, 2);
+}
+
+# Label base32 dos primeiros 160 bits: 40 dígitos hex (4 blocos de 5 bytes) viram 32
+# caracteres de 5 bits.
+def label_of_digest(digest_hex: str): str {
+    d = substr(digest_hex, 0, 40);
+    mut out = "";
+    mut blk = 0;
+    while blk < 4 {
+        mut v = 0;
+        mut i = 0;
+        while i < 10 {
+            v = (v << 4) | bait_nib(substr(d, blk * 10 + i, 1));
+            i = i + 1;
+        }
+        mut j = 0;
+        while j < 8 {
+            out = out + substr(bait_b32_alphabet(), (v >> (35 - 5 * j)) & 31, 1);
+            j = j + 1;
+        }
+        blk = blk + 1;
+    }
+    return out;
+}
+
+def name_of_digest(digest_hex: str): str {
+    return label_of_digest(digest_hex) + ".bait";
+}
