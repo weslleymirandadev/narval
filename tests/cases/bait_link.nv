@@ -1,0 +1,37 @@
+# Um datagrama IPv69 de verdade entre dois sockets, na mesma máquina: o `Link` monta o
+# header de wire, envia por UDP e o outro lado recebe, desmonta e confere campo a campo.
+# Entradas fixas (endereços, portas do header, sequência e carga) para a saída ser
+# determinística; só a porta efêmera do socket fica de fora, que não é do header.
+# Expected:
+# 1
+# 1
+# 3
+# 616263
+# 8e.02.a5.02.25
+# ff.ff.ff.ff.ff
+from "bait" import *;
+
+rcv = link_bind("127.0.0.1", 0);
+if rcv < 0 { write("bind recebeu erro"); }
+porta = link_local_port(rcv);
+snd = link_bind("127.0.0.1", 0);
+
+dgram = link_pack("8e02a50225", "ffffffffff", 0x1f90, 0x4e20, "00000007", "616263");
+if link_send(snd, "127.0.0.1", porta, dgram) > 0 { }
+
+# O que chega: "host:port|datagrama".
+rec = link_recv(rcv, 3000);
+bar = index_of(rec, "|");
+recebido = substr(rec, bar + 1, len(rec) - bar - 1);
+
+if recebido == dgram { write("1"); }
+
+if wire_hdr_normalize(recebido) == substr(dgram, 0, 64) { write("1"); }
+# Os campos saem por leitura do wire (o mocinho de 32 bytes tem offset fixo e documentado).
+write(rd_be16(substr(recebido, 4, 4)));
+write(link_payload(recebido));
+write(addr_dotted(substr(recebido, 36, 10)));
+write(addr_dotted(substr(recebido, 50, 10)));
+
+link_close(snd);
+link_close(rcv);
