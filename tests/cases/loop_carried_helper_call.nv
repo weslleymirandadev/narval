@@ -1,0 +1,65 @@
+# Regression: a `while` body that calls a Narval function AND updates a loop-carried
+# variable. The drops pass used to treat a block argument that is an ALIAS of an argument
+# as owned by the callee, so `substr` freed the caller's counter box — the loop then read
+# freed memory: a wrong value (-1) when the box was only compared, a segfault when it was
+# used as an index (valgrind: "Invalid read ... free'd by substr"). The prelude helpers
+# below are the shape the bug needed: a Narval function (not a runtime bridge) whose
+# parameter gets bound to a variable it then carries through a loop.
+# Expected:
+# 9
+# 2
+# 3
+# 5
+
+# The original failure: last ':' of an endpoint.
+def last_colon(text: str): int {
+    mut i = 0;
+    mut found = -1;
+    while i < len(text) {
+        if substr(text, i, 1) == ":" { found = i; }
+        i = i + 1;
+    }
+    return found;
+}
+
+# Accumulator in a branch (the "-1 instead of N" shape).
+def count_colons(text: str): int {
+    mut i = 0;
+    mut hits = 0;
+    while i < len(text) {
+        c = substr(text, i, 1);
+        if c == ":" { hits = hits + 1; }
+        i = i + 1;
+    }
+    return hits;
+}
+
+# Direct assignment of the carried variable while a call happens in the same body
+# (the shape that segfaulted).
+def scan_len(text: str): int {
+    mut i = 0;
+    mut seen = -1;
+    while i < len(text) {
+        c = substr(text, i, 1);
+        seen = i + 1;
+        i = i + 1;
+    }
+    return seen;
+}
+
+# A helper call whose result feeds the branch, i.e. the callee also receives the carried
+# value as an argument (the exact aliasing path).
+def count_before(text: str, needle: str): int {
+    mut i = 0;
+    mut hits = 0;
+    while i < len(text) {
+        if substr(text, i, 1) == needle { hits = hits + 1; }
+        i = i + 1;
+    }
+    return hits;
+}
+
+write(last_colon("127.0.0.1:8080"));
+write(count_colons("a:b:c"));
+write(scan_len("abc"));
+write(count_before("a.b.c.d.e.f", "."));
