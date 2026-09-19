@@ -1,0 +1,11 @@
+// bait.def — o módulo `bait`: as primitivas do stack BAIT que são exatas e quentes o
+// bastante para viver no runtime (o resto da superfície é Narval, em `stdlib/bait.nv`).
+//
+// Mesmo formato dos outros módulos (uma linha por função, ver RUNTIME_MODULES_DESIGN.md).
+// Aqui os `bytes` são hex, como no crypto.
+
+// mac1: filtro barato de pré-autenticação do ICSP/BITE (estilo WireGuard).
+// key = SHA-512("ipv69-mac1" || addr40 BE)[0..31]; tag = Poly1305(key, msg), 16 bytes.
+NV_FN(mac1_key,    (bytes),        bytes, 1)
+NV_FN(mac1,        (bytes, bytes), bytes, 2)
+NV_FN(mac1_verify, (bytes, bytes, bytes), flag, 3)
