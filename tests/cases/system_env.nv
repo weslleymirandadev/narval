@@ -1,0 +1,10 @@
+# O módulo `system` visto da linguagem: `system.env(nome)` e `system.home()`, sem handle e
+# sem arquivo — módulo virtual, como o `crypto` (nenhum .nv precisa existir para ele).
+# A variável consultada não existe de propósito: o contrato é "" e não erro.
+# Expected:
+# unset-ok
+# home-ok
+from "system" import * as system;
+
+if system.env("IPV69_NAV_TEST_UNSET") == "" { write("unset-ok"); }
+if len(system.home()) > 0 { write("home-ok"); }
