@@ -47,6 +47,9 @@ void AssignmentExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
             // Simple variable assignment: redefine in current scope
             auto name = static_cast<IdentifierNode*>(target.get())->symbol;
             ctx.define(name, rhs);
+            // The value this assignment just created belongs to `name` (the guard in
+            // name_value keeps `c = b` from renaming b's value).
+            ctx.name_value(rhs, name, position.get());
             // A top-level assignment also refreshes the runtime table (B8): the parser
             // hands `K = 5` as an assignment, so this path is the one main.start takes.
             nir_store_module_global(ctx, loc, name, rhs);
