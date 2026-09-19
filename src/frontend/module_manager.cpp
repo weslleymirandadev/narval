@@ -350,6 +350,9 @@ std::unique_ptr<Node> ModuleManager::get_combined_ast(const std::string& main_mo
                     }
                 } else if (stmt->kind == NodeType::FunctionStatement) {
                     // Incluir todas as funções (defs) do módulo (prover contexto)
+                    // Nome colhido para o relatório de ownership: esta função não é do
+                    // arquivo compilado (ver functions_from_other_files).
+                    elsewhere_functions.insert(static_cast<FunctionStmtNode*>(stmt.get())->name);
                     combined_program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
                 } else if (stmt->kind == NodeType::ComptimeDecl ||
                            stmt->kind == NodeType::ComptimeFuncDef ||
@@ -374,6 +377,10 @@ std::unique_ptr<Node> ModuleManager::get_combined_ast(const std::string& main_mo
                            stmt->kind == NodeType::InterfaceStatement) {
                     // Incluir definições de tipos (classes, enums, interfaces) para que o checker
                     // possa resolver tipos e retornos de métodos usados no módulo principal
+                    // (a classe também entra na lista do relatório de ownership: os métodos
+                    // dela são `__method_<Classe>_<nome>` no IR).
+                    if (stmt->kind == NodeType::ClassStatement)
+                        elsewhere_classes.insert(static_cast<ClassStmtNode*>(stmt.get())->name);
                     combined_program->add_statement(std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
                 }
                 // Não incluir outros tipos de statements (CallExpression, IfStatement, etc.)
