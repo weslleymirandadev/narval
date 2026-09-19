@@ -279,6 +279,18 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
                     auto method_type = ch->unify_ctx.resolve(mem_it->second);
                     if (method_type->kind == nv::Kind::FUNCTION) {
                         auto function = std::static_pointer_cast<nv::Function>(method_type);
+                        // Aridade primeiro: um modulo de runtime vai direto para o C,
+                        // entao chamar com menos argumentos que a assinatura nao pode
+                        // virar leitura de lixo do outro lado.
+                        if (function->paramstype.size() != call->args.size()) {
+                            ch->error(call->args.empty() ? member_expr->property.get()
+                                                         : call->args[0].get(),
+                                      obj_id->symbol + "." + prop_id->symbol + " expects " +
+                                      std::to_string(function->paramstype.size()) +
+                                      " argument(s), got " +
+                                      std::to_string(call->args.size()));
+                            return ch->gettyptr("None");
+                        }
                         for (const auto& arg : call->args) {
                             ch->infer_expr(arg.get());
                         }
