@@ -265,6 +265,28 @@ namespace {
 // Conjunto estático para rastrear imports já verificados (evitar erros duplicados)
 static std::unordered_set<std::string> checked_imports;
 
+namespace {
+// Módulos de runtime (crypto, net, ...): a superfície de verdade vem da tabela do compilador
+// (o `.def` do módulo — ver RUNTIME_MODULES_DESIGN.md) e é injetada no namespace do alias, sob
+// este import. Módulo não importado não existe no escopo, e importar um não arrasta os outros.
+// Chamado nos DOIS caminhos: com o `.nv` do módulo presente (que traz só açúcar) e sem ele
+// (módulo virtual) — no caminho sem arquivo o checker retorna antes da injeção de baixo, então
+// deixá-la só lá fazia o alias não existir justamente no caso do módulo virtual.
+void nv_inject_runtime_module(nv::Checker* ch, const std::string& module_path,
+                              const std::string& alias) {
+    if (alias.empty()) return;
+    const auto* mod = nv::find_runtime_module(nv::runtime_module_name_of_import(module_path));
+    if (!mod) return;
+    for (const auto& fn : mod->fns) {
+        std::vector<std::shared_ptr<nv::Type>> params;
+        auto kinds = fn.param_is_int();
+        for (size_t i = 0; i < kinds.size(); ++i)
+            params.push_back(ch->gettyptr(kinds[i] ? "int" : "str"));
+        ch->import_namespaces[alias][fn.name] = std::make_shared<nv::Function>(
+            params, ch->gettyptr(fn.returns_int() ? "int" : "str"));
+    }
+}
+}  // namespace
 std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
     auto* import_stmt = static_cast<ImportStmtNode*>(node);
     
@@ -373,6 +395,14 @@ std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
         // Ler o arquivo
         std::ifstream file(full_path);
         if (!file.is_open()) {
+            // Módulo de runtime (crypto, net, ...) é virtual: não há arquivo para ler nem
+            // símbolo para validar aqui — a superfície já foi injetada no sítio do import,
+            // no ramo do alias. Faltar arquivo não é erro para esses módulos.
+            if (nv::find_runtime_module(nv::runtime_module_name_of_import(module_path))) {
+                nv_inject_runtime_module(ch, module_path, import_stmt->wildcard_alias);
+                ch->scope->put_key(import_stmt->wildcard_alias, ch->gettyptr("None"), false);
+                return ch->gettyptr("None");
+            }
             std::ostringstream oss;
             oss << "Failed to open file " << ANSI_BOLD << ANSI_WHITE << module_path << ANSI_RESET;
             report_import_error(ch, import_stmt, oss.str());
@@ -449,22 +479,7 @@ std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
                 // A resolução de membros via ALIAS.foo é feita via ch->import_namespaces, não por tipo
                 ch->scope->put_key(import_stmt->wildcard_alias, ch->gettyptr("None"), false);
 
-                // Módulos de runtime (crypto, net, ...): o `.nv` do módulo é só a cara
-                // documentada — a superfície de verdade vem da tabela do compilador e é
-                // injetada AQUI, no namespace do alias, sob este import. Módulo não
-                // importado não existe no escopo, e importar um não arrasta os outros.
-                if (const auto* mod = nv::find_runtime_module(
-                        nv::runtime_module_name_of_import(module_path))) {
-                    for (const auto& fn : mod->fns) {
-                        std::vector<std::shared_ptr<nv::Type>> params;
-                        auto kinds = fn.param_is_int();
-                        for (size_t i = 0; i < kinds.size(); ++i)
-                            params.push_back(ch->gettyptr(kinds[i] ? "int" : "str"));
-                        ch->import_namespaces[import_stmt->wildcard_alias][fn.name] =
-                            std::make_shared<nv::Function>(
-                                params, ch->gettyptr(fn.returns_int() ? "int" : "str"));
-                    }
-                }
+                nv_inject_runtime_module(ch, module_path, import_stmt->wildcard_alias);
             }
             return ch->gettyptr("None");
         }
