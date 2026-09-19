@@ -1,0 +1,31 @@
+# Endereço e nome do bait derivados da identidade, conferidos contra o oráculo: o binário do
+# IPv69 com o keyring fixo (`IPV69_KEYFILE=<seed do RFC 8032> ipv69 addr [--class X] [--bait]`)
+# imprime `8e.02.a5.02.25` na classe C e o label `bybkkarfws5kugfai4hntp6h3qbs6fze`.
+# A cadeia inteira é amarrada aqui: seed -> pública (RFC 8032) -> digest -> endereço e nome.
+# Expected:
+# seed-ok
+# 8e02a50225
+# 8e.02.a5.02.25
+# 0e02a50225
+# 4e02a50225
+# ce02a50225
+# ee02a50225
+# bybkkarfws5kugfai4hntp6h3qbs6fze
+# bybkkarfws5kugfai4hntp6h3qbs6fze.bait
+from "crypto" import * as crypto;
+from "bait" import * as bait;
+
+# Vetor 1 do RFC 8032: a seed e a pública dela.
+seed = "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60";
+pub  = "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a";
+if crypto.seed_to_pub(seed) == pub { write("seed-ok"); }
+
+d = crypto.sha512(pub);
+write(bait.addr_of_digest(d, "C"));
+write(bait.addr_dotted_of_digest(d, "C"));
+write(bait.addr_of_digest(d, "A"));
+write(bait.addr_of_digest(d, "B"));
+write(bait.addr_of_digest(d, "D"));
+write(bait.addr_of_digest(d, "E"));
+write(bait.label_of_digest(d));
+write(bait.name_of_digest(d));
