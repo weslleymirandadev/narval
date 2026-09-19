@@ -345,8 +345,11 @@ struct InsertRuntimeDropsPass
         ModuleOp module = getOperation();
         OpBuilder b(module.getContext());
         func::FuncOp drop_fn = get_or_create_drop_fn(module, b);
-        const bool debug_on = nv::diag_explain_ownership() ||
-                              std::getenv("NARVAL_DROPS_DEBUG") != nullptr;
+        // The raw per-IR-value trace is compiler-debugging output and stays behind
+        // NARVAL_DROPS_DEBUG=1. --explain-ownership does NOT turn it on any more: it runs
+        // the source-level report (ExplainOwnershipPass) instead, anchored on the .nv file
+        // rather than on the bridge names — this trace is what it used to print.
+        const bool debug_on = std::getenv("NARVAL_DROPS_DEBUG") != nullptr;
         int total = 0;
 
         // Every block of the function, regions included: a result-carrying scf.if
