@@ -1,0 +1,22 @@
+# mac1, o filtro de pré-autenticação do ICSP/BITE (estilo WireGuard): a chave é
+# SHA-512("ipv69-mac1" ‖ addr40 BE)[0..31] e a tag é Poly1305(chave, mensagem).
+# Os valores esperados vêm do código dele: a `mac1_key`/`ed25519_poly1305` do IPv69
+# (`src/IPv69/mac1.c`) ligadas ao ed25519 vendorizado, num gerador com entradas fixas.
+# Expected:
+# 0d377569e651610fa9cdd1748577d515da0c0118cd28f5d3416330e8be80bf72
+# 57028fe35e996778c7f9763c8d02751c
+# 1
+# 0
+from "bait" import * as bait;
+
+# Endereço do servidor 8e.02.a5.02.25; mensagem "abc" (616263).
+write(bait.mac1_key("8e02a50225"));
+
+chave = bait.mac1_key("8e02a50225");
+tag = bait.mac1("616263", chave);
+write(tag);
+
+if bait.mac1_verify(tag, "616263", chave) == 1 { write("1"); }
+
+# Com a mensagem trocada a tag não passa.
+if bait.mac1_verify(tag, "616264", chave) == 0 { write("0"); }
