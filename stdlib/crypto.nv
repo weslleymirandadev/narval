@@ -1,0 +1,46 @@
+# Conveniências de cripto para Narval — arquivo OPCIONAL do módulo `crypto`.
+#
+#     from "crypto" import * as crypto;      # funciona SEM este arquivo
+#
+# O módulo `crypto` é virtual: as primitivas vêm da tabela do compilador (o `.def` do
+# módulo) e entram no namespace do alias no sítio do import. Este arquivo existe só para
+# acrescentar açúcar em Narval — se ele não existir, nada falta.
+#
+# Bytes cruzam como hex (o mesmo caminho binário do `net`), porque uma string do Narval para
+# no primeiro NUL. Falha de autenticação/derivação devolve "!" — nunca um hex válido, então
+# dá para detectar sem canal de erro:
+#
+#     if crypto.secretbox_open(box, nonce, key) == "!" { ...chave errada... }
+#
+# Superfície (primitivas):
+#   random(n)                          n bytes aleatórios (hex)
+#   sha512(bytes)  hmac_sha512(msg, key)
+#   poly1305(msg, key)  poly1305_verify(tag, msg, key)
+#   secretbox(msg, nonce24, key32)     secretbox_open(box, nonce, key)
+#   scalarmult(secret, point)          scalarmult_base(secret)        # X25519 / ECDHE
+#   sign(msg, sk|seed)                 verify(msg, sig, pub)
+#   keypair()  seed_to_pub(seed)  pub_to_x25519(ed_pub)
+#
+# Um arquivo de módulo não recebe o prelúdio da linguagem, então o que vem de `strings.nv`
+# (substr, index_of, len...) é importado explicitamente abaixo.
+
+from "strings" import *;
+
+# 1 quando `text` é hex bem formado (comprimento par, só dígitos hex): a checagem que vale a
+# pena antes de entregar qualquer coisa às primitivas.
+def crypto_is_hex(text: str): int {
+    if len(text) % 2 != 0 { return 0; }
+    mut i = 0;
+    while i < len(text) {
+        c = substr(text, i, 1);
+        if index_of("0123456789abcdefABCDEF", c) < 0 { return 0; }
+        i = i + 1;
+    }
+    return 1;
+}
+
+# Separa o que keypair() devolve: [seed, pub], 32 bytes (64 hex) cada.
+def crypto_keypair_parts(kp_hex: str): vector {
+    if len(kp_hex) != 128 { return ["", ""]; }
+    return [substr(kp_hex, 0, 64), substr(kp_hex, 64, 64)];
+}
