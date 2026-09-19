@@ -7,6 +7,7 @@
 // can be shared by the CLI, JIT, and any future test harness.
 
 #include "backend/nir/NarvalPasses.h"
+#include "backend/nir/NirDiagnostics.hpp"
 
 #include "mlir/Conversion/LinalgToStandard/LinalgToStandard.h"
 #include "mlir/Conversion/Passes.h"
@@ -22,7 +23,8 @@
 namespace nv {
 
 void build_narval_pass_pipeline_phase_a(mlir::PassManager& pm,
-                                        mlir::ModuleOp module) {
+                                        mlir::ModuleOp module,
+                                        const std::string& source_file) {
     pm.enableVerifier(false);
     pm.addPass(nv::createLowerNarvalFunctionsPass());
     pm.addPass(nv::createNarvalCanonicalizationPass());
@@ -43,6 +45,15 @@ void build_narval_pass_pipeline_phase_a(mlir::PassManager& pm,
     pm.addPass(nv::createLowerNarvalGPUPass());
     pm.addPass(mlir::createReconcileUnrealizedCastsPass());
     pm.addPass(nv::createInsertRuntimeDropsPass());
+    // The ownership report reads the module the drops pass just finished with, so it
+    // reports the drops that are really in the program. Only when asked for: the report
+    // is a diagnostic, not part of the pipeline's work.
+    if (nv::diag_explain_ownership()) {
+        pm.addPass(nv::createExplainOwnershipPass(
+            source_file,
+            nv::diag_ownership_report() == nv::OwnershipReport::AllFiles,
+            nv::diag_ownership_ir()));
+    }
 }
 
 static bool module_has_tensors(mlir::ModuleOp module) {
