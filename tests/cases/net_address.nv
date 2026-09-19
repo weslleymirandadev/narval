@@ -1,0 +1,42 @@
+# Addresses and names: the canonical endpoint shape ("host:port", IPv6 bracketed), the
+# normalisation of what a user types, and resolution. Only deterministic answers are
+# asserted — a hostname that resolves to one address on one platform and another elsewhere
+# is checked for "answers", not for a specific address.
+# Expected:
+# 0
+# 127.0.0.1:8080
+# 127.0.0.1
+# 8080
+# 0
+# [::1]:9090
+# ::1
+# 9090
+# 10.0.0.1:443
+# 127.0.0.1
+# resolve ok
+# all ok
+# hostname ok
+from "net" import *;
+
+a = new Address();
+write(a.parse("127.0.0.1:8080"));
+write(a.text());
+write(a.host);
+write(a.port);
+
+b = new Address();
+write(b.parse("[::1]:9090"));
+write(b.text());
+write(b.host);
+write(b.port);
+
+# A numeric address is normalised without touching the resolver.
+write(net_addr("10.0.0.1:443"));
+
+# Numeric resolution must answer on every platform.
+write(net_resolve("127.0.0.1"));
+
+# A real name goes through the resolver: what matters is that it answers at all.
+if len(net_resolve("localhost")) > 0 { write("resolve ok"); }
+if len(net_resolve_all("localhost")) > 0 { write("all ok"); }
+if len(net_hostname()) > 0 { write("hostname ok"); }
