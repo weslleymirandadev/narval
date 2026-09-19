@@ -37,6 +37,14 @@ class ModuleManager {
         std::unique_ptr<Node> get_combined_ast(const std::string& main_module_name = "");
         const std::map<std::string, Module>& get_modules() const;
 
+        // The combined program is the merge of the main file with the modules it imported
+        // (the stdlib prelude among them), and the merge is where that distinction is
+        // still visible. The ownership report uses this to tell the programmer's own
+        // functions from the prelude's: by name for functions, by name for classes (their
+        // methods are mangled `__method_<Class>_<name>`).
+        const std::set<std::string>& functions_from_other_files() const { return elsewhere_functions; }
+        const std::set<std::string>& classes_from_other_files() const { return elsewhere_classes; }
+
     private:
 
         // Loads a module and returns the name it registered itself under. That can
@@ -47,4 +55,6 @@ class ModuleManager {
 
         std::map<std::string, Module> modules;
         std::set<std::string> visited;
+        std::set<std::string> elsewhere_functions;
+        std::set<std::string> elsewhere_classes;
 };
