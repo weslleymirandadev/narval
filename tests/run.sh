@@ -11,6 +11,9 @@
 #   # Exit code: N   expected exit code (default 0)
 #   # Error: <text>  the program must be REJECTED and the diagnostics must mention
 #                    <text> (the exit code and stdout are not compared then)
+#   # Flags: <args>  extra command-line flags for the compiler (ex: --explain-ownership)
+#   # Stderr:        compiler diagnostics the program must produce; each line that
+#   # ...            follows must appear somewhere in stderr (a substring, not a match)
 #   # Stdin:         like Expected: the following lines are fed to the program
 #   # Module: name = <repo path>   copy a repository file next to the program
 #   # File: name     create <name> from the lines that follow
@@ -33,7 +36,7 @@ is_case() { case "$1" in *.nv) return 0;; *) return 1;; esac; }
 # True for a line that starts a new directive (ends the block of the current one).
 is_directive() {
     case "$1" in
-        '# Expected:'|'# Exit code:'*|'# Error:'*|'# Stdin:'|'# Module:'*|'# File:'*) return 0;;
+        '# Expected:'|'# Exit code:'*|'# Error:'*|'# Flags:'*|'# Stderr:'*|'# Stdin:'|'# Module:'*|'# File:'*) return 0;;
         *) return 1;;
     esac
 }
@@ -44,13 +47,15 @@ is_directive() {
 # comments are never mistaken for directives.
 parse_case() {
     local file="$1" dir="$2"
-    expected=""; want_rc=""; want_err=""; stdin_text=""
+    expected=""; want_rc=""; want_err=""; want_stderr=""; flags=""; stdin_text=""
     local mode="" target="" line spec
     while IFS= read -r line; do
         if is_directive "$line"; then
             mode=""; target=""
             case "$line" in
                 '# Expected:')   mode="expected";;
+                '# Stderr:')     mode="stderr";;
+                '# Flags:'*)     flags="${line#\# Flags: }";;
                 '# Stdin:')      mode="stdin";;
                 '# Exit code:'*) want_rc="${line#\# Exit code: }";;
                 '# Error:'*)     want_err="${line#\# Error: }";;
@@ -76,6 +81,8 @@ parse_case() {
         esac
         case "$mode" in
             expected) expected="$expected$line
+";;
+            stderr)   want_stderr="$want_stderr$line
 ";;
             stdin)    stdin_text="$stdin_text$line
 ";;
@@ -106,7 +113,7 @@ for nv in "$cases"/*.nv; do
     mkdir -p "$dir"
     cp "$nv" "$dir/$name.nv"
 
-    expected=""; want_rc=""; want_err=""; stdin_text=""
+    expected=""; want_rc=""; want_err=""; want_stderr=""; flags=""; stdin_text=""
     if ! parse_case "$nv" "$dir"; then
         printf '[FAIL] %s: a "# Module:" file could not be copied\n' "$name"
         fail=$((fail + 1)); failed_names="$failed_names $name"; continue
@@ -119,14 +126,14 @@ for nv in "$cases"/*.nv; do
     rc=0
     if grep -q '@\[no_std\]' "$nv"; then
         # Freestanding programs are not JIT-executed: build and run the binary.
-        if ! (cd "$dir" && "$narval" -b "$name.nv" >"$dir/build.log" 2>&1); then
+        if ! (cd "$dir" && "$narval" $flags -b "$name.nv" >"$dir/build.log" 2>&1); then
             printf '[FAIL] %s: no_std build failed\n' "$name"
             head -12 < "$dir/build.log" | sed 's/^/    /'
             fail=$((fail + 1)); failed_names="$failed_names $name"; continue
         fi
         (cd "$dir" && "./$name" <"$dir/stdin" >"$out" 2>"$errf"); rc=$?
     else
-        "$narval" "$dir/$name.nv" <"$dir/stdin" >"$out" 2>"$errf"; rc=$?
+        "$narval" $flags "$dir/$name.nv" <"$dir/stdin" >"$out" 2>"$errf"; rc=$?
     fi
 
     if [ -n "$want_err" ]; then
@@ -147,6 +154,22 @@ for nv in "$cases"/*.nv; do
         printf '[FAIL] %s: exit=%s (want %s)\n' "$name" "$rc" "$want_rc"
         head -12 < "$errf" | sed 's/^/    /'
         fail=$((fail + 1)); failed_names="$failed_names $name"; continue
+    fi
+
+    # "# Stderr:" lines are substrings the compiler's diagnostics must contain (a
+    # diagnostic is not an error, so it cannot use "# Error:").
+    if [ -n "$want_stderr" ]; then
+        missing=""
+        while IFS= read -r want_line; do
+            [ -n "$want_line" ] || continue
+            grep -qF -- "$want_line" "$errf" || missing="$missing
+    $want_line"
+        done <<< "$want_stderr"
+        if [ -n "$missing" ]; then
+            printf '[FAIL] %s: stderr did not contain:%s\n' "$name" "$missing"
+            printf '    --- stderr ---\n'; head -30 < "$errf" | sed 's/^/    /'
+            fail=$((fail + 1)); failed_names="$failed_names $name"; continue
+        fi
     fi
 
     printf '%s' "$expected" > "$dir/expected"
