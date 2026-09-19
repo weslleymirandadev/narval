@@ -1,0 +1,21 @@
+# UDP end to end inside one process: a socket bound to an ephemeral port sends a datagram to
+# itself and reads it back. Verifies the whole path (bind, send_to, recv_from, the "host:port|
+# payload" form and the Datagram parse) without depending on a second process or on a thread.
+# Expected:
+# 0
+# 4
+# ping
+# 127.0.0.1
+# port ok
+from "net" import *;
+
+u = new UdpSocket();
+write(u.bind("127.0.0.1", 0));            # 0 = any free port
+write(u.send_to("127.0.0.1", u.port(), "ping"));
+
+d = new Datagram();
+d.parse(u.recv(2000));
+write(d.data);
+write(d.host);
+if d.port == u.port() { write("port ok"); }
+u.close();
