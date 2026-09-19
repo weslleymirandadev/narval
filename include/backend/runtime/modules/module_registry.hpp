@@ -90,6 +90,17 @@ inline const std::vector<RuntimeModule>& runtime_modules() {
 #undef NV_FN
             out.push_back({ "system", std::vector<RuntimeFn>(std::begin(fns), std::end(fns)) });
         }
+        {
+            // bait — as primitivas do stack BAIT que são exatas e ficam no runtime: mac1
+            // (filtro de pré-autenticação do ICSP/BITE). O resto do stack é Narval, em
+            // stdlib/bait.nv.
+#define NV_FN(name, params, ret, arity) { #name, #params, #ret, "nv_bait_" #name "_builtin", arity },
+            const RuntimeFn fns[] = {
+#include "bait.def"
+            };
+#undef NV_FN
+            out.push_back({ "bait", std::vector<RuntimeFn>(std::begin(fns), std::end(fns)) });
+        }
         return out;
     }();
     return mods;
