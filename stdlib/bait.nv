@@ -109,6 +109,54 @@ def name_of_digest(digest_hex: str): str {
     return label_of_digest(digest_hex) + ".bait";
 }
 
+# ── Link: um datagrama IPv69 (header + carga) sobre UDP ─────────────────────────────────
+#
+# O `net.nv` já fala UDP, mas um `UdpSocket` não atravessa módulo — um `.nv` não enxerga
+# classe de outro `.nv` (ver §3.10) — então aqui se usam os MESMOS builtins `nv_net_*` que a
+# classe usa, com o header de wire do IPv69 por cima. A carga atravessa como hex, como no
+# `net`: string do Narval para no primeiro NUL, e um datagrama é binário.
+
+def link_bind(host: str, port: int): int { return nv_net_udp_bind(host, port); }
+
+def link_close(handle: int): int { return nv_net_close(handle); }
+
+def link_local_port(handle: int): int { return nv_net_local_port(handle); }
+
+# O datagrama inteiro: header de 32 bytes + carga (hex). Montado com as funções livres (e
+# não com `WireHdr.pack()`) porque um método de classe do módulo chamado de dentro de uma
+# função do módulo ainda não resolve no codegen — ver §3.10. A classe continua sendo a API de
+# quem escreve programa (`new WireHdr()` + `wh.pack()` funcionam, coberto em bait_wire.nv).
+# `payload_len` é o tamanho em BYTES da carga, por isso o `>> 1` sobre o comprimento do hex.
+def link_pack(src_addr: str, dst_addr: str, src_port: int, dst_port: int, seq_hex: str, payload_hex: str): str {
+    return "6900" + be16(len(payload_hex) >> 1) + be16(0) + hex_byte(1) + hex_byte(64) + hex_byte(1) + "00" + be16(src_port) + be16(dst_port) + seq_hex + src_addr + "0000" + dst_addr + "0000" + payload_hex;
+}
+
+# Envia o datagrama; devolve o que foi escrito, ou -1.
+def link_send(handle: int, host: str, port: int, dgram_hex: str): int {
+    return nv_net_udp_send_to(handle, host, port, dgram_hex);
+}
+
+# Recebe um datagrama como "host:port|dgram_hex", ou "" no timeout.
+def link_recv(handle: int, timeout_ms: int): str {
+    nv_net_set_timeout(handle, timeout_ms);
+    return nv_net_udp_recv_from(handle, 65535);
+}
+
+# A carga de um datagrama (o que vem depois do header), em hex.
+def link_payload(dgram_hex: str): str { return substr(dgram_hex, 64, len(dgram_hex) - 64); }
+
+# O header de um datagrama, já parseado.
+def link_header(dgram_hex: str): WireHdr { return wire_hdr_parse(substr(dgram_hex, 0, 64)); }
+
+# O header normalizado de 32 bytes a partir de qualquer hex de datagrama: parse e pack
+# acontecem DENTRO do módulo, onde os métodos da classe resolvem. Chamar `hdr.pack()` num
+# objeto que veio de função de módulo ainda não é resolvido pelo codegen (mesma família do
+# gap §3.10), então o caminho de fora é este.
+def wire_hdr_normalize(hex: str): str {
+    wh = wire_hdr_parse(hex);
+    return "6900" + be16(wh.payload_len) + be16(wh.flow_id) + hex_byte(wh.next_header) + hex_byte(wh.hop_limit) + hex_byte(wh.flags) + "00" + be16(wh.src_port) + be16(wh.dst_port) + wh.sequence + wh.source + "0000" + wh.dest + "0000";
+}
+
 # Endereço de 40 bits (10 dígitos hex) na forma pontuada, como o `ipv69 addr` imprime.
 def addr_dotted(addr_hex: str): str {
     return substr(addr_hex, 0, 2) + "." + substr(addr_hex, 2, 2) + "." + substr(addr_hex, 4, 2) + "." + substr(addr_hex, 6, 2) + "." + substr(addr_hex, 8, 2);
