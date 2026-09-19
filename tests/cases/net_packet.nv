@@ -1,0 +1,52 @@
+# Packet: the byte codec. Fixed-width fields in both orders, length-prefixed strings, and a
+# read past the end degrading into a detectable value instead of a fault.
+# Expected:
+# 1203040403010203040100000000000000
+# 17
+# 18
+# 772
+# 772
+# 16909060
+# 1
+# 0
+# 1
+# 00026869
+# hi
+# 0
+# 0
+# out of bounds
+# rejects
+from "net" import *;
+
+p = new Packet();
+p.put_u8(18);
+p.put_u16(772, 0);
+p.put_u16(772, 1);
+p.put_u32(16909060, 0);
+p.put_u64(1, 1);
+write(p.raw());
+write(p.size());
+
+p.rewind();
+write(p.get_u8());
+write(p.get_u16(0));
+write(p.get_u16(1));
+write(p.get_u32(0));
+write(p.get_u64(1));
+write(p.remaining());
+write(p.ok());
+
+q = new Packet();
+q.put_str16("hi", 0);
+write(q.raw());
+q.rewind();
+write(q.get_str16(0));
+
+r = new Packet();
+r.load("0102");
+write(r.get_u32(0));
+write(r.ok());
+write(r.error());
+
+bad = new Packet();
+if bad.load("zz") != 0 { write("rejects"); }
