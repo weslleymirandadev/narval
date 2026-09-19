@@ -1,0 +1,33 @@
+# O ICSP do IPv69 (nh=2): header de 12 bytes com CRC32c e o chunk DATA. Os valores
+# esperados vêm do código dele — o CRC é a função `icsp_crc32c` do `src/ICSP/icsp.c` (a
+# mesma que fecha o pacote), copiada para um gerador que monta o pacote igual ao
+# `icsp_send_pkt`, com o campo de CRC zerado ao calcular (a convenção sã; o transmissor dele
+# calcula sobre bytes de pilha indefinidos e o receptor não confere — ver o comentário em
+# `stdlib/bait.nv`). Conferência do CRC: "123456789" -> e3069283, o valor de referência do
+# CRC32c.
+# Expected:
+# 364b3fb7
+# 1f904e2001000a0b0c0d931b0000000b0000000700000000616263
+# 1
+# 1
+# assoc-ok
+# data
+# corpo-ok
+from "bait" import *;
+
+# CRC32c sobre "abc" (616263), o mesmo caso do gerador.
+write(be32_hex(crc32c("616263")));
+
+# Um pacote ICSP com um chunk DATA: tsn 7, stream 0, seq 0, carga "abc".
+chunk = icsp_data_chunk(7, 0, 0, "616263");
+pkt = icsp_pack(0x1f90, 0x4e20, 0x0a0b0c0d, chunk);
+write(pkt);
+
+if icsp_check(pkt) == 1 { write("1"); }
+
+# Com o campo de CRC zerado o verificador tem de recusar.
+if icsp_check(substr(pkt, 0, 20) + "0000" + substr(pkt, 24, len(pkt) - 24)) == 0 { write("1"); }
+
+if icsp_assoc_id(pkt) == 168496141 { write("assoc-ok"); }
+if icsp_chunk_kind(icsp_first_chunk(pkt)) == 0 { write("data"); }
+if icsp_chunk_data(icsp_first_chunk(pkt)) == "0000000700000000616263" { write("corpo-ok"); }
