@@ -1,0 +1,26 @@
+// crypto.def — o módulo `crypto` em uma linha por primitiva.
+//
+// Fonte da verdade da superfície: o compilador (checker + codegen) e o C incluem este
+// arquivo. O símbolo do runtime é sempre nv_crypto_<nome> e o usuário nunca o escreve —
+// escreve crypto.<nome> (ver RUNTIME_MODULES_DESIGN.md).
+//
+//   NV_FN(<nome>, (<params>), <ret>, <aridade>)
+//
+// Tokens: `bytes` = string de bytes em hex (o mesmo caminho binário do net), `num` =
+// inteiro, `flag` = 0/1. Os mesmos tokens viram tipos C na declaração (`bytes` ->
+// const char*, `num` -> int), por isso não são decorativos.
+// Falha de autenticação/derivação devolve "!" — nunca um hex válido, então é detectável.
+NV_FN(random,            (num),            bytes, 1)
+NV_FN(sha512,            (bytes),          bytes, 1)
+NV_FN(hmac_sha512,       (bytes, bytes),   bytes, 2)
+NV_FN(poly1305,          (bytes, bytes),   bytes, 2)
+NV_FN(poly1305_verify,   (bytes, bytes, bytes), flag, 3)
+NV_FN(secretbox,         (bytes, bytes, bytes), bytes, 3)
+NV_FN(secretbox_open,    (bytes, bytes, bytes), bytes, 3)
+NV_FN(scalarmult,        (bytes, bytes),   bytes, 2)
+NV_FN(scalarmult_base,   (bytes),          bytes, 1)
+NV_FN(sign,              (bytes, bytes),   bytes, 2)
+NV_FN(verify,            (bytes, bytes, bytes), flag, 3)
+NV_FN(keypair,           (),               bytes, 0)
+NV_FN(seed_to_pub,       (bytes),          bytes, 1)
+NV_FN(pub_to_x25519,     (bytes),          bytes, 1)
