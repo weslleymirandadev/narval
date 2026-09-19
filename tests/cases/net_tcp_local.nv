@@ -1,0 +1,33 @@
+# TCP end to end inside one process. The trick: a connect() to our own listening socket
+# completes in the kernel (the connection waits in the backlog), so the same program can be
+# both ends without a thread — which is what makes this test portable (the runtime's threads
+# are POSIX only).
+# Expected:
+# 0
+# 0
+# 0
+# ping
+# pong
+# connected
+from "net" import *;
+
+srv = new TcpListener();
+write(srv.bind("127.0.0.1", 0));
+port = srv.port();
+
+client = new TcpStream();
+write(client.connect("127.0.0.1", port, 2000));
+
+server = new TcpStream();
+write(server.adopt(srv.accept(2000)));
+
+client.send_line("ping");
+write(server.recv_line());
+
+server.send_line("pong");
+write(client.recv_line());
+
+if len(client.peer()) > 0 { write("connected"); }
+client.close();
+server.close();
+srv.close();
