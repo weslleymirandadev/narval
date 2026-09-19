@@ -34,6 +34,26 @@ std::string ModuleManager::read_file(const std::string& file_path) {
 std::string ModuleManager::load_module(const std::string& module_name, const std::string& file_path, int config) {
     if (modules.find(module_name) != modules.end()) return module_name;
 
+    // Módulo de runtime (crypto, net, ...) SEM arquivo: é virtual. Registra um módulo vazio
+    // — AST vazio vindo do parser, para o merge e o checker terem o que percorrer — e segue;
+    // a superfície vem da tabela do compilador e entra no sítio do import. A condição é o
+    // arquivo FALTAR: quando o `.nv` do módulo existe, ele é carregado normalmente e o que
+    // houver nele (açúcar opcional) vale junto com as primitivas.
+    const bool file_missing = !std::ifstream(file_path).good();
+    if (file_missing &&
+        nv::find_runtime_module(nv::runtime_module_name_of_import(module_name.empty() ? file_path
+                                                                                     : module_name))) {
+        Module virtual_module;
+        virtual_module.name = module_name;
+        virtual_module.directory = std::filesystem::path(file_path).parent_path().string();
+        if (config & ENABLE_PARSE) {
+            Parser parser;
+            virtual_module.ast = parser.produce_ast({}, {});
+        }
+        modules[module_name] = std::move(virtual_module);
+        return module_name;
+    }
+
     std::string source = read_file(file_path);
     Module module;
     module.source = source;
