@@ -1,0 +1,53 @@
+# Interop com a implementação de referência: as entradas são fixas e as saídas esperadas
+# foram GERADAS pelo wrapper vendorizado (`ed25519/`, chamado direto, sem a ponte) — então
+# este caso mede a ponte contra a referência, byte a byte, e não contra a minha leitura do
+# código. Vetores: sha512("abc"), HMAC-SHA512, Poly1305 (tag + verify), Ed25519 (seed -> pub,
+# sign, verify), X25519 (base, acordo dos dois lados), secretbox (ida e volta) e
+# pub_to_x25519. A seed é a do vetor 1 do RFC 8032.
+# Expected:
+# ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f
+# 69d4a21e226bf0d348cb9a847c01cf24e93e8ac30d7c951704b936f82f795a624b470e23abd33ac8700e797f0f2a499b932bac7d283bbbb37d8fecf70d5e08a7
+# e591505e87b0d9022c557ea7d0f9224c
+# 1
+# d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a
+# 80d724b01e7ca260f4cc7f8de7c95f73cfac615bab1f762b6435b6ec26c8cf6d2c758dae2f87399a8eeda1cbcd2835ac5ba66d6ecaa3aba5e567a751053dc207
+# 1
+# 8f40c5adb68f25624ae5b214ea767a6ec94d829d3d7b5e1ad1ba6f3e2138285f
+# 30217d6b363560f68fb70fa011e752866351584ea7e24649dac3168430ce1c3d
+# 30217d6b363560f68fb70fa011e752866351584ea7e24649dac3168430ce1c3d
+# 00000000000000000000000000000000b5625640216c5c16f1bece8090cfeacd3f9d5b
+# 616263
+# d85e07ec22b0ad881537c2f44d662d1a143cf830c57aca4305d85c7a90f6b62e
+
+from "crypto" import * as crypto;
+
+msg   = "616263";
+key   = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+key2  = "fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0efeeedecebeae9e8e7e6e5e4e3e2e1e0";
+nonce = "000102030405060708090a0b0c0d0e0f1011121314151617";
+seed  = "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60";
+
+write(crypto.sha512(msg));
+write(crypto.hmac_sha512(msg, key));
+
+tag = crypto.poly1305(msg, key);
+write(tag);
+write(crypto.poly1305_verify(tag, msg, key));
+
+pub = crypto.seed_to_pub(seed);
+write(pub);
+sig = crypto.sign(msg, seed);
+write(sig);
+write(crypto.verify(msg, sig, pub));
+
+a = crypto.scalarmult_base(key);
+write(a);
+b = crypto.scalarmult_base(key2);
+write(crypto.scalarmult(key, b));
+write(crypto.scalarmult(key2, a));
+
+box = crypto.secretbox(msg, nonce, key);
+write(box);
+write(crypto.secretbox_open(box, nonce, key));
+
+write(crypto.pub_to_x25519(pub));
