@@ -35,9 +35,11 @@
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/Support/Process.h"
 #include "llvm/ADT/STLExtras.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <fstream>
 #include <map>
@@ -316,10 +318,10 @@ private:
 
 class OwnershipReporter {
 public:
-    OwnershipReporter(ModuleOp module, const std::string& source_file,
-                      bool all_files, bool ir_detail)
-        : module_(module), source_(source_file),
-          source_path_(source_file), all_files_(all_files), ir_detail_(ir_detail) {}
+    OwnershipReporter(ModuleOp module, const std::string& source_file, bool all_files,
+                      bool ir_detail, bool color)
+        : module_(module), source_(source_file), source_path_(source_file),
+          all_files_(all_files), ir_detail_(ir_detail), color_(color) {}
 
     void run() {
         for (Operation& op : module_.getBody()->getOperations()) {
@@ -357,38 +359,168 @@ public:
     }
 
     void print(raw_ostream& os) const {
-        os << "[ownership] " << (source_path_.empty() ? std::string("<input>") : source_path_)
+        const unsigned width = gutter_width();
+        os << (source_path_.empty() ? std::string("<input>") : source_path_)
            << " — " << owned_ << " value(s) created in this file\n";
-        os << "[ownership] own=fresh value · borrow=temporary read · share=a second reference "
-              "· move=ownership leaves · mut=place written · drop=released · keep=not "
-              "reclaimed\n";
+        os << "own=fresh value · borrow=temporary read · share=a second reference · move=ownership "
+              "leaves · mut=place written · drop=released · keep=not reclaimed\n";
         if (!source_.ok())
-            os << "[ownership] (the source file could not be read: events carry line "
-                  "numbers only)\n";
+            os << "(the source file could not be read: events carry line numbers only)\n";
         for (const Group& g : groups_) {
-            os << "[ownership] " << g.label;
+            os << "\n" << g.label;
             if (g.line) os << "  (line " << g.line << ")";
             os << "\n";
             unsigned shown_line = 0;
             for (const Event& e : g.events) {
                 if (e.line && e.line != shown_line) {
                     shown_line = e.line;
-                    char buf[96];
-                    std::snprintf(buf, sizeof(buf), "%4u | ", e.line);
-                    os << "[ownership] " << buf << source_text(e.line) << "\n";
+                    os << gutter(width, e.line) << " | " << highlight_source(e.line) << "\n";
                 }
-                char buf[1024];
-                std::snprintf(buf, sizeof(buf), "     |   %-7s %s", kind_label(e.kind),
-                              e.message.c_str());
-                os << "[ownership]" << buf << "\n";
+                os << std::string(width, ' ') << " |   " << kind_field(e.kind)
+                   << " " << highlight_message(e.message) << "\n";
                 if (ir_detail_ && !e.ir.empty())
-                    os << "[ownership]      |     · " << e.ir << "\n";
+                    os << std::string(width, ' ') << " |     · " << paint("2", e.ir) << "\n";
             }
         }
         if (skipped_)
-            os << "[ownership] " << skipped_ << " function(s) of other files skipped: "
-               << joined_names() << " (--explain-ownership=all to include)\n";
+            os << "\n" << skipped_ << " function(s) of other files skipped: " << joined_names()
+               << " (--explain-ownership=all to include)\n";
         print_summary(os);
+    }
+
+    // ── presentation ─────────────────────────────────────────────────────────
+    // Color only when stderr is a terminal: the report is piped to files and grepped by
+    // the harness, and escape codes would break both the diff and the assertions.
+    std::string paint(const char* code, const std::string& text) const {
+        if (!color_ || text.empty()) return text;
+        return std::string("\033[") + code + "m" + text + "\033[0m";
+    }
+
+    // Line numbers are as wide as the largest one printed, so every `|` lines up. Two
+    // columns at minimum: a single digit looks cramped next to the event gutter.
+    unsigned gutter_width() const {
+        unsigned max_line = 0;
+        for (const Group& g : groups_)
+            for (const Event& e : g.events)
+                if (e.line > max_line) max_line = e.line;
+        const unsigned digits = static_cast<unsigned>(std::to_string(max_line).size());
+        return digits < 2 ? 2 : digits;
+    }
+
+    std::string gutter(unsigned width, unsigned line) const {
+        std::string num = std::to_string(line);
+        if (num.size() < width) num.insert(num.begin(), width - num.size(), ' ');
+        return paint("2", num);   // the anchor, not the message: keep it quiet
+    }
+
+    static const char* kind_color(Kind k) {
+        switch (k) {
+            case Kind::Own:    return "32";     // green: a value was born
+            case Kind::Borrow: return "34";     // blue: a read
+            case Kind::Share:  return "36";     // cyan: a second reference
+            case Kind::Move:   return "33";     // yellow: ownership leaves
+            case Kind::Mut:    return "35";     // magenta: a place was written
+            case Kind::Drop:   return "31";     // red: released
+            case Kind::Keep:   return "1;33";   // bold: not reclaimed, worth a look
+        }
+        return "0";
+    }
+
+    std::string kind_field(Kind k) const {
+        std::string label = kind_label(k);
+        label.resize(7, ' ');          // the column the messages line up on
+        return paint(kind_color(k), label);
+    }
+
+    // Quoted names stand out; the dash between an event and its reason does not.
+    std::string highlight_message(const std::string& message) const {
+        if (!color_) return message;
+        std::string out;
+        size_t pos = 0, segment = 0;
+        while (pos <= message.size()) {
+            const size_t quote = message.find('"', pos);
+            const size_t end = quote == std::string::npos ? message.size() : quote;
+            const std::string piece = message.substr(pos, end - pos);
+            out += (segment % 2 == 1) ? paint("1", piece) : piece;
+            if (quote == std::string::npos) break;
+            out += '"';
+            pos = quote + 1;
+            ++segment;
+        }
+        const std::string dash = " — ";
+        std::string dimmed;
+        size_t from = 0;
+        for (;;) {
+            const size_t at = out.find(dash, from);
+            if (at == std::string::npos) { dimmed += out.substr(from); break; }
+            dimmed += out.substr(from, at - from) + paint("2", dash);
+            from = at + dash.size();
+        }
+        return dimmed;
+    }
+
+    // One-liner highlighter for the source line the report quotes: keywords, types,
+    // strings, numbers, comments. Not a lexer for the language — enough to read the
+    // statement at a glance.
+    std::string highlight_source(unsigned line) const {
+        std::string text = source_text(line);
+        if (!color_) return text;
+        static const std::set<std::string> kKeywords = {
+            "def", "class", "interface", "enum", "public", "private", "static", "new", "if",
+            "else", "elif", "while", "for", "in", "return", "break", "continue", "mut",
+            "import", "from", "as", "extern", "macro", "comptime", "try", "catch", "finally",
+            "throw", "match", "case", "self", "and", "or", "not",
+        };
+        static const std::set<std::string> kTypes = {
+            "int", "float", "str", "bool", "char", "None", "void", "list", "map", "vector",
+            "tuple", "any", "Result", "Option", "true", "false",
+        };
+        std::string out;
+        size_t i = 0;
+        while (i < text.size()) {
+            const char c = text[i];
+            if (c == '#') {                                        // comment runs to the end
+                out += paint("90", text.substr(i));
+                break;
+            }
+            if (c == '"') {                                        // string literal
+                size_t j = i + 1;
+                while (j < text.size() && text[j] != '"')
+                    j += (text[j] == '\\' && j + 1 < text.size()) ? 2 : 1;
+                j = std::min(j + 1, text.size());
+                out += paint("32", text.substr(i, j - i));
+                i = j;
+                continue;
+            }
+            if (std::isdigit(static_cast<unsigned char>(c))) {      // number literal
+                size_t j = i;
+                while (j < text.size() &&
+                       (std::isalnum(static_cast<unsigned char>(text[j])) || text[j] == '.' ||
+                        text[j] == '_'))
+                    ++j;
+                out += paint("35", text.substr(i, j - i));
+                i = j;
+                continue;
+            }
+            if (std::isalpha(static_cast<unsigned char>(c)) || c == '_') {   // word
+                size_t j = i;
+                while (j < text.size() && (std::isalnum(static_cast<unsigned char>(text[j])) ||
+                                           text[j] == '_'))
+                    ++j;
+                const std::string word = text.substr(i, j - i);
+                size_t k = j;
+                while (k < text.size() && text[k] == ' ') ++k;
+                if (kKeywords.count(word)) out += paint("1;34", word);
+                else if (kTypes.count(word)) out += paint("36", word);
+                else if (k < text.size() && text[k] == '(') out += paint("1;36", word);  // a call
+                else out += word;
+                i = j;
+                continue;
+            }
+            out += c;
+            ++i;
+        }
+        return out;
     }
 
 private:
@@ -822,16 +954,16 @@ private:
         for (const Group& g : groups_)
             for (const Event& e : g.events)
                 if (e.kind == Kind::Mut) ++written;
-        os << "[ownership] summary: " << owned_ << " own · " << released_ << " drop · "
-           << borrowed_ << " borrow · " << moved_ << " move · " << shared_ << " share · "
-           << written << " mut · " << kept_ << " keep\n";
-        if (!kept_) return;
+        os << "\nsummary: " << owned_ << " own · " << released_ << " drop · " << borrowed_
+           << " borrow · " << moved_ << " move · " << shared_ << " share · " << written
+           << " mut · " << kept_ << " keep\n";
         unsigned shown = 0;
         for (const Group& g : groups_) {
             for (const Event& e : g.events) {
                 if (e.kind != Kind::Keep) continue;
-                if (shown == 6) { os << "[ownership]   …\n"; return; }
-                os << "[ownership]   kept at line " << e.line << ": " << e.message << "\n";
+                if (shown == 6) { os << "  …\n"; return; }
+                os << "  kept at line " << gutter(2, e.line) << ": "
+                   << highlight_message(e.message) << "\n";
                 ++shown;
             }
         }
@@ -842,6 +974,7 @@ private:
     std::string source_path_;
     bool all_files_;
     bool ir_detail_;
+    bool color_ = false;
     std::vector<Group> groups_;
     size_t skipped_ = 0;
     std::vector<std::string> skipped_names_;
@@ -857,6 +990,13 @@ struct ExplainOwnershipPass
     ExplainOwnershipPass(std::string source_file, bool all_files, bool ir_detail)
         : source_file_(std::move(source_file)), all_files_(all_files), ir_detail_(ir_detail) {}
 
+    // Color for a terminal only (and NO_COLOR wins): the report is piped and grepped.
+    static bool want_color() {
+        if (const char* env = std::getenv("NARVAL_COLOR")) return std::string(env) != "0";
+        if (std::getenv("NO_COLOR")) return false;
+        return llvm::sys::Process::FileDescriptorHasColors(2);
+    }
+
     StringRef getArgument() const final { return "narval-explain-ownership"; }
     StringRef getDescription() const final {
         return "Report the ownership decisions of the compiled source file "
@@ -864,7 +1004,8 @@ struct ExplainOwnershipPass
     }
 
     void runOnOperation() override {
-        OwnershipReporter reporter(getOperation(), source_file_, all_files_, ir_detail_);
+        OwnershipReporter reporter(getOperation(), source_file_, all_files_, ir_detail_,
+                                   want_color());
         reporter.run();
         reporter.print(llvm::errs());
     }
@@ -872,6 +1013,7 @@ struct ExplainOwnershipPass
     std::string source_file_;
     bool all_files_;
     bool ir_detail_;
+    bool color_ = false;
 };
 
 } // namespace
