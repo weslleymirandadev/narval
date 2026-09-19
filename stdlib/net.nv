@@ -1,0 +1,262 @@
+# Network for Narval: addresses, TCP, UDP, DNS, timeouts and the knobs an advanced user wants.
+#
+#     from "net" import *;
+#
+#     # a server
+#     srv = new TcpListener();
+#     srv.bind("127.0.0.1", 8080);
+#     conn = srv.accept(5000);            # -2 when nothing arrived in 5s
+#     if conn >= 0 {
+#         c = TcpStream.wrap(conn);
+#         write(c.recv_line());
+#         c.send_line("ok");
+#         c.close();
+#     }
+#     srv.close();
+#
+#     # a client
+#     t = new TcpStream();
+#     if t.connect("127.0.0.1", 8080, 5000) == 0 { t.send_line("oi"); write(t.recv_line()); }
+#
+#     # UDP (no second process needed: send to yourself)
+#     u = new UdpSocket();
+#     u.bind("127.0.0.1", 0);             # 0 = any free port
+#     u.send_to("127.0.0.1", u.port(), "ping");
+#     d = new Datagram(); d.parse(u.recv_from(2000));   # data == "" on timeout
+#
+#     # names
+#     write(Dns.resolve("localhost"));    # "127.0.0.1"
+#     a = new Address();
+#     a.parse("example.com:443");         # host "example.com", port 443
+#
+# Everything below is a thin class over the runtime's socket primitives
+# (src/backend/runtime/net/net_socket.c, net_addr.c): a socket is a small integer handle, the
+# same model as File. Empty results are never silent — `status()` after a read says what
+# happened (0 ok, 1 timed out, 2 peer closed, -1 error) and `net_last_error()` carries the
+# platform message. Timeouts are milliseconds on every platform.
+#
+# The advanced entry points are the ones that take raw knobs: `TcpListener.accept(ms)`,
+# `TcpStream.option(name, value)`, `TcpStream.nonblocking()`, `net_poll(handles, mode, ms)`,
+# the address helpers (`net_host_of`, `net_port_of`) and the parse/format pair. A protocol
+# written on top of this (framing, handshakes, custom transports) uses those, not the
+# convenience methods.
+
+# ── status codes ──────────────────────────────────────────────────────────────
+def net_ok(): int { return 0; }
+def net_timed_out(): int { return 1; }
+def net_closed(): int { return 2; }
+def net_failed(): int { return -1; }
+# accept() returns this when the timeout expired (a socket handle is never negative otherwise).
+def net_no_connection(): int { return -2; }
+
+# ── module-level helpers (the advanced API) ────────────────────────────────────
+def net_last_error(): str { return nv_net_last_error(); }
+def net_last_len(): int { return nv_net_last_len(); }
+def net_hostname(): str { return nv_net_hostname(); }
+def net_status(handle: int): int { return nv_net_status(handle); }
+
+# "host:port" normalised (IPv6 in brackets); "" when the text is not an endpoint.
+def net_addr(text: str): str { return nv_net_addr_parse(text); }
+
+# Host of "host:port" (brackets of an IPv6 literal are stripped). Splitting in C keeps it
+# exact for every shape ("[::1]:80", bare IPv6, ":8080").
+def net_host_of(addr: str): str { return nv_net_host_of(addr); }
+
+# Port of "host:port"; 0 when there is none.
+def net_port_of(addr: str): int { return nv_net_port_of(addr); }
+
+# Name resolution without an object, for the common case.
+def net_resolve(host: str): str { return nv_net_resolve(host); }
+def net_resolve_all(host: str): str { return nv_net_resolve_all(host); }
+
+# Handles ready for reading/writing. handles is a CSV ("3,7"), mode "r"/"w"/"rw".
+def net_poll(handles: str, mode: str, timeout_ms: int): str {
+    return nv_net_poll(handles, mode, timeout_ms);
+}
+
+# ── addresses and names ───────────────────────────────────────────────────────
+class Address {
+    # Public: an address is plain data, the caller reads it.
+    public host: str;
+    public port: int;
+    public canonical: str;      # what parse() normalised, kept as-is
+
+    # Fills host/port from "host:port" (or from a bare host, port 0). 0 on success.
+    public parse(text: str): int {
+        normalised = nv_net_addr_parse(text);
+        if len(normalised) == 0 { self.host = ""; self.port = 0; self.canonical = ""; return -1; }
+        self.canonical = normalised;
+        self.host = net_host_of(normalised);
+        self.port = net_port_of(normalised);
+        if self.host == "" && self.port == 0 { return -1; }
+        return 0;
+    }
+
+    public load(host: str, port: int): int {
+        self.host = host;
+        self.port = port;
+        self.canonical = "";
+        return 0;
+    }
+
+    # Canonical text: "1.2.3.4:80" or "[::1]:80".
+    public text(): str {
+        if len(self.canonical) > 0 { return self.canonical; }
+        if len(self.host) == 0 { return ":" + str(self.port); }
+        # index_of answers -1 when there is no colon, so a plain IPv4 host stays bare.
+        if index_of(self.host, ":") >= 0 { return "[" + self.host + "]:" + str(self.port); }
+        return self.host + ":" + str(self.port);
+    }
+}
+
+# Name resolution as an object, for symmetry with the rest. The module functions above
+# (net_resolve/net_resolve_all/net_hostname) are the same calls without the instance — the
+# language has no static methods, so `Dns.resolve(...)` on the class name is not a thing.
+# resolve() gives the first answer, resolve_all() every answer (';'-separated, resolver
+# order): pick one, try the next, that is the caller's policy.
+class Dns {
+    public resolve(host: str): str { return nv_net_resolve(host); }
+    public resolve_all(host: str): str { return nv_net_resolve_all(host); }
+    public hostname(): str { return nv_net_hostname(); }
+}
+
+# ── TCP ───────────────────────────────────────────────────────────────────────
+class TcpListener {
+    handle: int;
+
+    # Binds and listens. host "" (or "0.0.0.0") = every interface; 0 = any free port.
+    public bind(host: str, port: int): int {
+        self.handle = nv_net_tcp_listen(host, port);
+        if self.handle < 0 { return -1; }
+        return 0;
+    }
+
+    # Waits for one connection: a stream handle, or net_no_connection() on timeout
+    # (timeout_ms 0 = wait forever).
+    public accept(timeout_ms: int): int {
+        return nv_net_accept(self.handle, timeout_ms);
+    }
+
+    public port(): int { return nv_net_local_port(self.handle); }
+    public addr(): str { return nv_net_local_addr(self.handle); }
+    public close(): int { return nv_net_close(self.handle); }
+}
+
+class TcpStream {
+    handle: int;
+
+    # Connects; 0 on success, -1 on failure (net_last_error() tells why). timeout_ms 0 waits
+    # forever, otherwise the connect is abandoned at the deadline.
+    public connect(host: str, port: int, timeout_ms: int): int {
+        self.handle = nv_net_tcp_connect(host, port, timeout_ms);
+        if self.handle < 0 { return -1; }
+        return 0;
+    }
+
+    # Takes over a handle that already exists (one from accept(), or another object's).
+    public adopt(handle: int): int {
+        self.handle = handle;
+        if handle < 0 { return -1; }
+        return 0;
+    }
+
+    # Milliseconds for send and receive; 0 = block forever.
+    public timeout(ms: int): int { return nv_net_set_timeout(self.handle, ms); }
+
+    # Raw socket option: "nodelay", "keepalive", "reuseaddr", "broadcast", "linger_ms",
+    # "rcvbuf", "sndbuf", "nonblocking". 0 on success.
+    public option(name: str, value: int): int {
+        return nv_net_set_option(self.handle, name, value);
+    }
+    public option_of(name: str): int { return nv_net_get_option(self.handle, name); }
+
+    # Non-blocking mode: reads return immediately with what is there (status 1 when empty),
+    # so a caller can multiplex with net_poll().
+    public nonblocking(): int { return nv_net_set_option(self.handle, "nonblocking", 1); }
+
+    # Sends everything; the number of bytes, or -1. send_line appends "\n".
+    public send(text: str): int { return nv_net_send(self.handle, text); }
+    public send_line(text: str): int { return nv_net_send(self.handle, text + "\n"); }
+
+    # Up to max bytes (blocks until some data, the peer closes, or the timeout fires).
+    # "" is not an error by itself: check status().
+    public recv(max_bytes: int): str { return nv_net_recv(self.handle, max_bytes); }
+
+    # One line without the terminator (which is consumed).
+    public recv_line(): str { return nv_net_recv_until(self.handle, "\n", 65536); }
+
+    # Until any delimiter; the terminator is not part of the result.
+    public recv_until(delim: str, max_bytes: int): str {
+        return nv_net_recv_until(self.handle, delim, max_bytes);
+    }
+
+    # Exactly n bytes ("" when the peer closes early) — the primitive for a framed protocol.
+    public recv_exact(n: int): str { return nv_net_recv_exact(self.handle, n); }
+
+    public peer(): str { return nv_net_peer_addr(self.handle); }
+    public local(): str { return nv_net_local_addr(self.handle); }
+    public status(): int { return nv_net_status(self.handle); }
+    public error(): str { return nv_net_last_error(); }
+
+    # 0 closes the send side (the peer sees end of stream), 1 the receive side, 2 both.
+    public shutdown(how: int): int { return nv_net_shutdown(self.handle, how); }
+    public close(): int { return nv_net_close(self.handle); }
+}
+
+# ── UDP ───────────────────────────────────────────────────────────────────────
+# One received datagram: the payload plus who sent it.
+class Datagram {
+    # Public: a datagram handed to the caller is its payload and its origin.
+    public data: str;
+    public host: str;
+    public port: int;
+
+    public parse(text: str): int {
+        bar = index_of(text, "|");
+        if bar < 0 { self.data = ""; self.host = ""; self.port = 0; return -1; }
+        addr = substr(text, 0, bar);
+        self.data = substr(text, bar + 1, len(text) - bar - 1);
+        self.host = net_host_of(addr);
+        self.port = net_port_of(addr);
+        return 0;
+    }
+
+    public text(): str {
+        return self.host + ":" + str(self.port) + "|" + self.data;
+    }
+}
+
+class UdpSocket {
+    handle: int;
+
+    # port 0 = any free port (ask for it afterwards with port()).
+    public bind(host: str, port: int): int {
+        self.handle = nv_net_udp_bind(host, port);
+        if self.handle < 0 { return -1; }
+        return 0;
+    }
+
+    public send_to(host: str, port: int, text: str): int {
+        return nv_net_udp_send_to(self.handle, host, port, text);
+    }
+
+    # One datagram as "host:port|payload", or "" on timeout/error. A Datagram parses it:
+    #     d = new Datagram(); d.parse(u.recv_from(2000));
+    public recv_from(timeout_ms: int): str {
+        nv_net_set_timeout(self.handle, timeout_ms);
+        return nv_net_udp_recv_from(self.handle, 65535);
+    }
+
+    # The same, with no timeout change (the socket keeps whatever timeout it had).
+    public recv(max_bytes: int): str { return nv_net_udp_recv_from(self.handle, max_bytes); }
+
+    public timeout(ms: int): int { return nv_net_set_timeout(self.handle, ms); }
+    public option(name: str, value: int): int {
+        return nv_net_set_option(self.handle, name, value);
+    }
+    public port(): int { return nv_net_local_port(self.handle); }
+    public addr(): str { return nv_net_local_addr(self.handle); }
+    public status(): int { return nv_net_status(self.handle); }
+    public error(): str { return nv_net_last_error(); }
+    public close(): int { return nv_net_close(self.handle); }
+}
