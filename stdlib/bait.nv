@@ -75,6 +75,119 @@ def label_of_digest(digest_hex: str): str {
     return out;
 }
 
+# Valor de um caractere base32 (0-31), ou -1 quando não é do alfabeto.
+def bait_b32_val(c: str): int { return index_of(bait_b32_alphabet(), c); }
+
+# Caminho reverso: os 8 primeiros caracteres do label são os 5 primeiros bytes do digest
+# (40 bits), e a classe volta a ser aplicada — é o que faz o endereço ser derivável só do
+# nome. Serve também como validação do label que chega de fora.
+def addr_of_label(label: str, cls: str): str {
+    mut v = 0;
+    mut i = 0;
+    while i < 8 {
+        v = (v << 5) | bait_b32_val(substr(label, i, 1));
+        i = i + 1;
+    }
+    mut d = "";
+    mut j = 0;
+    while j < 5 {
+        b = (v >> (32 - 8 * j)) & 255;
+        d = d + substr(bait_hex_digits(), (b >> 4) & 15, 1) + substr(bait_hex_digits(), b & 15, 1);
+        j = j + 1;
+    }
+    return addr_of_digest(d, cls);      # o endereço só lê os 5 primeiros bytes do digest
+}
+
+# Endereço de label em forma pontuada (o que o `ipv69 addr` imprime).
+def addr_dotted_of_label(label: str, cls: str): str {
+    a = addr_of_label(label, cls);
+    return substr(a, 0, 2) + "." + substr(a, 2, 2) + "." + substr(a, 4, 2) + "." + substr(a, 6, 2) + "." + substr(a, 8, 2);
+}
+
+
 def name_of_digest(digest_hex: str): str {
     return label_of_digest(digest_hex) + ".bait";
+}
+
+# 1 quando `text` é hex bem formado (comprimento par, só dígitos hex).
+def bait_hex_ok(text: str): int {
+    if len(text) % 2 != 0 { return 0; }
+    mut i = 0;
+    while i < len(text) {
+        if bait_nib(substr(text, i, 1)) < 0 { return 0; }
+        i = i + 1;
+    }
+    return 1;
+}
+
+# ── keyring (~/.hosts69) — o formato do IPv69 ───────────────────────────────────────────
+#
+#   key      : a seed em hex, uma linha. Com passphrase o arquivo começa com "H69E1" e traz
+#              salt/nonce/seed em caixa; aqui só a forma simples é lida, e a protegida
+#              devolve "!" em vez de fingir que entendeu.
+#   key.pub  : "<pública hex> <comentário>"
+#
+# Os caminhos dependem do ambiente, que um arquivo de módulo não lê (ver o gap em
+# RUNTIME_MODULES_DESIGN.md §3.10): quem chama passa o HOME e o override IPV69_KEYFILE —
+# e o mesmo gap explica os `nv_file_*` crus aqui: um módulo `.nv` importa FUNÇÕES de outro
+# módulo `.nv`, mas não enxerga as CLASSES dele (a `File` não existe neste contexto).
+# normalmente com `system.env("HOME")` e `system.env("IPV69_KEYFILE")`.
+
+# `override` é palavra reservada na linguagem: o parâmetro chama `keyfile`.
+def keyring_key_path(home: str, keyfile: str): str {
+    if keyfile != "" { return keyfile; }
+    if home == "" { return ""; }
+    return home + "/.hosts69/key";
+}
+
+def keyring_pub_path(home: str, keyfile: str): str {
+    return keyring_key_path(home, keyfile) + ".pub";
+}
+
+def keyring_has_key(path: str): int { return nv_file_exists(path); }
+
+# A seed em hex; "" quando não há arquivo, "!" quando o keyring é protegido por passphrase
+# (cabeçalho H69E1) ou está fora do formato.
+def keyring_read_seed(path: str): str {
+    if nv_file_exists(path) == 0 { return ""; }
+    h = nv_file_open(path, "r");
+    if h < 0 { return ""; }
+    line = nv_file_read_line(h);
+    nv_file_close(h);
+    if len(line) != 64 { return "!"; }
+    if bait_hex_ok(line) == 0 { return "!"; }
+    return line;
+}
+
+# Escreve a seed em hex, uma linha — como o keygen dele escreve. Devolve os caracteres escritos.
+def keyring_write_seed(path: str, seed_hex: str): int {
+    h = nv_file_open(path, "w");
+    if h < 0 { return -1; }
+    n = nv_file_write(h, seed_hex + "\n");
+    nv_file_close(h);
+    return n;
+}
+
+# Escreve a pública no formato "<hex> <comentário>".
+def keyring_write_pub(path: str, pub_hex: str, comment: str): int {
+    h = nv_file_open(path, "w");
+    if h < 0 { return -1; }
+    n = nv_file_write(h, pub_hex + " " + comment + "\n");
+    nv_file_close(h);
+    return n;
+}
+
+# A pública da primeira coluna do key.pub; "" quando não há arquivo.
+def keyring_read_pub(path: str): str {
+    if nv_file_exists(path) == 0 { return ""; }
+    h = nv_file_open(path, "r");
+    if h < 0 { return ""; }
+    line = nv_file_read_line(h);
+    nv_file_close(h);
+    mut i = 0;
+    while i < len(line) {
+        if substr(line, i, 1) == " " { return substr(line, 0, i); }
+        i = i + 1;
+    }
+    return line;
 }
