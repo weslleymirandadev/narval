@@ -1,0 +1,49 @@
+# O módulo `crypto` visto da linguagem: `crypto.<fn>` resolvido pela tabela do compilador
+# (nada de nv_* à vista), com um vetor conhecido e propriedades que se auto-verificam.
+# Expected:
+# ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f
+# 128
+# 1
+# 0
+# ok
+# ok
+# ok
+# ok
+# ok
+from "crypto" import * as crypto;
+
+# SHA-512 de "abc" (616263 em hex) — o digest foi conferido com sha512sum, não de memória.
+write(crypto.sha512("616263"));
+
+# Ed25519: a identidade inteira em um valor (sk || pub), assina, verifica — e uma mensagem
+# diferente não passa.
+kp = crypto.keypair();
+write(len(kp));
+# Conveniência do crypto.nv (arquivo opcional do módulo, que importa strings.nv): o módulo
+# funciona sem ele, mas com ele o split da identidade fica legível.
+parts = crypto_keypair_parts(kp);
+sk = parts[0];
+pub = parts[1];
+sig = crypto.sign("616263", sk);
+write(crypto.verify("616263", sig, pub));
+write(crypto.verify("616264", sig, pub));
+
+# secretbox: ida e volta com a mesma chave; chave errada devolve "!".
+key = crypto.random(32);
+nonce = crypto.random(24);
+box = crypto.secretbox("616263", nonce, key);
+if crypto.secretbox_open(box, nonce, key) == "616263" { write("ok"); }
+if crypto.secretbox_open(box, nonce, crypto.random(32)) == "!" { write("ok"); }
+
+# X25519: os dois lados chegam ao mesmo segredo (ECDHE).
+a = crypto.random(32);
+b = crypto.random(32);
+A = crypto.scalarmult_base(a);
+B = crypto.scalarmult_base(b);
+if crypto.scalarmult(a, B) == crypto.scalarmult(b, A) { write("ok"); }
+
+# Hex mal formado não entra: a primitiva devolve "!" em vez de adivinhar.
+if crypto.sha512("xyz") == "!" { write("ok"); }
+
+# A conveniência em Narval puro do crypto.nv (que importa strings.nv explicitamente).
+if crypto_is_hex("616263") == 1 { write("ok"); }
