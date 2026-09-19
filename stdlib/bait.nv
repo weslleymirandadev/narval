@@ -109,6 +109,61 @@ def name_of_digest(digest_hex: str): str {
     return label_of_digest(digest_hex) + ".bait";
 }
 
+# Endereço de 40 bits (10 dígitos hex) na forma pontuada, como o `ipv69 addr` imprime.
+def addr_dotted(addr_hex: str): str {
+    return substr(addr_hex, 0, 2) + "." + substr(addr_hex, 2, 2) + "." + substr(addr_hex, 4, 2) + "." + substr(addr_hex, 6, 2) + "." + substr(addr_hex, 8, 2);
+}
+
+# ── wire do IPv69: o header de 32 bytes ─────────────────────────────────────────────────
+#
+# Formato de `include/IPv69/header.h` do repo do IPv69: ver_traffic 0x69 (versão 6,
+# traffic class 9), dscp/ecn, payload_len e flow_id big-endian, next_header, hop_limit,
+# flags, um reservado, as duas portas big-endian, 4 bytes de sequência, e os dois endereços
+# de 40 bits (5 bytes) com 2 bytes reservados cada.
+#
+# Aritmética de hex em Narval puro, de propósito: é formato, não primitiva — e assim o
+# header se lê na linguagem em vez de virar mais um wrapper de C.
+
+def hex_byte(v: int): str { return substr(bait_hex_digits(), (v >> 4) & 15, 1) + substr(bait_hex_digits(), v & 15, 1); }
+
+def be16(v: int): str { return hex_byte((v >> 8) & 255) + hex_byte(v & 255); }
+
+def hex_byte_val(pair: str): int { return bait_nib(substr(pair, 0, 1)) * 16 + bait_nib(substr(pair, 1, 1)); }
+
+def rd_be16(hex4: str): int { return hex_byte_val(substr(hex4, 0, 2)) * 256 + hex_byte_val(substr(hex4, 2, 2)); }
+
+class WireHdr {
+    public mut payload_len: int;
+    public mut flow_id: int;
+    public mut next_header: int;
+    public mut hop_limit: int;
+    public mut flags: int;
+    public mut src_port: int;
+    public mut dst_port: int;
+    public mut sequence: str;
+    public mut source: str;
+    public mut dest: str;
+
+    # Os 32 bytes do header, na ordem do wire. Endereços e sequência entram em hex.
+    public pack(): str { return "6900" + be16(self.payload_len) + be16(self.flow_id) + hex_byte(self.next_header) + hex_byte(self.hop_limit) + hex_byte(self.flags) + "00" + be16(self.src_port) + be16(self.dst_port) + self.sequence + self.source + "0000" + self.dest + "0000"; }
+}
+
+# O caminho de volta: do hex de 32 bytes para os campos.
+def wire_hdr_parse(hex: str): WireHdr {
+    h = new WireHdr();
+    h.payload_len = rd_be16(substr(hex, 4, 4));
+    h.flow_id = rd_be16(substr(hex, 8, 4));
+    h.next_header = hex_byte_val(substr(hex, 12, 2));
+    h.hop_limit = hex_byte_val(substr(hex, 14, 2));
+    h.flags = hex_byte_val(substr(hex, 16, 2));
+    h.src_port = rd_be16(substr(hex, 20, 4));
+    h.dst_port = rd_be16(substr(hex, 24, 4));
+    h.sequence = substr(hex, 28, 8);
+    h.source = substr(hex, 36, 10);
+    h.dest = substr(hex, 50, 10);
+    return h;
+}
+
 # 1 quando `text` é hex bem formado (comprimento par, só dígitos hex).
 def bait_hex_ok(text: str): int {
     if len(text) % 2 != 0 { return 0; }
