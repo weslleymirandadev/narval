@@ -98,6 +98,19 @@ namespace nv {
         BuiltinFunction("nv_net_local_addr",     {}, std::make_shared<String>(), false, true, 1, 1),
         BuiltinFunction("nv_net_peer_addr",      {}, std::make_shared<String>(), false, true, 1, 1),
         BuiltinFunction("nv_net_poll",           {}, std::make_shared<String>(), false, true, 3, 3),        // len(x) — length of a string/vector/map; boxed int at runtime.
+        // Byte codec for Packet/Frame (net_pack.c) — pure, hex text in and out.
+        BuiltinFunction("nv_net_hex_valid", {}, std::make_shared<Int>(), false, true, 1, 1),  // is this an even run of hex digits
+        BuiltinFunction("nv_net_hex_len", {}, std::make_shared<Int>(), false, true, 1, 1),  // bytes behind a hex string
+        BuiltinFunction("nv_net_str_to_hex", {}, std::make_shared<String>(), false, true, 1, 1),  // text bytes as hex
+        BuiltinFunction("nv_net_hex_to_str", {}, std::make_shared<String>(), false, true, 1, 1),  // hex back to text
+        BuiltinFunction("nv_net_pack_int", {}, std::make_shared<String>(), false, true, 4, 4),  // append n bytes (BE/LE)
+        BuiltinFunction("nv_net_unpack_int", {}, std::make_shared<Int>(), false, true, 4, 4),  // read n bytes (BE/LE)
+        BuiltinFunction("nv_net_unpack_hex", {}, std::make_shared<String>(), false, true, 3, 3),  // binary-safe slice as hex
+        BuiltinFunction("nv_net_platform", {}, std::make_shared<String>(), false, true, 0, 0),  // linux / windows / unix
+        BuiltinFunction("nv_net_caps", {}, std::make_shared<String>(), false, true, 0, 0),  // what this build can do
+        // Binary-safe stream IO for Frame: hex text crosses the ABI, bytes hit the wire.
+        BuiltinFunction("nv_net_send_hex",       {}, std::make_shared<Int>(),    false, true, 2, 2),  // bytes behind a hex string
+        BuiltinFunction("nv_net_recv_exact_hex", {}, std::make_shared<String>(), false, true, 2, 2),  // exactly n bytes as hex
         BuiltinFunction("len", {}, std::make_shared<Int>(), false, true, 1, 1),
         
         // int: aceita 1 argumento de qualquer tipo, retorna int
