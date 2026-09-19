@@ -26,7 +26,10 @@ struct RuntimeFn {
     std::string c_symbol;    // "nv_crypto_sha512_builtin"
     int         arity = 0;
 
-    bool returns_int() const { return ret == "flag" || ret == "num"; }
+    // `bytes` é string; `num` é inteiro; `big` é inteiro de 64 bits na ABI C (long long);
+    // `flag` é inteiro que o checker lê como booleano de verdade. Para o checker, tudo que
+    // não é `bytes` conta como inteiro.
+    bool returns_int() const { return ret != "bytes"; }
 
     // Token "num" (inteiro) vs "bytes" (hex): o checker precisa disso para tipar os
     // parâmetros, e o codegen para nada (a ABI é toda valor).
@@ -45,7 +48,7 @@ struct RuntimeFn {
                                                                            : comma - start);
             while (!tok.empty() && tok.front() == ' ') tok.erase(tok.begin());
             while (!tok.empty() && tok.back() == ' ') tok.pop_back();
-            if (!tok.empty()) out.push_back(tok == "num");
+            if (!tok.empty()) out.push_back(tok != "bytes");   // num | big
             if (comma == std::string::npos) break;
             start = comma + 1;
         }
