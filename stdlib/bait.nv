@@ -157,6 +157,76 @@ def wire_hdr_normalize(hex: str): str {
     return "6900" + be16(wh.payload_len) + be16(wh.flow_id) + hex_byte(wh.next_header) + hex_byte(wh.hop_limit) + hex_byte(wh.flags) + "00" + be16(wh.src_port) + be16(wh.dst_port) + wh.sequence + wh.source + "0000" + wh.dest + "0000";
 }
 
+# ── ICSP: o transporte do IPv69 (nh=2) ─────────────────────────────────────────────────
+#
+# Header de 12 bytes dentro da carga do frame IPv69:
+#   src_port(2) dst_port(2) ver(1)=1 flags(1) assoc_id(4) crc16(2)
+# e depois um ou mais chunks, cada um [type(1)][flags(1)][len(2, big-endian)] + dados.
+# O type 0 é DATA: [tsn(4)][stream_id(2)][stream_seq(2)][carga]. Tipos 1..9 são o handshake
+# e o controle (INIT, COOKIE, SACK, HEARTBEAT, SHUTDOWN, RESET) — ver include/ICSP/icsp.h
+# do repo do IPv69.
+#
+# Divergência consciente: o transmissor dele calcula o CRC32c sobre os dois bytes do campo
+# de CRC AINDA NÃO ESCRITOS (memória de pilha indefinida) e o receptor NÃO verifica o CRC —
+# então o campo sai aleatório por pacote e ninguém olha. Aqui ele é calculado com o campo
+# zerado (a convenção sã, a mesma do mac do WireGuard) e `icsp_check` verifica; como o
+# receptor dele ignora o campo, a interoperabilidade não depende disso. Vale reportar.
+
+def crc32c(data_hex: str): int {
+    mut c = 0xFFFFFFFF;
+    mut i = 0;
+    while i < len(data_hex) {
+        c = (c ^ hex_byte_val(substr(data_hex, i, 2))) & 0xFFFFFFFF;
+        mut k = 0;
+        while k < 8 {
+            if (c & 1) != 0 { c = ((c >> 1) ^ 0x82f63b78) & 0xFFFFFFFF; } else { c = (c >> 1) & 0xFFFFFFFF; }
+            k = k + 1;
+        }
+        i = i + 2;
+    }
+    return (c ^ 0xFFFFFFFF) & 0xFFFFFFFF;
+}
+
+# Um chunk: [type][flags][len BE] + dados (hex).
+def icsp_chunk(kind: int, flags: int, data_hex: str): str {
+    return hex_byte(kind) + hex_byte(flags) + be16(len(data_hex) >> 1) + data_hex;
+}
+
+# O chunk DATA (type 0) de um fluxo.
+def icsp_data_chunk(tsn: int, stream_id: int, stream_seq: int, payload_hex: str): str {
+    return icsp_chunk(0, 0, be32_hex(tsn) + be16(stream_id) + be16(stream_seq) + payload_hex);
+}
+
+# O pacote ICSP inteiro: header + chunks, com o CRC calculado sobre o campo zerado.
+def icsp_pack(src_port: int, dst_port: int, assoc_id: int, chunks_hex: str): str {
+    head = be16(dst_port) + "01" + "00" + be32_hex(assoc_id);
+    crc = crc32c(head + "0000" + chunks_hex);
+    return be16(src_port) + head + be16(crc & 65535) + chunks_hex;
+}
+
+# 1 quando o CRC do pacote confere.
+def icsp_check(pkt_hex: str): int {
+    if len(pkt_hex) < 24 { return 0; }
+    head = substr(pkt_hex, 4, 16);                     # bytes 2..9: dst_port, ver, flags, assoc_id
+    chunks = substr(pkt_hex, 24, len(pkt_hex) - 24);   # tudo depois do campo de CRC
+    esperado = substr(pkt_hex, 20, 4);
+    if be16(crc32c(head + "0000" + chunks) & 65535) == esperado { return 1; }
+    return 0;
+}
+
+def icsp_src_port(pkt_hex: str): int { return rd_be16(substr(pkt_hex, 0, 4)); }
+
+def icsp_dst_port(pkt_hex: str): int { return rd_be16(substr(pkt_hex, 4, 4)); }
+
+def icsp_assoc_id(pkt_hex: str): int { return rd_be16(substr(pkt_hex, 12, 4)) * 65536 + rd_be16(substr(pkt_hex, 16, 4)); }
+
+# O primeiro chunk depois do header: [type][flags][len] + dados.
+def icsp_first_chunk(pkt_hex: str): str { return substr(pkt_hex, 24, len(pkt_hex) - 24); }
+
+def icsp_chunk_kind(chunk_hex: str): int { return hex_byte_val(substr(chunk_hex, 0, 2)); }
+
+def icsp_chunk_data(chunk_hex: str): str { return substr(chunk_hex, 8, len(chunk_hex) - 8); }
+
 # Endereço de 40 bits (10 dígitos hex) na forma pontuada, como o `ipv69 addr` imprime.
 def addr_dotted(addr_hex: str): str {
     return substr(addr_hex, 0, 2) + "." + substr(addr_hex, 2, 2) + "." + substr(addr_hex, 4, 2) + "." + substr(addr_hex, 6, 2) + "." + substr(addr_hex, 8, 2);
@@ -175,6 +245,8 @@ def addr_dotted(addr_hex: str): str {
 def hex_byte(v: int): str { return substr(bait_hex_digits(), (v >> 4) & 15, 1) + substr(bait_hex_digits(), v & 15, 1); }
 
 def be16(v: int): str { return hex_byte((v >> 8) & 255) + hex_byte(v & 255); }
+
+def be32_hex(v: int): str { return be16((v >> 16) & 65535) + be16(v & 65535); }
 
 def hex_byte_val(pair: str): int { return bait_nib(substr(pair, 0, 1)) * 16 + bait_nib(substr(pair, 1, 1)); }
 
