@@ -3,6 +3,7 @@
 #include "frontend/syntax_highlighter.hpp"
 #include "frontend/ast/ast.hpp"
 #include "frontend/ast/statements/import_stmt_node.hpp"
+#include "backend/runtime/modules/module_registry.hpp"
 #include "frontend/ast/statements/declaration_stmt_node.hpp"
 #include "frontend/ast/statements/function_stmt_node.hpp"
 #include "frontend/ast/statements/class_stmt_node.hpp"
@@ -447,6 +448,23 @@ std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
                 // Registra o alias no scope com tipo void como placeholder (evita "identifier not found")
                 // A resolução de membros via ALIAS.foo é feita via ch->import_namespaces, não por tipo
                 ch->scope->put_key(import_stmt->wildcard_alias, ch->gettyptr("None"), false);
+
+                // Módulos de runtime (crypto, net, ...): o `.nv` do módulo é só a cara
+                // documentada — a superfície de verdade vem da tabela do compilador e é
+                // injetada AQUI, no namespace do alias, sob este import. Módulo não
+                // importado não existe no escopo, e importar um não arrasta os outros.
+                if (const auto* mod = nv::find_runtime_module(
+                        nv::runtime_module_name_of_import(module_path))) {
+                    for (const auto& fn : mod->fns) {
+                        std::vector<std::shared_ptr<nv::Type>> params;
+                        auto kinds = fn.param_is_int();
+                        for (size_t i = 0; i < kinds.size(); ++i)
+                            params.push_back(ch->gettyptr(kinds[i] ? "int" : "str"));
+                        ch->import_namespaces[import_stmt->wildcard_alias][fn.name] =
+                            std::make_shared<nv::Function>(
+                                params, ch->gettyptr(fn.returns_int() ? "int" : "str"));
+                    }
+                }
             }
             return ch->gettyptr("None");
         }
