@@ -79,6 +79,17 @@ inline const std::vector<RuntimeModule>& runtime_modules() {
 #undef NV_FN
             out.push_back({ "crypto", std::vector<RuntimeFn>(std::begin(fns), std::end(fns)) });
         }
+        {
+            // system — o ambiente do processo: variáveis e diretório do usuário. As strings
+            // aqui são TEXTO (não hex): o token `bytes` do .def diz "string do Narval" ao
+            // checker, e o que cada módulo carrega na string é dito no .def dele.
+#define NV_FN(name, params, ret, arity) { #name, #params, #ret, "nv_system_" #name "_builtin", arity },
+            const RuntimeFn fns[] = {
+#include "system.def"
+            };
+#undef NV_FN
+            out.push_back({ "system", std::vector<RuntimeFn>(std::begin(fns), std::end(fns)) });
+        }
         return out;
     }();
     return mods;
