@@ -1,0 +1,28 @@
+# O keyring no formato do IPv69: a seed em hex numa linha, a pública em "<hex> <comentário>".
+# Entradas fixas de propósito (a saída tem de ser determinística). Fora da suíte, o próprio
+# binário dele lê este mesmo arquivo e deriva o mesmo endereço:
+#
+#   IPV69_KEYFILE=/tmp/narval_bait_key /caminho/ipv69 addr      ->  8e.02.a5.02.25
+#
+# Expected:
+# seed-ok
+# pub-ok
+# 8e.02.a5.02.25
+from "crypto" import * as crypto;
+from "bait" import * as bait;
+
+# Vetor 1 do RFC 8032 (a mesma identidade usada no caso do endereço).
+seed = "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60";
+pub  = "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a";
+
+key_path = bait.keyring_key_path("/tmp", "/tmp/narval_bait_key");
+pub_path = bait.keyring_pub_path("/tmp", "/tmp/narval_bait_key");
+
+if bait.keyring_write_seed(key_path, seed) > 0 { }
+if bait.keyring_read_seed(key_path) == seed { write("seed-ok"); }
+
+if bait.keyring_write_pub(pub_path, pub, "bait@narval") > 0 { }
+if bait.keyring_read_pub(pub_path) == pub { write("pub-ok"); }
+
+# E a identidade desse keyring deriva o endereço que o binário dele imprime.
+write(bait.addr_dotted_of_digest(crypto.sha512(pub), "C"));
