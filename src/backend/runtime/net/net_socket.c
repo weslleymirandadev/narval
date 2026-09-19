@@ -689,6 +689,71 @@ const char* nv_net_poll(const char* handles_csv, const char* mode, int timeout_m
     return g_buf;
 }
 
+// ── hex in / hex out ────────────────────────────────────────────────────────
+//
+// A Narval string is NUL-terminated, so a protocol that carries binary (bTLS records, the
+// IPv69 wire) travels as hex text until it reaches the socket, where it becomes bytes
+// again. These two are what makes Frame able to carry a payload with NULs in it.
+
+static char* g_hex_buf = NULL;
+static size_t g_hex_cap = 0;
+
+static char* hex_buf(size_t need) {
+    if (need > g_hex_cap) {
+        size_t want = need < 512 ? 512 : need;
+        char* p = (char*)realloc(g_hex_buf, want);
+        if (!p) return NULL;
+        g_hex_buf = p;
+        g_hex_cap = want;
+    }
+    return g_hex_buf;
+}
+
+static char hx_char(int v) { return (char)(v < 10 ? '0' + v : 'a' + (v - 10)); }
+
+static int hx_digit(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+int nv_net_send_hex(int handle, const char* hex) {
+    nv_net_slot* s = slot_of(handle);
+    if (!s) return -1;
+    if (!hex || !nv_net_hex_valid(hex)) {
+        s->status = NV_NET_ERROR;
+        set_error_text("not a hex string");
+        return -1;
+    }
+    size_t n = strlen(hex) / 2;
+    if (!reserve(n + 1)) return -1;
+    for (size_t i = 0; i < n; i++) {
+        int hi = hx_digit(hex[i * 2]), lo = hx_digit(hex[i * 2 + 1]);
+        g_buf[i] = (char)(((hi << 4) | lo) & 0xFF);
+    }
+    g_buf[n] = '\0';
+    return nv_net_send_bytes(handle, g_buf, (int)n);
+}
+
+const char* nv_net_recv_exact_hex(int handle, int nbytes) {
+    if (!slot_of(handle) || nbytes < 0) return "";
+    const char* raw = nv_net_recv_exact(handle, nbytes);
+    if (!raw) return "";
+    int got = nv_net_last_len();
+    if (got < 0) got = 0;
+    if (got > nbytes) got = nbytes;
+    char* out = hex_buf((size_t)got * 2 + 1);
+    if (!out) return "";
+    for (int i = 0; i < got; i++) {
+        unsigned char c = (unsigned char)raw[i];
+        out[i * 2] = hx_char((c >> 4) & 0x0F);
+        out[i * 2 + 1] = hx_char(c & 0x0F);
+    }
+    out[(size_t)got * 2] = '\0';
+    return out;
+}
+
 // ── Narval-facing wrappers ──────────────────────────────────────────────────
 
 static const char* arg_str(NvObject* o) {
@@ -783,4 +848,12 @@ NvObject* nv_net_peer_addr_builtin(NvObject* h) { return box_str(nv_net_peer_add
 
 NvObject* nv_net_poll_builtin(NvObject* handles, NvObject* mode, NvObject* timeout_ms) {
     return box_str(nv_net_poll(arg_str(handles), arg_str(mode), arg_int(timeout_ms, 0)));
+}
+
+NvObject* nv_net_send_hex_builtin(NvObject* handle, NvObject* hex) {
+    return box_int(nv_net_send_hex(arg_int(handle, -1), arg_str(hex)));
+}
+
+NvObject* nv_net_recv_exact_hex_builtin(NvObject* handle, NvObject* nbytes) {
+    return box_str(nv_net_recv_exact_hex(arg_int(handle, -1), arg_int(nbytes, -1)));
 }
