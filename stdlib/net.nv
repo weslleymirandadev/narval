@@ -122,7 +122,7 @@ class Dns {
 
 # ── TCP ───────────────────────────────────────────────────────────────────────
 class TcpListener {
-    handle: int;
+    public handle: int;
 
     # Binds and listens. host "" (or "0.0.0.0") = every interface; 0 = any free port.
     public bind(host: str, port: int): int {
@@ -143,7 +143,7 @@ class TcpListener {
 }
 
 class TcpStream {
-    handle: int;
+    public handle: int;
 
     # Connects; 0 on success, -1 on failure (net_last_error() tells why). timeout_ms 0 waits
     # forever, otherwise the connect is abandoned at the deadline.
@@ -227,7 +227,7 @@ class Datagram {
 }
 
 class UdpSocket {
-    handle: int;
+    public handle: int;
 
     # port 0 = any free port (ask for it afterwards with port()).
     public bind(host: str, port: int): int {
@@ -259,4 +259,319 @@ class UdpSocket {
     public status(): int { return nv_net_status(self.handle); }
     public error(): str { return nv_net_last_error(); }
     public close(): int { return nv_net_close(self.handle); }
+}
+
+
+# ── Advanced: bytes, framing and an event loop ───────────────────────────────
+#
+# For the user writing protocol instead of using a ready-made client: a binary-safe byte
+# codec, length-prefixed frames over a stream, and a poll loop (the portable way to watch
+# several sockets at once — Narval has no threads on Windows, and a protocol rarely wants
+# one thread per connection anyway).
+#
+# Binary travels as hex text. A Narval string stops at the first NUL byte, so raw bytes
+# would truncate: Packet keeps its whole buffer as hex, and the stream helpers
+# (send_hex/recv_hex) convert at the socket edge. A user sending lines never sees hex.
+
+def net_platform(): str { return nv_net_platform(); }
+def net_caps(): str { return nv_net_caps(); }
+
+# 1 when this build can do `cap` ("tcp", "udp", "dns", "poll", "raw"). Asked at runtime
+# instead of presumed: L2 cru needs AF_PACKET on Linux or Npcap on Windows and is not in the
+# build yet, so a protocol wanting it has to check first.
+def net_has(cap: str): int {
+    if index_of(net_caps(), cap) >= 0 { return 1; }
+    return 0;
+}
+
+# A byte buffer with a read cursor. Covers the fixed-width fields and length-prefixed
+# strings a byte-oriented wire format is made of; `le` is 0 for big-endian (the usual wire
+# order) and 1 for little-endian. A read past the end returns 0 or "" and sets `err`
+# instead of faulting, so a malformed frame becomes a detectable value.
+# How many separators a csv has — the ready count of a Poll (kept out of the class so no
+# `private` visibility is needed).
+def net_count_commas(text: str): int {
+    mut i = 0;
+    mut n = 0;
+    while i < len(text) {
+        if index_of(substr(text, i, 1), ",") >= 0 { n = n + 1; }
+        i = i + 1;
+    }
+    return n;
+}
+
+class Packet {
+    public hex: str;
+    public pos: int;
+    public detail: str;
+
+    public new() {
+        self.hex = "";
+        self.pos = 0;
+        self.detail = "";
+    }
+
+    # Take a buffer in (hex text). Rejects anything that is not an even run of hex digits.
+    public load(hex: str): int {
+        if nv_net_hex_valid(hex) == 0 {
+            self.detail = "not a hex string";
+            return -1;
+        }
+        self.hex = hex;
+        self.pos = 0;
+        self.detail = "";
+        return 0;
+    }
+
+    public raw(): str { return self.hex; }
+    public size(): int { return nv_net_hex_len(self.hex); }
+    public remaining(): int { return nv_net_hex_len(self.hex) - self.pos; }
+    public at(): int { return self.pos; }
+    public rewind(): int { self.pos = 0; return 0; }
+    public ok(): int {
+        if len(self.detail) == 0 { return 1; }
+        return 0;
+    }
+    public error(): str { return self.detail; }
+
+    # ── writing (appends at the end; the cursor is for reading) ──
+    public put_u8(v: int): int { self.hex = nv_net_pack_int(self.hex, v, 1, 1); return 0; }
+    public put_u16(v: int, le: int): int { self.hex = nv_net_pack_int(self.hex, v, 2, le); return 0; }
+    public put_u32(v: int, le: int): int { self.hex = nv_net_pack_int(self.hex, v, 4, le); return 0; }
+    public put_u64(v: int, le: int): int { self.hex = nv_net_pack_int(self.hex, v, 8, le); return 0; }
+
+    public put_bytes(hex: str): int {
+        if nv_net_hex_valid(hex) == 0 {
+            self.detail = "not a hex string";
+            return -1;
+        }
+        self.hex = self.hex + hex;
+        return 0;
+    }
+
+    public put_text(text: str): int {
+        self.hex = self.hex + nv_net_str_to_hex(text);
+        return 0;
+    }
+
+    # u16 length prefix + the bytes: the shape most wire formats use for a string.
+    public put_str16(text: str, le: int): int {
+        self.put_u16(len(text), le);
+        self.put_text(text);
+        return 0;
+    }
+
+    # ── reading (advances the cursor) ──
+    public get_u8(): int {
+        if self.remaining() < 1 {
+            self.detail = "out of bounds";
+            return 0;
+        }
+        v = nv_net_unpack_int(self.hex, self.pos, 1, 1);
+        self.pos = self.pos + 1;
+        return v;
+    }
+
+    public get_u16(le: int): int {
+        if self.remaining() < 2 {
+            self.detail = "out of bounds";
+            return 0;
+        }
+        v = nv_net_unpack_int(self.hex, self.pos, 2, le);
+        self.pos = self.pos + 2;
+        return v;
+    }
+
+    public get_u32(le: int): int {
+        if self.remaining() < 4 {
+            self.detail = "out of bounds";
+            return 0;
+        }
+        v = nv_net_unpack_int(self.hex, self.pos, 4, le);
+        self.pos = self.pos + 4;
+        return v;
+    }
+
+    public get_u64(le: int): int {
+        if self.remaining() < 8 {
+            self.detail = "out of bounds";
+            return 0;
+        }
+        v = nv_net_unpack_int(self.hex, self.pos, 8, le);
+        self.pos = self.pos + 8;
+        return v;
+    }
+
+    # Binary-safe slice: what comes back is hex, so a payload with NULs survives.
+    public get_bytes(n: int): str {
+        if n < 0 || self.remaining() < n {
+            self.detail = "out of bounds";
+            return "";
+        }
+        out = nv_net_unpack_hex(self.hex, self.pos, n);
+        self.pos = self.pos + n;
+        return out;
+    }
+
+    public get_text(n: int): str {
+        chunk = self.get_bytes(n);
+        if len(chunk) == 0 { return ""; }
+        return nv_net_hex_to_str(chunk);
+    }
+
+    public get_str16(le: int): str {
+        n = self.get_u16(le);
+        if self.ok() == 0 { return ""; }
+        return self.get_text(n);
+    }
+}
+
+# Length-prefixed messages over a stream: a u32 big-endian length, then the payload — the
+# order this family of wires uses (the IPv69 header included). `limit` refuses an absurd
+# length before anything is read, so a hostile peer cannot ask for a huge allocation.
+class Frame {
+    public limit: int;
+    public detail: str;
+
+    public new() {
+        self.limit = 65535;
+        self.detail = "";
+    }
+
+    public limit_of(n: int): int { self.limit = n; return 0; }
+    public ok(): int {
+        if len(self.detail) == 0 { return 1; }
+        return 0;
+    }
+    public error(): str { return self.detail; }
+
+    # The frame as hex text: u32be length + payload. Handy to log, queue or compare.
+    public wrap(text: str): str {
+        return nv_net_pack_int("", len(text), 4, 0) + nv_net_str_to_hex(text);
+    }
+
+    public wrap_hex(payload_hex: str): str {
+        return nv_net_pack_int("", nv_net_hex_len(payload_hex), 4, 0) + payload_hex;
+    }
+
+    # Send/receive on a raw socket handle (any TcpStream's `handle`).
+    public send(handle: int, text: str): int {
+        return nv_net_send_hex(handle, self.wrap(text));
+    }
+
+    public send_hex(handle: int, payload_hex: str): int {
+        return nv_net_send_hex(handle, self.wrap_hex(payload_hex));
+    }
+
+    # Declarado antes de recv(), que o chama: um metodo de classe so pode chamar um
+    # irmao declarado acima (irmao posterior da' "has no body to call").
+    public recv_hex(handle: int): str {
+        header = nv_net_recv_exact_hex(handle, 4);
+        if len(header) < 8 {
+            self.detail = "closed or short header";
+            return "";
+        }
+        n = nv_net_unpack_int(header, 0, 4, 0);
+        if n < 0 || n > self.limit {
+            self.detail = "frame too large";
+            return "";
+        }
+        payload = nv_net_recv_exact_hex(handle, n);
+        if len(payload) < n * 2 {
+            self.detail = "short payload";
+            return "";
+        }
+        self.detail = "";
+        return payload;
+    }
+    public recv(handle: int): str {
+        payload = self.recv_hex(handle);
+        if len(payload) == 0 { return ""; }
+        return nv_net_hex_to_str(payload);
+    }
+
+}
+
+# Poll over handles: `add` the sockets, `wait` with a timeout, then ask which one is ready.
+# One handle with the wrong mode is fine (the bridge keeps only valid slots), which is what
+# makes this the portable event loop.
+class Poll {
+    public handles: str;
+    public mode: str;
+    public ready_csv: str;
+
+    public new() {
+        self.handles = "";
+        self.mode = "r";
+        self.ready_csv = "";
+    }
+
+    public add(handle: int): int {
+        if len(self.handles) > 0 { self.handles = self.handles + ","; }
+        self.handles = self.handles + str(handle);
+        return 0;
+    }
+
+    public clear(): int {
+        self.handles = "";
+        self.ready_csv = "";
+        return 0;
+    }
+
+    public for_read(): int { self.mode = "r"; return 0; }
+    public for_write(): int { self.mode = "rw"; return 0; }
+
+    # Number of handles ready within timeout_ms; 0 means "nothing happened".
+    public wait(timeout_ms: int): int {
+        self.ready_csv = nv_net_poll(self.handles, self.mode, timeout_ms);
+        if len(self.ready_csv) == 0 { return 0; }
+        return 1 + net_count_commas(self.ready_csv);
+    }
+
+    public ready_handles(): str { return self.ready_csv; }
+    public timed_out(): int {
+        if len(self.ready_csv) == 0 { return 1; }
+        return 0;
+    }
+
+    # Membership is checked with the delimiters around the number, so handle 4 is not found
+    # inside "14".
+    public is_ready(handle: int): int {
+        needle = "," + str(handle) + ",";
+        hay = "," + self.ready_csv + ",";
+        if index_of(hay, needle) >= 0 { return 1; }
+        return 0;
+    }
+
+}
+
+# Raw view over a socket handle: the knobs (options, timeouts, shutdown, poll) without a
+# protocol on top. `wrap` adopts a handle you already have (a TcpStream's `handle`, an
+# accepted connection), and `close` releases it.
+class NetSocket {
+    public handle: int;
+
+    public new() { self.handle = -1; }
+
+    public wrap(handle: int): int {
+        self.handle = handle;
+        return 0;
+    }
+
+    public option(name: str, value: int): int { return nv_net_set_option(self.handle, name, value); }
+    public get_option(name: str): int { return nv_net_get_option(self.handle, name); }
+    public timeout(ms: int): int { return nv_net_set_timeout(self.handle, ms); }
+    public shutdown(how: int): int { return nv_net_shutdown(self.handle, how); }
+    public close(): int { return nv_net_close(self.handle); }
+    public status(): int { return nv_net_status(self.handle); }
+    public error(): str { return nv_net_last_error(); }
+    public last_len(): int { return nv_net_last_len(); }
+    public send_hex(hex: str): int { return nv_net_send_hex(self.handle, hex); }
+    public recv_hex(n: int): str { return nv_net_recv_exact_hex(self.handle, n); }
+
+    public ready(mode: str, timeout_ms: int): int {
+        csv = nv_net_poll(str(self.handle), mode, timeout_ms);
+        if len(csv) > 0 { return 1; }
+        return 0;
+    }
 }
