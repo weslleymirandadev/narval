@@ -277,12 +277,39 @@ mlir::Value NIRGenerationContext::pop_value() {
 
 //  Dump / print
 
+// `--emit-nir` hides nothing else on purpose: reading the module is the point. Locations
+// are the exception — the MLIR printer only prints them when debug info is enabled, and
+// they are what the ownership report (and any future source-anchored diagnostic) is
+// anchored on, so NARVAL_DUMP_LOCS=1 turns them on.
+static mlir::OpPrintingFlags nir_dump_flags() {
+    mlir::OpPrintingFlags flags;
+    if (nv::diag_dump_locs() || std::getenv("NARVAL_DUMP_LOCS")) flags.enableDebugInfo();
+    return flags;
+}
+
 void NIRGenerationContext::dump_nir() {
-    module_->print(llvm::errs());
+    module_->getOperation()->print(llvm::errs(), nir_dump_flags());
 }
 
 void NIRGenerationContext::print_nir(llvm::raw_ostream& os) {
-    module_->print(os);
+    module_->getOperation()->print(os, nir_dump_flags());
+}
+
+// Tag the value a binding received with the binding's name (a NameLoc over the value's
+// own location). The ownership report then says `b` instead of "the value on line 7".
+// Only the value CREATED on the binding's own line is named: `c = b` must not relabel
+// b's value as c, and a block argument has no defining op to name.
+void NIRGenerationContext::name_value(mlir::Value v, const std::string& name,
+                                      const PositionData* pos) {
+    if (!v || name.empty()) return;
+    mlir::Operation* def = v.getDefiningOp();
+    if (!def) return;
+    mlir::Location current = def->getLoc();
+    if (mlir::isa<mlir::NameLoc>(current)) return;
+    if (auto file_loc = mlir::dyn_cast<mlir::FileLineColLoc>(current)) {
+        if (pos && file_loc.getLine() != static_cast<unsigned>(pos->line)) return;
+    }
+    def->setLoc(mlir::NameLoc::get(builder_.getStringAttr(name), current));
 }
 
 // Progress traces are noise for normal builds; NARVAL_VERBOSE=1 brings them
@@ -315,7 +342,17 @@ NIRGenerationContext::lower_to_llvm_ir(llvm::LLVMContext& llvm_ctx) {
         // hence the switch.
         if (nv::diag_dump_passes() || std::getenv("NARVAL_DUMP_NIR_PASSES")) {
             ctx_.disableMultithreading();
-            p.enableIRPrinting();
+            // Source locations are what the ownership report is anchored on, but the
+            // MLIR printer hides them (loc is printed only with debug info enabled), so
+            // a dump that claims to show the IR shows none. NARVAL_DUMP_LOCS=1 turns
+            // them on (as #locN = loc("file":line:col) aliases).
+            mlir::OpPrintingFlags flags;
+            if (nv::diag_dump_locs()) flags.enableDebugInfo();
+            p.enableIRPrinting(
+                [](mlir::Pass*, mlir::Operation*) { return true; },
+                [](mlir::Pass*, mlir::Operation*) { return true; },
+                /*printModuleScope=*/true, /*printAfterOnlyOnChange=*/true,
+                /*printAfterOnlyOnFailure=*/false, llvm::errs(), flags);
         }
         return mlir::succeeded(p.run(*module_));
     };
@@ -324,7 +361,7 @@ NIRGenerationContext::lower_to_llvm_ir(llvm::LLVMContext& llvm_ctx) {
     if (nir_trace()) std::cerr << "NIR: running phase A..." << std::endl;
     {
         mlir::PassManager pm(&ctx_);
-        nv::build_narval_pass_pipeline_phase_a(pm, *module_);
+        nv::build_narval_pass_pipeline_phase_a(pm, *module_, source_file_);
         if (!run(pm))
             return llvm::createStringError(llvm::inconvertibleErrorCode(),
                                            "NIR phase A failed");
