@@ -8,7 +8,7 @@
 # 30
 # 102
 # Stderr:
-# [ownership]
+# value(s) created in this file
 # module scope (top-level code)
 # def add_and_scale
 # method Counter.bump
