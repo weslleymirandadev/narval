@@ -348,16 +348,6 @@ std::unique_ptr<Node> ModuleManager::get_combined_ast(const std::string& main_mo
                         auto* import = static_cast<ImportStmtNode*>(stmt.get());
                         bool registers_a_name =
                             !import->wildcard_alias.empty();
-
-                        // Módulo de RUNTIME importado flat (`from "crypto" import *;`): não há
-                        // statements para mesclar, então o import é a ÚNICA coisa que faz o
-                        // checker materializar o namespace (`crypto`). Descartá-lo deixava o
-                        // nome inalcançável — é a assimetria flat/alias do
-                        // IMPORT_PIPELINE_SPEC.md §1.2, em três linhas.
-                        if (!registers_a_name &&
-                            nv::find_runtime_module(
-                                nv::runtime_module_name_of_import(import->module_path)) != nullptr)
-                            registers_a_name = true;
                         if (!registers_a_name) {
                             for (const auto& item : import->imports) {
                                 if (!item.alias.empty()) { registers_a_name = true; break; }
