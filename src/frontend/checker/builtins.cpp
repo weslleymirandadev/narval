@@ -103,8 +103,6 @@ namespace nv {
         BuiltinFunction("nv_net_hex_len", {}, std::make_shared<Int>(), false, true, 1, 1),  // bytes behind a hex string
         BuiltinFunction("nv_net_str_to_hex", {}, std::make_shared<String>(), false, true, 1, 1),  // text bytes as hex
         BuiltinFunction("nv_net_hex_to_str", {}, std::make_shared<String>(), false, true, 1, 1),  // hex back to text
-        BuiltinFunction("nv_net_pack_int", {}, std::make_shared<String>(), false, true, 4, 4),  // append n bytes (BE/LE)
-        BuiltinFunction("nv_net_unpack_int", {}, std::make_shared<Int>(), false, true, 4, 4),  // read n bytes (BE/LE)
         BuiltinFunction("nv_net_unpack_hex", {}, std::make_shared<String>(), false, true, 3, 3),  // binary-safe slice as hex
         BuiltinFunction("nv_net_platform", {}, std::make_shared<String>(), false, true, 0, 0),  // linux / windows / unix
         BuiltinFunction("nv_net_caps", {}, std::make_shared<String>(), false, true, 0, 0),  // what this build can do
