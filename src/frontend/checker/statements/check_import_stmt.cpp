@@ -435,13 +435,22 @@ std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
         nv::Checker module_checker;
         module_checker.apply_compilation_attributes(nv::map_compilation_attributes(program));
         module_checker.set_source_file(full_path);
+        // Módulo de RUNTIME: a checagem do corpo continua rodando (é dela que sai a extração
+        // dos símbolos da face `.nv`), mas o diagnóstico dela não é emitido — a superfície do
+        // módulo vem da tabela do compilador, e um `.nv` que dependia do prelúdio (net.nv)
+        // reportaria aqui um erro que não impede nada. Ver IMPORT_PIPELINE_SPEC.md §5.3.
+        if (nv::find_runtime_module(nv::runtime_module_name_of_import(module_path)) != nullptr)
+            module_checker.set_emit_diagnostics(false);
         module_checker.check_node(program);
         
-        // Se houver erros no módulo importado, não podemos registrar os símbolos
+        // Se houver erros no módulo importado, não podemos registrar os símbolos DELE.
+        // Mas módulo de RUNTIME tem a superfície na tabela do compilador (`.def`), não no
+        // corpo do `.nv`: o erro do corpo (tipicamente um `.nv` que dependia do prelúdio, como
+        // o net.nv) não pode impedir o namespace de existir. Sem esta exceção, o import de um
+        // módulo desses ficava sem namespace nenhum — ver IMPORT_PIPELINE_SPEC.md §5.3.
         if (module_checker.err) {
-            // Não reportar erro aqui, apenas não registrar os símbolos
-            // O erro já foi reportado pelo checker do módulo
-            return ch->gettyptr("None");
+            if (nv::find_runtime_module(nv::runtime_module_name_of_import(module_path)) == nullptr)
+                return ch->gettyptr("None");
         }
         
         // --- Wildcard import: "import *" ou "import * as ALIAS" ---
