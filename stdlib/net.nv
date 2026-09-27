@@ -49,6 +49,20 @@ def net_hex_digit(v: int): str { return substr("0123456789abcdef", v & 15, 1); }
 
 def net_hex_val(c: str): int { return index_of("0123456789abcdef", c); }
 
+# Estrutura pura de hex: era `nv_net_hex_valid`/`nv_net_hex_len` (C). `hex_to_str`/`str_to_hex`
+# continuam em C de propósito: converter byte <-> caractere exige char<->código, que a linguagem
+# ainda não tem (nenhum `chr`/`ord` no checker) — primitiva de verdade, §3.8.
+def net_hex_valid(h: str): int {
+    if len(h) % 2 != 0 { return 0; }
+    mut i = 0;
+    while i < len(h) {
+        if net_hex_val(substr(h, i, 1)) < 0 { return 0; }
+        i = i + 1;
+    }
+    return 1;
+}
+
+def net_hex_len(h: str): int { return (len(h) >> 1); }
 def net_pack_int(hex: str, value: int, nbytes: int, le: int): str {
     mut out = hex;
     mut i = 0;
@@ -349,7 +363,7 @@ class Packet {
 
     # Take a buffer in (hex text). Rejects anything that is not an even run of hex digits.
     public load(hex: str): int {
-        if nv_net_hex_valid(hex) == 0 {
+        if net_hex_valid(hex) == 0 {
             self.detail = "not a hex string";
             return -1;
         }
@@ -360,8 +374,8 @@ class Packet {
     }
 
     public raw(): str { return self.hex; }
-    public size(): int { return nv_net_hex_len(self.hex); }
-    public remaining(): int { return nv_net_hex_len(self.hex) - self.pos; }
+    public size(): int { return net_hex_len(self.hex); }
+    public remaining(): int { return net_hex_len(self.hex) - self.pos; }
     public at(): int { return self.pos; }
     public rewind(): int { self.pos = 0; return 0; }
     public ok(): int {
@@ -377,7 +391,7 @@ class Packet {
     public put_u64(v: int, le: int): int { self.hex = net_pack_int(self.hex, v, 8, le); return 0; }
 
     public put_bytes(hex: str): int {
-        if nv_net_hex_valid(hex) == 0 {
+        if net_hex_valid(hex) == 0 {
             self.detail = "not a hex string";
             return -1;
         }
@@ -487,7 +501,7 @@ class Frame {
     }
 
     public wrap_hex(payload_hex: str): str {
-        return net_pack_int("", nv_net_hex_len(payload_hex), 4, 0) + payload_hex;
+        return net_pack_int("", net_hex_len(payload_hex), 4, 0) + payload_hex;
     }
 
     # Send/receive on a raw socket handle (any TcpStream's `handle`).
