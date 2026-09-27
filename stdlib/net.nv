@@ -42,6 +42,42 @@
 # convenience methods.
 
 # ── status codes ──────────────────────────────────────────────────────────────
+# Codec de inteiro de largura fixa em hex. Era `nv_net_pack_int`/`nv_net_unpack_int` (C); virou
+# Narval porque é aritmética de bits, não primitiva — e assim as entradas planas somem do
+# checker e do codegen (Fase B, IMPORT_PIPELINE_SPEC §7).
+def net_hex_digit(v: int): str { return substr("0123456789abcdef", v & 15, 1); }
+
+def net_hex_val(c: str): int { return index_of("0123456789abcdef", c); }
+
+def net_pack_int(hex: str, value: int, nbytes: int, le: int): str {
+    mut out = hex;
+    mut i = 0;
+    while i < nbytes {
+        # Shift do byte i, sem reatribuicao: `sh` mutavel do corpo do laco reatribuido dentro
+        # de um `if` nao tem efeito (mesma familia do bug de variavel carregada por laco),
+        # entao a escolha BE/LE vai na aritmetica.
+        mut sh = 8 * (nbytes - 1 - i) * (1 - le) + 8 * i * le;
+        out = out + net_hex_digit(value >> (sh + 4) & 15) + net_hex_digit(value >> sh & 15);
+        i = i + 1;
+    }
+    return out;
+}
+
+def net_unpack_int(hex: str, pos: int, nbytes: int, le: int): int {
+    mut v = 0;
+    mut i = 0;
+    while i < nbytes {
+        # Shift do byte i, sem reatribuicao: `sh` mutavel do corpo do laco reatribuido dentro
+        # de um `if` nao tem efeito (mesma familia do bug de variavel carregada por laco),
+        # entao a escolha BE/LE vai na aritmetica.
+        mut sh = 8 * (nbytes - 1 - i) * (1 - le) + 8 * i * le;
+        v = v + ((net_hex_val(substr(hex, (pos + i) * 2, 1)) * 16
+                  + net_hex_val(substr(hex, (pos + i) * 2 + 1, 1))) << sh);
+        i = i + 1;
+    }
+    return v;
+}
+
 def net_ok(): int { return 0; }
 def net_timed_out(): int { return 1; }
 def net_closed(): int { return 2; }
@@ -335,10 +371,10 @@ class Packet {
     public error(): str { return self.detail; }
 
     # ── writing (appends at the end; the cursor is for reading) ──
-    public put_u8(v: int): int { self.hex = nv_net_pack_int(self.hex, v, 1, 1); return 0; }
-    public put_u16(v: int, le: int): int { self.hex = nv_net_pack_int(self.hex, v, 2, le); return 0; }
-    public put_u32(v: int, le: int): int { self.hex = nv_net_pack_int(self.hex, v, 4, le); return 0; }
-    public put_u64(v: int, le: int): int { self.hex = nv_net_pack_int(self.hex, v, 8, le); return 0; }
+    public put_u8(v: int): int { self.hex = net_pack_int(self.hex, v, 1, 1); return 0; }
+    public put_u16(v: int, le: int): int { self.hex = net_pack_int(self.hex, v, 2, le); return 0; }
+    public put_u32(v: int, le: int): int { self.hex = net_pack_int(self.hex, v, 4, le); return 0; }
+    public put_u64(v: int, le: int): int { self.hex = net_pack_int(self.hex, v, 8, le); return 0; }
 
     public put_bytes(hex: str): int {
         if nv_net_hex_valid(hex) == 0 {
@@ -367,7 +403,7 @@ class Packet {
             self.detail = "out of bounds";
             return 0;
         }
-        v = nv_net_unpack_int(self.hex, self.pos, 1, 1);
+        v = net_unpack_int(self.hex, self.pos, 1, 1);
         self.pos = self.pos + 1;
         return v;
     }
@@ -377,7 +413,7 @@ class Packet {
             self.detail = "out of bounds";
             return 0;
         }
-        v = nv_net_unpack_int(self.hex, self.pos, 2, le);
+        v = net_unpack_int(self.hex, self.pos, 2, le);
         self.pos = self.pos + 2;
         return v;
     }
@@ -387,7 +423,7 @@ class Packet {
             self.detail = "out of bounds";
             return 0;
         }
-        v = nv_net_unpack_int(self.hex, self.pos, 4, le);
+        v = net_unpack_int(self.hex, self.pos, 4, le);
         self.pos = self.pos + 4;
         return v;
     }
@@ -397,7 +433,7 @@ class Packet {
             self.detail = "out of bounds";
             return 0;
         }
-        v = nv_net_unpack_int(self.hex, self.pos, 8, le);
+        v = net_unpack_int(self.hex, self.pos, 8, le);
         self.pos = self.pos + 8;
         return v;
     }
@@ -447,11 +483,11 @@ class Frame {
 
     # The frame as hex text: u32be length + payload. Handy to log, queue or compare.
     public wrap(text: str): str {
-        return nv_net_pack_int("", len(text), 4, 0) + nv_net_str_to_hex(text);
+        return net_pack_int("", len(text), 4, 0) + nv_net_str_to_hex(text);
     }
 
     public wrap_hex(payload_hex: str): str {
-        return nv_net_pack_int("", nv_net_hex_len(payload_hex), 4, 0) + payload_hex;
+        return net_pack_int("", nv_net_hex_len(payload_hex), 4, 0) + payload_hex;
     }
 
     # Send/receive on a raw socket handle (any TcpStream's `handle`).
@@ -471,7 +507,7 @@ class Frame {
             self.detail = "closed or short header";
             return "";
         }
-        n = nv_net_unpack_int(header, 0, 4, 0);
+        n = net_unpack_int(header, 0, 4, 0);
         if n < 0 || n > self.limit {
             self.detail = "frame too large";
             return "";
