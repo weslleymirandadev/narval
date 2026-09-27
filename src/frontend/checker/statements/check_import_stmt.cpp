@@ -1,3 +1,5 @@
+#include <cstdio>
+#include <cstdlib>
 #include "frontend/checker/statements/check_import_stmt.hpp"
 #include "frontend/attributes/attribute_mapper.hpp"
 #include "frontend/syntax_highlighter.hpp"
@@ -471,6 +473,22 @@ std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
                     if (sym_type->kind == nv::Kind::CLASS || sym_type->kind == nv::Kind::ENUM) {
                         ch->types[sym_name] = sym_type;
                     }
+                }
+            }
+
+            // Módulo de runtime importado FLAT (`from "crypto" import *;`): o nome do módulo vira
+            // o namespace dele — é o contrato do RUNTIME_MODULES_DESIGN.md §3. Registrado no MESMO
+            // ponto e do mesmo jeito que o ramo do alias faz o dele (o timing importa: registrar
+            // antes do processamento do import não surtiu efeito). Sem try/catch de propósito:
+            // engolir exceção aqui foi o que me deixou no escuro na tentativa anterior.
+            if (import_stmt->is_wildcard && import_stmt->wildcard_alias.empty()) {
+                const std::string flat_ns = nv::runtime_module_name_of_import(module_path);
+                if (nv::find_runtime_module(flat_ns) != nullptr) {
+                    if (std::getenv("NV_IMPORT_DEBUG"))
+                        std::fprintf(stderr, "[inj-flat] %s -> namespace '%s'\n",
+                                     module_path.c_str(), flat_ns.c_str());
+                    nv_inject_runtime_module(ch, module_path, flat_ns);
+                    ch->scope->put_key(flat_ns, ch->gettyptr("None"), false);
                 }
             }
 
