@@ -99,8 +99,6 @@ namespace nv {
         BuiltinFunction("nv_net_peer_addr",      {}, std::make_shared<String>(), false, true, 1, 1),
         BuiltinFunction("nv_net_poll",           {}, std::make_shared<String>(), false, true, 3, 3),        // len(x) — length of a string/vector/map; boxed int at runtime.
         // Byte codec for Packet/Frame (net_pack.c) — pure, hex text in and out.
-        BuiltinFunction("nv_net_hex_valid", {}, std::make_shared<Int>(), false, true, 1, 1),  // is this an even run of hex digits
-        BuiltinFunction("nv_net_hex_len", {}, std::make_shared<Int>(), false, true, 1, 1),  // bytes behind a hex string
         BuiltinFunction("nv_net_str_to_hex", {}, std::make_shared<String>(), false, true, 1, 1),  // text bytes as hex
         BuiltinFunction("nv_net_hex_to_str", {}, std::make_shared<String>(), false, true, 1, 1),  // hex back to text
         BuiltinFunction("nv_net_unpack_hex", {}, std::make_shared<String>(), false, true, 3, 3),  // binary-safe slice as hex
