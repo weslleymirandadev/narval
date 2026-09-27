@@ -348,6 +348,13 @@ std::unique_ptr<Node> ModuleManager::get_combined_ast(const std::string& main_mo
                         auto* import = static_cast<ImportStmtNode*>(stmt.get());
                         bool registers_a_name =
                             !import->wildcard_alias.empty();
+
+                        // Módulo de RUNTIME importado flat: sem statements para mesclar, o import
+                        // é a única coisa que faz o checker materializar o namespace.
+                        if (!registers_a_name &&
+                            nv::find_runtime_module(
+                                nv::runtime_module_name_of_import(import->module_path)) != nullptr)
+                            registers_a_name = true;
                         if (!registers_a_name) {
                             for (const auto& item : import->imports) {
                                 if (!item.alias.empty()) { registers_a_name = true; break; }
