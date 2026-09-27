@@ -1,0 +1,8 @@
+// net.def — o módulo `net`: o codec de bytes do `net_pack.c` (inteiros de largura fixa em
+// LE/BE), que é o que o Packet/Frame do `stdlib/net.nv` usa.
+//
+// Este é o PILOTO da Fase A do RUNTIME_MODULES_DESIGN.md (§8): era ele que devia provar o
+// mecanismo antes de qualquer capacidade nova. Os corpos já existem em net_pack.c; aqui só se
+// declara a superfície, uma linha por função. `big` é long long (o valor entra como 64 bits).
+NV_FN(pack_int,   (bytes, big, num, num), bytes, 4)   // hex + valor + nbytes + le -> hex
+NV_FN(unpack_int, (bytes, num, num, num), big,   4)   // hex + pos + nbytes + le -> valor
