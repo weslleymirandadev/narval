@@ -104,6 +104,16 @@ inline const std::vector<RuntimeModule>& runtime_modules() {
 #undef NV_FN
             out.push_back({ "bait", std::vector<RuntimeFn>(std::begin(fns), std::end(fns)) });
         }
+        {
+            // net — o codec de bytes do net_pack.c (pack/unpack de inteiro de largura fixa).
+            // Piloto da Fase A (§8): o resto da superfície de rede é o stdlib/net.nv.
+#define NV_FN(name, params, ret, arity) { #name, #params, #ret, "nv_net_" #name "_builtin", arity },
+            const RuntimeFn fns[] = {
+#include "net.def"
+            };
+#undef NV_FN
+            out.push_back({ "net", std::vector<RuntimeFn>(std::begin(fns), std::end(fns)) });
+        }
         return out;
     }();
     return mods;
