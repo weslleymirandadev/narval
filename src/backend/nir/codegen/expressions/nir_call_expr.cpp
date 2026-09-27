@@ -257,8 +257,6 @@ void CallExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         {"nv_net_peer_addr", "nv_net_peer_addr_builtin"},
         {"nv_net_poll", "nv_net_poll_builtin"},
     // Byte codec for Packet/Frame (net_pack.c), same names on both sides.
-    {"nv_net_hex_valid", "nv_net_hex_valid_builtin"},
-    {"nv_net_hex_len", "nv_net_hex_len_builtin"},
     {"nv_net_str_to_hex", "nv_net_str_to_hex_builtin"},
     {"nv_net_hex_to_str", "nv_net_hex_to_str_builtin"},
     {"nv_net_unpack_hex", "nv_net_unpack_hex_builtin"},
