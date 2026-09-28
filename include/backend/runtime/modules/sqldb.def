@@ -1,0 +1,17 @@
+// sqldb.def — o módulo `sqldb`: SQLite (open/exec/query/...).
+//
+// Como o fileio, a ponte já existia inteira (src/backend/runtime/core/sqlite_bridge.c); faltava
+// declarar a superfície. O módulo se chama `sqldb` (e não `db`) porque a face em Narval é `stdlib/sqlite.nv` e
+// face não importa módulo de mesmo nome (§7). Prefixo dos símbolos: `nv_sqlite_` — o ABI não
+// muda, só a etiqueta (§8.1).
+NV_FN(open,      (bytes),         num,   1)   // path -> handle (cria se não existir)
+NV_FN(close,     (num),           num,   1)
+NV_FN(exec,      (num, bytes),    num,   2)   // SQL sem resultado
+NV_FN(query,     (num, bytes),    bytes, 2)   // SQL com resultado, formato do bridge
+NV_FN(query_run, (num, bytes),    num,   2)   // executa e guarda as células
+NV_FN(error,     (num),           bytes, 1)
+NV_FN(last_id,   (num),           num,   1)
+NV_FN(changes,   (num),           num,   1)
+NV_FN(col_count, (num),           num,   1)
+NV_FN(cell,      (num, num, num), bytes, 3)   // handle, linha, coluna
+NV_FN(col_name,  (num, num),      bytes, 2)   // handle, coluna
