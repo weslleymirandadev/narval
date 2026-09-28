@@ -161,7 +161,7 @@ while vivo == 1 {
                     if kind == 8 {
                         write("[icsp] SHUTDOWN do outro lado");
                         vivo = 0;
-                        tem = 0;            /* para o esvaziamento: nao imprime de novo */
+                        tem = 0;
                     }
                 }
             }
