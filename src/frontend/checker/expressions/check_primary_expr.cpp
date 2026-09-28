@@ -1,3 +1,5 @@
+#include <cstdio>
+#include <cstdlib>
 #include "frontend/checker/expressions/check_primary_expr.hpp"
 #include "frontend/checker/expressions/check_new_expr.hpp"
 #include "frontend/ast/ast.hpp"
@@ -131,6 +133,10 @@ std::shared_ptr<nv::Type>& check_primary_expr(Checker* ch, Node* node) {
                     return temp_result;
                 }
                 
+                if (std::getenv("NV_DIAG_SCOPE")) {
+                    std::fprintf(stderr, "[scope] sym=%s depth=%d in_chain=%d\n", id->symbol.c_str(),
+                                 ch->scope->chain_depth(), ch->scope->has_in_chain(id->symbol) ? 1 : 0);
+                }
                 std::ostringstream oss;
                 oss << "Identifier '" << id->symbol << "' not found.";
                 ch->error(node, oss.str());
