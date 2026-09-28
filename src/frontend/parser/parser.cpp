@@ -1,4 +1,5 @@
 #include "frontend/parser/parser.hpp"
+#include "frontend/diagnostics_ansi.hpp"
 #include "frontend/parser/statements/parse_stmt.hpp"
 #include "frontend/ast/statements/import_stmt_node.hpp"
 #include "frontend/ast/statements/module_attr_node.hpp"
@@ -11,9 +12,9 @@
 #include <filesystem>
 
 constexpr size_t MAX_LINE_LENGTH = 1024;
-constexpr const char* ANSI_BOLD = "\x1b[1m";
-constexpr const char* ANSI_RESET = "\x1b[0m";
-constexpr const char* ANSI_RED = "\x1b[31m";
+static const char* ANSI_BOLD = nv::diag::color() ? "\x1b[1m" : "";
+static const char* ANSI_RESET = nv::diag::color() ? "\x1b[0m" : "";
+static const char* ANSI_RED = nv::diag::color() ? "\x1b[31m" : "";
 
 namespace {
     // Converte um caminho relativo em absoluto
