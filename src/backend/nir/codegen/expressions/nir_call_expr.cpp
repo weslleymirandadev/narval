@@ -221,13 +221,6 @@ void CallExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
         {"nv_sqlite_col_count", "nv_sqlite_col_count_builtin"},
         {"nv_sqlite_cell", "nv_sqlite_cell_builtin"},
         {"nv_sqlite_col_name", "nv_sqlite_col_name_builtin"},
-        {"nv_file_open", "nv_file_open_builtin"},
-        {"nv_file_close", "nv_file_close_builtin"},
-        {"nv_file_read", "nv_file_read_builtin"},
-        {"nv_file_read_line", "nv_file_read_line_builtin"},
-        {"nv_file_write", "nv_file_write_builtin"},
-        {"nv_file_exists", "nv_file_exists_builtin"},
-        {"nv_file_remove", "nv_file_remove_builtin"},
     // Byte codec for Packet/Frame (net_pack.c), same names on both sides.
         // Option/Result constructors: the checker accepts them as `Some(x)` etc, but the
         // codegen emitted the bare name as the callee, which is a symbol nothing defines
