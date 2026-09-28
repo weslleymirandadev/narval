@@ -1,0 +1,17 @@
+# Um vínculo que nasce dentro de um bloco aninhado passa a existir no escopo de fora SEM valor:
+# o programa lê o default 0, e o compilador AVISA — em vez de seguir em silêncio e trocar um erro
+# de escopo por resposta errada. O aviso sai no formato do checker (com cor quando o destino
+# e' um terminal: o substring esperado abaixo evita a fronteira da cor, que e' invisivel).
+# A condição NÃO pode ser constante: `if 1 == 1` é dobrado em tempo de compilação, o bloco deixa
+# de existir e o aviso — corretamente — não dispara.
+# Stderr:
+# no value bound for 'so_dentro' here
+# Expected:
+# 0
+from "system" import *;
+
+if system.argc() >= 0 {
+    so_dentro = 7;
+}
+
+write(so_dentro);
