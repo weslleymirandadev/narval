@@ -101,9 +101,7 @@ namespace nv {
         // Byte codec for Packet/Frame (net_pack.c) — pure, hex text in and out.
         BuiltinFunction("nv_net_str_to_hex", {}, std::make_shared<String>(), false, true, 1, 1),  // text bytes as hex
         BuiltinFunction("nv_net_hex_to_str", {}, std::make_shared<String>(), false, true, 1, 1),  // hex back to text
-        BuiltinFunction("nv_net_unpack_hex", {}, std::make_shared<String>(), false, true, 3, 3),  // binary-safe slice as hex
         BuiltinFunction("nv_net_platform", {}, std::make_shared<String>(), false, true, 0, 0),  // linux / windows / unix
-        BuiltinFunction("nv_net_caps", {}, std::make_shared<String>(), false, true, 0, 0),  // what this build can do
         // Binary-safe stream IO for Frame: hex text crosses the ABI, bytes hit the wire.
         BuiltinFunction("nv_net_send_hex",       {}, std::make_shared<Int>(),    false, true, 2, 2),  // bytes behind a hex string
         BuiltinFunction("nv_net_recv_exact_hex", {}, std::make_shared<String>(), false, true, 2, 2),  // exactly n bytes as hex
