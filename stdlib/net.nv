@@ -63,6 +63,13 @@ def net_hex_valid(h: str): int {
 }
 
 def net_hex_len(h: str): int { return (len(h) >> 1); }
+
+# Fatiamento de hex com a validação do C original (nv_net_unpack_hex).
+def net_unpack_hex(hex: str, pos: int, nbytes: int): str {
+    if net_hex_valid(hex) == 0 || pos < 0 || nbytes < 0 { return ""; }
+    if pos + nbytes > net_hex_len(hex) { return ""; }
+    return substr(hex, pos * 2, nbytes * 2);
+}
 def net_pack_int(hex: str, value: int, nbytes: int, le: int): str {
     mut out = hex;
     mut i = 0;
@@ -324,7 +331,8 @@ class UdpSocket {
 # (send_hex/recv_hex) convert at the socket edge. A user sending lines never sees hex.
 
 def net_platform(): str { return nv_net_platform(); }
-def net_caps(): str { return nv_net_caps(); }
+# Os três ramos do `#ifdef` do C devolvem a mesma string: é constante, não primitiva.
+def net_caps(): str { return "tcp,udp,dns,poll"; }
 
 # 1 when this build can do `cap` ("tcp", "udp", "dns", "poll", "raw"). Asked at runtime
 # instead of presumed: L2 cru needs AF_PACKET on Linux or Npcap on Windows and is not in the
@@ -458,7 +466,7 @@ class Packet {
             self.detail = "out of bounds";
             return "";
         }
-        out = nv_net_unpack_hex(self.hex, self.pos, n);
+        out = net_unpack_hex(self.hex, self.pos, n);
         self.pos = self.pos + n;
         return out;
     }
