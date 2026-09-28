@@ -1,4 +1,5 @@
 #include <cstdio>
+#include "frontend/diagnostics_ansi.hpp"
 #include <cstdlib>
 #include "frontend/checker/statements/check_import_stmt.hpp"
 #include "frontend/attributes/attribute_mapper.hpp"
@@ -28,10 +29,10 @@
 #include <unordered_set>
 #include <cstdint>
 
-constexpr const char* ANSI_BOLD = "\x1b[1m";
-constexpr const char* ANSI_RESET = "\x1b[0m";
-constexpr const char* ANSI_RED = "\x1b[31m";
-constexpr const char* ANSI_WHITE = "\x1b[37m";
+static const char* ANSI_BOLD = nv::diag::color() ? "\x1b[1m" : "";
+static const char* ANSI_RESET = nv::diag::color() ? "\x1b[0m" : "";
+static const char* ANSI_RED = nv::diag::color() ? "\x1b[31m" : "";
+static const char* ANSI_WHITE = nv::diag::color() ? "\x1b[37m" : "";
 
 namespace {
     // Converte um caminho relativo em absoluto
