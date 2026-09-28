@@ -26,6 +26,21 @@ static void collect_remaining(std::vector<std::unique_ptr<Stmt>>& out, Parser* p
     }
 }
 
+std::vector<std::unique_ptr<Stmt>> parse_block_or_inline(Parser* parser) {
+    if (parser->current_token().type == TokenType::COLON) {
+        parser->consume_token();                 /* ':' da forma inline */
+        std::vector<std::unique_ptr<Stmt>> inline_body;
+        auto unico = parse_stmt(parser);
+        if (unico)
+            inline_body.push_back(std::unique_ptr<Stmt>(static_cast<Stmt*>(unico.release())));
+        return inline_body;
+    }
+    parser->expect(TokenType::OBRACE, "Expected '{' or ':'.");
+    auto body = parse_body(parser);
+    parser->expect(TokenType::CBRACE, "Expected '}'.");
+    return body;
+}
+
 std::vector<std::unique_ptr<Stmt>> parse_body(Parser* parser) {
     std::vector<std::unique_ptr<Stmt>> stmts;
 
