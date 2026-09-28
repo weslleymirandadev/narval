@@ -51,6 +51,11 @@ namespace nv {
             // true while the target of an assignment is being inferred: that is what tells
             // reading `obj.field` from writing to it, and writing has its own rule (`mut`).
             bool inferring_assignment_target = false;
+
+    // Passe de DECLARACAO (FOUNDATION_SPEC.md fase 1): registra assinaturas e tipos, sem
+    // checar corpo. O corpo e' checado uma vez, depois do merge, pelo checker do
+    // programa — e' onde o prelúdio existe. Ver check_function_stmt.cpp.
+    bool signatures_only = false;
             // Rastrear se estamos dentro de um bloco `or { }` (return é permitido lá)
             int or_block_depth = 0;
             // Rastrear se a função atual é falível (usa propagate → retorna Result<T>)
