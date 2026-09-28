@@ -1,0 +1,57 @@
+# PoC: um netcat sobre a malha do `bait` — IPv69 wire header + Link (UDP) + o codec de texto.
+# Exercita de propósito as peças que a Fase B destravou: `net_str_to_hex`/`net_hex_to_str`
+# (migrados hoje, sobre o intrínseco `text`), `net_host_of`/`net_port_of` (migrados do C) e o
+# wire de 32 bytes do IPv69 montado em Narval puro.
+#
+# Uso:
+#   MODE=listen  PORT=6969 ./build-lsp-alltargets/narval tests/poc_baitcat.nv
+#   MODE=connect HOST=127.0.0.1 PORT=6969 MSG="oi" ./build-lsp-alltargets/narval tests/poc_baitcat.nv
+from "bait" import *;
+from "net" import *;
+from "system" import *;
+
+def env_or(nome: str, padrao: str): str {
+    mut v = system.env(nome);
+    if len(v) == 0 { return padrao; }
+    return v;
+}
+
+# Endereços do PoC (hex de 5 bytes, como o wire do IPv69 carrega).
+meu = "8e02a50225";
+dele = "8e02a50226";
+
+def responder(sk: int, origem: str, texto: str) {
+    # Devolve um datagrama novo, com os endereços trocados, para o host:porta de onde veio.
+    resposta = link_pack(dele, meu, 6969, 1, "00000001", net_str_to_hex("eco: " + texto));
+    link_send(sk, net_host_of(origem), net_port_of(origem), resposta);
+}
+
+modo = env_or("MODE", "listen");
+porta = net_digits_to_int(env_or("PORT", "6969"));
+host = env_or("HOST", "127.0.0.1");
+
+if modo == "listen" {
+    sk = link_bind("0.0.0.0", porta);
+    if sk < 0 { write("bind falhou: " + net_last_error()); exit(1); }
+    write("baitcat ouvindo na porta " + str(link_local_port(sk)) + " (ctrl-c para sair)");
+    while 1 == 1 {
+        rec = link_recv(sk, 60000);
+        if len(rec) == 0 { continue; }
+        bar = index_of(rec, "|");
+        origem = substr(rec, 0, bar);                          # "host:porta"
+        dgram = substr(rec, bar + 1, len(rec) - bar - 1);
+        texto = net_hex_to_str(link_payload(dgram));
+        write("de " + origem + " (" + addr_dotted(substr(dgram, 36, 10)) + "): " + texto);
+        responder(sk, origem, texto);
+    }
+}
+
+sk = link_bind("0.0.0.0", 0);
+dgram = link_pack(meu, dele, 12345, porta, "00000001", net_str_to_hex(env_or("MSG", "ola do baitcat")));
+if link_send(sk, host, porta, dgram) <= 0 { write("envio falhou: " + net_last_error()); exit(1); }
+write("mandou " + str(len(link_payload(dgram))) + " bytes para " + addr_dotted(dele));
+rec = link_recv(sk, 5000);
+if len(rec) == 0 { write("sem resposta"); exit(1); }
+bar = index_of(rec, "|");
+write("resposta: " + net_hex_to_str(link_payload(substr(rec, bar + 1, len(rec) - bar - 1))));
+link_close(sk);
