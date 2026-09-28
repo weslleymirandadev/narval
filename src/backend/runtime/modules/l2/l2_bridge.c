@@ -118,13 +118,19 @@ const char* nv_l2_recv(int h, int timeout_ms)
 {
     static char out[L2_MAX_FRAME * 2 + 1];
     if (h < 0 || h >= 32 || !g_l2[h].fd) return "";
-    struct timeval tv;
-    tv.tv_sec = timeout_ms / 1000;
-    tv.tv_usec = (timeout_ms % 1000) * 1000;
-    setsockopt(g_l2[h].fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+    /* timeout_ms == 0 significa "so o que ja chegou": o laco do chat chama sem parar para
+       imprimir na hora, e nao pode ficar preso esperando o proximo frame. */
+    int flags = MSG_DONTWAIT;
+    if (timeout_ms > 0) {
+        struct timeval tv;
+        tv.tv_sec = timeout_ms / 1000;
+        tv.tv_usec = (timeout_ms % 1000) * 1000;
+        setsockopt(g_l2[h].fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+        flags = 0;
+    }
 
     unsigned char frame[L2_MAX_FRAME];
-    ssize_t n = recv(g_l2[h].fd, frame, sizeof frame, 0);
+    ssize_t n = recv(g_l2[h].fd, frame, sizeof frame, flags);
     if (n <= 0) return "";
     /* só o que é IPv69: o socket é ETH_P_ALL, então o filtro é aqui — como o bind do l2.c */
     if (n < 14 || frame[12] != 0x69 || frame[13] != 0x69) return "";
