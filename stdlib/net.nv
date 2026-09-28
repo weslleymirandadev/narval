@@ -1,3 +1,4 @@
+from "netio" import *;
 # Network for Narval: addresses, TCP, UDP, DNS, timeouts and the knobs an advanced user wants.
 #
 #     from "net" import *;
@@ -107,10 +108,10 @@ def net_failed(): int { return -1; }
 def net_no_connection(): int { return -2; }
 
 # ── module-level helpers (the advanced API) ────────────────────────────────────
-def net_last_error(): str { return nv_net_last_error(); }
-def net_last_len(): int { return nv_net_last_len(); }
-def net_hostname(): str { return nv_net_hostname(); }
-def net_status(handle: int): int { return nv_net_status(handle); }
+def net_last_error(): str { return netio.last_error(); }
+def net_last_len(): int { return netio.last_len(); }
+def net_hostname(): str { return netio.hostname(); }
+def net_status(handle: int): int { return netio.status(handle); }
 
 # "host:port" normalised (IPv6 in brackets); "" when the text is not an endpoint.
 def net_addr(text: str): str { return net_addr_parse(text); }
@@ -130,12 +131,12 @@ def net_port_of(addr: str): int {
 }
 
 # Name resolution without an object, for the common case.
-def net_resolve(host: str): str { return nv_net_resolve(host); }
-def net_resolve_all(host: str): str { return nv_net_resolve_all(host); }
+def net_resolve(host: str): str { return netio.resolve(host); }
+def net_resolve_all(host: str): str { return netio.resolve_all(host); }
 
 # Handles ready for reading/writing. handles is a CSV ("3,7"), mode "r"/"w"/"rw".
 def net_poll(handles: str, mode: str, timeout_ms: int): str {
-    return nv_net_poll(handles, mode, timeout_ms);
+    return netio.poll(handles, mode, timeout_ms);
 }
 
 # ── addresses and names ───────────────────────────────────────────────────────
@@ -179,9 +180,9 @@ class Address {
 # resolve() gives the first answer, resolve_all() every answer (';'-separated, resolver
 # order): pick one, try the next, that is the caller's policy.
 class Dns {
-    public resolve(host: str): str { return nv_net_resolve(host); }
-    public resolve_all(host: str): str { return nv_net_resolve_all(host); }
-    public hostname(): str { return nv_net_hostname(); }
+    public resolve(host: str): str { return netio.resolve(host); }
+    public resolve_all(host: str): str { return netio.resolve_all(host); }
+    public hostname(): str { return netio.hostname(); }
 }
 
 # ── TCP ───────────────────────────────────────────────────────────────────────
@@ -190,7 +191,7 @@ class TcpListener {
 
     # Binds and listens. host "" (or "0.0.0.0") = every interface; 0 = any free port.
     public bind(host: str, port: int): int {
-        self.handle = nv_net_tcp_listen(host, port);
+        self.handle = netio.tcp_listen(host, port);
         if self.handle < 0 { return -1; }
         return 0;
     }
@@ -198,12 +199,12 @@ class TcpListener {
     # Waits for one connection: a stream handle, or net_no_connection() on timeout
     # (timeout_ms 0 = wait forever).
     public accept(timeout_ms: int): int {
-        return nv_net_accept(self.handle, timeout_ms);
+        return netio.accept(self.handle, timeout_ms);
     }
 
-    public port(): int { return nv_net_local_port(self.handle); }
-    public addr(): str { return nv_net_local_addr(self.handle); }
-    public close(): int { return nv_net_close(self.handle); }
+    public port(): int { return netio.local_port(self.handle); }
+    public addr(): str { return netio.local_addr(self.handle); }
+    public close(): int { return netio.close(self.handle); }
 }
 
 class TcpStream {
@@ -212,7 +213,7 @@ class TcpStream {
     # Connects; 0 on success, -1 on failure (net_last_error() tells why). timeout_ms 0 waits
     # forever, otherwise the connect is abandoned at the deadline.
     public connect(host: str, port: int, timeout_ms: int): int {
-        self.handle = nv_net_tcp_connect(host, port, timeout_ms);
+        self.handle = netio.tcp_connect(host, port, timeout_ms);
         if self.handle < 0 { return -1; }
         return 0;
     }
@@ -225,46 +226,46 @@ class TcpStream {
     }
 
     # Milliseconds for send and receive; 0 = block forever.
-    public timeout(ms: int): int { return nv_net_set_timeout(self.handle, ms); }
+    public timeout(ms: int): int { return netio.set_timeout(self.handle, ms); }
 
     # Raw socket option: "nodelay", "keepalive", "reuseaddr", "broadcast", "linger_ms",
     # "rcvbuf", "sndbuf", "nonblocking". 0 on success.
     public option(name: str, value: int): int {
-        return nv_net_set_option(self.handle, name, value);
+        return netio.set_option(self.handle, name, value);
     }
-    public option_of(name: str): int { return nv_net_get_option(self.handle, name); }
+    public option_of(name: str): int { return netio.get_option(self.handle, name); }
 
     # Non-blocking mode: reads return immediately with what is there (status 1 when empty),
     # so a caller can multiplex with net_poll().
-    public nonblocking(): int { return nv_net_set_option(self.handle, "nonblocking", 1); }
+    public nonblocking(): int { return netio.set_option(self.handle, "nonblocking", 1); }
 
     # Sends everything; the number of bytes, or -1. send_line appends "\n".
-    public send(text: str): int { return nv_net_send(self.handle, text); }
-    public send_line(text: str): int { return nv_net_send(self.handle, text + "\n"); }
+    public send(text: str): int { return netio.send(self.handle, text); }
+    public send_line(text: str): int { return netio.send(self.handle, text + "\n"); }
 
     # Up to max bytes (blocks until some data, the peer closes, or the timeout fires).
     # "" is not an error by itself: check status().
-    public recv(max_bytes: int): str { return nv_net_recv(self.handle, max_bytes); }
+    public recv(max_bytes: int): str { return netio.recv(self.handle, max_bytes); }
 
     # One line without the terminator (which is consumed).
-    public recv_line(): str { return nv_net_recv_until(self.handle, "\n", 65536); }
+    public recv_line(): str { return netio.recv_until(self.handle, "\n", 65536); }
 
     # Until any delimiter; the terminator is not part of the result.
     public recv_until(delim: str, max_bytes: int): str {
-        return nv_net_recv_until(self.handle, delim, max_bytes);
+        return netio.recv_until(self.handle, delim, max_bytes);
     }
 
     # Exactly n bytes ("" when the peer closes early) — the primitive for a framed protocol.
-    public recv_exact(n: int): str { return nv_net_recv_exact(self.handle, n); }
+    public recv_exact(n: int): str { return netio.recv_exact(self.handle, n); }
 
-    public peer(): str { return nv_net_peer_addr(self.handle); }
-    public local(): str { return nv_net_local_addr(self.handle); }
-    public status(): int { return nv_net_status(self.handle); }
-    public error(): str { return nv_net_last_error(); }
+    public peer(): str { return netio.peer_addr(self.handle); }
+    public local(): str { return netio.local_addr(self.handle); }
+    public status(): int { return netio.status(self.handle); }
+    public error(): str { return netio.last_error(); }
 
     # 0 closes the send side (the peer sees end of stream), 1 the receive side, 2 both.
-    public shutdown(how: int): int { return nv_net_shutdown(self.handle, how); }
-    public close(): int { return nv_net_close(self.handle); }
+    public shutdown(how: int): int { return netio.shutdown(self.handle, how); }
+    public close(): int { return netio.close(self.handle); }
 }
 
 # ── UDP ───────────────────────────────────────────────────────────────────────
@@ -295,34 +296,34 @@ class UdpSocket {
 
     # port 0 = any free port (ask for it afterwards with port()).
     public bind(host: str, port: int): int {
-        self.handle = nv_net_udp_bind(host, port);
+        self.handle = netio.udp_bind(host, port);
         if self.handle < 0 { return -1; }
         return 0;
     }
 
     public send_to(host: str, port: int, text: str): int {
-        return nv_net_udp_send_to(self.handle, host, port, text);
+        return netio.udp_send_to(self.handle, host, port, text);
     }
 
     # One datagram as "host:port|payload", or "" on timeout/error. A Datagram parses it:
     #     d = new Datagram(); d.parse(u.recv_from(2000));
     public recv_from(timeout_ms: int): str {
-        nv_net_set_timeout(self.handle, timeout_ms);
-        return nv_net_udp_recv_from(self.handle, 65535);
+        netio.set_timeout(self.handle, timeout_ms);
+        return netio.udp_recv_from(self.handle, 65535);
     }
 
     # The same, with no timeout change (the socket keeps whatever timeout it had).
-    public recv(max_bytes: int): str { return nv_net_udp_recv_from(self.handle, max_bytes); }
+    public recv(max_bytes: int): str { return netio.udp_recv_from(self.handle, max_bytes); }
 
-    public timeout(ms: int): int { return nv_net_set_timeout(self.handle, ms); }
+    public timeout(ms: int): int { return netio.set_timeout(self.handle, ms); }
     public option(name: str, value: int): int {
-        return nv_net_set_option(self.handle, name, value);
+        return netio.set_option(self.handle, name, value);
     }
-    public port(): int { return nv_net_local_port(self.handle); }
-    public addr(): str { return nv_net_local_addr(self.handle); }
-    public status(): int { return nv_net_status(self.handle); }
-    public error(): str { return nv_net_last_error(); }
-    public close(): int { return nv_net_close(self.handle); }
+    public port(): int { return netio.local_port(self.handle); }
+    public addr(): str { return netio.local_addr(self.handle); }
+    public status(): int { return netio.status(self.handle); }
+    public error(): str { return netio.last_error(); }
+    public close(): int { return netio.close(self.handle); }
 }
 
 
@@ -337,7 +338,7 @@ class UdpSocket {
 # would truncate: Packet keeps its whole buffer as hex, and the stream helpers
 # (send_hex/recv_hex) convert at the socket edge. A user sending lines never sees hex.
 
-def net_platform(): str { return nv_net_platform(); }
+def net_platform(): str { return netio.platform(); }
 # Os três ramos do `#ifdef` do C devolvem a mesma string: é constante, não primitiva.
 def net_caps(): str { return "tcp,udp,dns,poll"; }
 
@@ -482,7 +483,7 @@ class Packet {
     }
 
     public put_text(text: str): int {
-        self.hex = self.hex + nv_net_str_to_hex(text);
+        self.hex = self.hex + netio.str_to_hex(text);
         return 0;
     }
 
@@ -548,7 +549,7 @@ class Packet {
     public get_text(n: int): str {
         chunk = self.get_bytes(n);
         if len(chunk) == 0 { return ""; }
-        return nv_net_hex_to_str(chunk);
+        return netio.hex_to_str(chunk);
     }
 
     public get_str16(le: int): str {
@@ -579,7 +580,7 @@ class Frame {
 
     # The frame as hex text: u32be length + payload. Handy to log, queue or compare.
     public wrap(text: str): str {
-        return net_pack_int("", len(text), 4, 0) + nv_net_str_to_hex(text);
+        return net_pack_int("", len(text), 4, 0) + netio.str_to_hex(text);
     }
 
     public wrap_hex(payload_hex: str): str {
@@ -588,17 +589,17 @@ class Frame {
 
     # Send/receive on a raw socket handle (any TcpStream's `handle`).
     public send(handle: int, text: str): int {
-        return nv_net_send_hex(handle, self.wrap(text));
+        return netio.send_hex(handle, self.wrap(text));
     }
 
     public send_hex(handle: int, payload_hex: str): int {
-        return nv_net_send_hex(handle, self.wrap_hex(payload_hex));
+        return netio.send_hex(handle, self.wrap_hex(payload_hex));
     }
 
     # Declarado antes de recv(), que o chama: um metodo de classe so pode chamar um
     # irmao declarado acima (irmao posterior da' "has no body to call").
     public recv_hex(handle: int): str {
-        header = nv_net_recv_exact_hex(handle, 4);
+        header = netio.recv_exact_hex(handle, 4);
         if len(header) < 8 {
             self.detail = "closed or short header";
             return "";
@@ -608,7 +609,7 @@ class Frame {
             self.detail = "frame too large";
             return "";
         }
-        payload = nv_net_recv_exact_hex(handle, n);
+        payload = netio.recv_exact_hex(handle, n);
         if len(payload) < n * 2 {
             self.detail = "short payload";
             return "";
@@ -619,7 +620,7 @@ class Frame {
     public recv(handle: int): str {
         payload = self.recv_hex(handle);
         if len(payload) == 0 { return ""; }
-        return nv_net_hex_to_str(payload);
+        return netio.hex_to_str(payload);
     }
 
 }
@@ -655,7 +656,7 @@ class Poll {
 
     # Number of handles ready within timeout_ms; 0 means "nothing happened".
     public wait(timeout_ms: int): int {
-        self.ready_csv = nv_net_poll(self.handles, self.mode, timeout_ms);
+        self.ready_csv = netio.poll(self.handles, self.mode, timeout_ms);
         if len(self.ready_csv) == 0 { return 0; }
         return 1 + net_count_commas(self.ready_csv);
     }
@@ -690,19 +691,19 @@ class NetSocket {
         return 0;
     }
 
-    public option(name: str, value: int): int { return nv_net_set_option(self.handle, name, value); }
-    public get_option(name: str): int { return nv_net_get_option(self.handle, name); }
-    public timeout(ms: int): int { return nv_net_set_timeout(self.handle, ms); }
-    public shutdown(how: int): int { return nv_net_shutdown(self.handle, how); }
-    public close(): int { return nv_net_close(self.handle); }
-    public status(): int { return nv_net_status(self.handle); }
-    public error(): str { return nv_net_last_error(); }
-    public last_len(): int { return nv_net_last_len(); }
-    public send_hex(hex: str): int { return nv_net_send_hex(self.handle, hex); }
-    public recv_hex(n: int): str { return nv_net_recv_exact_hex(self.handle, n); }
+    public option(name: str, value: int): int { return netio.set_option(self.handle, name, value); }
+    public get_option(name: str): int { return netio.get_option(self.handle, name); }
+    public timeout(ms: int): int { return netio.set_timeout(self.handle, ms); }
+    public shutdown(how: int): int { return netio.shutdown(self.handle, how); }
+    public close(): int { return netio.close(self.handle); }
+    public status(): int { return netio.status(self.handle); }
+    public error(): str { return netio.last_error(); }
+    public last_len(): int { return netio.last_len(); }
+    public send_hex(hex: str): int { return netio.send_hex(self.handle, hex); }
+    public recv_hex(n: int): str { return netio.recv_exact_hex(self.handle, n); }
 
     public ready(mode: str, timeout_ms: int): int {
-        csv = nv_net_poll(str(self.handle), mode, timeout_ms);
+        csv = netio.poll(str(self.handle), mode, timeout_ms);
         if len(csv) > 0 { return 1; }
         return 0;
     }
