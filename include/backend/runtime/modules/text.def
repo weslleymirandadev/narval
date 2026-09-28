@@ -1,0 +1,8 @@
+// text.def — o módulo `text`: byte <-> código.
+//
+// É a primitiva que faltava na linguagem: sem `chr`/`ord` não há como converter byte em
+// caractere, e por isso `hex_to_str`/`str_to_hex` ficavam presos no C (IMPORT_PIPELINE_SPEC
+// §9). Semântica de BYTE (0..255), não de caractere Unicode: o que a linguagem chama de
+// string é byte, e é isso que o hex de ida e volta precisa.
+NV_FN(chr, (num),  bytes, 1)   // código -> string de um byte ("" fora de 0..255)
+NV_FN(ord, (bytes), num,  1)   // primeiro byte da string -> código (-1 se vazia)
