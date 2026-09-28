@@ -83,7 +83,8 @@ namespace {
     
     std::unique_ptr<Stmt> convert_assignment_to_declaration(
         AssignmentExprNode* assign_node,
-        nv::Checker* checker
+        nv::Checker* checker,
+        bool nested = false
     ) {
         if (assign_node->op != "=") {
             return nullptr;
@@ -112,6 +113,16 @@ namespace {
             decl_node->position = std::make_unique<PositionData>(*assign_node->position);
         }
 
+        if (nested) {
+            // O nome passa a existir no escopo de fora, mas a DECLARACAO (com o inicializador)
+            // fica dentro do bloco: fora dele o valor e' o default 0, em silencio. Isso troca um
+            // erro de escopo por resposta errada — ver o achado do "0 silencioso" na
+            // FOUNDATION_SPEC.md. O mesmo aviso existe no nivel de funcao.
+            checker->warn(decl_node.get(),
+                          "no value bound for '" + id_node->symbol +
+                              "' here; it is only assigned inside a nested block. Using 0");
+        }
+
         checker->scope->put_key(
             id_node->symbol,
             std::make_shared<nv::TypeVar>(checker->unify_ctx.get_next_var_id()),
@@ -128,7 +139,7 @@ namespace {
 
             if (stmt->kind == NodeType::AssignmentExpression) {
                 auto* assign_node = static_cast<AssignmentExprNode*>(stmt.get());
-                auto converted = convert_assignment_to_declaration(assign_node, checker);
+                auto converted = convert_assignment_to_declaration(assign_node, checker, true);   // bloco de `||`: ramo
                 if (converted) {
                     stmt.reset(converted.release());
                 }
@@ -153,13 +164,16 @@ namespace {
         }
     }
 
-    void process_codeblock(CodeBlock& body, nv::Checker* checker) {
+    // `nested` diz se estes statements estao dentro de um bloco (ramo de if, corpo de laco...):
+    // um vinculo que nasce ali passa a existir fora, mas sem valor — ver o aviso em
+    // convert_assignment_to_declaration.
+    void process_codeblock(CodeBlock& body, nv::Checker* checker, bool nested = false) {
         for (size_t i = 0; i < body.size(); i++) {
             auto& stmt = body[i];
             
             if (stmt->kind == NodeType::AssignmentExpression) {
                 auto* assign_node = static_cast<AssignmentExprNode*>(stmt.get());
-                auto converted = convert_assignment_to_declaration(assign_node, checker);
+                auto converted = convert_assignment_to_declaration(assign_node, checker, nested);
                 if (converted) {
                     stmt.reset(converted.release());
                 }
@@ -168,24 +182,24 @@ namespace {
             switch (stmt->kind) {
                 case NodeType::IfStatement: {
                     auto* if_stmt = static_cast<IfStatementNode*>(stmt.get());
-                    process_codeblock(if_stmt->consequent, checker);
-                    process_codeblock(if_stmt->alternate, checker);
+                    process_codeblock(if_stmt->consequent, checker, true);
+                    process_codeblock(if_stmt->alternate, checker, true);
                     break;
                 }
                 case NodeType::ForStatement: {
                     auto* for_stmt = static_cast<ForStmtNode*>(stmt.get());
-                    process_codeblock(for_stmt->body, checker);
-                    process_codeblock(for_stmt->else_block, checker);
+                    process_codeblock(for_stmt->body, checker, true);
+                    process_codeblock(for_stmt->else_block, checker, true);
                     break;
                 }
                 case NodeType::WhileStatement: {
                     auto* while_stmt = static_cast<WhileStmtNode*>(stmt.get());
-                    process_codeblock(while_stmt->body, checker);
+                    process_codeblock(while_stmt->body, checker, true);
                     break;
                 }
                 case NodeType::ForeverStatement: {
                     auto* forever_stmt = static_cast<ForeverStmtNode*>(stmt.get());
-                    process_codeblock(forever_stmt->body, checker);
+                    process_codeblock(forever_stmt->body, checker, true);
                     break;
                 }
                 case NodeType::FunctionStatement: {
@@ -194,7 +208,7 @@ namespace {
                 case NodeType::MatchStatement: {
                     auto* match_stmt = static_cast<MatchStmtNode*>(stmt.get());
                     for (auto& case_body : match_stmt->bodies) {
-                        process_codeblock(case_body, checker);
+                        process_codeblock(case_body, checker, true);
                     }
                     break;
                 }
