@@ -1,0 +1,4 @@
+# Expected:
+# 97
+from "lib/usaruntime" import *;
+write(codigo("a"));
