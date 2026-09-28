@@ -21,6 +21,7 @@ from "bait" import *;
 from "net" import *;
 from "system" import *;
 from "l2" import *;
+from "keyboard" import *;
 
 def arg_or(i: int, padrao: str): str {
     if i < system.argc(): return system.argv(i);
@@ -60,122 +61,128 @@ def enviar_texto(fd: int, dst_mac: str, dst_addr: str, dst_porta: int, t: int, s
     if rc != 0 { write("envio falhou"); }
 }
 
-# Escoa o que chegou e imprime. Devolve 1 SO em SHUTDOWN — "viu mensagem" nao encerra a
-# conversa: quem decide isso e o stdin (linha vazia). Confundir os dois encerrava o servidor
-# na primeira mensagem do peer.
-def drenar(fd: int, ms: int): int {
-    mut rodadas = 0;
-    debug = system.env("ICSP_DEBUG");
-    while rodadas < 6 {
-        f = l2.recv(fd, ms);
-        if len(f) > 0 {
-            if debug == "1" {
-                write("[dbg] frame " + str(len(f)) + " eth=" + str(frame_ethertype_ok(f)) + " nh=" + str(frame_next_header(f)) + " dstport=" + str(frame_dst_port(f)) + " check=" + str(icsp_check(frame_payload(f))) + " kind=" + str(icsp_chunk_kind(icsp_first_chunk(frame_payload(f)))));
-            }
-            if frame_ethertype_ok(f) == 1 {
-                if frame_next_header(f) == 2 {
-                    if frame_dst_port(f) == porta {
-                        pkt = frame_payload(f);
-                        if icsp_check(pkt) == 1 {
-                            ch = icsp_first_chunk(pkt);
-                            kind = icsp_chunk_kind(ch);
-                            if kind == 0 {
-                                write(addr_dotted(frame_src_addr(f)) + ": " + net_hex_to_str(data_de_chunk(ch)));
-                            }
-                            if kind == 8 { write("[icsp] SHUTDOWN do outro lado"); return 1; }
-                        }
-                    }
-                }
-            }
-        }
-        rodadas = rodadas + 1;
-    }
-    return 0;
-}
-
 fd = l2.open(ifname);
 if fd < 0 { write("l2.open(" + ifname + ") falhou: precisa de CAP_NET_RAW e a interface existir"); exit(1); }
 write("ICSP em " + ifname + " mac " + l2.mac(fd) + " addr " + addr_dotted(meu) + " porta " + str(porta));
 
+# --- Handshake: o servidor espera o INIT, o cliente o provoca. Depois os dois percorrem o
+# MESMO laco: esvaziar o socket (imprime na hora) e checar o teclado sem travar. O MAC e o
+# endereco do peer vem do frame; por isso os dois lados terminam com os mesmos dois valores.
+mut peer_mac = "ffffffffffff";
+mut peer_addr = "";
+mut conectado = 0;
+
 if modo == "listen" {
-    # Servidor: espera o INIT, responde INIT_ACK e conversa. O MAC do peer vem do frame.
-    mut peer_mac = "";
-    mut peer_addr = "";
-    mut conn = 0;
-    while conn == 0 {
+    while conectado == 0 {
         f = l2.recv(fd, 60000);
         if len(f) > 0 {
             if frame_ethertype_ok(f) == 1 && frame_next_header(f) == 2 && frame_dst_port(f) == porta {
                 pkt = frame_payload(f);
                 if icsp_check(pkt) == 1 {
-                    ch = icsp_first_chunk(pkt);
-                    if icsp_chunk_kind(ch) == 1 {
+                    if icsp_chunk_kind(icsp_first_chunk(pkt)) == 1 {
                         assoc = icsp_assoc_id(pkt);
                         peer_mac = frame_src_mac(f);
                         peer_addr = frame_src_addr(f);
                         ack = icsp_pack(porta, frame_src_port(f), assoc, icsp_chunk(2, 0, init_data()));
-                        ff = frame_pack(peer_mac, l2.mac(fd), meu, peer_addr, 2, 64, porta, frame_src_port(f), ack);
-                        l2.send(fd, ff);
+                        if l2.send(fd, frame_pack(peer_mac, l2.mac(fd), meu, peer_addr, 2, 64, porta, frame_src_port(f), ack)) != 0 {
+                            write("INIT_ACK nao saiu");
+                        }
                         write("[icsp] INIT de " + addr_dotted(peer_addr) + ", associacao " + str(assoc) + " — conectado");
-                        conn = 1;
+                        conectado = 1;
                     }
                 }
             }
         }
     }
-    write("escreva e Enter (linha vazia encerra)");
-    mut vivo = 1;
-    while vivo == 1 {
-        if drenar(fd, 200) == 1 { vivo = 0; }
-        if vivo == 1 {
-            texto = read();
-            if system.env("ICSP_DEBUG") == "1" { write("[dbg-read-srv] " + str(len(texto)) + " chars"); }
-            if len(texto) == 0 { vivo = 0; }
-            else { enviar_texto(fd, peer_mac, peer_addr, porta, tsn, seq, texto); tsn = tsn + 1; seq = seq + 1; }
+}
+else {
+    destino = addr_wire(arg_or(3, "8e.02.a5.02.26"));
+    peer_addr = destino;
+    init = icsp_pack(porta, porta, assoc, icsp_chunk(1, 0, init_data()));
+    if l2.send(fd, frame_pack("ffffffffffff", l2.mac(fd), meu, destino, 2, 64, porta, porta, init)) != 0 { write("INIT nao saiu"); exit(1); }
+    mut tentativas = 0;
+    while conectado == 0 && tentativas < 8 {
+        f = l2.recv(fd, 1000);
+        if len(f) > 0 {
+            if frame_next_header(f) == 2 && icsp_check(frame_payload(f)) == 1 {
+                if icsp_chunk_kind(icsp_first_chunk(frame_payload(f))) == 2 {
+                    peer_mac = frame_src_mac(f);
+                    write("[icsp] INIT_ACK de " + addr_dotted(frame_src_addr(f)) + " — conectado (associacao " + str(assoc) + ")");
+                    conectado = 1;
+                }
+            }
         }
+        tentativas = tentativas + 1;
     }
-    bye = icsp_pack(porta, porta, assoc, icsp_chunk(8, 0, ""));
-    l2.send(fd, frame_pack(peer_mac, l2.mac(fd), meu, peer_addr, 2, 64, porta, porta, bye));
-    l2.close(fd);
-    write("encerrando");
-    exit(0);
+    if conectado == 0 { write("sem resposta ao INIT: o outro lado esta ouvindo nessa interface?"); exit(1); }
 }
 
-# Cliente: INIT -> INIT_ACK -> conversa.
-destino = addr_wire(arg_or(3, "8e.02.a5.02.26"));
-init = icsp_pack(porta, porta, assoc, icsp_chunk(1, 0, init_data()));
-l2.send(fd, frame_pack("ffffffffffff", l2.mac(fd), meu, destino, 2, 64, porta, porta, init));
+write("conectado com " + addr_dotted(peer_addr) + " — escreva e Enter (\"sair\" encerra)");
 
-mut conectado = 0;
-mut tentativas = 0;
-mut peer_mac = "ffffffffffff";
-while conectado == 0 && tentativas < 8 {
-    f = l2.recv(fd, 1000);
-    if len(f) > 0 {
-        if frame_next_header(f) == 2 && icsp_check(frame_payload(f)) == 1 {
-            if icsp_chunk_kind(icsp_first_chunk(frame_payload(f))) == 2 {
-                peer_mac = frame_src_mac(f);
-                write("[icsp] INIT_ACK de " + addr_dotted(frame_src_addr(f)) + " — conectado (associacao " + str(assoc) + ")");
-                conectado = 1;
+# O laco dos dois papeis: primeiro imprime tudo o que chegou (l2.recv com 0 = so o que ja esta
+# la, sem esperar), depois olha o teclado sem travar. Fechar so acontece com "sair" ou com um
+# SHUTDOWN vindo do outro lado.
+mut vivo = 1;
+while vivo == 1 {
+    mut tem = 1;
+    while tem == 1 {
+        g = l2.recv(fd, 0);
+        if len(g) == 0 {
+            tem = 0;
+        } else {
+            if frame_ethertype_ok(g) == 1 && frame_next_header(g) == 2 && frame_dst_port(g) == porta {
+                pkt = frame_payload(g);
+                if icsp_check(pkt) == 1 {
+                    ch = icsp_first_chunk(pkt);
+                    kind = icsp_chunk_kind(ch);
+                    if kind == 0 {
+                        write(addr_dotted(frame_src_addr(g)) + ": " + net_hex_to_str(data_de_chunk(ch)));
+                    }
+                    if kind == 8 {
+                        write("[icsp] SHUTDOWN do outro lado");
+                        vivo = 0;
+                    }
+                }
             }
         }
     }
-    tentativas = tentativas + 1;
-}
-if conectado == 0 { write("sem resposta ao INIT: o outro lado esta ouvindo nessa interface?"); exit(1); }
-
-write("escreva e Enter (linha vazia encerra)");
-mut vivo = 1;
-while vivo == 1 {
-    texto = read();
-    if system.env("ICSP_DEBUG") == "1" { write("[dbg-read-cli] " + str(len(texto)) + " chars"); }
-    if len(texto) == 0 { vivo = 0; }
-    else {
-        enviar_texto(fd, peer_mac, destino, porta, tsn, seq, texto);
-        tsn = tsn + 1; seq = seq + 1;
-        if drenar(fd, 400) == 1 { vivo = 0; }
+    if vivo == 1 {
+        if keyboard.ready(50) == 1 {
+            linha = keyboard.line();
+            if linha == "sair" {
+                vivo = 0;
+            } else {
+                if len(linha) > 0 {
+                    enviar_texto(fd, peer_mac, peer_addr, porta, tsn, seq, linha);
+                    tsn = tsn + 1;
+                    seq = seq + 1;
+                }
+            }
+        }
     }
 }
-l2.send(fd, frame_pack(peer_mac, l2.mac(fd), meu, destino, 2, 64, porta, porta, icsp_pack(porta, porta, assoc, icsp_chunk(8, 0, ""))));
+
+# Ultimo dreno: imprime o que chegou enquanto eu decidia sair.
+mut ultimo = 1;
+while ultimo == 1 {
+    g = l2.recv(fd, 0);
+    if len(g) == 0 {
+        ultimo = 0;
+    } else {
+        if frame_ethertype_ok(g) == 1 && frame_next_header(g) == 2 && frame_dst_port(g) == porta {
+            pkt = frame_payload(g);
+            if icsp_check(pkt) == 1 {
+                ch = icsp_first_chunk(pkt);
+                if icsp_chunk_kind(ch) == 0 {
+                    write(addr_dotted(frame_src_addr(g)) + ": " + net_hex_to_str(data_de_chunk(ch)));
+                }
+            }
+        }
+    }
+}
+
+# Avisa o outro lado (o par do "sair"): ele encerra o laco pelo SHUTDOWN.
+bye = icsp_pack(porta, porta, assoc, icsp_chunk(8, 0, ""));
+l2.send(fd, frame_pack(peer_mac, l2.mac(fd), meu, peer_addr, 2, 64, porta, porta, bye));
 l2.close(fd);
-write("encerrando");
+write("saiu");
