@@ -1,0 +1,181 @@
+# PoC: chat estilo netcat sobre ICSP (o transporte de sessao do IPv69), no Ethernet cru, sem
+# IPv4 em nenhum ponto do caminho. ICSP vai em next_header=2 (STREAM) e o formato e o do repo
+# dele (include/ICSP/icsp.h):
+#   header ICSP = 12 bytes [src_port 2][dst_port 2][ver 1][flags 1][assoc_id 4][crc 2]
+#   chunk       = [type 1][flags 1][len 2][data]
+#   DATA (0)    = [tsn 4][stream_id 2][stream_seq 2][payload]
+#   INIT (1), INIT_ACK (2), SACK (5), SHUTDOWN (8) — a mesma numeracao dele.
+#
+# LIMITE DECLARADO: isto e o FRAMING do ICSP, nao a sessao segura. O INIT daqui leva os campos
+# que eu tenho (ver, flags, streams, ephemeral de 32 bytes, ts) e NAO leva a prova de identidade
+# (id_pub + assinatura ed25519) nem cookie; os DATA seguem em claro, sem secretbox. Por isso
+# este PoC fala Narval<->Narval e NAO com os peers C dele, que exigem handshake autenticado e
+# chave derivada. Fechar essa distancia e portar o handshake: as pecas ja estao no modulo
+# `crypto` (sha512, sign, keypair, scalarmult, secretbox) e no ed25519 vendorado (hmac_sha512).
+#
+# Uso:
+#   sudo narval tests/poc_icsp_chat.nv listen  <ifname> <meu-dotted>
+#   sudo narval tests/poc_icsp_chat.nv connect <ifname> <meu-dotted> <destino-dotted>
+# Em veth, um lado em cada ponta (o TX de uma ponta sai pela outra).
+from "bait" import *;
+from "net" import *;
+from "system" import *;
+from "l2" import *;
+
+def arg_or(i: int, padrao: str): str {
+    if i < system.argc(): return system.argv(i);
+    return padrao;
+}
+
+# Os campos do INIT dele, sem a identidade: [ver 1][flags 1][streams 2][eph 32][ts 8].
+def init_data(): str {
+    return "0100000100112233445566778899aabbccddeeff00112233445566778899aabbccddeeff0000000000000000";
+}
+
+# O payload de um DATA chunk, nos offsets dele: os 8 primeiros bytes sao tsn+stream+seq.
+def data_de_chunk(chunk_hex: str): str {
+    d = icsp_chunk_data(chunk_hex);
+    if len(d) < 16 { return ""; }
+    return substr(d, 16, len(d) - 16);
+}
+
+modo = arg_or(0, "listen");
+ifname = arg_or(1, "veth0");
+meu = addr_wire(arg_or(2, "8e.02.a5.02.25"));
+porta = 9696;
+ver = 1;
+flags = 0;
+assoc = 0x1f904e20;
+mut tsn = 1;
+mut seq = 0;
+
+def enviar_texto(fd: int, dst_mac: str, dst_addr: str, dst_porta: int, t: int, s: int, texto: str) {
+    d = icsp_data_chunk(t, 1, s, net_str_to_hex(texto));
+    pkt = icsp_pack(porta, dst_porta, assoc, d);
+    f = frame_pack(dst_mac, l2.mac(fd), meu, dst_addr, 2, 64, porta, dst_porta, pkt);
+    rc = l2.send(fd, f);
+    if system.env("ICSP_DEBUG") == "1" {
+        write("[dbg-envio] para mac " + dst_mac + " addr " + addr_dotted(dst_addr) + " bytes=" + str(len(f)) + " rc=" + str(rc));
+    }
+    if rc != 0 { write("envio falhou"); }
+}
+
+# Escoa o que chegou e imprime. Devolve 1 SO em SHUTDOWN — "viu mensagem" nao encerra a
+# conversa: quem decide isso e o stdin (linha vazia). Confundir os dois encerrava o servidor
+# na primeira mensagem do peer.
+def drenar(fd: int, ms: int): int {
+    mut rodadas = 0;
+    debug = system.env("ICSP_DEBUG");
+    while rodadas < 6 {
+        f = l2.recv(fd, ms);
+        if len(f) > 0 {
+            if debug == "1" {
+                write("[dbg] frame " + str(len(f)) + " eth=" + str(frame_ethertype_ok(f)) + " nh=" + str(frame_next_header(f)) + " dstport=" + str(frame_dst_port(f)) + " check=" + str(icsp_check(frame_payload(f))) + " kind=" + str(icsp_chunk_kind(icsp_first_chunk(frame_payload(f)))));
+            }
+            if frame_ethertype_ok(f) == 1 {
+                if frame_next_header(f) == 2 {
+                    if frame_dst_port(f) == porta {
+                        pkt = frame_payload(f);
+                        if icsp_check(pkt) == 1 {
+                            ch = icsp_first_chunk(pkt);
+                            kind = icsp_chunk_kind(ch);
+                            if kind == 0 {
+                                write(addr_dotted(frame_src_addr(f)) + ": " + net_hex_to_str(data_de_chunk(ch)));
+                            }
+                            if kind == 8 { write("[icsp] SHUTDOWN do outro lado"); return 1; }
+                        }
+                    }
+                }
+            }
+        }
+        rodadas = rodadas + 1;
+    }
+    return 0;
+}
+
+fd = l2.open(ifname);
+if fd < 0 { write("l2.open(" + ifname + ") falhou: precisa de CAP_NET_RAW e a interface existir"); exit(1); }
+write("ICSP em " + ifname + " mac " + l2.mac(fd) + " addr " + addr_dotted(meu) + " porta " + str(porta));
+
+if modo == "listen" {
+    # Servidor: espera o INIT, responde INIT_ACK e conversa. O MAC do peer vem do frame.
+    mut peer_mac = "";
+    mut peer_addr = "";
+    mut conn = 0;
+    while conn == 0 {
+        f = l2.recv(fd, 60000);
+        if len(f) > 0 {
+            if frame_ethertype_ok(f) == 1 && frame_next_header(f) == 2 && frame_dst_port(f) == porta {
+                pkt = frame_payload(f);
+                if icsp_check(pkt) == 1 {
+                    ch = icsp_first_chunk(pkt);
+                    if icsp_chunk_kind(ch) == 1 {
+                        assoc = icsp_assoc_id(pkt);
+                        peer_mac = frame_src_mac(f);
+                        peer_addr = frame_src_addr(f);
+                        ack = icsp_pack(porta, frame_src_port(f), assoc, icsp_chunk(2, 0, init_data()));
+                        ff = frame_pack(peer_mac, l2.mac(fd), meu, peer_addr, 2, 64, porta, frame_src_port(f), ack);
+                        l2.send(fd, ff);
+                        write("[icsp] INIT de " + addr_dotted(peer_addr) + ", associacao " + str(assoc) + " — conectado");
+                        conn = 1;
+                    }
+                }
+            }
+        }
+    }
+    write("escreva e Enter (linha vazia encerra)");
+    mut vivo = 1;
+    while vivo == 1 {
+        if drenar(fd, 200) == 1 { vivo = 0; }
+        if vivo == 1 {
+            texto = read();
+            if system.env("ICSP_DEBUG") == "1" { write("[dbg-read-srv] " + str(len(texto)) + " chars"); }
+            if len(texto) == 0 { vivo = 0; }
+            else { enviar_texto(fd, peer_mac, peer_addr, porta, tsn, seq, texto); tsn = tsn + 1; seq = seq + 1; }
+        }
+    }
+    bye = icsp_pack(porta, porta, assoc, icsp_chunk(8, 0, ""));
+    l2.send(fd, frame_pack(peer_mac, l2.mac(fd), meu, peer_addr, 2, 64, porta, porta, bye));
+    l2.close(fd);
+    write("encerrando");
+    exit(0);
+}
+
+# Cliente: INIT -> INIT_ACK -> conversa.
+destino = addr_wire(arg_or(3, "8e.02.a5.02.26"));
+init = icsp_pack(porta, porta, assoc, icsp_chunk(1, 0, init_data()));
+l2.send(fd, frame_pack("ffffffffffff", l2.mac(fd), meu, destino, 2, 64, porta, porta, init));
+
+mut conectado = 0;
+mut tentativas = 0;
+mut peer_mac = "ffffffffffff";
+while conectado == 0 && tentativas < 8 {
+    f = l2.recv(fd, 1000);
+    if len(f) > 0 {
+        if frame_next_header(f) == 2 && icsp_check(frame_payload(f)) == 1 {
+            if icsp_chunk_kind(icsp_first_chunk(frame_payload(f))) == 2 {
+                peer_mac = frame_src_mac(f);
+                write("[icsp] INIT_ACK de " + addr_dotted(frame_src_addr(f)) + " — conectado (associacao " + str(assoc) + ")");
+                conectado = 1;
+            }
+        }
+    }
+    tentativas = tentativas + 1;
+}
+if conectado == 0 { write("sem resposta ao INIT: o outro lado esta ouvindo nessa interface?"); exit(1); }
+
+write("escreva e Enter (linha vazia encerra)");
+mut vivo = 1;
+while vivo == 1 {
+    texto = read();
+    if system.env("ICSP_DEBUG") == "1" { write("[dbg-read-cli] " + str(len(texto)) + " chars"); }
+    if len(texto) == 0 { vivo = 0; }
+    else {
+        enviar_texto(fd, peer_mac, destino, porta, tsn, seq, texto);
+        tsn = tsn + 1; seq = seq + 1;
+        if drenar(fd, 400) == 1 { vivo = 0; }
+    }
+}
+l2.send(fd, frame_pack(peer_mac, l2.mac(fd), meu, destino, 2, 64, porta, porta, icsp_pack(porta, porta, assoc, icsp_chunk(8, 0, ""))));
+l2.close(fd);
+write("encerrando");
