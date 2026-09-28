@@ -113,14 +113,21 @@ def net_hostname(): str { return nv_net_hostname(); }
 def net_status(handle: int): int { return nv_net_status(handle); }
 
 # "host:port" normalised (IPv6 in brackets); "" when the text is not an endpoint.
-def net_addr(text: str): str { return nv_net_addr_parse(text); }
+def net_addr(text: str): str { return net_addr_parse(text); }
 
 # Host of "host:port" (brackets of an IPv6 literal are stripped). Splitting in C keeps it
 # exact for every shape ("[::1]:80", bare IPv6, ":8080").
-def net_host_of(addr: str): str { return nv_net_host_of(addr); }
 
 # Port of "host:port"; 0 when there is none.
-def net_port_of(addr: str): int { return nv_net_port_of(addr); }
+def net_port_of(addr: str): int {
+    mut a = net_addr_parse(addr);
+    if len(a) == 0 { return 0; }
+    mut last = -1;
+    mut i = 0;
+    while i < len(a) { if substr(a, i, 1) == ":" { last = i; } i = i + 1; }
+    if last < 0 { return 0; }
+    return net_digits_to_int(substr(a, last + 1, len(a) - last - 1));
+}
 
 # Name resolution without an object, for the common case.
 def net_resolve(host: str): str { return nv_net_resolve(host); }
@@ -140,7 +147,7 @@ class Address {
 
     # Fills host/port from "host:port" (or from a bare host, port 0). 0 on success.
     public parse(text: str): int {
-        normalised = nv_net_addr_parse(text);
+        normalised = net_addr_parse(text);
         if len(normalised) == 0 { self.host = ""; self.port = 0; self.canonical = ""; return -1; }
         self.canonical = normalised;
         self.host = net_host_of(normalised);
@@ -333,6 +340,73 @@ class UdpSocket {
 def net_platform(): str { return nv_net_platform(); }
 # Os três ramos do `#ifdef` do C devolvem a mesma string: é constante, não primitiva.
 def net_caps(): str { return "tcp,udp,dns,poll"; }
+
+# Parsing de endereço em Narval, replicando o split_host_port do C (net_addr.c): "[v6]:port",
+# "[v6]", "host:port", IPv6 cru (corte no ÚLTIMO dois-pontos) e host sem porta. Devolve o
+# endereço normalizado, ou "" se for inválido — a mesma regra do nv_net_addr_parse.
+def net_digits_to_int(t: str): int {
+    if len(t) > 0 && substr(t, 0, 1) == "-" { return -1; }
+    mut v = 0;
+    mut i = 0;
+    while i < len(t) {
+        mut d = index_of("0123456789", substr(t, i, 1));
+        if d < 0 { return -1; }
+        v = v * 10 + d;
+        i = i + 1;
+    }
+    return v;
+}
+
+def net_host_of(addr: str): str {
+    mut a = net_addr_parse(addr);
+    if len(a) == 0 { return ""; }
+    if substr(a, 0, 1) == "[" {
+        mut c = index_of(a, "]");
+        if c < 0 { return ""; }
+        return substr(a, 1, c - 1);
+    }
+    mut last = -1;
+    mut i = 0;
+    while i < len(a) { if substr(a, i, 1) == ":" { last = i; } i = i + 1; }
+    if last < 0 { return a; }
+    return substr(a, 0, last);
+}
+
+def net_addr_parse(text: str): str {
+    if len(text) == 0 { return ""; }
+    mut host = "";
+    mut port = 0;
+    if substr(text, 0, 1) == "[" {
+        mut close = index_of(text, "]");
+        if close < 0 { return ""; }
+        host = substr(text, 1, close - 1);
+        if close + 1 < len(text) {
+            if substr(text, close + 1, 1) != ":" { return ""; }
+            port = net_digits_to_int(substr(text, close + 2, len(text) - close - 2));
+            if port < 0 { return ""; }
+        }
+    } else {
+        # último dois-pontos (IPv6 cru corta no último, como o C)
+        mut last = -1;
+        mut i = 0;
+        mut ncolons = 0;
+        while i < len(text) {
+            if substr(text, i, 1) == ":" { last = i; ncolons = ncolons + 1; }
+            i = i + 1;
+        }
+        if ncolons == 0 { host = text; }
+        else {
+            host = substr(text, 0, last);
+            port = net_digits_to_int(substr(text, last + 1, len(text) - last - 1));
+            if port < 0 { return ""; }
+        }
+    }
+    if port > 65535 { return ""; }
+    if len(host) == 0 { return ":" + str(port); }
+    if index_of(host, ":") >= 0 { return "[" + host + "]:" + str(port); }
+    return host + ":" + str(port);
+}
+
 
 # 1 when this build can do `cap` ("tcp", "udp", "dns", "poll", "raw"). Asked at runtime
 # instead of presumed: L2 cru needs AF_PACKET on Linux or Npcap on Windows and is not in the
