@@ -1,0 +1,10 @@
+// l2.def — o módulo `l2`: o Ethernet cru do IPv69 (AF_PACKET, EtherType 0x6969).
+//
+// Espelha o src/IPv69/l2.c dele: abrir a interface, mandar o frame inteiro (o eth header faz
+// parte), receber o frame inteiro. O frame é MONTADO em Narval (bait.frame_ipv69), byte a byte
+// igual ao build_frame — aqui só ficam as syscalls, que são primitiva de verdade.
+NV_FN(open,  (bytes), num, 1)   // ifname -> handle (-1: precisa de CAP_NET_RAW)
+NV_FN(mac,   (num),   bytes, 1) // o MAC da interface em hex (12 chars) — vai no eth src
+NV_FN(send,  (num, bytes), num, 2)  // handle, frame hex (eth + IPv69 + carga)
+NV_FN(recv,  (num, num), bytes, 2)  // handle, timeout_ms -> frame hex ("" se nada)
+NV_FN(close, (num),   num, 1)
