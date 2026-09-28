@@ -1,4 +1,10 @@
+# Módulo de usuário importando um módulo de RUNTIME (a superfície `text`): o caminho que a fase B
+# abriu — a face pode importar um módulo do registry, e a injeção do namespace acontece no
+# merge. Ver RUNTIME_MODULES_DESIGN.md §7 e FOUNDATION_SPEC.md fase 1.
+# Module: usaruntime.nv = tests/support/usaruntime.nv
 # Expected:
 # 97
-from "../support/usaruntime" import *;
+
+from "usaruntime" import *;
+
 write(codigo("a"));
