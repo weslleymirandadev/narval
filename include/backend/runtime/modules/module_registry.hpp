@@ -124,6 +124,16 @@ inline const std::vector<RuntimeModule>& runtime_modules() {
 #undef NV_FN
             out.push_back({ "text", std::vector<RuntimeFn>(std::begin(fns), std::end(fns)) });
         }
+        {
+            // fileio — arquivos por handle. As impls e os wrappers já existiam em
+            // core/file_bridge.c; aqui só se declara a superfície (mesmo prefixo de símbolo).
+#define NV_FN(name, params, ret, arity) { #name, #params, #ret, "nv_file_" #name "_builtin", arity },
+            const RuntimeFn fns[] = {
+#include "file.def"
+            };
+#undef NV_FN
+            out.push_back({ "fileio", std::vector<RuntimeFn>(std::begin(fns), std::end(fns)) });
+        }
         return out;
     }();
     return mods;
