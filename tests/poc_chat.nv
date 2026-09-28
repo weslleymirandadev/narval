@@ -25,10 +25,18 @@ def arg_or(i: int, nome_env: str, padrao: str): str {
 }
 
 modo = arg_or(0, "MODE", "listen");
+# Os três são VINCULADOS aqui (e não só dentro do if): a linguagem não deixa um valor que
+# nasce num bloco aninhado escapar dele — o compilador avisa "no value bound for X here; it is
+# only assigned inside a nested block. Using 0" e segue com 0. Vincular antes faz o `if` apenas
+# atualizar, que é o que se espera.
+mut host = "0.0.0.0";
+mut porta = 1919;
+mut apelido = "eu";
+
 if modo == "listen" {
     porta = net_digits_to_int(arg_or(1, "PORT", "1919"));
-    host = arg_or(2, "BIND", "0.0.0.0");
-    apelido = arg_or(3, "NICK", "eu");
+    apelido = arg_or(2, "NICK", "eu");
+    host = arg_or(3, "BIND", "0.0.0.0");
 } else {
     host = arg_or(1, "HOST", "127.0.0.1");
     porta = net_digits_to_int(arg_or(2, "PORT", "1919"));
