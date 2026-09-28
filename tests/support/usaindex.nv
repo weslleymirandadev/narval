@@ -1,0 +1,3 @@
+def acha(t: str, sub: str): int {
+    return index_of(t, sub);
+}
