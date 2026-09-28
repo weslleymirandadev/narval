@@ -20,6 +20,7 @@ from "netio" import *;
 # Este arquivo NÃO importa `crypto`: um arquivo de módulo ainda não consegue importar módulo
 # de runtime (módulo `.nv` só enxerga módulos `.nv`), então o digest entra pronto. É também o
 # corte que interessa — aqui é aritmética de bits e formatação, lá é primitiva criptográfica.
+from "fileio" import *;
 
 from "strings" import *;
 
@@ -322,16 +323,16 @@ def keyring_pub_path(home: str, keyfile: str): str {
     return keyring_key_path(home, keyfile) + ".pub";
 }
 
-def keyring_has_key(path: str): int { return nv_file_exists(path); }
+def keyring_has_key(path: str): int { return fileio.exists(path); }
 
 # A seed em hex; "" quando não há arquivo, "!" quando o keyring é protegido por passphrase
 # (cabeçalho H69E1) ou está fora do formato.
 def keyring_read_seed(path: str): str {
-    if nv_file_exists(path) == 0 { return ""; }
-    h = nv_file_open(path, "r");
+    if fileio.exists(path) == 0 { return ""; }
+    h = fileio.open(path, "r");
     if h < 0 { return ""; }
-    line = nv_file_read_line(h);
-    nv_file_close(h);
+    line = fileio.read_line(h);
+    fileio.close(h);
     if len(line) != 64 { return "!"; }
     if bait_hex_ok(line) == 0 { return "!"; }
     return line;
@@ -339,29 +340,29 @@ def keyring_read_seed(path: str): str {
 
 # Escreve a seed em hex, uma linha — como o keygen dele escreve. Devolve os caracteres escritos.
 def keyring_write_seed(path: str, seed_hex: str): int {
-    h = nv_file_open(path, "w");
+    h = fileio.open(path, "w");
     if h < 0 { return -1; }
-    n = nv_file_write(h, seed_hex + "\n");
-    nv_file_close(h);
+    n = fileio.write(h, seed_hex + "\n");
+    fileio.close(h);
     return n;
 }
 
 # Escreve a pública no formato "<hex> <comentário>".
 def keyring_write_pub(path: str, pub_hex: str, comment: str): int {
-    h = nv_file_open(path, "w");
+    h = fileio.open(path, "w");
     if h < 0 { return -1; }
-    n = nv_file_write(h, pub_hex + " " + comment + "\n");
-    nv_file_close(h);
+    n = fileio.write(h, pub_hex + " " + comment + "\n");
+    fileio.close(h);
     return n;
 }
 
 # A pública da primeira coluna do key.pub; "" quando não há arquivo.
 def keyring_read_pub(path: str): str {
-    if nv_file_exists(path) == 0 { return ""; }
-    h = nv_file_open(path, "r");
+    if fileio.exists(path) == 0 { return ""; }
+    h = fileio.open(path, "r");
     if h < 0 { return ""; }
-    line = nv_file_read_line(h);
-    nv_file_close(h);
+    line = fileio.read_line(h);
+    fileio.close(h);
     mut i = 0;
     while i < len(line) {
         if substr(line, i, 1) == " " { return substr(line, 0, i); }
