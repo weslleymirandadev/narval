@@ -58,32 +58,9 @@ int nv_net_hex_len(const char* hex) {
     return (int)(strlen(hex) / 2);
 }
 
-const char* nv_net_str_to_hex(const char* text) {
-    if (!text) return "";
-    size_t n = strlen(text);
-    char* buf = out_reserve(n * 2 + 1);
-    if (!buf) return "";
-    for (size_t i = 0; i < n; i++) {
-        unsigned char c = (unsigned char)text[i];
-        buf[i * 2] = hex_char((c >> 4) & 0x0F);
-        buf[i * 2 + 1] = hex_char(c & 0x0F);
-    }
-    buf[n * 2] = '\0';
-    return buf;
-}
 
-const char* nv_net_hex_to_str(const char* hex) {
-    if (!hex || !nv_net_hex_valid(hex)) return "";
-    size_t n = strlen(hex) / 2;
-    char* buf = out_reserve(n + 1);
-    if (!buf) return "";
-    for (size_t i = 0; i < n; i++) {
-        int hi = hex_digit(hex[i * 2]), lo = hex_digit(hex[i * 2 + 1]);
-        buf[i] = (char)(((hi << 4) | lo) & 0xFF);
-    }
-    buf[n] = '\0';
-    return buf;
-}
+
+
 
 // Append `nbytes` of `value` in the requested order. Returns the buffer unchanged when the
 // width is not 1..8 or the incoming hex is malformed.
@@ -190,13 +167,9 @@ NvObject* nv_net_hex_len_builtin(NvObject* hex) {
     return box_int(nv_net_hex_len(arg_str(hex)));
 }
 
-NvObject* nv_net_str_to_hex_builtin(NvObject* text) {
-    return box_str(nv_net_str_to_hex(arg_str(text)));
-}
 
-NvObject* nv_net_hex_to_str_builtin(NvObject* hex) {
-    return box_str(nv_net_hex_to_str(arg_str(hex)));
-}
+
+
 
 NvObject* nv_net_pack_int_builtin(NvObject* hex, NvObject* value, NvObject* nbytes,
                                   NvObject* le) {
