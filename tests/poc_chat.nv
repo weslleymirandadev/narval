@@ -1,0 +1,76 @@
+# PoC: um chat em Narval sobre socket TCP, com a conexão mantida aberta. Um lado ouve, o outro
+# conecta, e os dois digitam e lêem até alguém encerrar (linha vazia ou Ctrl-D).
+#
+# Uso (argumentos de linha de comando; o ambiente continua valendo como fallback):
+#   ./build-lsp-alltargets/narval tests/poc_chat.nv listen 1919 ana
+#   ./build-lsp-alltargets/narval tests/poc_chat.nv connect 127.0.0.1 1919 bob
+#
+# Limite declarado: a leitura do stdin é bloqueante, então o laço é por turno — o que o outro
+# lado mandou aparece assim que você aperta Enter. Intercalar de verdade exige ler o stdin sem
+# bloquear (intrínseco que a linguagem ainda não tem) ou uma thread recebendo enquanto a outra
+# conversa.
+from "net" import *;
+from "system" import *;
+
+def env_or(nome: str, padrao: str): str {
+    mut v = system.env(nome);
+    if len(v) == 0 { return padrao; }
+    return v;
+}
+
+# Argumento i, ou a variável de ambiente do mesmo nome, ou o padrão — nessa ordem.
+def arg_or(i: int, nome_env: str, padrao: str): str {
+    if i < system.argc(): return system.argv(i);
+    return env_or(nome_env, padrao);
+}
+
+modo = arg_or(0, "MODE", "listen");
+if modo == "listen" {
+    porta = net_digits_to_int(arg_or(1, "PORT", "1919"));
+    host = arg_or(2, "BIND", "0.0.0.0");
+    apelido = arg_or(3, "NICK", "eu");
+} else {
+    host = arg_or(1, "HOST", "127.0.0.1");
+    porta = net_digits_to_int(arg_or(2, "PORT", "1919"));
+    apelido = arg_or(3, "NICK", "eu");
+}
+
+t = new TcpStream();
+
+if modo == "listen" {
+    ouvinte = new TcpListener();
+    if ouvinte.bind(host, porta) != 0 { write("bind falhou: " + net_last_error()); exit(1); }
+    write("esperando alguem na porta " + str(porta) + " ...");
+    h = ouvinte.accept(0);
+    if h < 0 { write("accept falhou: " + net_last_error()); exit(1); }
+    t.adopt(h);
+} else {
+    if t.connect(host, porta, 0) != 0 { write("nao conectou em " + host + ":" + str(porta) + ": " + t.error()); exit(1); }
+}
+
+write("conectado: " + t.local() + " -> " + t.peer());
+write("como \"" + apelido + "\" — escreva e Enter (linha vazia ou Ctrl-D encerra)");
+
+# O poll diz o que chegou sem bloquear; a leitura do stdin é que dita o ritmo do laço.
+p = new Poll();
+p.add(t.handle);
+p.for_read();
+
+mut vivo = 1;
+while vivo == 1 {
+    # 1) escoa tudo o que já chegou do outro lado
+    while p.wait(150) > 0 {
+        linha = t.recv_line();
+        if len(linha) == 0 { vivo = 0; }
+        else { write(linha); }
+    }
+    if vivo == 1 {
+        # 2) o que você digita vai com o seu apelido
+        texto = read();
+        if len(texto) == 0 { vivo = 0; }
+        else { t.send_line(apelido + ": " + texto); }
+    }
+}
+
+write("encerrando");
+t.close();
