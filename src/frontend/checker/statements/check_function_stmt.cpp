@@ -47,7 +47,7 @@ static bool stmts_have_propagate(const std::vector<std::unique_ptr<Stmt>>& stmts
 // recursing into nested blocks. The function-body version of the program-level
 // pass used to look only at the top level, so an implicit local first assigned
 // inside an if/while body failed with "Identifier not found".
-static void declare_implicit_locals(CodeBlock& body, nv::Checker* ch) {
+static void declare_implicit_locals(CodeBlock& body, nv::Checker* ch, bool nested = false) {
     for (size_t i = 0; i < body.size(); i++) {
         auto& stmt = body[i];
         if (!stmt) continue;
@@ -82,6 +82,10 @@ static void declare_implicit_locals(CodeBlock& body, nv::Checker* ch) {
                         id_node->symbol,
                         std::make_shared<nv::TypeVar>(ch->unify_ctx.get_next_var_id()),
                         true);
+                    if (nested)
+                        ch->warn(decl_node.get(),
+                                 "no value bound for '" + id_node->symbol +
+                                     "' here; it is only assigned inside a nested block. Using 0");
                     stmt = std::move(decl_node);
                 }
             }
@@ -90,26 +94,26 @@ static void declare_implicit_locals(CodeBlock& body, nv::Checker* ch) {
         switch (stmt->kind) {
             case NodeType::IfStatement: {
                 auto* if_stmt = static_cast<IfStatementNode*>(stmt.get());
-                declare_implicit_locals(if_stmt->consequent, ch);
-                declare_implicit_locals(if_stmt->alternate, ch);
+                declare_implicit_locals(if_stmt->consequent, ch, true);
+                declare_implicit_locals(if_stmt->alternate, ch, true);
                 break;
             }
             case NodeType::WhileStatement:
-                declare_implicit_locals(static_cast<WhileStmtNode*>(stmt.get())->body, ch);
+                declare_implicit_locals(static_cast<WhileStmtNode*>(stmt.get())->body, ch, true);
                 break;
             case NodeType::ForStatement: {
                 auto* for_stmt = static_cast<ForStmtNode*>(stmt.get());
-                declare_implicit_locals(for_stmt->body, ch);
-                declare_implicit_locals(for_stmt->else_block, ch);
+                declare_implicit_locals(for_stmt->body, ch, true);
+                declare_implicit_locals(for_stmt->else_block, ch, true);
                 break;
             }
             case NodeType::ForeverStatement:
-                declare_implicit_locals(static_cast<ForeverStmtNode*>(stmt.get())->body, ch);
+                declare_implicit_locals(static_cast<ForeverStmtNode*>(stmt.get())->body, ch, true);
                 break;
             case NodeType::MatchStatement: {
                 auto* match_stmt = static_cast<MatchStmtNode*>(stmt.get());
                 for (auto& case_body : match_stmt->bodies)
-                    declare_implicit_locals(case_body, ch);
+                    declare_implicit_locals(case_body, ch, true);
                 break;
             }
             default:
