@@ -40,6 +40,14 @@ namespace nv {
             bool is_comptime(const std::string& k);    // este escopo ou um pai
             void put_key(const std::string& k, const std::shared_ptr<Type>& v, bool ismutable);
             void put_key(const std::string& k, const std::shared_ptr<Type>& v);
+
+            // Inspeção da cadeia de escopos: profundidade e busca do nome em qualquer nível.
+            // Usado pelo diagnóstico de identificador não encontrado (IMPORT_PIPELINE_SPEC §10).
+            int chain_depth() const { return parent ? 1 + parent->chain_depth() : 1; }
+            bool has_in_chain(const std::string& k) const {
+                if (names.count(k)) return true;
+                return parent ? parent->has_in_chain(k) : false;
+            }
             void set_key(const std::string& k, const std::shared_ptr<Type>& v);
             void erase_key(const std::string& k);
             void record_decl_pos(const std::string& k, const DeclPos& pos);
