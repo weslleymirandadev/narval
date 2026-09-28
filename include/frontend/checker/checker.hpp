@@ -43,7 +43,8 @@ namespace nv {
             std::vector<Diagnostic> diagnostics;
             std::string current_filename;  // Nome do arquivo fonte atual (para erros e resolução de imports)
             // Usar ponteiro do nó como chave para evitar duplicação - o ponteiro é único e não muda
-            std::unordered_set<const void*> reported_errors;  // Nós que já tiveram erros reportados (usando ponteiro como chave)
+            std::unordered_set<const void*> reported_errors;
+            std::unordered_set<const void*> reported_warnings;  // Nós que já tiveram erros reportados (usando ponteiro como chave)
             // Rastrear tipo de retorno da função atual (para verificação de return statements)
             std::shared_ptr<Type> current_return_type = nullptr;
             // Rastrear classe atual sendo verificada (para controle de acesso)
@@ -105,6 +106,10 @@ namespace nv {
             void set_source_file(const std::string& filename);
             void set_emit_diagnostics(bool enabled);
             void error(Node* node, const std::string& message);
+            // Como error(), mas NÃO reprova a compilação (não marca `err`). Para coisas que
+            // produzem resposta errada sem impedir o programa de rodar — ver o achado do
+            // "0 silencioso" na FOUNDATION_SPEC.md.
+            void warn(Node* node, const std::string& message);
             // Compile-time diagnostic with an error code and notes, in the
             // format documented by COMPTIME_SPEC.md section 7:
             //   error[CE001]: <title>
