@@ -1,4 +1,5 @@
 from "netio" import *;
+from "crypto" import *;
 # Identidade do bait para Narval — endereço derivado e nome `.bait`, a partir do DIGEST da
 # chave pública (SHA-512 dela). Endereço e nome saem do mesmo digest:
 #
@@ -417,4 +418,31 @@ def addr_wire(dotted: str): str {
         i = i + 1;
     }
     return out;
+}
+
+# ── Identidade: o endereco sai da chave, nao do usuario ──────────────────────────────────────
+# Carrega a chave privada (seed||pub, 64 bytes em hex) do keyring, criando-a na primeira vez.
+# O endereco e' derivado dela — e' o que faz o `listen` poder exibir o proprio endereco e o
+# `connect` so precisar do endereco do servidor.
+def identity_load(chave_path: str, pub_path: str): str {
+    if keyring_has_key(chave_path) == 1 { return keyring_read_seed(chave_path); }
+    # O keyring guarda a SEED (32 bytes = 64 hex), que e' o formato do ipv69 dele: e' o que faz
+    # a identidade (e portanto o endereco) ser a MESMA dos binarios dele. Guardar a chave
+    # inteira (seed||pub) faz o read recusar por comprimento.
+    par = crypto.keypair();
+    seed = substr(par, 0, 64);
+    keyring_write_seed(chave_path, seed);
+    keyring_write_pub(pub_path, substr(par, 64, 64), "bait ICSP");
+    return seed;
+}
+
+# A chave publica a partir da chave carregada (aceita seed||pub ou so a seed).
+def identity_pub(sk: str): str {
+    if len(sk) >= 128 { return substr(sk, 64, 64); }
+    return crypto.seed_to_pub(sk);
+}
+
+# O endereco IPv69 derivado da identidade, em hex de 5 bytes (o formato do wire).
+def identity_addr(sk: str, cls: str): str {
+    return addr_of_digest(crypto.sha512(identity_pub(sk)), cls);
 }
