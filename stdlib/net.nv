@@ -1,3 +1,4 @@
+from "text" import *;
 from "netio" import *;
 # Network for Narval: addresses, TCP, UDP, DNS, timeouts and the knobs an advanced user wants.
 #
@@ -50,9 +51,9 @@ def net_hex_digit(v: int): str { return substr("0123456789abcdef", v & 15, 1); }
 
 def net_hex_val(c: str): int { return index_of("0123456789abcdef", c); }
 
-# Estrutura pura de hex: era `nv_net_hex_valid`/`nv_net_hex_len` (C). `hex_to_str`/`str_to_hex`
-# continuam em C de propósito: converter byte <-> caractere exige char<->código, que a linguagem
-# ainda não tem (nenhum `chr`/`ord` no checker) — primitiva de verdade, §3.8.
+# Estrutura pura de hex: era tudo `nv_net_hex_valid`/`hex_len`/`hex_to_str`/`str_to_hex` (C).
+# Com o módulo `text` (chr/ord) os quatro viraram Narval — era a falta de byte <-> código que
+# prendia os dois últimos no C (IMPORT_PIPELINE_SPEC §9).
 def net_hex_valid(h: str): int {
     if len(h) % 2 != 0 { return 0; }
     mut i = 0;
@@ -64,6 +65,30 @@ def net_hex_valid(h: str): int {
 }
 
 def net_hex_len(h: str): int { return (len(h) >> 1); }
+
+# Conversão hex <-> texto. Era primitiva em C só por falta de byte <-> código na linguagem;
+# com o módulo `text` (chr/ord) virou estrutura, e as entradas planas saem dos dois blobs.
+def net_hex_to_str(h: str): str {
+    mut out = "";
+    mut i = 0;
+    while i < net_hex_len(h) {
+        out = out + text.chr(net_hex_val(substr(h, i * 2, 1)) * 16
+                             + net_hex_val(substr(h, i * 2 + 1, 1)));
+        i = i + 1;
+    }
+    return out;
+}
+
+def net_str_to_hex(t: str): str {
+    mut out = "";
+    mut i = 0;
+    while i < len(t) {
+        mut v = text.ord(substr(t, i, 1));
+        out = out + net_hex_digit((v >> 4) & 15) + net_hex_digit(v & 15);
+        i = i + 1;
+    }
+    return out;
+}
 
 # Fatiamento de hex com a validação do C original (nv_net_unpack_hex).
 def net_unpack_hex(hex: str, pos: int, nbytes: int): str {
@@ -483,7 +508,7 @@ class Packet {
     }
 
     public put_text(text: str): int {
-        self.hex = self.hex + netio.str_to_hex(text);
+        self.hex = self.hex + net_str_to_hex(text);
         return 0;
     }
 
@@ -549,7 +574,7 @@ class Packet {
     public get_text(n: int): str {
         chunk = self.get_bytes(n);
         if len(chunk) == 0 { return ""; }
-        return netio.hex_to_str(chunk);
+        return net_hex_to_str(chunk);
     }
 
     public get_str16(le: int): str {
@@ -580,7 +605,7 @@ class Frame {
 
     # The frame as hex text: u32be length + payload. Handy to log, queue or compare.
     public wrap(text: str): str {
-        return net_pack_int("", len(text), 4, 0) + netio.str_to_hex(text);
+        return net_pack_int("", len(text), 4, 0) + net_str_to_hex(text);
     }
 
     public wrap_hex(payload_hex: str): str {
@@ -620,7 +645,7 @@ class Frame {
     public recv(handle: int): str {
         payload = self.recv_hex(handle);
         if len(payload) == 0 { return ""; }
-        return netio.hex_to_str(payload);
+        return net_hex_to_str(payload);
     }
 
 }
