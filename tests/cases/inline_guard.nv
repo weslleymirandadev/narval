@@ -1,0 +1,31 @@
+# A forma inline com dois-pontos: `if cond: stmt;` — açúcar para guarda e early return, sem a
+# chave de uma linha só. Vale para toda a família (if, elif, else-if, else, while, for), porque
+# os seis pontos passam pelo mesmo helper de corpo.
+# Expected:
+# pequeno
+# negativo
+# grande
+# 3
+# positivo
+# nao-positivo
+def classifica(n: int): str {
+    if n < 0: return "negativo";
+    if n < 10: return "pequeno";
+    return "grande";
+}
+
+write(classifica(3));
+write(classifica(-1));
+write(classifica(99));
+
+# No while, a forma inline tambem vale (uma statement so', como em qualquer corpo).
+mut i = 0;
+while i < 3: i = i + 1;
+write(i);
+
+def sinal(n: int): str {
+    if n > 0: return "positivo";
+    else: return "nao-positivo";
+}
+write(sinal(1));
+write(sinal(0));
