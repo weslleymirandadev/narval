@@ -114,6 +114,16 @@ inline const std::vector<RuntimeModule>& runtime_modules() {
 #undef NV_FN
             out.push_back({ "netio", std::vector<RuntimeFn>(std::begin(fns), std::end(fns)) });
         }
+        {
+            // text — byte <-> código. A primitiva que faltava para tirar hex_to_str/str_to_hex
+            // do C (IMPORT_PIPELINE_SPEC §9): sem chr/ord, codec de texto não sai de Narval.
+#define NV_FN(name, params, ret, arity) { #name, #params, #ret, "nv_text_" #name "_builtin", arity },
+            const RuntimeFn fns[] = {
+#include "text.def"
+            };
+#undef NV_FN
+            out.push_back({ "text", std::vector<RuntimeFn>(std::begin(fns), std::end(fns)) });
+        }
         return out;
     }();
     return mods;
