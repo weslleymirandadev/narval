@@ -167,12 +167,12 @@ def wire_hdr_normalize(hex: str): str {
 # e o controle (INIT, COOKIE, SACK, HEARTBEAT, SHUTDOWN, RESET) — ver include/ICSP/icsp.h
 # do repo do IPv69.
 #
-# Divergência consciente: o transmissor dele calcula o CRC32c sobre os dois bytes do campo
-# de CRC AINDA NÃO ESCRITOS (memória de pilha indefinida) e o receptor NÃO verifica o CRC —
-# então o campo sai aleatório por pacote e ninguém olha. Aqui ele é calculado com o campo
-# zerado (a convenção sã, a mesma do mac do WireGuard) e `icsp_check` verifica; como o
-# receptor dele ignora o campo, a interoperabilidade não depende disso. Vale reportar.
-
+# Convenção do CRC, agora idêntica à do IPv69: cobertura do payload INTEIRO (do src_port ao
+# fim) com o campo zerado no cálculo — a mesma regra do `icsp_build_pkt`/`icsp_check_pkt` do
+# `src/ICSP/icsp.c`. Até 2026-09 o transmissor dele somava os dois bytes do campo de CRC ainda
+# NÃO ESCRITOS (pilha indefinida), começava no dst_port e o receptor não conferia nada; o
+# transmissor e o receptor foram corrigidos, e este lado acompanha.
+#
 def crc32c(data_hex: str): int {
     mut c = 0xFFFFFFFF;
     mut i = 0;
@@ -200,18 +200,20 @@ def icsp_data_chunk(tsn: int, stream_id: int, stream_seq: int, payload_hex: str)
 
 # O pacote ICSP inteiro: header + chunks, com o CRC calculado sobre o campo zerado.
 def icsp_pack(src_port: int, dst_port: int, assoc_id: int, chunks_hex: str): str {
-    head = be16(dst_port) + "01" + "00" + be32_hex(assoc_id);
+    head = be16(src_port) + be16(dst_port) + "01" + "00" + be32_hex(assoc_id);
+    # O CRC cobre o payload INTEIRO (src_port incluído) com o campo zerado — a mesma regra do
+    # `icsp_build_pkt` do src/ICSP/icsp.c. O header dele diz "CRC32c of the whole ICSP payload";
+    # o código antigo começava no dst_port e somava os dois bytes do campo antes de escrevê-los.
     crc = crc32c(head + "0000" + chunks_hex);
-    return be16(src_port) + head + be16(crc & 65535) + chunks_hex;
+    return head + be16(crc & 65535) + chunks_hex;
 }
 
 # 1 quando o CRC do pacote confere.
 def icsp_check(pkt_hex: str): int {
     if len(pkt_hex) < 24 { return 0; }
-    head = substr(pkt_hex, 4, 16);                     # bytes 2..9: dst_port, ver, flags, assoc_id
-    chunks = substr(pkt_hex, 24, len(pkt_hex) - 24);   # tudo depois do campo de CRC
     esperado = substr(pkt_hex, 20, 4);
-    if be16(crc32c(head + "0000" + chunks) & 65535) == esperado { return 1; }
+    zerado = substr(pkt_hex, 0, 20) + "0000" + substr(pkt_hex, 24, len(pkt_hex) - 24);
+    if be16(crc32c(zerado) & 65535) == esperado { return 1; }
     return 0;
 }
 
