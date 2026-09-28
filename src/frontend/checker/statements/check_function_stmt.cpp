@@ -216,11 +216,17 @@ std::shared_ptr<nv::Type>& check_function_stmt(nv::Checker* ch, Node* node) {
 
     
 
-    declare_implicit_locals(function_stmt->body, ch);
-    
-    // Verificar o corpo processado (agora com declarações corretas)
-    for (auto& stmt : function_stmt->body) {
-        ch->check_node(stmt.get());
+    // Modo "só assinaturas" (o passe de declaração da FOUNDATION_SPEC.md fase 1): a assinatura
+    // e os tipos dos parâmetros já estão registrados acima. O corpo é checado UMA vez, quando o
+    // módulo já foi mergeado no programa — que é quando o prelúdio existe no escopo. Checar o
+    // corpo aqui (antes do merge) só produzia um erro que não impede nada, apontando o cache.
+    if (!ch->signatures_only) {
+        declare_implicit_locals(function_stmt->body, ch);
+
+        // Verificar o corpo processado (agora com declarações corretas)
+        for (auto& stmt : function_stmt->body) {
+            ch->check_node(stmt.get());
+        }
     }
 
     // Restaurar tipo de retorno anterior
