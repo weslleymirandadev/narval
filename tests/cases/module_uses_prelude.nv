@@ -5,7 +5,7 @@
 # Expected:
 # abc
 # 3
-from "lib/utilzinho" import *;
+from "_support/utilzinho" import *;
 
 write(recorta("abcdef", 3));
 write(len(recorta("abcdef", 3)));
