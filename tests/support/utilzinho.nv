@@ -1,0 +1,7 @@
+# Módulo de USUÁRIO (não é face de módulo de runtime): usa o prelúdio, que só existe no
+# programa depois do merge. É o caso que a checagem isolada do import não pode vetar.
+# Ver FOUNDATION_SPEC.md fase 1.
+
+def recorta(t: str, n: int): str {
+    return substr(t, 0, n);
+}
