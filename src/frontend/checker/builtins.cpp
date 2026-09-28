@@ -45,17 +45,6 @@ namespace nv {
 
         // SQLite: primitivas do shim do runtime. A API amigavel fica em
         // stdlib/sqlite.nv (libsqlite3 e carregada em runtime via dlopen).
-        BuiltinFunction("nv_sqlite_open",    {}, std::make_shared<Int>(),    false, true, 1, 1),
-        BuiltinFunction("nv_sqlite_close",   {}, std::make_shared<Int>(),    false, true, 1, 1),
-        BuiltinFunction("nv_sqlite_exec",    {}, std::make_shared<Int>(),    false, true, 2, 2),
-        BuiltinFunction("nv_sqlite_query",   {}, std::make_shared<String>(), false, true, 2, 2),
-        BuiltinFunction("nv_sqlite_error",   {}, std::make_shared<String>(), false, true, 1, 1),
-        BuiltinFunction("nv_sqlite_last_id", {}, std::make_shared<Int>(),    false, true, 1, 1),
-        BuiltinFunction("nv_sqlite_changes", {}, std::make_shared<Int>(),    false, true, 1, 1),
-        BuiltinFunction("nv_sqlite_query_run", {}, std::make_shared<Int>(),    false, true, 2, 2),
-        BuiltinFunction("nv_sqlite_col_count", {}, std::make_shared<Int>(),    false, true, 1, 1),
-        BuiltinFunction("nv_sqlite_cell",      {}, std::make_shared<String>(), false, true, 3, 3),
-        BuiltinFunction("nv_sqlite_col_name",  {}, std::make_shared<String>(), false, true, 2, 2),
 
         // Arquivos: primitivas do shim do runtime. A API amigavel e a classe File
         // em stdlib/file.nv.
