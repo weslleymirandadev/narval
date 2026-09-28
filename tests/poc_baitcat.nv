@@ -1,62 +1,70 @@
-# PoC: um netcat sobre a malha do `bait` — IPv69 wire header + Link (UDP) + o codec de texto.
-# Exercita de propósito as peças que a Fase B destravou: `net_str_to_hex`/`net_hex_to_str`
-# (migrados hoje, sobre o intrínseco `text`), `net_host_of`/`net_port_of` (migrados do C) e o
-# wire de 32 bytes do IPv69 montado em Narval puro.
+# PoC: netcat do bait sobre o Ethernet CRU do IPv69 — o caminho do repo dele (AF_PACKET no
+# EtherType 0x6969, endereçado por endereço IPv69). Nada de UDP, nada de IPv4: o frame é
+# eth(14) + header IPv69(32), montado aqui em Narval por frame_pack, byte a byte como o
+# build_frame do src/IPv69/l2.c.
 #
-# Uso:
-#   MODE=listen  PORT=6969 ./build-lsp-alltargets/narval tests/poc_baitcat.nv
-#   MODE=connect HOST=127.0.0.1 PORT=6969 MSG="oi" ./build-lsp-alltargets/narval tests/poc_baitcat.nv
+# Uso (precisa de CAP_NET_RAW: sudo, ou o padrão de veth da skill):
+#   sudo narval tests/poc_baitcat.nv listen  <ifname> <meu-dotted>
+#   sudo narval tests/poc_baitcat.nv connect <ifname> <meu-dotted> <destino-dotted> [msg]
+#
+# Laboratório: em veth, dois sockets crus na MESMA ponta não se falam (o TX sai pela outra
+# ponta) — ponha um lado em cada ponta do par.
 from "bait" import *;
 from "net" import *;
 from "system" import *;
+from "l2" import *;
 
-def env_or(nome: str, padrao: str): str {
-    mut v = system.env(nome);
-    if len(v) == 0 { return padrao; }
-    return v;
-}
-
-# Endereços do PoC (hex de 5 bytes, como o wire do IPv69 carrega).
-meu = "8e02a50225";
-dele = "8e02a50226";
-
-def responder(sk: int, origem: str, texto: str) {
-    # Devolve um datagrama novo, com os endereços trocados, para o host:porta de onde veio.
-    resposta = link_pack(dele, meu, 6969, 1, "00000001", net_str_to_hex("eco: " + texto));
-    link_send(sk, net_host_of(origem), net_port_of(origem), resposta);
-}
-
-def arg_or(i: int, nome_env: str, padrao: str): str {
+def arg_or(i: int, padrao: str): str {
     if i < system.argc(): return system.argv(i);
-    return env_or(nome_env, padrao);
+    return padrao;
 }
 
-modo = arg_or(0, "MODE", "listen");
-host = arg_or(1, "HOST", "127.0.0.1");
-porta = net_digits_to_int(arg_or(2, "PORT", "7777"));
+modo = arg_or(0, "listen");
+ifname = arg_or(1, "veth0");
+meu = addr_wire(arg_or(2, "8e.02.a5.02.25"));
+porta = 9696;
+
+fd = l2.open(ifname);
+if fd < 0 { write("l2.open(" + ifname + ") falhou: precisa de CAP_NET_RAW e a interface tem de existir"); exit(1); }
+meu_mac = l2.mac(fd);
+if len(meu_mac) != 12 { write("nao consegui o MAC de " + ifname); exit(1); }
 
 if modo == "listen" {
-    sk = link_bind("0.0.0.0", porta);
-    if sk < 0 { write("bind falhou: " + net_last_error()); exit(1); }
-    write("baitcat ouvindo na porta " + str(link_local_port(sk)) + " (ctrl-c para sair)");
+    write("bait L2 em " + ifname + " mac " + meu_mac + " addr " + addr_dotted(meu) + " — ctrl-c para sair");
     while 1 == 1 {
-        rec = link_recv(sk, 60000);
-        if len(rec) == 0 { continue; }
-        bar = index_of(rec, "|");
-        origem = substr(rec, 0, bar);                          # "host:porta"
-        dgram = substr(rec, bar + 1, len(rec) - bar - 1);
-        texto = net_hex_to_str(link_payload(dgram));
-        write("de " + origem + " (" + addr_dotted(substr(dgram, 36, 10)) + "): " + texto);
-        responder(sk, origem, texto);
+        f = l2.recv(fd, 60000);
+        if len(f) > 0 {
+            if frame_ethertype_ok(f) == 1 {
+                if frame_next_header(f) == 1 {
+                    texto = net_hex_to_str(frame_payload(f));
+                    write("de " + addr_dotted(frame_src_addr(f)) + ": " + texto);
+                    # Broadcast entra, unicast sai — a mesma regra do ICSP dele.
+                    resp = frame_pack(frame_src_mac(f), meu_mac, meu, frame_src_addr(f), 1, 64,
+                                      porta, frame_src_port(f), net_str_to_hex("eco: " + texto));
+                    if l2.send(fd, resp) != 0 { write("resposta nao saiu"); }
+                }
+            }
+        }
     }
 }
 
-sk = link_bind("0.0.0.0", 0);
-dgram = link_pack(meu, dele, 12345, porta, "00000001", net_str_to_hex(env_or("MSG", "ola do baitcat")));
-if link_send(sk, host, porta, dgram) <= 0 { write("envio falhou: " + net_last_error()); exit(1); }
-write("mandou " + str(len(link_payload(dgram))) + " bytes para " + addr_dotted(dele));
-rec = link_recv(sk, 5000);
-if len(rec) == 0 { write("sem resposta"); exit(1); }
-bar = index_of(rec, "|");
-write("resposta: " + net_hex_to_str(link_payload(substr(rec, bar + 1, len(rec) - bar - 1))));
-link_close(sk);
+destino = addr_wire(arg_or(3, "8e.02.a5.02.26"));
+msg = arg_or(4, "ola do baitcat no L2");
+# Destino no eth: broadcast (o ouvinte aprende o nosso MAC pelo header e responde em unicast).
+frame = frame_pack("ffffffffffff", meu_mac, meu, destino, 1, 64, 4242, porta, net_str_to_hex(msg));
+if l2.send(fd, frame) != 0 { write("envio falhou"); exit(1); }
+write("mandou " + str(len(frame)) + " hex para " + addr_dotted(destino) + " em " + ifname);
+mut i = 0;
+while i < 5 {
+    f = l2.recv(fd, 1000);
+    if len(f) > 0 {
+        if frame_ethertype_ok(f) == 1 {
+            if frame_next_header(f) == 1 {
+                write("resposta de " + addr_dotted(frame_src_addr(f)) + ": " + net_hex_to_str(frame_payload(f)));
+                i = 5;
+            }
+        }
+    }
+    i = i + 1;
+}
+l2.close(fd);
