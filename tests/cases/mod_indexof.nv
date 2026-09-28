@@ -1,0 +1,8 @@
+# Módulo de usuário usando `index_of` (o símbolo do prelúdio que a medição do §10 mostrou
+# ausente no checker do módulo). Hoje funciona: o corpo é checado de novo depois do merge, com
+# o prelúdio no escopo — o erro da checagem isolada é suprimido. Ver FOUNDATION_SPEC.md fase 1.
+# Expected:
+# 2
+from "lib/usaindex" import *;
+
+write(acha("abcabc", "a") + 2);
