@@ -1,11 +1,13 @@
-# Um módulo de usuário que usa o prelúdio: `substr` vem do `strings`, que o merge traz para o
-# programa. A checagem isolada do corpo, no ponto do import, não vê o prelúdio — e o import não
-# pode deixar de existir por isso (o corpo é clonado e checado no programa, onde o prelúdio
-# está). Ver FOUNDATION_SPEC.md fase 1.
+# Um módulo de usuário que usa o prelúdio: `substr`/`len` vêm do `strings`, que o merge traz
+# para o programa. A checagem isolada do corpo, no ponto do import, não vê o prelúdio — e isso
+# não impede o import (o corpo é clonado e checado no programa, onde o prelúdio está), mas é a
+# dívida que a fase 1 da FOUNDATION_SPEC.md elimina. Prova que hoje funciona: o caso é verde.
+# Module: utilzinho.nv = tests/support/utilzinho.nv
 # Expected:
 # abc
 # 3
-from "../support/utilzinho" import *;
+
+from "utilzinho" import *;
 
 write(recorta("abcdef", 3));
 write(len(recorta("abcdef", 3)));
