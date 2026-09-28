@@ -1,13 +1,13 @@
 # O ICSP do IPv69 (nh=2): header de 12 bytes com CRC32c e o chunk DATA. Os valores
 # esperados vêm do código dele — o CRC é a função `icsp_crc32c` do `src/ICSP/icsp.c` (a
 # mesma que fecha o pacote), copiada para um gerador que monta o pacote igual ao
-# `icsp_send_pkt`, com o campo de CRC zerado ao calcular (a convenção sã; o transmissor dele
-# calcula sobre bytes de pilha indefinidos e o receptor não confere — ver o comentário em
-# `stdlib/bait.nv`). Conferência do CRC: "123456789" -> e3069283, o valor de referência do
+# `icsp_build_pkt`, que agora zera o campo antes de calcular o CRC e tem `icsp_check_pkt` do
+# outro lado — os dois foram corrigidos no repo dele em 2026-09 (ver o comentário em
+# `stdlib/bait.nv`). O pacote abaixo é a saída literal do `icsp_build_pkt` corrigido. Conferência do CRC: "123456789" -> e3069283, o valor de referência do
 # CRC32c.
 # Expected:
 # 364b3fb7
-# 1f904e2001000a0b0c0d931b0000000b0000000700000000616263
+# 1f904e2001000a0b0c0d750e0000000b0000000700000000616263
 # 1
 # 1
 # assoc-ok
