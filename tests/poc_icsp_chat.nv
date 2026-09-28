@@ -13,9 +13,12 @@
 # chave derivada. Fechar essa distancia e portar o handshake: as pecas ja estao no modulo
 # `crypto` (sha512, sign, keypair, scalarmult, secretbox) e no ed25519 vendorado (hmac_sha512).
 #
-# Uso:
-#   sudo narval tests/poc_icsp_chat.nv listen  <ifname> <meu-dotted>
-#   sudo narval tests/poc_icsp_chat.nv connect <ifname> <meu-dotted> <destino-dotted>
+# Uso (a interface e' resolvida sozinha e o SEU endereco e' derivado da identidade no keyring,
+# entao nao se digita o proprio IP — como no ipv69 dele):
+#   sudo narval tests/poc_icsp_chat.nv listen                  # exibe o endereco do servidor
+#   sudo narval tests/poc_icsp_chat.nv connect <IPv69_do_server>
+#   (opcional: `listen <ifname>` / `connect <addr> <ifname>` quando a interface automatica
+#    nao for a que voce quer — em laboratorio com veth, por exemplo)
 # Em veth, um lado em cada ponta (o TX de uma ponta sai pela outra).
 from "bait" import *;
 from "net" import *;
@@ -41,11 +44,27 @@ def data_de_chunk(chunk_hex: str): str {
 }
 
 modo = arg_or(0, "listen");
-ifname = arg_or(1, "veth0");
-meu = addr_wire(arg_or(2, "8e.02.a5.02.25"));
+
+# A interface sai do sistema (a da rota default, como o l2_default_ifname dele) a menos que
+# voce diga qual — o mesmo vale para laboratorio, onde nao existe rota default.
+mut ifname = "";
+mut destino_dotted = "";
+if modo == "listen" {
+    ifname = arg_or(1, "");
+} else {
+    destino_dotted = arg_or(1, "");
+    ifname = arg_or(2, "");
+}
+if len(ifname) == 0 { ifname = l2.default_ifname(); }
+if len(ifname) == 0 { write("nao achei interface de rede: diga qual, ex. listen wlan0"); exit(1); }
+
+# O endereco NAO se digita: e' derivado da identidade guardada no keyring (na primeira vez ela
+# e' criada). Por isso o listen exibe o proprio endereco e o connect so precisa do endereco do
+# servidor — como no ipv69 dele.
+casa = system.home();
+sk = identity_load(keyring_key_path(casa, ""), keyring_pub_path(casa, ""));
+meu = identity_addr(sk, "C");
 porta = 9696;
-ver = 1;
-flags = 0;
 assoc = 0x1f904e20;
 mut tsn = 1;
 mut seq = 0;
@@ -63,7 +82,8 @@ def enviar_texto(fd: int, dst_mac: str, dst_addr: str, dst_porta: int, t: int, s
 
 fd = l2.open(ifname);
 if fd < 0 { write("l2.open(" + ifname + ") falhou: precisa de CAP_NET_RAW e a interface existir"); exit(1); }
-write("ICSP em " + ifname + " mac " + l2.mac(fd) + " addr " + addr_dotted(meu) + " porta " + str(porta));
+write("ICSP em " + ifname + " mac " + l2.mac(fd) + " porta " + str(porta));
+if modo == "listen" { write("endereco IPv69 deste servidor: " + addr_dotted(meu) + " — conecte com: connect " + addr_dotted(meu)); }
 
 # --- Handshake: o servidor espera o INIT, o cliente o provoca. Depois os dois percorrem o
 # MESMO laco: esvaziar o socket (imprime na hora) e checar o teclado sem travar. O MAC e o
@@ -96,7 +116,7 @@ if modo == "listen" {
     }
 }
 else {
-    destino = addr_wire(arg_or(3, "8e.02.a5.02.26"));
+    destino = addr_wire(destino_dotted);
     peer_addr = destino;
     init = icsp_pack(porta, porta, assoc, icsp_chunk(1, 0, init_data()));
     if l2.send(fd, frame_pack("ffffffffffff", l2.mac(fd), meu, destino, 2, 64, porta, porta, init)) != 0 { write("INIT nao saiu"); exit(1); }
@@ -141,6 +161,7 @@ while vivo == 1 {
                     if kind == 8 {
                         write("[icsp] SHUTDOWN do outro lado");
                         vivo = 0;
+                        tem = 0;            /* para o esvaziamento: nao imprime de novo */
                     }
                 }
             }
