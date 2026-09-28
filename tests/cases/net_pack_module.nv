@@ -1,19 +1,14 @@
-# O piloto da Fase A (§8 do RUNTIME_MODULES_DESIGN.md): o codec do `net_pack.c` alcançado como
-# superfície do módulo `net`, pela forma que o §3 documenta — import flat, com o nome do módulo
-# virando o namespace. É o que a fase exigia antes de qualquer capacidade nova.
+# A superfície do codec de bytes em dois acessos: pelo MÓDULO de runtime (`netio`, o ABI que
+# compartilha o net_pack.c) e pela FACE em Narval (`net_pack_int`, do stdlib/net.nv).
 # Expected:
 # 0000002a
 # 42
 # 2a000000
 # 300
+from "netio" import *;
 from "net" import *;
 
-# 42 em 4 bytes big-endian, e a volta.
-write(net.pack_int("", 42, 4, 0));
-write(net.unpack_int("0000002a", 0, 4, 0));
-
-# A mesma coisa em little-endian.
-write(net.pack_int("", 42, 4, 1));
-
-# Anexa 2 bytes big-endian (300) num buffer existente e lê do byte 1.
-write(net.unpack_int(net.pack_int("aa", 300, 2, 0), 1, 2, 0));
+write(netio.pack_int("", 42, 4, 0));
+write(netio.unpack_int("0000002a", 0, 4, 0));
+write(net_pack_int("", 42, 4, 1));
+write(net_unpack_int(net_pack_int("aa", 300, 2, 0), 1, 2, 0));
