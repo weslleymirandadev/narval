@@ -82,17 +82,13 @@ std::unique_ptr<Node> parse_for_stmt(Parser* parser) {
     }
 
     // --- Parse body ---
-    parser->expect(TokenType::OBRACE, "Expected '{'.");
-    auto body = parse_body(parser);
-    parser->expect(TokenType::CBRACE, "Expected '}'.");
+    auto body = parse_block_or_inline(parser);
 
     // --- Parse else block (optional) ---
     std::vector<std::unique_ptr<Stmt>> else_block;
     if (parser->not_eof() && parser->current_token().type == TokenType::ELSE) {
         parser->consume_token();
-        parser->expect(TokenType::OBRACE, "Expected '{' after 'else'.");
-        else_block = parse_body(parser);
-        parser->expect(TokenType::CBRACE, "Expected '}' after else block.");
+        else_block = parse_block_or_inline(parser);
     }
 
     // --- Construir o nó com construtor explícito ---
