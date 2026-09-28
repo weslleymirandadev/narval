@@ -144,6 +144,15 @@ inline const std::vector<RuntimeModule>& runtime_modules() {
 #undef NV_FN
             out.push_back({ "sqldb", std::vector<RuntimeFn>(std::begin(fns), std::end(fns)) });
         }
+        {
+            // l2 — Ethernet cru no EtherType 0x6969 (AF_PACKET), o par do src/IPv69/l2.c.
+#define NV_FN(name, params, ret, arity) { #name, #params, #ret, "nv_l2_" #name "_builtin", arity },
+            const RuntimeFn fns[] = {
+#include "l2.def"
+            };
+#undef NV_FN
+            out.push_back({ "l2", std::vector<RuntimeFn>(std::begin(fns), std::end(fns)) });
+        }
         return out;
     }();
     return mods;
