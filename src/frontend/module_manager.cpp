@@ -369,6 +369,19 @@ std::unique_ptr<Node> ModuleManager::get_combined_ast(const std::string& main_mo
                     continue;
                 }
                 
+                // Módulo de RUNTIME importado por um módulo: o import dele tem de sobreviver ao
+                // merge tal como o do programa — é ele que materializa o namespace dentro do CORPO
+                // do módulo (o `netio` do stdlib/net.nv). Sem isto, a cópia mesclada do módulo chega
+                // sem o import e o corpo não enxerga a superfície (IMPORT_PIPELINE_SPEC §12).
+                if (stmt->kind == NodeType::ImportStatement) {
+                    auto* imp = static_cast<ImportStmtNode*>(stmt.get());
+                    if (!imp->wildcard_alias.empty() ||
+                        nv::find_runtime_module(
+                            nv::runtime_module_name_of_import(imp->module_path)) != nullptr)
+                        combined_program->add_statement(
+                            std::unique_ptr<Stmt>(static_cast<Stmt*>(stmt->clone())));
+                    continue;
+                }
                 // Para módulos importados, filtrar apenas declarações exportadas
                 if (stmt->kind == NodeType::DeclarationStatement) {
                     // Incluir todas as declarações de variáveis do módulo (prover contexto para funções)
