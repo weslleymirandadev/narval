@@ -1,0 +1,8 @@
+// keyboard.def — o módulo `keyboard`: o teclado sem travar o laço.
+//
+// `read()` bloqueia ate chegar uma linha; num chat isso significa mostrar o que o peer mandou
+// so quando voce aperta Enter. Aqui esta o par que resolve: perguntar se ha linha pronta e so
+// entao ler. O nome e `keyboard` (e nao `stdin`) porque nome de modulo ocupa o escopo do
+// programa — ver RUNTIME_MODULES_DESIGN.md 11.5.
+NV_FN(ready, (num), num,   1)   // 1 se ha uma linha pronta no stdin dentro de timeout_ms
+NV_FN(line,  (),    bytes, 0)   // a proxima linha, sem o terminador ("" no EOF)
