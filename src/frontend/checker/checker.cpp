@@ -29,6 +29,7 @@ constexpr const char* ANSI_BOLD  = "\x1b[1m";
 constexpr const char* ANSI_RESET = "\x1b[0m";
 constexpr const char* ANSI_RED   = "\x1b[31m";
 constexpr const char* ANSI_BLUE  = "\x1b[34m";
+constexpr const char* ANSI_YELLOW = "\x1b[33m";
 
 // Conjunto estático para rastrear erros de identificador já reportados (evitar duplicação entre checkers/ASTs clonados)
 // Usa chave composta: filename:line:col:symbol
@@ -494,6 +495,34 @@ void nv::Checker::error(Node* node, const std::string& message) {
     }
     err = true;
     if (emit_diagnostics) std::cerr.flush();  // Garantir que a mensagem foi exibida antes de continuar
+}
+
+void nv::Checker::warn(Node* node, const std::string& message) {
+    // Como error(), mas sem marcar `err`: um aviso não pode reprovar a compilação.
+    if (node && reported_warnings.find(reinterpret_cast<const void*>(node)) != reported_warnings.end())
+        return;
+    if (node) reported_warnings.insert(reinterpret_cast<const void*>(node));
+
+    std::string abs_filename = to_absolute_path(current_filename);
+    if (!node || !node->position) {
+        diagnostics.push_back({abs_filename, 1, 1, 1, 1, message});
+        if (emit_diagnostics) {
+            std::cerr << ANSI_BOLD << abs_filename << ": " << ANSI_YELLOW << "WARNING"
+                      << ANSI_RESET << ANSI_BOLD << ": " << message << ANSI_RESET << "\n";
+        }
+        if (emit_diagnostics) std::cerr.flush();
+        return;
+    }
+
+    PositionData* pos = node->position.get();
+    diagnostics.push_back({abs_filename, pos->line, pos->col[0], pos->col[1], 1, message});
+    if (emit_diagnostics) {
+        std::cerr << ANSI_BOLD << abs_filename << ":" << pos->line << ":" << pos->col[0] << ": "
+                  << ANSI_YELLOW << "WARNING" << ANSI_RESET << ANSI_BOLD << ": " << message
+                  << ANSI_RESET << "\n";
+        print_error_context(pos);
+        std::cerr.flush();
+    }
 }
 
 void nv::Checker::comptime_error(Node* node, const std::string& code,
