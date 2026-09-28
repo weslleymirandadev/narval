@@ -1,0 +1,49 @@
+# PoC: um netcat em Narval, sobre TCP. A face `net` (em Narval) por cima do módulo `netio`
+# (o codec e os sockets em C) — é o caminho que a Fase B abriu hoje.
+#
+# Uso (a linguagem ainda não lê argv, então o papel e o endereço vêm do ambiente):
+#   MODE=listen  PORT=7777 ./build-lsp-alltargets/narval tests/poc_netcat.nv
+#   MODE=connect HOST=127.0.0.1 PORT=7777 ./build-lsp-alltargets/narval tests/poc_netcat.nv
+from "net" import *;
+from "system" import *;
+
+def env_or(nome: str, padrao: str): str {
+    mut v = system.env(nome);
+    if len(v) == 0 { return padrao; }
+    return v;
+}
+
+modo = env_or("MODE", "listen");
+porta = net_digits_to_int(env_or("PORT", "7777"));
+host = env_or("HOST", "127.0.0.1");
+
+if modo == "listen" {
+    ouvinte = new TcpListener();
+    if ouvinte.bind(host, porta) != 0 { write("bind falhou: " + net_last_error()); exit(1); }
+    write("ouvindo em " + ouvinte.addr() + " (ctrl-c para sair)");
+    while 1 == 1 {
+        h = ouvinte.accept(0);
+        if h < 0 { write("accept falhou: " + net_last_error()); exit(1); }
+        t = new TcpStream();
+        t.adopt(h);
+        write("conectou: " + t.peer());
+        # Ecoa linha por linha até o cliente fechar a ponta de envio.
+        mut linha = t.recv_line();
+        while len(linha) > 0 {
+            write("recebi: " + linha);
+            t.send_line("eco: " + linha);
+            linha = t.recv_line();
+        }
+        t.close();
+        write("fechou");
+    }
+}
+
+# Cliente: manda uma linha, espera a resposta e sai.
+t = new TcpStream();
+if t.connect(host, porta, 5000) != 0 { write("nao conectou em " + host + ":" + str(porta) + ": " + t.error()); exit(1); }
+write("conectado " + t.local() + " -> " + t.peer());
+t.send_line("ola do netcat em narval");
+write("resposta: " + t.recv_line());
+t.close();
+write("fim");
