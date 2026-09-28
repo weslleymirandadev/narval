@@ -153,6 +153,15 @@ inline const std::vector<RuntimeModule>& runtime_modules() {
 #undef NV_FN
             out.push_back({ "l2", std::vector<RuntimeFn>(std::begin(fns), std::end(fns)) });
         }
+        {
+            // keyboard — perguntar se ha linha no stdin antes de ler (o par do read bloqueante).
+#define NV_FN(name, params, ret, arity) { #name, #params, #ret, "nv_keyboard_" #name "_builtin", arity },
+            const RuntimeFn fns[] = {
+#include "keyboard.def"
+            };
+#undef NV_FN
+            out.push_back({ "keyboard", std::vector<RuntimeFn>(std::begin(fns), std::end(fns)) });
+        }
         return out;
     }();
     return mods;
