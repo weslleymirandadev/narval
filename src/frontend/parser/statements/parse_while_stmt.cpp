@@ -13,9 +13,7 @@ std::unique_ptr<Node> parse_while_stmt(Parser* parser) {
 
     auto condition = parse_logical_expr(parser);
 
-    parser->expect(TokenType::OBRACE, "Expected '{'.");
-    auto body = parse_body(parser);
-    parser->expect(TokenType::CBRACE, "Expected '}'.");
+    auto body = parse_block_or_inline(parser);
 
     auto while_node = std::make_unique<WhileStmtNode>(
         std::unique_ptr<Expr>(static_cast<Expr*>(condition.release())),
