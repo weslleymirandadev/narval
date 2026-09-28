@@ -158,6 +158,7 @@ const char* nv_l2_mac(int h) { (void)h; return ""; }
 int nv_l2_send(int h, const char* frame_hex) { (void)h; (void)frame_hex; return -1; }
 const char* nv_l2_recv(int h, int timeout_ms) { (void)h; (void)timeout_ms; return ""; }
 int nv_l2_close(int h) { (void)h; return -1; }
+const char* nv_l2_default_ifname(void) { return ""; }
 #endif
 
 static long long arg_int(NvObject* o, long long fallback)
@@ -187,3 +188,51 @@ NvObject* nv_l2_recv_builtin(NvObject* h, NvObject* t)
     return box_str(nv_l2_recv((int)arg_int(h, -1), (int)arg_int(t, 0)));
 }
 NvObject* nv_l2_close_builtin(NvObject* h) { return box_int(nv_l2_close((int)arg_int(h, -1))); }
+
+/* A interface de rede sem o usuario dizer qual: a mesma ideia do l2_default_ifname dele
+ * (/proc/net/route, a rota default com RTF_UP). Com um fallback porque em rede de laboratorio
+ * (netns com veths) nao existe rota default: aí vale a primeira interface nao-loopback. */
+const char* nv_l2_default_ifname(void)
+{
+    static char out[IFNAMSIZ];
+    FILE* f = fopen("/proc/net/route", "r");
+    if (f) {
+        char line[256];
+        if (fgets(line, sizeof line, f)) {          /* cabecalho */
+            while (fgets(line, sizeof line, f)) {
+                char iface[IFNAMSIZ];
+                unsigned int dest = 1, flags = 0;
+                if (sscanf(line, "%15s %x %*s %x", iface, &dest, &flags) == 3 &&
+                    dest == 0 && (flags & 0x1)) {   /* RTF_UP */
+                    snprintf(out, sizeof out, "%s", iface);
+                    fclose(f);
+                    return out;
+                }
+            }
+        }
+        fclose(f);
+    }
+    /* Sem default route (laboratorio): a primeira nao-loopback. */
+    f = fopen("/proc/net/dev", "r");
+    if (f) {
+        char line[256];
+        while (fgets(line, sizeof line, f)) {
+            char iface[IFNAMSIZ];
+            char* colon = strchr(line, ':');
+            if (!colon) continue;
+            *colon = 0;
+            char* p = line;
+            while (*p == ' ') p++;
+            snprintf(iface, sizeof iface, "%s", p);
+            if (strcmp(iface, "lo") != 0 && iface[0]) {
+                snprintf(out, sizeof out, "%s", iface);
+                fclose(f);
+                return out;
+            }
+        }
+        fclose(f);
+    }
+    return "";
+}
+
+NvObject* nv_l2_default_ifname_builtin(void) { return box_str(nv_l2_default_ifname()); }
