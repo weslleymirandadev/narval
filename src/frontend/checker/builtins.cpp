@@ -59,13 +59,6 @@ namespace nv {
 
         // Arquivos: primitivas do shim do runtime. A API amigavel e a classe File
         // em stdlib/file.nv.
-        BuiltinFunction("nv_file_open",      {}, std::make_shared<Int>(),    false, true, 2, 2),
-        BuiltinFunction("nv_file_close",     {}, std::make_shared<Int>(),    false, true, 1, 1),
-        BuiltinFunction("nv_file_read",      {}, std::make_shared<String>(), false, true, 1, 1),
-        BuiltinFunction("nv_file_read_line", {}, std::make_shared<String>(), false, true, 1, 1),
-        BuiltinFunction("nv_file_write",     {}, std::make_shared<Int>(),    false, true, 2, 2),
-        BuiltinFunction("nv_file_exists",    {}, std::make_shared<Int>(),    false, true, 1, 1),
-        BuiltinFunction("nv_file_remove",    {}, std::make_shared<Int>(),    false, true, 1, 1),
 
         // Network: primitives of the portable runtime layer (POSIX + Winsock). The friendly
         // API is TcpListener/TcpStream/UdpSocket in stdlib/net.nv; these nv_net_* calls are
