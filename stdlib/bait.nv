@@ -370,3 +370,51 @@ def keyring_read_pub(path: str): str {
     }
     return line;
 }
+
+# ── O frame de L2 do IPv69 ───────────────────────────────────────────────────────────────────
+# eth(14) + header IPv69(32), byte a byte como o `build_frame` do src/IPv69/l2.c. Offsets do
+# include/IPv69/header.h dele: ver_traffic 0 (=0x69: versão 6, traffic class 9), payload_len 2
+# (BE16), flow_id 4 (BE16, ele usa 1), next_header 6, hop_limit 7 (0 vira 64), flags 8
+# (NOFRAG=1), src_port 10 (BE16), dst_port 12 (BE16), sequence 14 (4), source 18 (5 + 2 de
+# reservado), dest 25 (5 + 2). O eth header à frente: dst_mac(6) src_mac(6) ethertype(2)=0x6969.
+# Quem manda no L2 é o módulo `l2` (AF_PACKET); aqui é só o formato.
+def frame_ethertype_ok(frame_hex: str): int {
+    if len(frame_hex) < 28 { return 0; }
+    if substr(frame_hex, 24, 4) == "6969" { return 1; }
+    return 0;
+}
+
+def frame_pack(dst_mac: str, src_mac: str, src_addr: str, dst_addr: str, next_header: int,
+               hop: int, src_port: int, dst_port: int, payload_hex: str): str {
+    mut h = hop;
+    if h == 0 { h = 64; }
+    return dst_mac + src_mac + "6969"
+         + "69" + "00" + be16(len(payload_hex) >> 1) + be16(1)
+         + hex_byte(next_header) + hex_byte(h) + "01" + "00"
+         + be16(src_port) + be16(dst_port) + "00000000"
+         + src_addr + "0000" + dst_addr + "0000"
+         + payload_hex;
+}
+
+# Leitura de um frame recebido: os offsets do header dele, com os 14 bytes de eth à frente.
+def frame_dst_mac(f: str): str { return substr(f, 0, 12); }
+def frame_src_mac(f: str): str { return substr(f, 12, 12); }
+def frame_ip69(f: str): str { return substr(f, 28, 64); }
+def frame_payload(f: str): str { return substr(f, 92, len(f) - 92); }
+def frame_payload_len(f: str): int { return rd_be16(substr(f, 32, 4)); }
+def frame_src_port(f: str): int { return rd_be16(substr(f, 48, 4)); }
+def frame_dst_port(f: str): int { return rd_be16(substr(f, 52, 4)); }
+def frame_next_header(f: str): int { return hex_byte_val(substr(f, 40, 2)); }
+def frame_src_addr(f: str): str { return substr(f, 64, 10); }
+def frame_dst_addr(f: str): str { return substr(f, 78, 10); }
+
+# "8e.02.a5.02.25" -> "8e02a50225" (o inverso do addr_dotted, para o wire do eth/ipv69).
+def addr_wire(dotted: str): str {
+    mut out = "";
+    mut i = 0;
+    while i < len(dotted) {
+        if substr(dotted, i, 1) != "." { out = out + substr(dotted, i, 1); }
+        i = i + 1;
+    }
+    return out;
+}
