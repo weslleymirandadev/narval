@@ -445,8 +445,11 @@ std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
         // dos símbolos da face `.nv`), mas o diagnóstico dela não é emitido — a superfície do
         // módulo vem da tabela do compilador, e um `.nv` que dependia do prelúdio (net.nv)
         // reportaria aqui um erro que não impede nada. Ver IMPORT_PIPELINE_SPEC.md §5.3.
-        if (nv::find_runtime_module(nv::runtime_module_name_of_import(module_path)) != nullptr)
-            module_checker.set_emit_diagnostics(false);
+        // Passe de DECLARACAO, nao de corpo: daqui saem as assinaturas e os tipos que a extracao
+        // dos simbolos precisa. O corpo do modulo e clonado para o programa pelo merge e checado
+        // LA, quando o preludio esta no escopo. Checar o corpo aqui de novo era o que acusava um
+        // erro que nao impede nada (apontando o cache). Ver FOUNDATION_SPEC.md fase 1.
+        module_checker.signatures_only = true;
         module_checker.check_node(program);
         
         // Se houver erros no módulo importado, não podemos registrar os símbolos DELE.
