@@ -1,4 +1,5 @@
 #include "frontend/lexer/lexer.hpp"
+#include "frontend/diagnostics_ansi.hpp"
 #include "frontend/lexer/identifier_tokenizer.hpp"
 #include "frontend/lexer/operator_tokenizer.hpp"
 #include "frontend/lexer/number_tokenizer.hpp"
@@ -12,9 +13,9 @@
 #include <iostream>
 #include <sstream>
 
-constexpr const char* ANSI_BOLD = "\x1b[1m";
-constexpr const char* ANSI_RESET = "\x1b[0m";
-constexpr const char* ANSI_RED = "\x1b[31m";
+static const char* ANSI_BOLD = nv::diag::color() ? "\x1b[1m" : "";
+static const char* ANSI_RESET = nv::diag::color() ? "\x1b[0m" : "";
+static const char* ANSI_RED = nv::diag::color() ? "\x1b[31m" : "";
 
 namespace {
 std::string to_absolute_path(const std::string& path) {
