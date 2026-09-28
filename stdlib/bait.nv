@@ -1,3 +1,4 @@
+from "netio" import *;
 # Identidade do bait para Narval — endereço derivado e nome `.bait`, a partir do DIGEST da
 # chave pública (SHA-512 dela). Endereço e nome saem do mesmo digest:
 #
@@ -116,11 +117,11 @@ def name_of_digest(digest_hex: str): str {
 # classe usa, com o header de wire do IPv69 por cima. A carga atravessa como hex, como no
 # `net`: string do Narval para no primeiro NUL, e um datagrama é binário.
 
-def link_bind(host: str, port: int): int { return nv_net_udp_bind(host, port); }
+def link_bind(host: str, port: int): int { return netio.udp_bind(host, port); }
 
-def link_close(handle: int): int { return nv_net_close(handle); }
+def link_close(handle: int): int { return netio.close(handle); }
 
-def link_local_port(handle: int): int { return nv_net_local_port(handle); }
+def link_local_port(handle: int): int { return netio.local_port(handle); }
 
 # O datagrama inteiro: header de 32 bytes + carga (hex). Montado com as funções livres (e
 # não com `WireHdr.pack()`) porque um método de classe do módulo chamado de dentro de uma
@@ -133,13 +134,13 @@ def link_pack(src_addr: str, dst_addr: str, src_port: int, dst_port: int, seq_he
 
 # Envia o datagrama; devolve o que foi escrito, ou -1.
 def link_send(handle: int, host: str, port: int, dgram_hex: str): int {
-    return nv_net_udp_send_to(handle, host, port, dgram_hex);
+    return netio.udp_send_to(handle, host, port, dgram_hex);
 }
 
 # Recebe um datagrama como "host:port|dgram_hex", ou "" no timeout.
 def link_recv(handle: int, timeout_ms: int): str {
-    nv_net_set_timeout(handle, timeout_ms);
-    return nv_net_udp_recv_from(handle, 65535);
+    netio.set_timeout(handle, timeout_ms);
+    return netio.udp_recv_from(handle, 65535);
 }
 
 # A carga de um datagrama (o que vem depois do header), em hex.
