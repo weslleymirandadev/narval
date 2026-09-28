@@ -1,0 +1,25 @@
+# O frame de L2 do IPv69 montado em Narval, contra o vetor do código dele: eth(14) + header
+# de 32 bytes com ver_traffic 0x69, flow_id 1, flags NOFRAG, hop 64, portas BE16 e os endereços
+# de 5 bytes com os 2 reservados. A volta confere campo a campo nos offsets do header.h.
+# Expected:
+# 1
+# 98
+# 1
+# 8e02a50225
+# 8e02a50226
+# 1
+# 4660
+# 616263
+# true
+from "bait" import *;
+
+f = frame_pack("ffffffffffff", "001122334455", "8e02a50225", "8e02a50226", 1, 64, 0x1234, 0x4e20, "616263");
+write(frame_ethertype_ok(f));
+write(str(len(f)));
+if len(f) == 92 + 6 { write("1"); }
+write(frame_src_addr(f));
+write(frame_dst_addr(f));
+write(frame_next_header(f));
+write(str(frame_src_port(f)));
+write(frame_payload(f));
+write(str(addr_wire("8e.02.a5.02.25") == "8e02a50225"));
