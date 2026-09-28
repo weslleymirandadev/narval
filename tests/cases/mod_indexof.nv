@@ -3,6 +3,6 @@
 # o prelúdio no escopo — o erro da checagem isolada é suprimido. Ver FOUNDATION_SPEC.md fase 1.
 # Expected:
 # 2
-from "lib/usaindex" import *;
+from "_support/usaindex" import *;
 
 write(acha("abcabc", "a") + 2);
