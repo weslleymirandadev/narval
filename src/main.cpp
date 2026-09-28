@@ -27,6 +27,11 @@
 #include "backend/runtime/nv_runtime.h"
 
 #include <filesystem>
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/TargetParser/Host.h>
@@ -48,6 +53,19 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+
+// Sufixo unico por processo para os temporarios do NIR. Duas execucoes do MESMO .nv usavam o
+// mesmo objeto e o mesmo binario temporarios (o nome saia do nome do arquivo), e uma quebrava
+// o link da outra: "cannot find narval_nir_tmp_<prog>.o". E o caso mais natural que existe num
+// chat — `listen` num terminal e `connect` no outro rodam o mesmo arquivo.
+static std::string nv_tmp_suffix() {
+#ifdef _WIN32
+    static const std::string s = std::to_string(_getpid());
+#else
+    static const std::string s = std::to_string(getpid());
+#endif
+    return s;
+}
 
 // Os argumentos que o PROGRAMA recebe: o que vem depois do arquivo .nv e não é opção do
 // compilador. Ficam no escopo do arquivo porque quem os COLETA (o laço de argumentos, na main)
@@ -590,7 +608,7 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
 
         std::string stem = std::filesystem::path(filename).stem().string();
         std::string obj_path = object_only ? stem + ".o"
-                                           : "narval_nir_tmp_" + stem + ".o";
+                                           : "narval_nir_tmp_" + stem + "_" + nv_tmp_suffix() + ".o";
 
         std::error_code nir_ec;
         llvm::raw_fd_ostream dest(obj_path, nir_ec, llvm::sys::fs::OF_None);
@@ -694,7 +712,7 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
 
         // A PE image is only executable when the file name carries the .exe suffix.
         const std::string exe_suffix = target_triple.isOSWindows() ? ".exe" : "";
-        std::string bin_path = (build_only ? stem : ("narval_nir_tmp_" + stem)) + exe_suffix;
+        std::string bin_path = (build_only ? stem : ("narval_nir_tmp_" + stem + "_" + nv_tmp_suffix())) + exe_suffix;
 #if defined(__aarch64__) || defined(_M_ARM64)
         const char* nir_pie = "-pie";
 #else
