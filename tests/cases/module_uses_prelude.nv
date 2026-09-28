@@ -1,0 +1,11 @@
+# Um módulo de usuário que usa o prelúdio: `substr` vem do `strings`, que o merge traz para o
+# programa. A checagem isolada do corpo, no ponto do import, não vê o prelúdio — e o import não
+# pode deixar de existir por isso (o corpo é clonado e checado no programa, onde o prelúdio
+# está). Ver FOUNDATION_SPEC.md fase 1.
+# Expected:
+# abc
+# 3
+from "lib/utilzinho" import *;
+
+write(recorta("abcdef", 3));
+write(len(recorta("abcdef", 3)));
