@@ -1,0 +1,6 @@
+# Importar um módulo que não existe é erro de compilação, e a mensagem tem de nomear o módulo
+# pedido.
+# Error: Module modulo_que_nao_existe not found
+from "modulo_que_nao_existe" import *;
+
+write("nao chega aqui");
