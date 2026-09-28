@@ -1,0 +1,14 @@
+// file.def — o módulo `fileio`: arquivos por handle (open/close/read/write/...).
+//
+// A ponte já existia inteira em src/backend/runtime/core/file_bridge.c; o que faltava era
+// declarar a superfície. O módulo se chama `fileio` e não `file` porque a face em Narval é
+// `stdlib/file.nv` — uma face não pode importar o módulo de mesmo nome (o loader recursaria no
+// próprio arquivo, ver IMPORT_PIPELINE_SPEC §7). O prefixo dos símbolos continua `nv_file_`:
+// o ABI não muda, só a etiqueta da superfície (§8.1).
+NV_FN(open,      (bytes, bytes), num,   2)   // path, modo ("r"/"w"/"a") -> handle
+NV_FN(close,     (num),          num,   1)
+NV_FN(read,      (num),          bytes, 1)   // tudo o que resta
+NV_FN(read_line, (num),          bytes, 1)
+NV_FN(write,     (num, bytes),   num,   2)
+NV_FN(exists,    (bytes),        num,   1)
+NV_FN(remove,    (bytes),        num,   1)
