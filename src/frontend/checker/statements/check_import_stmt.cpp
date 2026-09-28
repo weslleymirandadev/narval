@@ -401,8 +401,14 @@ std::shared_ptr<nv::Type>& check_import_stmt(nv::Checker* ch, Node* node) {
             // símbolo para validar aqui — a superfície já foi injetada no sítio do import,
             // no ramo do alias. Faltar arquivo não é erro para esses módulos.
             if (nv::find_runtime_module(nv::runtime_module_name_of_import(module_path))) {
-                nv_inject_runtime_module(ch, module_path, import_stmt->wildcard_alias);
-                ch->scope->put_key(import_stmt->wildcard_alias, ch->gettyptr("None"), false);
+                // Módulo virtual (sem `.nv`, só a tabela) importado FLAT: o namespace leva o NOME
+                // do módulo. `wildcard_alias` vem vazio no flat, e o helper saía fora — era o que
+                // deixava `netio` inalcançável dentro de um arquivo de módulo (§12).
+                const std::string virtual_ns = import_stmt->wildcard_alias.empty()
+                                                   ? nv::runtime_module_name_of_import(module_path)
+                                                   : import_stmt->wildcard_alias;
+                nv_inject_runtime_module(ch, module_path, virtual_ns);
+                ch->scope->put_key(virtual_ns, ch->gettyptr("None"), false);
                 return ch->gettyptr("None");
             }
             std::ostringstream oss;
