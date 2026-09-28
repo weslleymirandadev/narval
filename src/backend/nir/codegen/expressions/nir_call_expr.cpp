@@ -259,9 +259,7 @@ void CallExprNode::nir_codegen(nv::NIRGenerationContext& ctx) {
     // Byte codec for Packet/Frame (net_pack.c), same names on both sides.
     {"nv_net_str_to_hex", "nv_net_str_to_hex_builtin"},
     {"nv_net_hex_to_str", "nv_net_hex_to_str_builtin"},
-    {"nv_net_unpack_hex", "nv_net_unpack_hex_builtin"},
     {"nv_net_platform", "nv_net_platform_builtin"},
-    {"nv_net_caps", "nv_net_caps_builtin"},
     {"nv_net_send_hex",       "nv_net_send_hex_builtin"},
     {"nv_net_recv_exact_hex", "nv_net_recv_exact_hex_builtin"},
         // Option/Result constructors: the checker accepts them as `Some(x)` etc, but the
