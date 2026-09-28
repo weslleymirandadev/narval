@@ -1,0 +1,16 @@
+# Contrato da fronteira C<->Narval (FOUNDATION_SPEC.md fase 3): o retorno de uma chamada de
+# módulo é do Narval, não emprestado da arena do módulo. O teste não precisa de valor de
+# referência: `keypair` devolve seed||pub, então a pub DERIVADA da seed tem de bater com a pub
+# embutida na própria chave — e isso é conferido DEPOIS de três chamadas seguintes.
+# Expected:
+# len(k) = 128
+# consistencia: true
+from "crypto" import *;
+
+k = crypto.keypair();
+d1 = crypto.sha512("616263");
+d2 = crypto.sha512("616264");
+semente = substr(k, 0, 64);
+
+write("len(k) = " + str(len(k)));
+write("consistencia: " + str(crypto.seed_to_pub(semente) == substr(k, 64, 64)));
