@@ -1,0 +1,5 @@
+from "text" import *;
+
+def codigo(t: str): int {
+    return text.ord(t);
+}
