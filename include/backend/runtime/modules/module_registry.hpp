@@ -112,7 +112,7 @@ inline const std::vector<RuntimeModule>& runtime_modules() {
 #include "net.def"
             };
 #undef NV_FN
-            out.push_back({ "net", std::vector<RuntimeFn>(std::begin(fns), std::end(fns)) });
+            out.push_back({ "netio", std::vector<RuntimeFn>(std::begin(fns), std::end(fns)) });
         }
         return out;
     }();
