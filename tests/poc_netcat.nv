@@ -13,9 +13,14 @@ def env_or(nome: str, padrao: str): str {
     return v;
 }
 
-modo = env_or("MODE", "listen");
-porta = net_digits_to_int(env_or("PORT", "7777"));
-host = env_or("HOST", "127.0.0.1");
+def arg_or(i: int, nome_env: str, padrao: str): str {
+    if i < system.argc(): return system.argv(i);
+    return env_or(nome_env, padrao);
+}
+
+modo = arg_or(0, "MODE", "listen");
+host = arg_or(1, "HOST", "127.0.0.1");
+porta = net_digits_to_int(arg_or(2, "PORT", "7777"));
 
 if modo == "listen" {
     ouvinte = new TcpListener();
