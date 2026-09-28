@@ -11,6 +11,7 @@
 # conversa.
 from "net" import *;
 from "system" import *;
+from "keyboard" import *;
 
 def env_or(nome: str, padrao: str): str {
     mut v = system.env(nome);
@@ -47,38 +48,81 @@ t = new TcpStream();
 
 if modo == "listen" {
     ouvinte = new TcpListener();
-    if ouvinte.bind(host, porta) != 0 { write("bind falhou: " + net_last_error()); exit(1); }
+    
+    if ouvinte.bind(host, porta) != 0 {
+        write("bind falhou: " + net_last_error());
+        exit(1);
+    }
+
     write("esperando alguem na porta " + str(porta) + " ...");
     h = ouvinte.accept(0);
-    if h < 0 { write("accept falhou: " + net_last_error()); exit(1); }
+    if h < 0 {
+        write("accept falhou: " + net_last_error());
+        exit(1);
+    }
     t.adopt(h);
 } else {
-    if t.connect(host, porta, 0) != 0 { write("nao conectou em " + host + ":" + str(porta) + ": " + t.error()); exit(1); }
+    if t.connect(host, porta, 0) != 0 {
+        write("nao conectou em " + host + ":" + str(porta) + ": " + t.error());
+        exit(1);
+    }
 }
 
 write("conectado: " + t.local() + " -> " + t.peer());
-write("como \"" + apelido + "\" — escreva e Enter (linha vazia ou Ctrl-D encerra)");
+write("como \"" + apelido + "\" — escreva e Enter (\"sair\" encerra)");
 
-# O poll diz o que chegou sem bloquear; a leitura do stdin é que dita o ritmo do laço.
-p = new Poll();
-p.add(t.handle);
-p.for_read();
-
+# Leitura sem travar: o stream em modo nao bloqueante devolve "" quando nao ha nada, entao o
+# laco imprime o que chegou na hora e so depois olha o teclado. Como TCP e' fluxo de bytes, as
+# linhas sao remontadas aqui: o pedaco que ainda nao tem "\n" fica em `pendente`.
+t.nonblocking();
+mut pendente = "";
 mut vivo = 1;
 while vivo == 1 {
-    # 1) escoa tudo o que já chegou do outro lado
-    while p.wait(150) > 0 {
-        linha = t.recv_line();
-        if len(linha) == 0 { vivo = 0; }
-        else { write(linha); }
+    mut tem = 1;
+    while tem == 1 {
+        dados = t.recv(4096);
+        if len(dados) == 0 {
+            tem = 0;
+        } else {
+            pendente = pendente + dados;
+            mut fim = index_of(pendente, "\n");
+            while fim >= 0 {
+                write(substr(pendente, 0, fim));
+                pendente = substr(pendente, fim + 1, len(pendente) - fim - 1);
+                fim = index_of(pendente, "\n");
+            }
+        }
     }
     if vivo == 1 {
-        # 2) o que você digita vai com o seu apelido
-        texto = read();
-        if len(texto) == 0 { vivo = 0; }
-        else { t.send_line(apelido + ": " + texto); }
+        if keyboard.ready(50) == 1 {
+            linha = keyboard.line();
+            if linha == "sair" {
+                vivo = 0;
+            } else {
+                if len(linha) > 0 { t.send_line(apelido + ": " + linha); }
+            }
+        }
     }
 }
 
-write("encerrando");
+# Ultimo dreno: o que chegou enquanto eu decidia sair nao se perde.
+mut ultimo = 1;
+while ultimo == 1 {
+    dados = t.recv(4096);
+    if len(dados) == 0 {
+        ultimo = 0;
+    } else {
+        pendente = pendente + dados;
+    }
+}
+mut fim2 = index_of(pendente, "\n");
+while fim2 >= 0 {
+    write(substr(pendente, 0, fim2));
+    pendente = substr(pendente, fim2 + 1, len(pendente) - fim2 - 1);
+    fim2 = index_of(pendente, "\n");
+}
+if len(pendente) > 0 { write(pendente); }
+
+t.send_line(apelido + ": saiu");
 t.close();
+write("saiu");
