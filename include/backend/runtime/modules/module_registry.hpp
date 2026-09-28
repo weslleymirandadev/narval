@@ -134,6 +134,16 @@ inline const std::vector<RuntimeModule>& runtime_modules() {
 #undef NV_FN
             out.push_back({ "fileio", std::vector<RuntimeFn>(std::begin(fns), std::end(fns)) });
         }
+        {
+            // sqldb — SQLite. Mesmo caso do fileio: ponte pronta em core/sqlite_bridge.c, só
+            // faltava a superfície declarada (prefixo de símbolo preservado).
+#define NV_FN(name, params, ret, arity) { #name, #params, #ret, "nv_sqlite_" #name "_builtin", arity },
+            const RuntimeFn fns[] = {
+#include "sqldb.def"
+            };
+#undef NV_FN
+            out.push_back({ "sqldb", std::vector<RuntimeFn>(std::begin(fns), std::end(fns)) });
+        }
         return out;
     }();
     return mods;
