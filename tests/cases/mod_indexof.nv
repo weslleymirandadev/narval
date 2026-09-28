@@ -1,8 +1,10 @@
-# Módulo de usuário usando `index_of` (o símbolo do prelúdio que a medição do §10 mostrou
-# ausente no checker do módulo). Hoje funciona: o corpo é checado de novo depois do merge, com
-# o prelúdio no escopo — o erro da checagem isolada é suprimido. Ver FOUNDATION_SPEC.md fase 1.
+# Módulo de usuário usando `index_of`, o símbolo do prelúdio que a medição do §10 mostrou ausente
+# no checker do módulo no ponto do import. Hoje funciona porque o corpo é checado de novo depois
+# do merge, com o prelúdio no escopo. Ver FOUNDATION_SPEC.md fase 1.
+# Module: usaindex.nv = tests/support/usaindex.nv
 # Expected:
 # 2
-from "../support/usaindex" import *;
+
+from "usaindex" import *;
 
 write(acha("abcabc", "a") + 2);
