@@ -1,0 +1,16 @@
+# O mesmo, dentro do corpo de uma função: o aviso vale nos dois níveis de escopo (o
+# declare_implicit_locals no corpo de função e o process_codeblock no nível de programa).
+# Stderr:
+# no value bound for 'dentro' here
+# Expected:
+# 0
+from "system" import *;
+
+def le(): int {
+    if system.argc() >= 0 {
+        dentro = 7;
+    }
+    return dentro;
+}
+
+write(le());
