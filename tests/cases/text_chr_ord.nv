@@ -1,0 +1,19 @@
+# O intrínseco que faltava na linguagem: byte <-> código. Sem ele, `hex_to_str`/`str_to_hex`
+# não podiam sair do C (IMPORT_PIPELINE_SPEC §9). Aqui ele é exercitado direto e pelo codec de
+# hex do `net`, que passou a ser Narval puro por causa dele.
+# Expected:
+# a
+# 97
+# 97
+# 61
+# abc
+# 616263
+from "text" import *;
+from "net" import *;
+
+write(text.chr(97));
+write(text.ord("abc"));
+write(text.ord(text.chr(97)));
+write(net_str_to_hex("a"));
+write(net_hex_to_str("616263"));
+write(net_str_to_hex("abc"));
