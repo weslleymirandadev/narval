@@ -70,38 +70,8 @@ namespace nv {
         // Network: primitives of the portable runtime layer (POSIX + Winsock). The friendly
         // API is TcpListener/TcpStream/UdpSocket in stdlib/net.nv; these nv_net_* calls are
         // what a protocol of your own uses directly (framing, poll).
-        BuiltinFunction("nv_net_tcp_listen",     {}, std::make_shared<Int>(), false, true, 2, 2),
-        BuiltinFunction("nv_net_tcp_connect",    {}, std::make_shared<Int>(), false, true, 3, 3),
-        BuiltinFunction("nv_net_accept",         {}, std::make_shared<Int>(), false, true, 2, 2),
-        BuiltinFunction("nv_net_udp_bind",       {}, std::make_shared<Int>(), false, true, 2, 2),
-        BuiltinFunction("nv_net_udp_send_to",    {}, std::make_shared<Int>(), false, true, 4, 4),
-        BuiltinFunction("nv_net_udp_recv_from",  {}, std::make_shared<String>(), false, true, 2, 2),
-        BuiltinFunction("nv_net_send",           {}, std::make_shared<Int>(), false, true, 2, 2),
-        BuiltinFunction("nv_net_recv",           {}, std::make_shared<String>(), false, true, 2, 2),
-        BuiltinFunction("nv_net_recv_until",     {}, std::make_shared<String>(), false, true, 3, 3),
-        BuiltinFunction("nv_net_recv_exact",     {}, std::make_shared<String>(), false, true, 2, 2),
-        BuiltinFunction("nv_net_shutdown",       {}, std::make_shared<Int>(), false, true, 2, 2),
-        BuiltinFunction("nv_net_close",          {}, std::make_shared<Int>(), false, true, 1, 1),
-        BuiltinFunction("nv_net_set_timeout",    {}, std::make_shared<Int>(), false, true, 2, 2),
-        BuiltinFunction("nv_net_set_option",     {}, std::make_shared<Int>(), false, true, 3, 3),
-        BuiltinFunction("nv_net_get_option",     {}, std::make_shared<Int>(), false, true, 2, 2),
-        BuiltinFunction("nv_net_status",         {}, std::make_shared<Int>(), false, true, 1, 1),
-        BuiltinFunction("nv_net_last_error",     {}, std::make_shared<String>(), false, true, 0, 0),
-        BuiltinFunction("nv_net_last_len",       {}, std::make_shared<Int>(), false, true, 0, 0),
-        BuiltinFunction("nv_net_resolve",        {}, std::make_shared<String>(), false, true, 1, 1),
-        BuiltinFunction("nv_net_resolve_all",    {}, std::make_shared<String>(), false, true, 1, 1),
-        BuiltinFunction("nv_net_hostname",       {}, std::make_shared<String>(), false, true, 0, 0),
-        BuiltinFunction("nv_net_local_port",     {}, std::make_shared<Int>(), false, true, 1, 1),
-        BuiltinFunction("nv_net_local_addr",     {}, std::make_shared<String>(), false, true, 1, 1),
-        BuiltinFunction("nv_net_peer_addr",      {}, std::make_shared<String>(), false, true, 1, 1),
-        BuiltinFunction("nv_net_poll",           {}, std::make_shared<String>(), false, true, 3, 3),        // len(x) — length of a string/vector/map; boxed int at runtime.
         // Byte codec for Packet/Frame (net_pack.c) — pure, hex text in and out.
-        BuiltinFunction("nv_net_str_to_hex", {}, std::make_shared<String>(), false, true, 1, 1),  // text bytes as hex
-        BuiltinFunction("nv_net_hex_to_str", {}, std::make_shared<String>(), false, true, 1, 1),  // hex back to text
-        BuiltinFunction("nv_net_platform", {}, std::make_shared<String>(), false, true, 0, 0),  // linux / windows / unix
         // Binary-safe stream IO for Frame: hex text crosses the ABI, bytes hit the wire.
-        BuiltinFunction("nv_net_send_hex",       {}, std::make_shared<Int>(),    false, true, 2, 2),  // bytes behind a hex string
-        BuiltinFunction("nv_net_recv_exact_hex", {}, std::make_shared<String>(), false, true, 2, 2),  // exactly n bytes as hex
         BuiltinFunction("len", {}, std::make_shared<Int>(), false, true, 1, 1),
         
         // int: aceita 1 argumento de qualquer tipo, retorna int
