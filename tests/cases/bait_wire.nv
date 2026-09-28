@@ -8,6 +8,7 @@
 # dgram
 # 8e.02.a5.02.25
 # ff.ff.ff.ff.ff
+from "netio" import *;
 from "bait" import *;
 
 # Campos idênticos aos do gerador de referência.
