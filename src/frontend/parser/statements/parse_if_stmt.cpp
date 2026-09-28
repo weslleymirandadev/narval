@@ -13,7 +13,6 @@ std::unique_ptr<Node> parse_if_stmt(Parser* parser) {
 
     auto condition = parse_logical_expr(parser);
 
-    parser->expect(TokenType::OBRACE, "Expected '{'.");
 
     auto if_node = std::make_unique<IfStatementNode>(
         std::unique_ptr<Expr>(static_cast<Expr*>(condition.release())),
@@ -21,8 +20,7 @@ std::unique_ptr<Node> parse_if_stmt(Parser* parser) {
         std::vector<std::unique_ptr<Stmt>>{}
     );
 
-    if_node->consequent = parse_body(parser);
-    parser->expect(TokenType::CBRACE, "Expected '}'.");
+    if_node->consequent = parse_block_or_inline(parser);
 
     // Zero or more elif branches
     while (parser->not_eof() && parser->current_token().type == TokenType::ELIF) {
@@ -30,7 +28,6 @@ std::unique_ptr<Node> parse_if_stmt(Parser* parser) {
 
         auto elif_condition = parse_logical_expr(parser);
 
-        parser->expect(TokenType::OBRACE, "Expected '{'.");
 
         auto elif_node = std::make_unique<IfStatementNode>(
             std::unique_ptr<Expr>(static_cast<Expr*>(elif_condition.release())),
@@ -38,8 +35,7 @@ std::unique_ptr<Node> parse_if_stmt(Parser* parser) {
             std::vector<std::unique_ptr<Stmt>>{}
         );
 
-        elif_node->consequent = parse_body(parser);
-        parser->expect(TokenType::CBRACE, "Expected '}'.");
+        elif_node->consequent = parse_block_or_inline(parser);
 
         if_node->alternate.push_back(std::move(elif_node));
     }
@@ -54,7 +50,6 @@ std::unique_ptr<Node> parse_if_stmt(Parser* parser) {
 
                 auto else_if_condition = parse_logical_expr(parser);
 
-                parser->expect(TokenType::OBRACE, "Expected '{'.");
 
                 auto else_if_node = std::make_unique<IfStatementNode>(
                     std::unique_ptr<Expr>(static_cast<Expr*>(else_if_condition.release())),
@@ -62,8 +57,7 @@ std::unique_ptr<Node> parse_if_stmt(Parser* parser) {
                     std::vector<std::unique_ptr<Stmt>>{}
                 );
 
-                else_if_node->consequent = parse_body(parser);
-                parser->expect(TokenType::CBRACE, "Expected '}'.");
+                else_if_node->consequent = parse_block_or_inline(parser);
 
                 if_node->alternate.push_back(std::move(else_if_node));
 
@@ -75,9 +69,7 @@ std::unique_ptr<Node> parse_if_stmt(Parser* parser) {
             }
 
             // Final else block
-            parser->expect(TokenType::OBRACE, "Expected '{'.");
-            auto else_block = parse_body(parser);
-            parser->expect(TokenType::CBRACE, "Expected '}'.");
+            auto else_block = parse_block_or_inline(parser);
 
             for (auto& s : else_block) {
                 if_node->alternate.push_back(std::move(s));
