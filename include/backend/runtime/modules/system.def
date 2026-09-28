@@ -11,3 +11,5 @@
 NV_FN(env,  (bytes), bytes, 1)
 // Diretório do usuário: HOME no POSIX, USERPROFILE no Windows. "" se não houver.
 NV_FN(home, (),      bytes, 0)
+NV_FN(argc, (),    num,   0)   // quantos argumentos o programa recebeu
+NV_FN(argv, (num), bytes, 1)   // o argumento i ("" fora da faixa)
