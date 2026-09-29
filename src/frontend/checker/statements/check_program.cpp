@@ -72,6 +72,51 @@ namespace {
         return "";
     }
 
+    // Nomes DECLARADOS explicitamente neste corpo (recursivo). O walker do programa roda antes do
+    // check, então `mut i = 0;` no topo ainda não está no escopo quando ele examina `i = i + 1`
+    // dentro de um laço — sem esta lista o aviso disparava em código correto (medido: três falsos
+    // positivos num único programa). Mesma correção do walker de função, em
+    // check_function_stmt.cpp.
+    void collect_declared_names(const CodeBlock& body, std::unordered_set<std::string>& out) {
+        for (const auto& stmt : body) {
+            if (!stmt) continue;
+            if (stmt->kind == NodeType::DeclarationStatement) {
+                auto* decl = static_cast<const DeclarationStmtNode*>(stmt.get());
+                if (decl->target && decl->target->kind == NodeType::Identifier)
+                    out.insert(static_cast<const IdentifierNode*>(decl->target.get())->symbol);
+            }
+        }
+        for (const auto& stmt : body) {
+            if (!stmt) continue;
+            switch (stmt->kind) {
+                case NodeType::IfStatement: {
+                    auto* s = static_cast<IfStatementNode*>(stmt.get());
+                    collect_declared_names(s->consequent, out);
+                    collect_declared_names(s->alternate, out);
+                    break;
+                }
+                case NodeType::WhileStatement:
+                    collect_declared_names(static_cast<WhileStmtNode*>(stmt.get())->body, out);
+                    break;
+                case NodeType::ForStatement: {
+                    auto* s = static_cast<ForStmtNode*>(stmt.get());
+                    collect_declared_names(s->body, out);
+                    collect_declared_names(s->else_block, out);
+                    break;
+                }
+                case NodeType::ForeverStatement:
+                    collect_declared_names(static_cast<ForeverStmtNode*>(stmt.get())->body, out);
+                    break;
+                case NodeType::MatchStatement: {
+                    auto* s = static_cast<MatchStmtNode*>(stmt.get());
+                    for (auto& cb : s->bodies) collect_declared_names(cb, out);
+                    break;
+                }
+                default: break;
+            }
+        }
+    }
+
     bool identifier_exists(nv::Checker* checker, const std::string& symbol) {
         try {
             checker->scope->get_key(symbol);
@@ -84,7 +129,8 @@ namespace {
     std::unique_ptr<Stmt> convert_assignment_to_declaration(
         AssignmentExprNode* assign_node,
         nv::Checker* checker,
-        bool nested = false
+        bool nested = false,
+        const std::unordered_set<std::string>* declarados = nullptr
     ) {
         if (assign_node->op != "=") {
             return nullptr;
@@ -113,7 +159,7 @@ namespace {
             decl_node->position = std::make_unique<PositionData>(*assign_node->position);
         }
 
-        if (nested) {
+        if (nested && declarados && !declarados->count(id_node->symbol)) {
             // O nome passa a existir no escopo de fora, mas a DECLARACAO (com o inicializador)
             // fica dentro do bloco: fora dele o valor e' o default 0, em silencio. Isso troca um
             // erro de escopo por resposta errada — ver o achado do "0 silencioso" na
@@ -167,13 +213,20 @@ namespace {
     // `nested` diz se estes statements estao dentro de um bloco (ramo de if, corpo de laco...):
     // um vinculo que nasce ali passa a existir fora, mas sem valor — ver o aviso em
     // convert_assignment_to_declaration.
-    void process_codeblock(CodeBlock& body, nv::Checker* checker, bool nested = false) {
+    void process_codeblock(CodeBlock& body, nv::Checker* checker, bool nested = false,
+                           const std::unordered_set<std::string>* declarados = nullptr) {
+        static std::unordered_set<std::string> vazio_para_raiz;
+        if (!declarados) {
+            vazio_para_raiz.clear();
+            collect_declared_names(body, vazio_para_raiz);
+            declarados = &vazio_para_raiz;
+        }
         for (size_t i = 0; i < body.size(); i++) {
             auto& stmt = body[i];
             
             if (stmt->kind == NodeType::AssignmentExpression) {
                 auto* assign_node = static_cast<AssignmentExprNode*>(stmt.get());
-                auto converted = convert_assignment_to_declaration(assign_node, checker, nested);
+                auto converted = convert_assignment_to_declaration(assign_node, checker, nested, declarados);
                 if (converted) {
                     stmt.reset(converted.release());
                 }
@@ -182,24 +235,24 @@ namespace {
             switch (stmt->kind) {
                 case NodeType::IfStatement: {
                     auto* if_stmt = static_cast<IfStatementNode*>(stmt.get());
-                    process_codeblock(if_stmt->consequent, checker, true);
-                    process_codeblock(if_stmt->alternate, checker, true);
+                    process_codeblock(if_stmt->consequent, checker, true, declarados);
+                    process_codeblock(if_stmt->alternate, checker, true, declarados);
                     break;
                 }
                 case NodeType::ForStatement: {
                     auto* for_stmt = static_cast<ForStmtNode*>(stmt.get());
-                    process_codeblock(for_stmt->body, checker, true);
-                    process_codeblock(for_stmt->else_block, checker, true);
+                    process_codeblock(for_stmt->body, checker, true, declarados);
+                    process_codeblock(for_stmt->else_block, checker, true, declarados);
                     break;
                 }
                 case NodeType::WhileStatement: {
                     auto* while_stmt = static_cast<WhileStmtNode*>(stmt.get());
-                    process_codeblock(while_stmt->body, checker, true);
+                    process_codeblock(while_stmt->body, checker, true, declarados);
                     break;
                 }
                 case NodeType::ForeverStatement: {
                     auto* forever_stmt = static_cast<ForeverStmtNode*>(stmt.get());
-                    process_codeblock(forever_stmt->body, checker, true);
+                    process_codeblock(forever_stmt->body, checker, true, declarados);
                     break;
                 }
                 case NodeType::FunctionStatement: {
@@ -208,7 +261,7 @@ namespace {
                 case NodeType::MatchStatement: {
                     auto* match_stmt = static_cast<MatchStmtNode*>(stmt.get());
                     for (auto& case_body : match_stmt->bodies) {
-                        process_codeblock(case_body, checker, true);
+                        process_codeblock(case_body, checker, true, declarados);
                     }
                     break;
                 }
