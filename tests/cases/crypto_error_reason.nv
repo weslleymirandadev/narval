@@ -1,0 +1,33 @@
+# O sentinela "!" diz QUE falhou; `crypto.last_error()` diz POR QUE. Antes disto o "!" era a
+# única informação, e uma falha de chave atravessava o programa até virar um endereço truncado
+# sem explicação. Mesmo padrão do net (`net.last_error()`).
+#
+# Os três motivos são de ordens diferentes de propósito: o de comprimento é recusado antes, o de
+# autenticação só aparece quando o comprimento passa e a chave é que está errada — e é esse o
+# caminho profundo, o que antes sumia em silêncio.
+# Expected:
+# !
+# seed must be 32 bytes
+# !
+# ciphertext must be at least 32 bytes, nonce 24, key 32
+# !
+# authentication failed (wrong key or tampered ciphertext)
+from "crypto" import *;
+
+write(crypto.seed_to_pub("aa"));
+write(crypto.last_error());
+
+write(crypto.secretbox_open("00", "00", "00"));
+write(crypto.last_error());
+
+# 32 bytes de ciphertext, nonce de 24 e chave de 32: os comprimentos passam, a autenticacao falha
+# cada "00" são 2 caracteres hex = 1 byte: 32 voltas dão os 64 hex da chave e do ciphertext
+mut ct  = "";
+mut nz  = "";
+mut k32 = "";
+mut i = 0;
+while i < 32 { ct = ct + "00"; k32 = k32 + "11"; i = i + 1; }
+mut j = 0;
+while j < 24 { nz = nz + "00"; j = j + 1; }
+write(crypto.secretbox_open(ct, nz, k32));
+write(crypto.last_error());
