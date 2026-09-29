@@ -87,6 +87,9 @@ enum class NodeType {
     MacroCall,
 };
 
+// Definido em parser.cpp: qual arquivo o parser está lendo agora.
+std::string nv_parse_file();
+
 class PositionData {
 public:
     size_t line;
@@ -94,8 +97,15 @@ public:
     size_t pos[2];
     std::string filename;
 
+    // O arquivo de ORIGEM do nó. Fica carimbado aqui para que o endereço do diagnóstico continue
+    // certo depois do merge: o corpo de um módulo é clonado para o programa e checado pelo
+    // checker do programa, cujo `current_filename` é o do programa — sem isto, um aviso sobre
+    // stdlib/crypto.nv saía com o nome do arquivo do usuário e a linha do módulo.
+    //
+    // O default é o arquivo que o parser está lendo no momento, então as construções que não
+    // passam o sexto argumento (a maioria) já saem carimbadas, sem tocar em 78 sítios.
     PositionData(size_t line, size_t col_start, size_t col_end, size_t pos_start, size_t pos_end,
-                 std::string filename = "")
+                 std::string filename = nv_parse_file())
         : line(line), col{col_start, col_end}, pos{pos_start, pos_end},
           filename(std::move(filename)) {}
 };
