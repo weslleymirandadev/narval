@@ -1,0 +1,10 @@
+# Uma redefinição é erro e tem de IMPEDIR a execução. Antes deste conserto o checker reportava,
+# a verificação do MLIR falhava, e o binário rodava assim mesmo e saía com rc=0 — o pior caso
+# possível, porque a falha se apresentava como sucesso. O erro nasce ABAIXO do checker (é a
+# verificação do MLIR que o vê), então é este caminho que o caso cobre.
+# Error: redefinition of symbol named 'dup'
+# Exit code: 1
+def dup(): int { return 1; }
+def dup(): int { return 2; }
+
+write(dup());
