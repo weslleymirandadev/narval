@@ -370,18 +370,10 @@ def net_caps(): str { return "tcp,udp,dns,poll"; }
 # Parsing de endereço em Narval, replicando o split_host_port do C (net_addr.c): "[v6]:port",
 # "[v6]", "host:port", IPv6 cru (corte no ÚLTIMO dois-pontos) e host sem porta. Devolve o
 # endereço normalizado, ou "" se for inválido — a mesma regra do nv_net_addr_parse.
-def net_digits_to_int(t: str): int {
-    if len(t) > 0 && substr(t, 0, 1) == "-" { return -1; }
-    mut v = 0;
-    mut i = 0;
-    while i < len(t) {
-        mut d = index_of("0123456789", substr(t, i, 1));
-        if d < 0 { return -1; }
-        v = v * 10 + d;
-        i = i + 1;
-    }
-    return v;
-}
+# Now a thin alias: the decimal parser lives in the prelude (`to_int` in strings.nv), because
+# a program that only wants to parse a number should not have to import the net face. Same
+# contract (-1 for anything that is not a non-negative integer).
+def net_digits_to_int(t: str): int { return to_int(t); }
 
 def net_host_of(addr: str): str {
     mut a = net_addr_parse(addr);
