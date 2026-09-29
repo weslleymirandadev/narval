@@ -1,0 +1,12 @@
+# `defer { }` runs its body after the enclosing one, in reverse order of the
+# declarations.
+# Expected:
+# corpo
+# defer 2
+# defer 1
+def f() {
+    defer { write("defer 1"); }
+    defer { write("defer 2"); }
+    write("corpo");
+}
+f();
