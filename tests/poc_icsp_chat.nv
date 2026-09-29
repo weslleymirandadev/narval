@@ -96,7 +96,7 @@ if modo == "listen" {
     while conectado == 0 {
         f = l2.recv(fd, 60000);
         if len(f) > 0 {
-            if frame_ethertype_ok(f) == 1 && frame_next_header(f) == 2 && frame_dst_port(f) == porta {
+            if frame_ethertype_ok(f) == 1 and frame_next_header(f) == 2 and frame_dst_port(f) == porta {
                 pkt = frame_payload(f);
                 if icsp_check(pkt) == 1 {
                     if icsp_chunk_kind(icsp_first_chunk(pkt)) == 1 {
@@ -121,10 +121,10 @@ else {
     init = icsp_pack(porta, porta, assoc, icsp_chunk(1, 0, init_data()));
     if l2.send(fd, frame_pack("ffffffffffff", l2.mac(fd), meu, destino, 2, 64, porta, porta, init)) != 0 { write("INIT nao saiu"); exit(1); }
     mut tentativas = 0;
-    while conectado == 0 && tentativas < 8 {
+    while conectado == 0 and tentativas < 8 {
         f = l2.recv(fd, 1000);
         if len(f) > 0 {
-            if frame_next_header(f) == 2 && icsp_check(frame_payload(f)) == 1 {
+            if frame_next_header(f) == 2 and icsp_check(frame_payload(f)) == 1 {
                 if icsp_chunk_kind(icsp_first_chunk(frame_payload(f))) == 2 {
                     peer_mac = frame_src_mac(f);
                     write("[icsp] INIT_ACK de " + addr_dotted(frame_src_addr(f)) + " — conectado (associacao " + str(assoc) + ")");
@@ -150,7 +150,7 @@ while vivo == 1 {
         if len(g) == 0 {
             tem = 0;
         } else {
-            if frame_ethertype_ok(g) == 1 && frame_next_header(g) == 2 && frame_dst_port(g) == porta {
+            if frame_ethertype_ok(g) == 1 and frame_next_header(g) == 2 and frame_dst_port(g) == porta {
                 pkt = frame_payload(g);
                 if icsp_check(pkt) == 1 {
                     ch = icsp_first_chunk(pkt);
@@ -190,7 +190,7 @@ while ultimo == 1 {
     if len(g) == 0 {
         ultimo = 0;
     } else {
-        if frame_ethertype_ok(g) == 1 && frame_next_header(g) == 2 && frame_dst_port(g) == porta {
+        if frame_ethertype_ok(g) == 1 and frame_next_header(g) == 2 and frame_dst_port(g) == porta {
             pkt = frame_payload(g);
             if icsp_check(pkt) == 1 {
                 ch = icsp_first_chunk(pkt);
