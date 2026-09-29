@@ -7,7 +7,92 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 
+#include "frontend/ast/statements/declaration_stmt_node.hpp"
+#include "frontend/ast/statements/defer_stmt_node.hpp"
+#include "frontend/ast/statements/for_stmt_node.hpp"
+#include "frontend/ast/statements/forever_stmt_node.hpp"
+#include "frontend/ast/statements/if_statement_node.hpp"
+#include "frontend/ast/statements/match_stmt_node.hpp"
+#include "frontend/ast/statements/while_stmt_node.hpp"
+#include "frontend/ast/expressions/assignment_expr_node.hpp"
+#include "frontend/ast/expressions/identifier_node.hpp"
+#include <algorithm>
+#include <functional>
+#include <string>
+#include <vector>
+
 // ── Shared helpers for NIR codegen files ──────────────────────────────────
+// Keep these static so each TU gets its own copy without ODR issues.
+//
+// Which names a loop has to carry in and out: every name assigned ANYWHERE in the body,
+// nested blocks included. A conditional inside a loop that assigns a variable declared
+// outside the loop must have that variable carried, otherwise the assignment only lands in
+// the body scope and is thrown away when the iteration ends — which is how
+// `for x in v { if cond { acc = acc + x; } }` came out with the accumulator unchanged.
+// Both loops use this one walker so the rule cannot differ between them.
+static inline std::vector<std::string> nir_assigned_in(const CodeBlock& body) {
+    std::vector<std::string> out;
+    auto add = [&](const std::string& n) {
+        if (!n.empty() && std::find(out.begin(), out.end(), n) == out.end())
+            out.push_back(n);
+    };
+    std::function<void(const CodeBlock&)> walk = [&](const CodeBlock& b) {
+        for (const auto& stmt : b) {
+            if (!stmt) continue;
+            switch (stmt->kind) {
+                case NodeType::DeclarationStatement: {
+                    auto* d = static_cast<DeclarationStmtNode*>(stmt.get());
+                    if (d->target && d->target->kind == NodeType::Identifier)
+                        add(static_cast<IdentifierNode*>(d->target.get())->symbol);
+                    break;
+                }
+                case NodeType::AssignmentExpression: {
+                    auto* a = static_cast<AssignmentExprNode*>(stmt.get());
+                    if (a->target && a->target->kind == NodeType::Identifier)
+                        add(static_cast<IdentifierNode*>(a->target.get())->symbol);
+                    break;
+                }
+                case NodeType::IfStatement: {
+                    auto* i = static_cast<IfStatementNode*>(stmt.get());
+                    walk(i->consequent);
+                    walk(i->alternate);
+                    break;
+                }
+                case NodeType::WhileStatement:
+                    walk(static_cast<WhileStmtNode*>(stmt.get())->body);
+                    break;
+                case NodeType::ForStatement: {
+                    auto* f = static_cast<ForStmtNode*>(stmt.get());
+                    walk(f->body);
+                    walk(f->else_block);
+                    break;
+                }
+                case NodeType::ForeverStatement:
+                    walk(static_cast<ForeverStmtNode*>(stmt.get())->body);
+                    break;
+                case NodeType::DeferStatement: {
+                    // A `defer` node carries the rest of its block in remaining_body (a
+                    // CodeBlock, so the walker can descend) plus its deferred statements in
+                    // defer_body (a plain Node list). The assignments that keep a loop going
+                    // are in remaining_body — with them missing from the carried set, `defer`
+                    // inside a loop looped forever (`i = i + 1` was never carried).
+                    auto* d = static_cast<DeferStmtNode*>(stmt.get());
+                    walk(d->remaining_body);
+                    break;
+                }
+                case NodeType::MatchStatement: {
+                    auto* m = static_cast<MatchStmtNode*>(stmt.get());
+                    for (auto& cb : m->bodies) walk(cb);
+                    break;
+                }
+                default:
+                    break;
+            }
+        }
+    };
+    walk(body);
+    return out;
+}
 // Keep these static so each TU gets its own copy without ODR issues.
 
 static inline mlir::Value nir_emit_const(nv::NIRGenerationContext& ctx,
