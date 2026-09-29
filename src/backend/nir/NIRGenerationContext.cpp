@@ -38,6 +38,7 @@
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/ExecutionEngine/Orc/ExecutionUtils.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Support/Error.h"
 
 #include <iostream>
 
@@ -329,11 +330,18 @@ NIRGenerationContext::lower_to_llvm_ir(llvm::LLVMContext& llvm_ctx) {
     if (nir_trace()) std::cerr << "NIR: verifying module..." << std::endl;
     mlir::LogicalResult verify_result = mlir::verify(*module_);
     if (mlir::failed(verify_result)) {
-        std::cerr << "NIR: module verification FAILED" << std::endl;
+        // FAIL, do not merely report. Printing and carrying on produced a runnable binary from a
+        // module the verifier had just rejected: the compiler said `error:`, the checker had no
+        // `err` set (the failure is below it, in MLIR), the LLVM verifier saw nothing wrong with
+        // the IR it was handed, and the program ran and exited 0. Measured with a redefinition:
+        // `error: redefinition of symbol named 'x'` + `NIR: module verification FAILED` + correct
+        // output + rc=0.
         module_->print(llvm::errs());
-    } else {
-        if (nir_trace()) std::cerr << "NIR: module verification OK" << std::endl;
+        return llvm::make_error<llvm::StringError>(
+            "module verification failed (the module above is the state that failed)",
+            llvm::inconvertibleErrorCode());
     }
+    if (nir_trace()) std::cerr << "NIR: module verification OK" << std::endl;
 
     auto run = [&](mlir::PassManager& p) -> bool {
         // NARVAL_DUMP_NIR_PASSES=1 (or --dump-passes) prints the module after every
