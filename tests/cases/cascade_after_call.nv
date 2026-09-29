@@ -1,0 +1,35 @@
+# A cascade was implemented twice: once in the level files and once inside
+# parse_call_member_expr, and the copy was missing the shift and bitwise levels,
+# so `h(x) >> 1` did not parse while `x >> 1` did. Each line below groups
+# correctly only if both paths agree.
+# Expected:
+# 0
+# 384
+# 2
+# 12
+# 6
+# 7
+# 0
+# 7
+# 48
+# false
+# true
+# 20
+def h(x: int): int { return x; }
+mut a = 6;
+mut b = 3;
+mut c = 2;
+mut d = 5;
+
+write(str(h(a) >> b + c));
+write(str(h(a) << b * c));
+write(str(h(a) + b >> c));
+write(str(h(a) << b >> c));
+write(str(h(a) | b & c));
+write(str(h(a) ^ b | c));
+write(str(h(a) >> b & c));
+write(str(h(a) & b | c ^ d));
+write(str(h(a) << b));
+write(str(h(a) >> b > c));
+write(str(h(a) & b == c));
+write(str(h(a) * b + c));
