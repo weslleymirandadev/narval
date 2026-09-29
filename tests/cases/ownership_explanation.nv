@@ -3,6 +3,10 @@
 # (that was the bug: `drop nv_box_int after its last use`, with no line, no name, and
 # the whole stdlib prelude mixed in). The program itself prints as usual; the report
 # goes to stderr, which is what the "# Stderr:" lines check (one substring each).
+# A contagem que acompanha essa ultima linha NAO e' fixada de proposito: ela muda a cada
+# funcao nova no prelude. O que o caso prova e' que as funcoes de OUTROS arquivos
+# aparecem nomeadas e separadas, nao quantas sao. (Toda linha dentro de um bloco
+# de diretivo e' um substring obrigatorio no stderr — prosa vai no cabecalho.)
 # Flags: --explain-ownership
 # Expected:
 # 30
@@ -20,7 +24,7 @@
 # borrow  "total" — read by an arithmetic operator
 # drop    "base" — released after its last use
 # summary: 11 own · 6 drop · 7 borrow · 8 move · 2 share · 3 mut · 2 keep
-# 23 function(s) of other files skipped: nv_is_space
+# function(s) of other files skipped: nv_is_space
 # kept at line
 # not reclaimed: a call carries no ownership annotation across its boundary
 # function(s) of other files skipped
