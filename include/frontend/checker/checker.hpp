@@ -106,6 +106,12 @@ namespace nv {
             void set_source_file(const std::string& filename);
             void set_emit_diagnostics(bool enabled);
             void error(Node* node, const std::string& message);
+            // Arquivo do diagnóstico: o do NÓ quando ele tem um (nós de módulo, clonados pelo
+            // merge, carregam o seu), senão o do checker — que é o do programa. Sem isto, um
+            // aviso sobre stdlib/crypto.nv saía com o nome do arquivo do usuário e a linha do
+            // módulo. As duas sobrecargas evitam repetir o ternário em cada emissor.
+            std::string diagnostic_file(const Node* node) const;
+            std::string diagnostic_file(const PositionData* pos) const;
             // Como error(), mas NÃO reprova a compilação (não marca `err`). Para coisas que
             // produzem resposta errada sem impedir o programa de rodar — ver o achado do
             // "0 silencioso" na FOUNDATION_SPEC.md.
