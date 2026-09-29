@@ -315,10 +315,11 @@ std::unique_ptr<Node> parse_call_member_expr(Parser* parser, std::unique_ptr<Nod
         pos = std::make_unique<PositionData>(line, column[0], column[1], position[0], position[1]);
     }
 
-    // Logical: &&, ||
+    // Logical: and, or (and the symbolic forms)
     while (
         parser->current_token().type == TokenType::AND ||
-        parser->current_token().type == TokenType::OR
+        parser->current_token().type == TokenType::OR ||
+        parser->current_token().type == TokenType::OR_KW
     ) {
         std::string opToken = parser->consume_token().lexeme;
         auto right = parse_equality_expr(parser);
