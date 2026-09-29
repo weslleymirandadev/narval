@@ -196,22 +196,12 @@ void ForStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
     const bool vectorize = ctx.pending_loop_vectorize;
     ctx.pending_loop_vectorize = false;
 
-    // Loop-carried variables: names assigned directly in the body that already
-    // exist in the enclosing scope (same rule as the while codegen).
+    // Loop-carried variables: every name assigned anywhere in the body (nested blocks
+    // included) that already exists in the enclosing scope. This used to scan only the
+    // direct statements while claiming to follow the while's rule, so an assignment inside
+    // a conditional was not carried and the accumulator kept its pre-loop value.
     std::vector<std::pair<std::string, mlir::Value>> carried;
-    for (const auto& stmt : body) {
-        if (!stmt) continue;
-        std::string name;
-        if (stmt->kind == NodeType::DeclarationStatement) {
-            auto* decl = static_cast<DeclarationStmtNode*>(stmt.get());
-            if (decl->target && decl->target->kind == NodeType::Identifier)
-                name = static_cast<IdentifierNode*>(decl->target.get())->symbol;
-        } else if (stmt->kind == NodeType::AssignmentExpression) {
-            auto* asg = static_cast<AssignmentExprNode*>(stmt.get());
-            if (asg->target && asg->target->kind == NodeType::Identifier)
-                name = static_cast<IdentifierNode*>(asg->target.get())->symbol;
-        }
-        if (name.empty()) continue;
+    for (const std::string& name : nir_assigned_in(body)) {
         mlir::Value cur = ctx.lookup(name);
         if (cur) carried.emplace_back(name, cur);
     }
