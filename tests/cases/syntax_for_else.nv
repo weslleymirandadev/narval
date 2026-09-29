@@ -1,0 +1,17 @@
+# `for ... else`: the else runs when the loop ends without break, and is
+# skipped when the body breaks.
+# Expected:
+# 1
+# 2
+# fim
+for x in [1, 2] {
+    write(str(x));
+} else {
+    write("sem break");
+}
+for y in [1, 2] {
+    break;
+} else {
+    write("nao deve sair");
+}
+write("fim");
