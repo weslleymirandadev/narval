@@ -1,0 +1,20 @@
+# `and` and `or` are the logical operators. `&&` was removed: the symbols `&&`/`||`
+# collided with the empty-closure delimiter (`||` is one lexer token, which is why a
+# zero-parameter closure is written `| |`), so the words are the surface and `or` is
+# lexed as its own keyword instead of sharing the closure token.
+# Expected:
+# true
+# true
+# false
+# true
+# false
+# false
+mut t = 1 == 1;
+mut f = 1 == 2;
+
+write(str(t and t));
+write(str(t or f));
+write(str(f and t));
+write(str(f or t));
+write(str(t and f));
+write(str(f or f));
