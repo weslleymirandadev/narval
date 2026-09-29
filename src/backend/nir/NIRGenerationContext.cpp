@@ -24,6 +24,7 @@
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Verifier.h"
 #include "mlir/InitAllExtensions.h"
 #include "mlir/Pass/PassManager.h"
@@ -320,6 +321,70 @@ static bool nir_trace() {
     return on;
 }
 
+//  MLIR diagnostics in the language's format
+
+namespace {
+
+// Prefixo `arquivo:linha:coluna: ` a partir de uma Location do MLIR, ou vazio quando ela nao
+// carrega origem (a op foi sintetizada pelo proprio codegen e tem UnknownLoc).
+std::string nir_location_prefix(mlir::Location loc) {
+    if (auto flc = llvm::dyn_cast<mlir::FileLineColLoc>(loc)) {
+        return flc.getFilename().str() + ":" + std::to_string(flc.getLine()) + ":" +
+               std::to_string(flc.getColumn()) + ": ";
+    }
+    // NameLoc embrulha outra location (nesta versao getChildLoc devolve Location por valor,
+    // nao ponteiro); se o filho nao tiver origem, a recursao devolve prefixo vazio.
+    if (auto named = llvm::dyn_cast<mlir::NameLoc>(loc))
+        return nir_location_prefix(named.getChildLoc());
+    return std::string();
+}
+
+const char* nir_severity_name(mlir::DiagnosticSeverity sev) {
+    switch (sev) {
+        case mlir::DiagnosticSeverity::Warning: return "WARNING";
+        case mlir::DiagnosticSeverity::Note:    return "NOTE";
+        case mlir::DiagnosticSeverity::Remark:  return "REMARK";
+        default:                                return "ERROR";
+    }
+}
+
+// Um diagnostic do MLIR e' um erro do COMPILADOR mesmo quando aponta a linha do programa: o
+// usuario escreveu codigo que o nosso codegen nao soube baixar. Por padrao o MLIR imprime a op
+// ofensora e, numa falha de verificacao, o modulo inteiro, com fraseado interno:
+//
+//     loc("prog.nv":3:29): error: 'narval.break' op must be the last operation in the parent block
+//     "builtin.module"() ({ ... })
+//
+// Aqui a mensagem sai na mesma forma de todos os outros diagnosticos da linguagem
+// (`arquivo:linha:coluna: ERROR: mensagem`), com as notas anexadas, e consumida — entao nada e'
+// impresso duas vezes. O despejo do modulo continua existindo sob NARVAL_VERBOSE=1.
+mlir::LogicalResult nir_report_mlir_diagnostic(mlir::Diagnostic& diag) {
+    std::string message;
+    llvm::raw_string_ostream out(message);
+    for (auto& arg : diag.getArguments()) arg.print(out);
+    out.flush();
+
+    llvm::errs() << nir_location_prefix(diag.getLocation())
+                 << nir_severity_name(diag.getSeverity()) << ": " << message << "\n";
+
+    for (auto& note : diag.getNotes()) {
+        std::string note_message;
+        llvm::raw_string_ostream note_out(note_message);
+        for (auto& arg : note.getArguments()) arg.print(note_out);
+        note_out.flush();
+
+        // O MLIR anexa a nota "see current operation: <op>" aos erros de verificacao, e ela
+        // imprime a IR — o mesmo ruido que este handler existe para tirar. Notas que apontam
+        // codigo (tipicamente "definicao anterior aqui") continuam saindo.
+        if (note_message.rfind("see current operation", 0) == 0) continue;
+
+        llvm::errs() << nir_location_prefix(note.getLocation()) << "NOTE: " << note_message << "\n";
+    }
+    return mlir::success();
+}
+
+}  // namespace
+
 //  Lower to LLVM IR 
 
 llvm::Expected<std::unique_ptr<llvm::Module>>
@@ -328,6 +393,11 @@ NIRGenerationContext::lower_to_llvm_ir(llvm::LLVMContext& llvm_ctx) {
 
     // Verify the module first
     if (nir_trace()) std::cerr << "NIR: verifying module..." << std::endl;
+
+    // Vale para a verificacao abaixo e para todo o pipeline de passes: qualquer diagnostic que o
+    // MLIR emita daqui em diante sai no formato da linguagem.
+    mlir::ScopedDiagnosticHandler mlir_diagnostics(&ctx_, nir_report_mlir_diagnostic);
+
     mlir::LogicalResult verify_result = mlir::verify(*module_);
     if (mlir::failed(verify_result)) {
         // FAIL, do not merely report. Printing and carrying on produced a runnable binary from a
@@ -336,9 +406,10 @@ NIRGenerationContext::lower_to_llvm_ir(llvm::LLVMContext& llvm_ctx) {
         // the IR it was handed, and the program ran and exited 0. Measured with a redefinition:
         // `error: redefinition of symbol named 'x'` + `NIR: module verification FAILED` + correct
         // output + rc=0.
-        module_->print(llvm::errs());
+        if (nir_trace()) module_->print(llvm::errs());
         return llvm::make_error<llvm::StringError>(
-            "module verification failed (the module above is the state that failed)",
+            "internal compiler error: the generated IR failed verification. The program reached a "
+            "compiler bug, not a mistake in your code; the diagnostic above names the site",
             llvm::inconvertibleErrorCode());
     }
     if (nir_trace()) std::cerr << "NIR: module verification OK" << std::endl;
