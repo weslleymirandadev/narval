@@ -607,8 +607,14 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
         nir_mod.setDataLayout(nir_tm->createDataLayout());
 
         std::string stem = std::filesystem::path(filename).stem().string();
-        std::string obj_path = object_only ? stem + ".o"
-                                           : "narval_nir_tmp_" + stem + "_" + nv_tmp_suffix() + ".o";
+        // O temporario vai para o diretorio de temporarios, nao para o diretorio atual: um chat
+        // interrompido com Ctrl-C nao deixa um binario de centenas de KB na arvore do usuario
+        // (o remove() abaixo so roda quando o programa sai limpo). O nome carrega o PID, entao
+        // duas execucoes do mesmo .nv nao colidem.
+        std::string obj_path =
+            object_only ? stem + ".o"
+                        : (std::filesystem::temp_directory_path() /
+                           ("narval_nir_tmp_" + stem + "_" + nv_tmp_suffix() + ".o")).string();
 
         std::error_code nir_ec;
         llvm::raw_fd_ostream dest(obj_path, nir_ec, llvm::sys::fs::OF_None);
@@ -712,7 +718,10 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
 
         // A PE image is only executable when the file name carries the .exe suffix.
         const std::string exe_suffix = target_triple.isOSWindows() ? ".exe" : "";
-        std::string bin_path = (build_only ? stem : ("narval_nir_tmp_" + stem + "_" + nv_tmp_suffix())) + exe_suffix;
+        std::string bin_path =
+            (build_only ? std::string(stem)
+                        : (std::filesystem::temp_directory_path() /
+                           ("narval_nir_tmp_" + stem + "_" + nv_tmp_suffix())).string()) + exe_suffix;
 #if defined(__aarch64__) || defined(_M_ARM64)
         const char* nir_pie = "-pie";
 #else
@@ -795,13 +804,10 @@ int run_batch_mode(const std::string& filename, bool build_only = false,
 
         if (build_only) return 0;
 
-        // Run the produced binary
-#ifdef _WIN32
-        // cmd.exe does not understand the ./ prefix the POSIX path uses.
+        // Run the produced binary. bin_path is absolute now (it comes from the temp directory),
+        // so there is no "./" prefix to add — which is also why the _WIN32 branch that existed
+        // for cmd.exe's sake is gone: both platforms invoke the same string.
         int nir_exit = system(with_program_args(bin_path.c_str()).c_str());
-#else
-        int nir_exit = system(with_program_args(("./" + bin_path).c_str()).c_str());
-#endif
         std::filesystem::remove(bin_path);
         return nir_exit;
     } catch (const std::exception& e) {
