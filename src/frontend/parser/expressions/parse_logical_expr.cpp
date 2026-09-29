@@ -12,7 +12,8 @@ std::unique_ptr<Node> parse_logical_expr(Parser* parser) {
     
     while (
         parser->current_token().type == TokenType::AND ||
-        parser->current_token().type == TokenType::OR
+        parser->current_token().type == TokenType::OR ||
+        parser->current_token().type == TokenType::OR_KW
     ) {
         std::string opToken = parser->consume_token().lexeme;
         auto right = parse_equality_expr(parser);
