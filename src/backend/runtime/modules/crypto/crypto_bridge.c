@@ -6,8 +6,8 @@
 //
 //   * bytes cruzam como hex (o mesmo caminho binário do `net`, já testado);
 //   * nada de estado global visível: cada primitiva é pura, entra hex e sai hex;
-//   * o resultado de falha é "!" — nunca um hex válido, então o `.nv` consegue detectar
-//     sem precisar de canal de erro;
+//   * o resultado de falha é "!" — nunca um hex válido — e `crypto.last_error()` diz o motivo,
+//     no mesmo padrão do net (`net.last_error()`): o sentinela sinaliza, o getter explica;
 //   * as declarações saem de `crypto.def` (modo declaração), os corpos dos wrappers saem
 //     das macros de forma abaixo. Uma primitiva nova = 1 linha no .def + 1 linha aqui + o
 //     corpo. Nada de "um milhão de return nv_*" espalhado.
@@ -35,6 +35,19 @@ static size_t g_out_cap = 0;
 
 #define NV_CRYPTO_FAIL "!"
 #define NV_CRYPTO_MAX_BYTES (1u << 20)   // 1 MiB: teto para random() e para um payload
+
+// Motivo da ultima falha, no mesmo padrao do net (g_error + set_error_text em net_socket.c): o
+// sentinela "!" diz QUE falhou, e o getter diz POR QUE. Sem ele a falha atravessa o programa em
+// silencio — foi assim que um endereco saiu como "b0...." sem que nada pudesse explicar (o "!"
+// veio do keyring, passou por identity_pub, sha512 e addr_of_digest, e virou um endereco curto).
+static char g_crypto_error[192] = "";
+static void set_error_text(const char* text) {
+    snprintf(g_crypto_error, sizeof(g_crypto_error), "%s", text ? text : "");
+}
+static const char* fail(const char* why) { set_error_text(why); return NV_CRYPTO_FAIL; }
+
+const char* nv_crypto_last_error(void) { return g_crypto_error; }
+
 
 static void arena_reset(void) { g_arena_used = 0; }
 
@@ -96,7 +109,7 @@ static unsigned char* hex_in(const char* hex, size_t* out_len) {
 
 static const char* hex_out(const unsigned char* buf, size_t n) {
     char* out = out_reserve(n * 2 + 1);
-    if (!out) return NV_CRYPTO_FAIL;
+    if (!out) return fail("argument is not valid hex");
     for (size_t i = 0; i < n; i++) {
         out[i * 2] = hx_char((buf[i] >> 4) & 0x0F);
         out[i * 2 + 1] = hx_char(buf[i] & 0x0F);
@@ -108,10 +121,10 @@ static const char* hex_out(const unsigned char* buf, size_t n) {
 // ── primitivas ──────────────────────────────────────────────────────────────
 
 const char* nv_crypto_random(int nbytes) {
-    if (nbytes < 0 || (unsigned)nbytes > NV_CRYPTO_MAX_BYTES) return NV_CRYPTO_FAIL;
+    if (nbytes < 0 || (unsigned)nbytes > NV_CRYPTO_MAX_BYTES) return fail("byte count out of range");
     arena_reset();
     unsigned char* buf = arena_alloc((size_t)nbytes ? (size_t)nbytes : 1);
-    if (!buf) return NV_CRYPTO_FAIL;
+    if (!buf) return fail("out of memory");
     randombytes(buf, (uint64_t)nbytes);
     return hex_out(buf, (size_t)nbytes);
 }
@@ -120,7 +133,7 @@ const char* nv_crypto_sha512(const char* msg) {
     arena_reset();
     size_t n = 0;
     unsigned char* in = hex_in(msg, &n);
-    if (!in) return NV_CRYPTO_FAIL;
+    if (!in) return fail("argument is not valid hex");
     unsigned char digest[64];
     ed25519_sha512(digest, in, n);
     return hex_out(digest, sizeof(digest));
@@ -131,7 +144,7 @@ const char* nv_crypto_hmac_sha512(const char* msg, const char* key) {
     size_t mn = 0, kn = 0;
     unsigned char* m = hex_in(msg, &mn);
     unsigned char* k = hex_in(key, &kn);
-    if (!m || !k) return NV_CRYPTO_FAIL;
+    if (!m || !k) return fail("arguments must be valid hex");
     unsigned char mac[64];
     ed25519_hmac_sha512(mac, m, mn, k, kn);
     return hex_out(mac, sizeof(mac));
@@ -142,7 +155,7 @@ const char* nv_crypto_poly1305(const char* msg, const char* key) {
     size_t mn = 0, kn = 0;
     unsigned char* m = hex_in(msg, &mn);
     unsigned char* k = hex_in(key, &kn);
-    if (!m || !k || kn != 32) return NV_CRYPTO_FAIL;
+    if (!m || !k || kn != 32) return fail("key must be 32 bytes");
     unsigned char tag[16];
     ed25519_poly1305(tag, m, mn, k);
     return hex_out(tag, sizeof(tag));
@@ -176,10 +189,10 @@ const char* nv_crypto_secretbox(const char* msg, const char* nonce, const char* 
     unsigned char* m = hex_in(msg, &mn);
     unsigned char* no = hex_in(nonce, &nn);
     unsigned char* k = hex_in(key, &kn);
-    if (!m || !no || !k || nn != 24 || kn != 32) return NV_CRYPTO_FAIL;
-    if (mn > NV_CRYPTO_BOX_MAX) return NV_CRYPTO_FAIL;
+    if (!m || !no || !k || nn != 24 || kn != 32) return fail("nonce must be 24 bytes and key 32");
+    if (mn > NV_CRYPTO_BOX_MAX) return fail("message too long for secretbox");
     unsigned char* c = arena_alloc(mn + 32);
-    if (!c) return NV_CRYPTO_FAIL;
+    if (!c) return fail("ciphertext is not valid hex");
     ed25519_secretbox(c, m, mn, no, k);
     return hex_out(c, mn + 32);
 }
@@ -190,12 +203,12 @@ const char* nv_crypto_secretbox_open(const char* cipher, const char* nonce, cons
     unsigned char* c = hex_in(cipher, &cn);
     unsigned char* no = hex_in(nonce, &nn);
     unsigned char* k = hex_in(key, &kn);
-    if (!c || !no || !k || nn != 24 || kn != 32 || cn < 32) return NV_CRYPTO_FAIL;
+    if (!c || !no || !k || nn != 24 || kn != 32 || cn < 32) return fail("ciphertext must be at least 32 bytes, nonce 24, key 32");
     const size_t mlen = cn - 32;                       // a API dele quer a mensagem, nao o ciphertext
-    if (mlen > NV_CRYPTO_BOX_MAX) return NV_CRYPTO_FAIL;
+    if (mlen > NV_CRYPTO_BOX_MAX) return fail("ciphertext too long for secretbox");
     unsigned char* m = arena_alloc(mlen ? mlen : 1);
-    if (!m) return NV_CRYPTO_FAIL;
-    if (ed25519_secretbox_open(m, c, mlen, no, k) != 0) return NV_CRYPTO_FAIL;
+    if (!m) return fail("out of memory");
+    if (ed25519_secretbox_open(m, c, mlen, no, k) != 0) return fail("authentication failed (wrong key or tampered ciphertext)");
     return hex_out(m, mlen);
 }
 
@@ -204,9 +217,9 @@ const char* nv_crypto_scalarmult(const char* secret, const char* point) {
     size_t sn = 0, pn = 0;
     unsigned char* s = hex_in(secret, &sn);
     unsigned char* p = hex_in(point, &pn);
-    if (!s || !p || sn != 32 || pn != 32) return NV_CRYPTO_FAIL;
+    if (!s || !p || sn != 32 || pn != 32) return fail("both points must be 32 bytes");
     unsigned char q[32];
-    if (ed25519_scalarmult(q, s, p) != 0) return NV_CRYPTO_FAIL;
+    if (ed25519_scalarmult(q, s, p) != 0) return fail("scalarmult failed");
     return hex_out(q, sizeof(q));
 }
 
@@ -214,9 +227,9 @@ const char* nv_crypto_scalarmult_base(const char* secret) {
     arena_reset();
     size_t sn = 0;
     unsigned char* s = hex_in(secret, &sn);
-    if (!s || sn != 32) return NV_CRYPTO_FAIL;
+    if (!s || sn != 32) return fail("secret must be 32 bytes");
     unsigned char q[32];
-    if (ed25519_scalarmult_base(q, s) != 0) return NV_CRYPTO_FAIL;
+    if (ed25519_scalarmult_base(q, s) != 0) return fail("scalarmult_base failed");
     return hex_out(q, sizeof(q));
 }
 
@@ -227,17 +240,17 @@ const char* nv_crypto_sign(const char* msg, const char* sk) {
     size_t mn = 0, kn = 0;
     unsigned char* m = hex_in(msg, &mn);
     unsigned char* k = hex_in(sk, &kn);
-    if (!m || !k || (kn != 32 && kn < 64)) return NV_CRYPTO_FAIL;
+    if (!m || !k || (kn != 32 && kn < 64)) return fail("sign: message hex, or key of 32 or 64 bytes");
 
     unsigned char full[64];
     if (kn == 32) {
-        if (ed25519_seed_to_pub(full + 32, k) != 0) return NV_CRYPTO_FAIL;
+        if (ed25519_seed_to_pub(full + 32, k) != 0) return fail("invalid signing key");
         memcpy(full, k, 32);
     } else {
         memcpy(full, k, 64);
     }
     unsigned char sig[64];
-    if (ed25519_sign(sig, m, mn, full) != 0) return NV_CRYPTO_FAIL;
+    if (ed25519_sign(sig, m, mn, full) != 0) return fail("signing failed");
     return hex_out(sig, sizeof(sig));
 }
 
@@ -256,8 +269,8 @@ int nv_crypto_verify(const char* msg, const char* sig, const char* pub) {
 const char* nv_crypto_keypair(void) {
     arena_reset();
     unsigned char* buf = arena_alloc(64);
-    if (!buf) return NV_CRYPTO_FAIL;
-    if (ed25519_keypair(buf, buf + 32) != 0) return NV_CRYPTO_FAIL;
+    if (!buf) return fail("out of memory");
+    if (ed25519_keypair(buf, buf + 32) != 0) return fail("keypair generation failed");
     return hex_out(buf, 64);
 }
 
@@ -265,9 +278,9 @@ const char* nv_crypto_seed_to_pub(const char* seed) {
     arena_reset();
     size_t sn = 0;
     unsigned char* s = hex_in(seed, &sn);
-    if (!s || sn != 32) return NV_CRYPTO_FAIL;
+    if (!s || sn != 32) return fail("seed must be 32 bytes");
     unsigned char pub[32];
-    if (ed25519_seed_to_pub(pub, s) != 0) return NV_CRYPTO_FAIL;
+    if (ed25519_seed_to_pub(pub, s) != 0) return fail("not a valid Ed25519 seed");
     return hex_out(pub, sizeof(pub));
 }
 
@@ -275,7 +288,7 @@ const char* nv_crypto_pub_to_x25519(const char* ed_pub) {
     arena_reset();
     size_t pn = 0;
     unsigned char* p = hex_in(ed_pub, &pn);
-    if (!p || pn != 32) return NV_CRYPTO_FAIL;
+    if (!p || pn != 32) return fail("public key must be 32 bytes");
     unsigned char out[32];
     ed25519_pub_to_x25519(out, p);
     return hex_out(out, sizeof(out));
@@ -334,3 +347,8 @@ NVW_F_bbb(verify)
 NVW_B0(keypair)
 NVW_B_b(seed_to_pub)
 NVW_B_b(pub_to_x25519)
+
+// ── o getter do motivo ──────────────────────────────────────────────────────
+// Fica no FIM, depois de box_bytes: ele devolve NvObject* e chamá-lo antes da definição faz o C
+// inventar uma assinatura implícita, que conflita com a real (compilado e medido).
+NvObject* nv_crypto_last_error_builtin(void) { return box_bytes(nv_crypto_last_error()); }
