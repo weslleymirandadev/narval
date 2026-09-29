@@ -53,11 +53,6 @@ Token tokenize_operator(const std::string& input, size_t& pos, size_t& line, siz
             pos += 2;
             column += 2;
             return Token(TokenType::POWER, value, line, start_column, column, start_position, pos, filename);
-        } else if (candidate == "&&") {
-            value = candidate;
-            pos += 2;
-            column += 2;
-            return Token(TokenType::AND, value, line, start_column, column, start_position, pos, filename);
         } else if (candidate == "++") {
             value = candidate;
             pos += 2;
