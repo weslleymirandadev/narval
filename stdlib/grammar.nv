@@ -47,11 +47,11 @@ comptime def g_slice(s: str, start: int, stop: int): str {
 
 comptime def g_trim(s: str): str {
     start = 0;
-    while start < len(s) && g_is_space(s[start]) {
+    while start < len(s) and g_is_space(s[start]) {
         start = start + 1;
     }
     stop = len(s);
-    while stop > start && g_is_space(s[stop - 1]) {
+    while stop > start and g_is_space(s[stop - 1]) {
         stop = stop - 1;
     }
     return g_slice(s, start, stop);
@@ -183,11 +183,11 @@ comptime def g_is_ident_char(c: str): bool {
 # `term`. Punctuation and EBNF markers are dropped from both ends.
 comptime def g_ident_core(tok: str): str {
     start = 0;
-    while start < len(tok) && g_is_ident_char(tok[start]) == false {
+    while start < len(tok) and g_is_ident_char(tok[start]) == false {
         start = start + 1;
     }
     stop = len(tok);
-    while stop > start && g_is_ident_char(tok[stop - 1]) == false {
+    while stop > start and g_is_ident_char(tok[stop - 1]) == false {
         stop = stop - 1;
     }
     return g_slice(tok, start, stop);
@@ -232,7 +232,7 @@ comptime def g_alt_code(path: str, alt: str): str {
                 gname = path + "__g" + str(i);
                 nested = nested + g_body_code(gname, g_slice(alt, i + 1, close));
                 after = close + 1;
-                if after < n && alt[after] == "*" {
+                if after < n and alt[after] == "*" {
                     out = out + "while true {\nq = " + gname + "(tokens, p);\nif q < 0 { break; }\np = q;\n}\n";
                     i = after + 1;
                 } else {
@@ -241,7 +241,7 @@ comptime def g_alt_code(path: str, alt: str): str {
                 }
             } else {
                 e = i;
-                while e < n && g_is_space(alt[e]) == false {
+                while e < n and g_is_space(alt[e]) == false {
                     e = e + 1;
                 }
                 tok = g_slice(alt, i, e);
@@ -285,7 +285,7 @@ comptime def g_body_code(name: str, body: str): str {
             if c == ")" {
                 depth = depth - 1;
             }
-            if c == "|" && depth == 0 {
+            if c == "|" and depth == 0 {
                 is_bar = true;
             }
         }
@@ -319,7 +319,7 @@ comptime def grammar!(src: str): str {
     i = 0;
     while i < len(src) {
         e = i;
-        while e < len(src) && src[e] != "\n" {
+        while e < len(src) and src[e] != "\n" {
             e = e + 1;
         }
         line = g_trim(g_slice(src, i, e));
@@ -358,7 +358,7 @@ comptime def grammar!(src: str): str {
     i = 0;
     while i < len(src) {
         e = i;
-        while e < len(src) && src[e] != "\n" {
+        while e < len(src) and src[e] != "\n" {
             e = e + 1;
         }
         line = g_trim(g_slice(src, i, e));
@@ -390,7 +390,7 @@ comptime def grammar!(src: str): str {
                         }
                         # first token of this alternative
                         span = 0;
-                        while span < len(a) && g_is_space(a[span]) == false {
+                        while span < len(a) and g_is_space(a[span]) == false {
                             span = span + 1;
                         }
                         tok = g_ident_core(g_slice(a, 0, span));
@@ -419,11 +419,11 @@ comptime def grammar!(src: str): str {
                         k = 0;
                         while k < len(a) {
                             tok_start = k;
-                            while tok_start < len(a) && g_is_space(a[tok_start]) {
+                            while tok_start < len(a) and g_is_space(a[tok_start]) {
                                 tok_start = tok_start + 1;
                             }
                             tok_end = tok_start;
-                            while tok_end < len(a) && g_is_space(a[tok_end]) == false {
+                            while tok_end < len(a) and g_is_space(a[tok_end]) == false {
                                 tok_end = tok_end + 1;
                             }
                             raw = g_slice(a, tok_start, tok_end);
