@@ -51,7 +51,13 @@ namespace {
     }
 }
 
+// Qual arquivo o parser esta lendo. Cada Parser cuida de um arquivo, e o filename entra por
+// read_lines(); as posicoes construidas sem sexto argumento saem carimbadas com ele.
+static std::string g_parse_file;
+std::string nv_parse_file() { return g_parse_file; }
+
 void Parser::read_lines(const std::string& filename) {
+    g_parse_file = filename;
     std::ifstream file(filename);
     if (!file.is_open()) {
         throw std::runtime_error("Error opening file: " + filename);
