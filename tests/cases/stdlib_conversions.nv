@@ -1,0 +1,23 @@
+# As conversões gerais moram no prelude (strings.nv), não numa face: este caso nem importa
+# `net`. Convenção da casa: helper ilimitado devolve -1 em vez de estourar.
+# Expected:
+# 42
+# -1
+# -1
+# 1337
+# -1
+# 255
+# ff
+# 00ff
+# 0
+# 1230/-7
+write(to_int("42"));
+write(to_int("4a2"));
+write(to_int(""));
+write(hex_to_int("0539"));
+write(hex_to_int("zz"));
+write(hex_to_int("fF"));
+write(int_to_hex(255, 2));
+write(int_to_hex(255, 4));
+write(str(0));
+write(str(1230) + "/" + str(-7));
