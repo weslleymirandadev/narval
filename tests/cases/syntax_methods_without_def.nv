@@ -1,0 +1,12 @@
+# A class member method is declared WITHOUT `def` (the parser rejects
+# `def` inside a class body): `public name(args): Type { }`.
+# Expected:
+# 4
+class A {
+    v: int;
+    new(x: int) { self.v = x; }
+    public get(): int { return self.v; }
+    private set(x: int): None { self.v = x; }
+}
+mut a = new A(4);
+write(str(a.get()));
