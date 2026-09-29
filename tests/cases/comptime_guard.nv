@@ -4,7 +4,7 @@
 
 comptime def first_stop!(s: str): str {
     i = 0;
-    while i < len(s) && s[i] != "x" {
+    while i < len(s) and s[i] != "x" {
         if s[i] == "Q" {
             @compileError("unexpected Q in: " + s)
         }
