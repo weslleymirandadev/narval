@@ -354,7 +354,7 @@ std::shared_ptr<nv::Type>& nv::Checker::gettyptr(std::string ty, Node* error_nod
             types[ty] = func_type;
             return types[ty];
         } catch (const std::exception& e) {
-            std::string abs_filename = to_absolute_path(current_filename);
+            std::string abs_filename = diagnostic_file(current_node);
             std::cerr << ANSI_BOLD << abs_filename << ": "
                       << ANSI_RED << "ERROR" << ANSI_RESET << ANSI_BOLD << ": "
                       << "Invalid function type: " << ty << " - " << e.what() << ANSI_RESET << "\n\n";
@@ -368,7 +368,7 @@ std::shared_ptr<nv::Type>& nv::Checker::gettyptr(std::string ty, Node* error_nod
     if (report_node) {
         error(report_node, "Unknown type: '" + ty + "'");
     } else {
-        std::string abs_filename = to_absolute_path(current_filename);
+        std::string abs_filename = diagnostic_file(current_node);
         std::cerr << ANSI_BOLD << abs_filename << ": "
                   << ANSI_RED << "ERROR" << ANSI_RESET << ANSI_BOLD << ": "
                   << "Unknown type: '" << ty << "'" << ANSI_RESET << "\n\n";
@@ -456,6 +456,17 @@ void nv::Checker::set_emit_diagnostics(bool enabled) {
     emit_diagnostics = enabled;
 }
 
+std::string nv::Checker::diagnostic_file(const Node* node) const {
+    if (node && node->position && !node->position->filename.empty())
+        return to_absolute_path(node->position->filename);
+    return to_absolute_path(current_filename);
+}
+
+std::string nv::Checker::diagnostic_file(const PositionData* pos) const {
+    if (pos && !pos->filename.empty()) return to_absolute_path(pos->filename);
+    return to_absolute_path(current_filename);
+}
+
 void nv::Checker::error(Node* node, const std::string& message) {
     // Evitar reportar o mesmo erro duas vezes usando o ponteiro do nó
     // O ponteiro do nó é único e não muda, então é a forma mais confiável de identificar o mesmo erro
@@ -464,7 +475,7 @@ void nv::Checker::error(Node* node, const std::string& message) {
         return;
     }
     
-    std::string abs_filename = to_absolute_path(current_filename);
+    std::string abs_filename = diagnostic_file(node);
     
     // Marcar este nó como tendo tido erro reportado ANTES de reportar
     // para evitar que seja reportado novamente em chamadas recursivas
@@ -504,7 +515,7 @@ void nv::Checker::warn(Node* node, const std::string& message) {
         return;
     if (node) reported_warnings.insert(reinterpret_cast<const void*>(node));
 
-    std::string abs_filename = to_absolute_path(current_filename);
+    std::string abs_filename = diagnostic_file(node);
     if (!node || !node->position) {
         diagnostics.push_back({abs_filename, 1, 1, 1, 1, message});
         if (emit_diagnostics) {
