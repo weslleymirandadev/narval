@@ -178,7 +178,7 @@ class Address {
         self.canonical = normalised;
         self.host = net_host_of(normalised);
         self.port = net_port_of(normalised);
-        if self.host == "" && self.port == 0 { return -1; }
+        if self.host == "" and self.port == 0 { return -1; }
         return 0;
     }
 
