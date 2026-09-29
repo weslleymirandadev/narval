@@ -1,0 +1,11 @@
+# A bare `return;` (no value) inside a function typed None. Measured: it is accepted
+# only when it is the last statement of the block — with a statement after it, the
+# codegen fails with an MLIR-level message ('narval.return op must be the last
+# operation'), which is registered in the spec as a defect.
+# Expected:
+# antes
+def f(): None {
+    write("antes");
+    return;
+}
+f();
