@@ -1,0 +1,13 @@
+# The conditional expression is `value if cond else other`. It works in
+# an assignment and in an argument; it does NOT work in a `mut` declaration (a `mut`
+# x = 1 if ... else 2` fails) — measured, and registered in the spec as a defect.
+# Expected:
+# 1
+# 9
+# a
+mut x = 0;
+x = 1 if 1 == 1 else 2;
+write(str(x));
+write(str(1 if 1 == 2 else 9));
+mut c = 0;
+write(str("a" if c == 0 else "b" if c == 1 else "z"));
