@@ -254,3 +254,68 @@ def count_of(s: str, sub: str): int {
     }
     return n;
 }
+
+# ---- Number <-> text conversions. These belong to the prelude, not to a module face: a
+# program that wants to parse "42" should not have to import the whole net module (that is
+# where the only decimal parser used to live, as net_digits_to_int, which now delegates
+# here). The house convention applies: an unbounded helper returns -1 / "" instead of
+# raising, since the language has no exceptions.
+
+# Value of one hex digit, case-insensitive, or -1.
+def hex_digit_value(c: str): int {
+    mut d = index_of("0123456789", c);
+    if d >= 0 { return d; }
+    mut lo = index_of("abcdef", c);
+    if lo >= 0 { return 10 + lo; }
+    mut hi = index_of("ABCDEF", c);
+    if hi >= 0 { return 10 + hi; }
+    return -1;
+}
+
+# A whole decimal string -> integer. -1 when it is not one (empty, signed, any non-digit).
+def to_int(t: str): int {
+    if len(t) == 0 { return -1; }
+    mut v = 0;
+    mut i = 0;
+    while i < len(t) {
+        mut d = index_of("0123456789", substr(t, i, 1));
+        if d < 0 { return -1; }
+        v = v * 10 + d;
+        i = i + 1;
+    }
+    return v;
+}
+
+# A whole hex string -> integer (case-insensitive). -1 when it is not hex.
+def hex_to_int(t: str): int {
+    if len(t) == 0 { return -1; }
+    mut v = 0;
+    mut i = 0;
+    while i < len(t) {
+        mut d = hex_digit_value(substr(t, i, 1));
+        if d < 0 { return -1; }
+        v = v * 16 + d;
+        i = i + 1;
+    }
+    return v;
+}
+
+# (No int_to_str here: the `str` builtin already renders an integer, sign included. A second
+# way to do it would be two words for one capacity.)
+
+# Integer -> hex text, zero-padded to `digits` (min 1), masked to that width. Note `//`: `/`
+# is exact-or-float here (1 / 10 is 0.1), so a base-10 loop with `/` never reaches zero — that
+# is exactly how the first version of this file looped forever appending zeros.
+def int_to_hex(v: int, digits: int): str {
+    mut w = digits;
+    if w < 1 { w = 1; }
+    mut s = "";
+    mut n = v;
+    mut k = 0;
+    while k < w {
+        s = substr("0123456789abcdef", n % 16, 1) + s;
+        n = n // 16;
+        k = k + 1;
+    }
+    return s;
+}
