@@ -1,0 +1,13 @@
+# O aviso de um corpo de módulo tem de nomear O MÓDULO, não o programa que o importou. O corpo é
+# clonado para o programa pelo merge e checado pelo checker do programa, cujo current_filename é o
+# do programa — daí o endereço sair trocado (arquivo do usuário, linha do módulo).
+# A asserção positiva é também a prova do negativo: se o endereço apontasse o programa, o nome e a
+# linha do módulo não estariam no stderr.
+# Module: aviso_endereco.nv = tests/support/aviso_endereco.nv
+# Stderr:
+# aviso_endereco.nv:8:9
+# Expected:
+# 0
+from "aviso_endereco" import *;
+
+write(le());
