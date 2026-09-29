@@ -1,0 +1,27 @@
+# Um acumulador condicional dentro de um `for`: a atribuicao feita dentro do `if` tem de ser
+# carregada pelo laco. O `for` detectava nomes atribuidos apenas nos statements DIRETOS do corpo
+# (o `while` ja descia em blocos aninhados com o mesmo helper), entao a atribuicao ficava no
+# escopo do corpo e era descartada no fim da iteracao: o acumulador saia com o valor de ANTES do
+# laco, sem erro nenhum. Nenhum dos 175 casos usava a forma — o instrumento de cobertura por
+# forma sintatica achou a lacuna, e o repro minimo mostrou a regra certa escrita no arquivo
+# vizinho e nao usada.
+# Expected:
+# 6
+# 7
+def soma(): int {
+    mut s = 0;
+    for x in [1, 2, 3, 4, 5] {
+        if x % 2 == 0 { s = s + x; }
+    }
+    return s;
+}
+write(str(soma()));
+
+def ultimo(): int {
+    mut a = 0;
+    for x in [1, 2, 3] {
+        if x == 2 { a = 7; }
+    }
+    return a;
+}
+write(str(ultimo()));
