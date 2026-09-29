@@ -1,0 +1,11 @@
+from "system" import *;
+
+# Vínculo que nasce dentro do bloco: o aviso tem de apontar ESTE arquivo, não o programa que
+# importou o módulo. É o caso que o endereço por nó corrige (o corpo do módulo é clonado para o
+# programa, e o checker do programa tem o filename do programa).
+def le(): int {
+    if system.argc() >= 0 {
+        nascido_no_bloco = 7;
+    }
+    return nascido_no_bloco;
+}
