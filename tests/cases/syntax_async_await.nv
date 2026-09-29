@@ -1,0 +1,10 @@
+# `async def` and `await`: the async function is a function (it runs when
+# called) and `await` applies to a call of one.
+# Expected:
+# 3
+# 3
+async def g(): int {
+    return 3;
+}
+write(str(g()));
+write(str(await g()));
