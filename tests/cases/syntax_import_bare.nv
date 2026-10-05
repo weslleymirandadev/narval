@@ -1,0 +1,5 @@
+# `import <nome>;` (import direto, sem `from`), que e' import wildcard do modulo.
+# Expected:
+# A
+import text;
+write(text.chr(65));
