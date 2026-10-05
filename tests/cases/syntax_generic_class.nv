@@ -1,0 +1,13 @@
+# Classe generica: parametro de tipo na declaracao e instanciacao com `new`.
+# CUIDADO: duas instanciacoes da MESMA classe com tipos diferentes tem defeito aberto — a segunda e'
+# verificada contra o tipo da primeira (`expected 'int64', got 'str'`), ou seja `Box<T>` nao e'
+# generica entre instanciacoes. Registrado na tabela de defeitos. Este caso fixa o que funciona.
+# Expected:
+# 7
+class Box<T> {
+    valor: T;
+    new(x: T) { self.valor = x; }
+    public get(): T { return self.valor; }
+}
+mut b = new Box(7);
+write(str(b.get()));
