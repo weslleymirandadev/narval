@@ -340,7 +340,14 @@ void IfStatementNode::nir_codegen(nv::NIRGenerationContext& ctx) {
                 out.push_back(v ? v : incoming[i]);
             }
             if (runs) ctx.pop_scope();
-            ctx.emit_yield(loc, out);
+            // Um ramo que ja terminou (break ou continue) entregou os seus valores nas
+            // proprias ops de desvio; emitir o yield depois de um terminador torna o bloco
+            // invalido. Era o motivo de `if cond { a = 1; break; }` nao compilar enquanto
+            // `write("x"); break;` compilava.
+            if (block.empty() ||
+                !block.back().hasTrait<mlir::OpTrait::IsTerminator>()) {
+                ctx.emit_yield(loc, out);
+            }
         };
         fill(if_op.getThenRegion().front(), consequent, true);
         fill(if_op.getElseRegion().front(), alternate, !alternate.empty());
