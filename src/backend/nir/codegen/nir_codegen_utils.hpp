@@ -119,8 +119,18 @@ static inline mlir::Value nir_call_runtime(nv::NIRGenerationContext& ctx,
 // Emit all statements in a CodeBlock at the current insertion point.
 static inline void nir_emit_body(const CodeBlock& stmts,
                                    nv::NIRGenerationContext& ctx) {
-    for (const auto& s : stmts)
-        if (s) s->nir_codegen(ctx);
+    for (const auto& s : stmts) {
+        if (!s) continue;
+        // A block stops emitting after a terminator: return, break and continue end the flow, so
+        // whatever follows is unreachable — and emitting an op AFTER the terminator makes the
+        // block invalid, which is why `return 1; write("dead");` did not compile. Every block
+        // emitter (function, class method, closure, if, for, while) goes through here, so the
+        // rule holds for all of them at once.
+        auto* blk = ctx.get_builder().getInsertionBlock();
+        if (blk && !blk->empty() && blk->back().hasTrait<mlir::OpTrait::IsTerminator>())
+            break;
+        s->nir_codegen(ctx);
+    }
 }
 
 // A binding of the module also goes into the runtime table: a `def` body is emitted as its
