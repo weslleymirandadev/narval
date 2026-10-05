@@ -1,0 +1,8 @@
+# Operadores que nenhum caso exercitava: `**` (potencia) e `//` (divisao inteira).
+# Expected:
+# 1024
+# 3
+# true
+write(str(2 ** 10));
+write(str(7 // 2));
+write(str(7 // 2 == 3));
