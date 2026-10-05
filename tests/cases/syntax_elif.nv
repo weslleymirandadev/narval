@@ -1,6 +1,6 @@
 # `elif` sem `else`: cadeia de decisao com um unico ramo tomado.
-# CUIDADO: `elif` seguido de `else` tem defeito aberto (o `else` roda ALEM do `elif`) e esta'
-# registrado na tabela; este caso fixa so' o comportamento correto da cadeia sem `else`.
+# A cadeia COM `else` tinha defeito (o `else` rodava alem do `elif`) e foi corrigida em 2026-09;
+# ver tests/cases/elif_else_chain.nv, que cobre as duas grafias.
 # Expected:
 # dois
 mut x = 2;
