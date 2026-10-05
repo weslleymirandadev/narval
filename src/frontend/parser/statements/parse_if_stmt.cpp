@@ -22,61 +22,58 @@ std::unique_ptr<Node> parse_if_stmt(Parser* parser) {
 
     if_node->consequent = parse_block_or_inline(parser);
 
-    // Zero or more elif branches
+    // The chain (`elif`, `else if`, `else`) desugars into the alternate as ONE nested if:
+    //     if a { A } elif b { B } else { C }   ->   if a { A } else { if b { B } else { C } }
+    //
+    // It used to be pushed FLAT into a single `alternate` vector, mixing nested if nodes with the
+    // final else's plain statements. The codegen emits `alternate` as the else BODY, so the else's
+    // statements ran right after the elif — unconditionally. Measured: with x == 2, the chain
+    // `if x == 1 { "um" } elif x == 2 { "dois" } else { "outro" }` printed BOTH "dois" and "outro",
+    // and the `else if` spelling had the same defect.
+    struct Branch { std::unique_ptr<Node> cond; std::vector<std::unique_ptr<Stmt>> body; };
+    std::vector<Branch> branches;
+    std::vector<std::unique_ptr<Stmt>> final_else;
+    bool has_final_else = false;
+
     while (parser->not_eof() && parser->current_token().type == TokenType::ELIF) {
         parser->consume_token(); // 'elif'
-
-        auto elif_condition = parse_logical_expr(parser);
-
-
-        auto elif_node = std::make_unique<IfStatementNode>(
-            std::unique_ptr<Expr>(static_cast<Expr*>(elif_condition.release())),
-            std::vector<std::unique_ptr<Stmt>>{},
-            std::vector<std::unique_ptr<Stmt>>{}
-        );
-
-        elif_node->consequent = parse_block_or_inline(parser);
-
-        if_node->alternate.push_back(std::move(elif_node));
+        Branch br;
+        br.cond = parse_logical_expr(parser);
+        br.body = parse_block_or_inline(parser);
+        branches.push_back(std::move(br));
     }
 
-    // Handle zero or more "else if" and an optional final "else"
-    if (parser->not_eof() && parser->current_token().type == TokenType::ELSE) {
-        while (parser->not_eof() && parser->current_token().type == TokenType::ELSE) {
-            parser->consume_token(); // 'else'
+    // `else if` and the final `else` are the same thing in two spellings; both end the chain.
+    while (parser->not_eof() && parser->current_token().type == TokenType::ELSE) {
+        parser->consume_token(); // 'else'
 
-            if (parser->current_token().type == TokenType::IF) {
-                parser->consume_token(); // 'if'
-
-                auto else_if_condition = parse_logical_expr(parser);
-
-
-                auto else_if_node = std::make_unique<IfStatementNode>(
-                    std::unique_ptr<Expr>(static_cast<Expr*>(else_if_condition.release())),
-                    std::vector<std::unique_ptr<Stmt>>{},
-                    std::vector<std::unique_ptr<Stmt>>{}
-                );
-
-                else_if_node->consequent = parse_block_or_inline(parser);
-
-                if_node->alternate.push_back(std::move(else_if_node));
-
-                // Continue looping: may have another 'else if' or a final 'else'
-                if (!(parser->not_eof() && parser->current_token().type == TokenType::ELSE)) {
-                    break;
-                }
-                continue;
-            }
-
-            // Final else block
-            auto else_block = parse_block_or_inline(parser);
-
-            for (auto& s : else_block) {
-                if_node->alternate.push_back(std::move(s));
-            }
-            break; // after a final else, stop
+        if (parser->current_token().type == TokenType::IF) {
+            parser->consume_token(); // 'if'
+            Branch br;
+            br.cond = parse_logical_expr(parser);
+            br.body = parse_block_or_inline(parser);
+            branches.push_back(std::move(br));
+            continue;
         }
+
+        final_else = parse_block_or_inline(parser);
+        has_final_else = true;
+        break;
     }
+
+    // Build the chain from the inside out: the last branch takes the final else, and each branch
+    // takes the next one as its alternate.
+    std::vector<std::unique_ptr<Stmt>> alternate =
+        has_final_else ? std::move(final_else) : std::vector<std::unique_ptr<Stmt>>{};
+    for (auto it = branches.rbegin(); it != branches.rend(); ++it) {
+        auto nested = std::make_unique<IfStatementNode>(
+            std::unique_ptr<Expr>(static_cast<Expr*>(it->cond.release())),
+            std::move(it->body),
+            std::move(alternate));
+        alternate.clear();
+        alternate.push_back(std::move(nested));
+    }
+    if_node->alternate = std::move(alternate);
 
     if (if_node && if_node->position) {
         pos->col[1] = if_node->position->col[1];
