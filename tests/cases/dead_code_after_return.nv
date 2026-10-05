@@ -1,0 +1,40 @@
+# Codigo depois de um `return` no mesmo bloco e' inalcancavel: tem de ser ignorado, nao impedir a
+# compilacao. Nao compilava (`'narval.return' op must be the last operation in the parent block`), e
+# vale para `return` com valor, vazio, dentro de um `if` e para uma expressao solta — ou seja, para
+# qualquer retorno antecipado seguido de mais codigo, que e' programacao normal.
+# O conserto e' um so': `nir_emit_body` (header compartilhado, por onde passam funcao, metodo de
+# classe, closure, if, for e while) para de emitir depois de um terminador.
+# O codigo morto e' ignorado em silencio; avisar "codigo inalcancavel" e' melhoria do checker e esta'
+# na fila como item proprio.
+# Expected:
+# 1
+# fim
+# 1
+# 1
+def com_valor(): int {
+    return 1;
+    write("morto");
+}
+write(str(com_valor()));
+
+def vazio(): None {
+    return;
+    write("morto");
+}
+vazio();
+write("fim");
+
+def dentro_de_if(x: int): int {
+    if x == 1 {
+        return 1;
+        write("morto");
+    }
+    return 0;
+}
+write(str(dentro_de_if(1)));
+
+def expressao_solta(): int {
+    return 1;
+    2;
+}
+write(str(expressao_solta()));
