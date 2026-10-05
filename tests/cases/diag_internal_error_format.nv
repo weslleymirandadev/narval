@@ -1,16 +1,17 @@
-# Um erro do proprio compilador — uma op do nosso dialeto reprovada pelo verificador do MLIR —
-# tem de sair com a posicao do codigo-fonte no formato de todos os outros diagnosticos
-# (`arquivo:linha:coluna: ERROR: mensagem`) e dizer que e' bug do compilador. Antes deste
-# conserto saia como `loc("arquivo":3:29): error: <fraseado interno>` seguido do modulo inteiro
-# despejado, e a mensagem final era `module verification failed (the module above is the state
-# that failed)` — que so fazia sentido enquanto o modulo estava impresso.
-# O texto do verificador (o `'narval.break' op must be...`) e' interno e pode mudar com o MLIR;
-# o que este caso fixa e' o formato com posicao e o aviso de bug do compilador.
-# Error: : ERROR: 'narval.break' op must be the last operation
+# Um erro interno do compilador (uma op do nosso dialeto reprovada pelo verificador do MLIR) tem de
+# sair com o formato da linguagem e dizer que e' bug do compilador, em vez de despejar a IR.
+# Este caso usava `if ... { a = 1; break; }`, que FICOU CORRETO (o conserto completo exigiu o walker
+# dos nomes carregados + a guarda de terminador no `if` + o registro dos nomes no `for`); agora usa
+# `defer error`, que continua quebrado por codegen. Com a correcao na arvore a op que reprova aqui e'
+# o `return`, e o diagnostico SAI COM POSICAO (o caso antigo nao tinha, porque a op do `defer error`
+# era sintetizada sem loc — nao era o caso nesta forma).
+# A mensagem do verificador em si e' interna e pode mudar com o MLIR; o que o caso fixa e' o formato
+# (posicao + ERROR:) e a nossa mensagem honesta.
+# Error: : ERROR: 'narval.return' op must be the last operation in the parent block
 # Error: internal compiler error: the generated IR failed verification
 # Exit code: 1
-mut a = 0;
-for x in [1, 2, 3] {
-    if x == 9 { a = 1; break; }
+def f(): int {
+    defer error { }
+    return 1;
 }
-write(str(a));
+write(str(f()));
