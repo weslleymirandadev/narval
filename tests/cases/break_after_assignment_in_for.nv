@@ -1,0 +1,37 @@
+# Atribuicao antes de um `break` dentro de um `for`: o valor atualizado tem de ser entregue pelo
+# laco. Nao compilava (o ramo do `if` entregava o valor de bloco depois do terminador) e, quando
+# compilava por conserto parcial, respondia o valor de ANTES do laco — pior que recusar.
+# O `continue` carrega tambem: o valor obsoleto na conta abaixo daria 204, e o correto e' 206.
+# Expected:
+# 7
+# 7
+# 206
+def primeiro(): int {
+    mut a = 0;
+    for x in [1, 2, 3] {
+        if x == 2 { a = 7; break; }
+    }
+    return a;
+}
+write(str(primeiro()));
+
+def local_apos_break(): int {
+    mut s = 0;
+    for x in [1, 2, 3] {
+        if x == 2 { break; }
+        s = s + x;
+    }
+    return s + 6;
+}
+write(str(local_apos_break()));
+
+def com_continue(): int {
+    mut s = 0;
+    for x in [1, 2, 3] {
+        s = s + x;
+        if x == 2 { continue; }
+        s = s + 100;
+    }
+    return s;
+}
+write(str(com_continue()));
