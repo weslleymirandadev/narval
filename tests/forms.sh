@@ -92,7 +92,7 @@ FORMAS=(
     'generic ctor sem new|[A-Za-z_][A-Za-z0-9_]*<[A-Za-z_][A-Za-z0-9_]*> *\('
     'closure de um parametro|[|][A-Za-z_ ,:]*[|] *[a-zA-Z{]'
     'closure vazia|[|] +[|]'
-    'tipo vetor|[^A-Za-z0-9_:] *\[[A-Za-z_][A-Za-z0-9_]*\]'
+    'tipo vetor (nu)|: *vector([^A-Za-z0-9_]|$)'
     'tipo array [N]|: *[A-Za-z_][A-Za-z0-9_]*\[[0-9]+\]'
     'tipo map<K,V>|(^|[^A-Za-z_])map<'
     'tipo map<K,V> (M maiusculo)|(^|[^A-Za-z_])Map<'
