@@ -1,0 +1,11 @@
+# Tipos declarados: array de tamanho fixo `int[N]` e vetor `vector` (heterogeneo e dinamico,
+# sem tipo de elemento — `vector<int>` nao existe).
+# Expected:
+# 1
+# 3
+# 3
+mut a: int[3] = {1, 2, 3};
+write(str(a[0]));
+write(str(a[2]));
+mut v: vector = [1, 2, 3];
+write(str(len(v)));
