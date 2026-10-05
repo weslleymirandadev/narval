@@ -1,6 +1,7 @@
 #include "frontend/parser/statements/parse_declaration_stmt.hpp"
 #include "frontend/parser/expressions/parse_expr.hpp"
 #include "frontend/parser/expressions/parse_range_expr.hpp"
+#include "frontend/parser/expressions/parse_conditional_expr.hpp"
 #include "frontend/parser/expressions/parse_type.hpp"
 
 std::unique_ptr<Node> parse_declaration_stmt(Parser* parser, bool is_mutable) {
@@ -27,6 +28,13 @@ std::unique_ptr<Node> parse_declaration_stmt(Parser* parser, bool is_mutable) {
         parser->consume_token();
         // A range is accepted here too: `mut v = 0..5` builds a vector, `v = 0..5` an array.
         value = parse_range_expr(parser);
+        // `mut x = 1 if c else 2`: the conditional is POST-fixed to the value, exactly as in the
+        // assignment path (parse_assignment_expr.cpp). Without this the declaration stopped at the
+        // value and the `if` became a syntax error — while the SAME expression in an assignment
+        // worked, because the grammar lived in one place and the declaration had half of it.
+        if (parser->current_token().type == TokenType::IF) {
+            value = parse_conditional_expr(parser, std::move(value));
+        }
     }
 
     parser->expect(TokenType::SEMICOLON, "Expected ';'.");
