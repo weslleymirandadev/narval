@@ -1,0 +1,18 @@
+# Condicional pos-fixado a um valor numa DECLARACAO: `mut x = 1 if c else 2`. Nao compilava —
+# `Expected ';', but got token: 'if'` — porque a declaracao tinha METADE da regra do caminho da
+# atribuicao: parseava o valor e nao olhava o `if` pos-fixado. A mesma expressao numa atribuicao, e
+# em argumento, sempre funcionou — a gramatica morava num arquivo e o vizinho tinha a primeira metade.
+# Nota: `0..3` e' range EXCLUSIVO (3 elementos, nao 4).
+# Expected:
+# 1
+# 2
+# 10
+# 3
+mut x = 1 if 1 == 1 else 2;
+write(str(x));
+mut y = 1 if 1 == 2 else 2;
+write(str(y));
+mut z: int = 10 if 1 == 1 else 20;
+write(str(z));
+mut w = 1 if 1 == 2 else 2 if 1 == 2 else 3;
+write(str(w));
