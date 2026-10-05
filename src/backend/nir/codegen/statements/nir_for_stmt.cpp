@@ -274,6 +274,12 @@ void ForStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
             for (size_t i = 0; i < carried.size(); ++i)
                 ctx.define(carried[i].first, body_blk->getArgument(1 + i));
 
+            // O corpo precisa saber quais nomes um break/continue deve entregar: a BreakOp os
+            // carrega e o passe de fluxo usa esses operandos para escolher o resultado do laco.
+            auto saved_carried = ctx.loop_carried_names;
+            ctx.loop_carried_names.clear();
+            for (auto& [cname, _] : carried) ctx.loop_carried_names.push_back(cname);
+
             nir_emit_body(body, ctx);
 
             // Yield the updated carried values (before pop_scope — the
@@ -288,6 +294,7 @@ void ForStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
                 }
                 mlir::narval::YieldOp::create(b, loc, yv);
             }
+            ctx.loop_carried_names = saved_carried;
             ctx.pop_scope();
         }
         b.setInsertionPointAfter(for_op);
@@ -329,6 +336,12 @@ void ForStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
             for (size_t i = 0; i < carried.size(); ++i)
                 ctx.define(carried[i].first, body_blk->getArgument(1 + i));
 
+            // O corpo precisa saber quais nomes um break/continue deve entregar: a BreakOp os
+            // carrega e o passe de fluxo usa esses operandos para escolher o resultado do laco.
+            auto saved_carried = ctx.loop_carried_names;
+            ctx.loop_carried_names.clear();
+            for (auto& [cname, _] : carried) ctx.loop_carried_names.push_back(cname);
+
             nir_emit_body(body, ctx);
 
             // Yield the updated carried values (before pop_scope — the
@@ -343,6 +356,7 @@ void ForStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
                 }
                 mlir::narval::YieldOp::create(b, loc, yv);
             }
+            ctx.loop_carried_names = saved_carried;
             ctx.pop_scope();
         }
         b.setInsertionPointAfter(for_op);
