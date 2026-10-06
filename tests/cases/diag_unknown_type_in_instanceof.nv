@@ -1,0 +1,14 @@
+# Nome errado em `instanceof` tem de ser erro de compilacao, nao `false` silencioso: ate' 2026-09 nada
+# olhava o nome, e `instanceof x Typo` respondia false sem avisar. Agora a expressao consulta a tabela
+# de tipos (que conhece classes declaradas, interfaces e nativos) e o nome desconhecido sai com posicao
+# e caret, na mesma forma de qualquer outro erro de tipo.
+# A expectativa comeca com ': ' de proposito: esse trecho so existe se houver arquivo:linha:coluna
+# antes, entao o caso nao aceita um diagnostico sem endereco.
+# Error: : ERROR: Unknown type: 'AA'
+# Exit code: 1
+class A {
+    v: int;
+    new(x: int) { self.v = x; }
+}
+mut a = new A(1);
+write(str(instanceof a AA));
