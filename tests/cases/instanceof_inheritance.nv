@@ -1,0 +1,60 @@
+# `instanceof` tem de honrar heranca e interface. Defeito corrigido em 2026-09, em DUAS metades:
+#   (1) o runtime so conhecia o proprio nome da classe, entao `b instanceof A` respondia false para
+#       `class B extends A`. O codegen passa a entregar a ascendencia na declaracao da classe
+#       (`nv_register_class`: parent + cada interface) e a busca caminha a cadeia, com profundidade
+#       limitada e nomes COPIADOS (apontar para o pool de constantes seria dangling em potencial);
+#   (2) o checker nao tinha regra de tipo para `instanceof` e devolvia None, entao `if instanceof x C`
+#       — o uso mais natural — nao compilava ("If condition must be of type 'bool', but got 'None'").
+# Antes de consertar eu havia registrado "instanceof sempre responde false", o que era impreciso: o
+# caso exato e os tipos nativos sempre funcionaram; o que faltava era a ascendencia.
+# A saida, na ordem em que o programa escreve: b e' A (heranca); a nao e' B; b e' B; c e' A (dois
+# niveis); c e' B; b nao e' C (heranca nao anda para baixo); o ramo do `if` com o teste verdadeiro;
+# a nao e' D; 5 e' int; e o ramo do `if` com a interface.
+# Expected:
+# true
+# false
+# true
+# true
+# true
+# false
+# ramo certo
+# false
+# true
+# interface ok
+class A {
+    v: int;
+    new(x: int) { self.v = x; }
+    public get(): int { return self.v; }
+}
+class B extends A {
+    new(x: int) { self.v = x; }
+}
+class C extends B {
+    new(x: int) { self.v = x; }
+}
+class D {
+    w: int;
+    new() { self.w = 1; }
+}
+mut a = new A(1);
+mut b = new B(2);
+mut c = new C(3);
+write(str(instanceof b A));
+write(str(instanceof a B));
+write(str(instanceof b B));
+write(str(instanceof c A));
+write(str(instanceof c B));
+write(str(instanceof b C));
+if instanceof c A { write("ramo certo"); } else { write("ramo errado"); }
+write(str(instanceof a D));
+write(str(instanceof 5 int));
+
+interface Falante {
+    falar(): str;
+}
+class Papagaio implements Falante {
+    new() { }
+    public falar(): str { return "oi"; }
+}
+mut p = new Papagaio();
+if instanceof p Falante { write("interface ok"); } else { write("interface falhou"); }
