@@ -714,6 +714,73 @@ NvObject* nv_or_error(NvObject* base) {
     return nv_make_none();
 }
 
+// ── Class hierarchy, for instanceof ───────────────────────────────────────────
+// An instance carries only its own class name, so `instanceof` cannot see inheritance by itself:
+// `b instanceof A` answered false for `class B extends A`. The compiler hands the hierarchy over at
+// each class declaration (namespace-level call, so it runs before any use) and the lookup walks the
+// chain. Interfaces count as parents: `implements I` means an instance of the class IS an I.
+//
+// The names are COPIED: the strings arriving here come from the constant pool and pointing into
+// them would dangle if a constant is ever freed. Depth is bounded so a malformed hierarchy cannot
+// loop forever.
+
+#define NV_MAX_CLASS_PARENTS 512
+#define NV_MAX_CLASS_DEPTH   16
+#define NV_CLASS_NAME_MAX    64
+
+static struct { char child[NV_CLASS_NAME_MAX]; char parent[NV_CLASS_NAME_MAX]; }
+    nv_class_parents[NV_MAX_CLASS_PARENTS];
+static int nv_class_parent_count = 0;
+
+static const char* nv_class_name_of(NvObject* o) {
+    if (!o) return NULL;
+    if (o->ob_type == NVStr_Type) return ((NVStr*)o)->value;
+    // Map-backed class instances keep it in the __class_name__ field.
+    if (o->ob_type == NVMap_Type) {
+        NVMap* m = (NVMap*)o;
+        for (int i = 0; i < m->size; i++)
+            if (m->keys[i] && strcmp(m->keys[i], "__class_name__") == 0) {
+                NvObject* cn = m->values[i].obj;
+                return (cn && cn->ob_type == NVStr_Type) ? ((NVStr*)cn)->value : NULL;
+            }
+    }
+    return (o->ob_type && o->ob_type->tp_name) ? o->ob_type->tp_name : NULL;
+}
+
+// Called once per class declaration (and once per interface it implements). Idempotent: a class may
+// be declared in more than one translation unit.
+NvObject* nv_register_class(NvObject* child_obj, NvObject* parent_obj) {
+    Value out = {NULL};
+    const char* child  = nv_class_name_of(child_obj);
+    const char* parent = nv_class_name_of(parent_obj);
+    if (child && parent && strlen(child) < NV_CLASS_NAME_MAX && strlen(parent) < NV_CLASS_NAME_MAX &&
+        nv_class_parent_count < NV_MAX_CLASS_PARENTS) {
+        for (int i = 0; i < nv_class_parent_count; i++)
+            if (strcmp(nv_class_parents[i].child, child) == 0 &&
+                strcmp(nv_class_parents[i].parent, parent) == 0) { create_bool(&out, 1); return out.obj; }
+        snprintf(nv_class_parents[nv_class_parent_count].child,  NV_CLASS_NAME_MAX, "%s", child);
+        snprintf(nv_class_parents[nv_class_parent_count].parent, NV_CLASS_NAME_MAX, "%s", parent);
+        nv_class_parent_count++;
+    }
+    create_bool(&out, 1);
+    return out.obj;
+}
+
+// `have` is a want, or extends one, or implements one. Depth-bounded against a malformed chain.
+static int nv_class_is_a_depth(const char* have, const char* want, int depth) {
+    if (!have || !want || depth > NV_MAX_CLASS_DEPTH) return 0;
+    if (strcmp(have, want) == 0) return 1;
+    for (int i = 0; i < nv_class_parent_count; i++)
+        if (strcmp(nv_class_parents[i].child, have) == 0 &&
+            nv_class_is_a_depth(nv_class_parents[i].parent, want, depth + 1))
+            return 1;
+    return 0;
+}
+
+static int nv_class_is_a(const char* have, const char* want) {
+    return nv_class_is_a_depth(have, want, 0);
+}
+
 // ── Instanceof ────────────────────────────────────────────────────────────────
 
 NvObject* nv_instanceof(NvObject* obj, NvObject* class_name_obj) {
@@ -727,7 +794,7 @@ NvObject* nv_instanceof(NvObject* obj, NvObject* class_name_obj) {
 
     int match = 0;
     const char* tp = obj->ob_type ? obj->ob_type->tp_name : NULL;
-    if (tp && strcmp(tp, want) == 0) match = 1;
+    if (nv_class_is_a(tp, want)) match = 1;
 
     // Also check __class_name__ field for map-backed class instances.
     if (!match && obj->ob_type == NVMap_Type) {
@@ -736,7 +803,7 @@ NvObject* nv_instanceof(NvObject* obj, NvObject* class_name_obj) {
             if (m->keys[i] && strcmp(m->keys[i], "__class_name__") == 0) {
                 NvObject* cn = m->values[i].obj;
                 if (cn && cn->ob_type == NVStr_Type &&
-                    strcmp(((NVStr*)cn)->value, want) == 0)
+                    nv_class_is_a(((NVStr*)cn)->value, want))
                     match = 1;
                 break;
             }
