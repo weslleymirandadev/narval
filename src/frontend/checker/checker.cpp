@@ -14,6 +14,7 @@
 #include "frontend/checker/expressions/check_vector_expr.hpp"
 #include "frontend/checker/checker_meth.hpp"
 #include "frontend/ast/ast.hpp"
+#include "frontend/ast/expressions/instanceof_expr_node.hpp"
 #include "frontend/syntax_highlighter.hpp"
 #include <memory>
 #include <unordered_set>
@@ -684,6 +685,17 @@ std::shared_ptr<nv::Type> nv::Checker::infer_expr(Node* node) {
         
         case NodeType::AssignmentExpression:
             return check_assignment_expr(this, node);
+
+        // `instanceof` e' um teste de tipo: devolve bool, e portanto serve de condicao. Sem regra
+        // aqui caia no default e voltava como None, e o uso mais natural — `if instanceof x Classe`
+        // — falhava com "If condition must be of type 'bool', but got 'None'".
+        // O nome da classe NAO e' validado (nao ha tabela de classes neste ponto): um nome errado
+        // responde false em silencio. Registrado como item proprio na fila, para nao entrar de carona.
+        case NodeType::InstanceofExpression: {
+            auto* io = static_cast<InstanceofExprNode*>(node);
+            if (io && io->object) infer_expr(io->object.get());
+            return gettyptr("bool");
+        }
         
         default:
             // Para outros tipos, usar verificação tradicional
