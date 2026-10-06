@@ -1,0 +1,31 @@
+# Herança que funciona de verdade: o método herdado resolve (o dispatch usa a classe que DECLARA, não a
+# do receptor) e um subtipo cabe onde a base é esperada — nos quatro consumidores da regra
+# (`nv::value_fits_annotation`: argumento de chamada, atribuição, declaração e `return`).
+# Corrigido em 2026-09: `b.get()` dizia "method 'get' of class 'B' has no body to call" e devolvia 0; e
+# passar um `B` onde se pedia um `A` era recusado com "expected 'A', got 'B'". Eram dois defeitos com a
+# mesma raiz — a cadeia de herança não era caminhada no checker, que já a caminhava para CAMPOS.
+# Expected:
+# 9
+# 9
+# 9
+# 9
+# 9
+class A {
+    v: int;
+    new(x: int) { self.v = x; }
+    public get(): int { return self.v; }
+}
+class B extends A {
+    new(x: int) { self.v = x; }
+}
+def usa(a: A): int { return a.get(); }
+def fabrica(): A { return new B(9); }
+
+mut b = new B(9);
+write(str(b.get()));
+write(str(usa(b)));
+mut a: A = b;
+write(str(a.get()));
+mut c = a;
+write(str(c.get()));
+write(str(fabrica().get()));
