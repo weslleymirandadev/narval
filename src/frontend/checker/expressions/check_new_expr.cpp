@@ -30,7 +30,9 @@ namespace nv {
                 }
             }
 
-            if (!arg_type->equals(*param_type)) {
+            // Mesma regra do caminho da chamada (nv::value_fits_annotation): esta copia tinha
+            // ficado para tras e recusava o que a chamada equivalente aceitava.
+            if (!nv::value_fits_annotation(arg_type, param_type)) {
                 checker->error(error_node,
                                "Constructor argument type error: expected '" +
                                param_type->toString() + "', got '" +
