@@ -1,0 +1,30 @@
+# Classe declarada DEPOIS de quem a usa: `new` tem de chamar o construtor e o método tem de resolver.
+# Não acontecia: `new A(5)` dentro de uma função declarada acima da classe não emitia chamada de
+# construtor nenhuma — o argumento ficava como constante órfã no IR — e o campo nunca era escrito, então
+# `get()` devolvia `None`. A causa: o codegen decide emitir o ctor por `lookupSymbol("__ctor_A")`, e os
+# símbolos só eram reservados quando o *statement* da classe era gerado. Conserto: um pré-passo declara
+# os símbolos de toda classe antes de qualquer corpo — um passo, todos os corpos.
+# CUIDADO, deliberado: o pré-passo declara SÓ os símbolos. Registrar também os NOMES de método deixava
+# ambíguo o fallback por nome do `nir_call_expr` (que o próprio código admite incapaz de distinguir duas
+# classes com o mesmo método) e quebrou `net_frame`/`net_packet` — medido, 185/187. O registro de nomes
+# continua preguiçoso.
+# A herança de método tem defeito próprio e aberto (`B extends A` não enxerga o método de `A`) e está
+# registrada na fila; este caso não a exercita de propósito.
+# Expected:
+# 5
+# 5
+# 7
+def usado_antes(x: A): int { return x.get(); }
+def fabrica(): A {
+    return new A(5);
+}
+class A {
+    v: int;
+    new(x: int) { self.v = x; }
+    public get(): int { return self.v; }
+}
+mut a = fabrica();
+write(str(a.get()));
+write(str(a.get()));
+mut b = new A(7);
+write(str(usado_antes(b)));
