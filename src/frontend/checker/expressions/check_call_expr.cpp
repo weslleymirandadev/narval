@@ -38,20 +38,11 @@ namespace {
             }
         }
 
-        // An enum value IS the integer it holds (`Color.RED == 0` holds), so a parameter
-        // annotated with the enum accepts a variant — and the other way round. Without
-        // this the checker said "expected 'Color', got 'int64'" and the annotation was
-        // documentation only.
-        bool enum_int_pair =
-            (arg_type->kind == nv::Kind::ENUM && param_type->kind == nv::Kind::INT) ||
-            (arg_type->kind == nv::Kind::INT  && param_type->kind == nv::Kind::ENUM);
+        // A regra de atribuibilidade vive em nv::value_fits_annotation (ver type.hpp): enum E' o
+        // inteiro, a classe implementa a interface, e a subclasse E' a base. Era aqui que existia
+        // uma copia dela, e o caminho do construtor tinha outra sem as excecoes.
 
-        // A class value in an interface-typed parameter: the class implements the
-        // interface (or inherits that), so the argument fits. Without this, passing the
-        // object the interface describes was refused with "expected 'IGun', got 'Gun'".
-        const bool class_implements_interface = nv::value_fits_slot(arg_type, param_type);
-
-        if (!enum_int_pair && !class_implements_interface && !arg_type->equals(*param_type)) {
+        if (!nv::value_fits_annotation(arg_type, param_type)) {
             ch->error(error_node,
                       label + " argument type error: expected '" +
                       call_type_name(param_type) + "', got '" +
@@ -340,8 +331,12 @@ std::shared_ptr<nv::Type>& check_call_expr(nv::Checker* ch, Node* node) {
             // Usar Class::get_method que percorre a cadeia de herança corretamente
             auto* class_type = static_cast<nv::Class*>(object_type.get());
             method_type = class_type->get_method(method_name);
-            // O dono disto é conhecido aqui; o codegen só tem o nome do método.
-            member_expr->resolved_owner = class_type->name;
+            // O dono é a classe que DECLARA o método, não a do receptor: o codegen mangla
+            // `obj.method()` a partir deste nome, e gravar o receptor fazia `b.get()` procurar
+            // `__method_B_get` quando `get` é declarado em A — a func nunca foi emitida, o codegen
+            // relatou "method 'get' of class 'B' has no body to call" e devolveu 0 em silêncio.
+            const nv::Class* owner = class_type->declaring_method_class(method_name);
+            member_expr->resolved_owner = owner ? owner->name : class_type->name;
 
             // Verificar visibilidade
             if (method_type && !class_type->is_method_accessible(method_name, ch->current_class_name)) {
