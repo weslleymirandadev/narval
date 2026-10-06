@@ -8,6 +8,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 
 #include "frontend/ast/statements/declaration_stmt_node.hpp"
+#include "frontend/ast/statements/class_stmt_node.hpp"
 #include "frontend/ast/statements/defer_stmt_node.hpp"
 #include "frontend/ast/statements/for_stmt_node.hpp"
 #include "frontend/ast/statements/forever_stmt_node.hpp"
@@ -20,6 +21,11 @@
 #include <functional>
 #include <string>
 #include <vector>
+
+// Declares a class's ctor and methods before any body is emitted. Needed because `new A(...)` emits
+// the ctor call only when the symbol already exists, and `obj.method()` is mangled from the
+// registered method names — both decided while a body is being emitted. See generate_ir_nir.cpp.
+void nir_predeclare_class(nv::NIRGenerationContext& ctx, const ClassStmtNode& node);
 
 // ── Shared helpers for NIR codegen files ──────────────────────────────────
 // Keep these static so each TU gets its own copy without ODR issues.
