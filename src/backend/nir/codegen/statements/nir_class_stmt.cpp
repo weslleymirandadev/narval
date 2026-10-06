@@ -150,6 +150,27 @@ static void nir_emit_class_method(nv::NIRGenerationContext& ctx,
 }
 
 void ClassStmtNode::nir_codegen(nv::NIRGenerationContext& ctx) {
+    // Hand the class hierarchy to the runtime, for `instanceof`. An instance carries only its own
+    // class name, so the runtime cannot see inheritance — `b instanceof A` answered false for
+    // `class B extends A`. The call is emitted where the class is declared, so it runs before any
+    // use. Interfaces count as parents: `implements I` means the instance IS an I.
+    {
+        auto  loc = ctx.loc(position.get());
+        auto  vt  = ctx.get_narval_value_type();
+        auto& b   = ctx.get_builder();
+        auto  name_const = [&](const std::string& s) {
+            return mlir::narval::ConstantOp::create(
+                b, loc, vt, mlir::StringAttr::get(&ctx.get_mlir_context(), s)).getResult();
+        };
+        auto declare_parent = [&](const std::string& parent) {
+            if (parent.empty()) return;
+            nir_call_runtime(ctx, loc, "nv_register_class",
+                             {name_const(name), name_const(parent)}, {vt});
+        };
+        declare_parent(parent_class);
+        for (const auto& iface : implements_interfaces) declare_parent(iface);
+    }
+
     // Register the method names first so later call sites can resolve
     // `obj.method()` to the mangled symbol.
     std::vector<std::string> method_names;
