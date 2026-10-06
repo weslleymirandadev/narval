@@ -1,0 +1,18 @@
+# A atribuibilidade foi estendida para aceitar um SUBTIPO onde a base é esperada — e não mais que isso.
+# Este caso existe para fixar o que continua recusado, que é a parte que importa: um conserto que
+# afrouxa o sistema de tipos seria pior que o defeito. Aqui, um `A` onde se pede um `B` (herança não
+# anda para baixo) tem de continuar sendo erro.
+# O caso irmão, `inheritance_polymorphism.nv`, cobre o que passou a ser aceito.
+# Error: expected 'B', got 'A'
+# Exit code: 1
+class A {
+    v: int;
+    new(x: int) { self.v = x; }
+    public get(): int { return self.v; }
+}
+class B extends A {
+    new(x: int) { self.v = x; }
+}
+def usaB(x: B): int { return x.get(); }
+mut a = new A(1);
+write(str(usaB(a)));
