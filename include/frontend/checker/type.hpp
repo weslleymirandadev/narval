@@ -344,6 +344,17 @@ namespace nv {
             return from_class == name;
         }
         
+        // Class that declares the method (the receiver itself, or an ancestor). Mirror of
+        // declaring_class for fields, and needed for the same reason: the codegen mangles
+        // `obj.method()` from the OWNER's name, so recording the RECEIVER's class made `b.get()`
+        // look for `__method_B_get` when `get` is declared in A — the codegen then reported
+        // "method 'get' of class 'B' has no body to call" and silently produced 0.
+        const Class* declaring_method_class(const std::string& method_name) const {
+            if (methods.count(method_name)) return this;
+            if (parent_class) return parent_class->declaring_method_class(method_name);
+            return nullptr;
+        }
+
         // Class that declares the field (the receiver itself, or an ancestor).
         const Class* declaring_class(const std::string& field_name) const {
             if (fields.count(field_name)) return this;
@@ -764,8 +775,40 @@ namespace nv {
     inline bool value_fits_slot(const std::shared_ptr<Type>& value,
                                 const std::shared_ptr<Type>& slot) {
         if (!value || !slot) return false;
-        if (value->kind != Kind::CLASS || slot->kind != Kind::INTERFACE) return false;
+        if (value->kind != Kind::CLASS) return false;
         const auto* cls = static_cast<const Class*>(value.get());
-        return cls->implements(static_cast<const Interface*>(slot.get())->name);
+
+        if (slot->kind == Kind::INTERFACE)
+            return cls->implements(static_cast<const Interface*>(slot.get())->name);
+
+        // A subclasse E' a sua base: `B extends A` significa que um B cabe num slot anotado A. Sem
+        // isto a heranca valia para campos e metodos mas nao para polimorfismo de argumento — passar
+        // um B onde se pedia um A era recusado com "expected 'A', got 'B'". So' nomes que se
+        // encontram ao subir a cadeia de pais sao aceitos, entao nada nao relacionado passa.
+        if (slot->kind == Kind::CLASS) {
+            const auto* want = static_cast<const Class*>(slot.get());
+            for (const Class* c = cls; c; c = c->parent_class.get())
+                if (c->name == want->name) return true;
+            return false;
+        }
+
+        return false;
+    }
+
+    // A regra de atribuibilidade, num lugar so'. Existiam DUAS copias dela — uma no caminho da
+    // chamada (`check_call_arg_type`) e outra no do construtor (`check_constructor_arg_type`) — e a
+    // do construtor tinha ficado para tras, sem as duas excecoes abaixo: `new A(Color.RED)` com
+    // parametro int e `new A(objetoQueImplementa)` eram recusados enquanto a chamada equivalente
+    // passava. Os dois caminhos passam a usar isto.
+    inline bool value_fits_annotation(const std::shared_ptr<Type>& value,
+                                      const std::shared_ptr<Type>& slot) {
+        if (!value || !slot) return false;
+
+        // Um valor de enum E' o inteiro que ele guarda (`Color.RED == 0` vale).
+        const bool enum_int_pair =
+            (value->kind == Kind::ENUM && slot->kind == Kind::INT) ||
+            (value->kind == Kind::INT  && slot->kind == Kind::ENUM);
+
+        return enum_int_pair || value_fits_slot(value, slot) || value->equals(*slot);
     }
 };
