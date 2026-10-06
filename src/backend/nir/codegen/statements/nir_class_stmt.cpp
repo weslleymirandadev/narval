@@ -78,6 +78,24 @@ static void nir_declare_class_methods(nv::NIRGenerationContext& ctx,
     }
 }
 
+// `new A(...)` emite a chamada do ctor so' quando o simbolo ja' existe no modulo, e `obj.method()`
+// e' mangled a partir dos nomes registrados: as duas decisoes sao tomadas enquanto um CORPO esta
+// sendo emitido. Com a classe declarada DEPOIS de uma funcao que a usa, os simbolos ainda nao tinham
+// sido reservados — entao `new A(5)` nao emitia chamada nenhuma (o argumento ficava como constante
+// orfa no IR) e o campo nunca era escrito: `get()` devolvia None, em silencio. Declarar toda classe
+// antes de qualquer corpo resolve para todos os corpos de uma vez. Mesma forma da declaracao
+// dentro da classe, um nivel acima.
+void nir_predeclare_class(nv::NIRGenerationContext& ctx, const ClassStmtNode& node) {
+    // SO' os simbolos. O registro dos NOMES de metodo fica preguiçoso, como estava, de proposito:
+    // `nir_call_expr` resolve o dono pelo tipo estatico do receptor (resolved_owner, preenchido pelo
+    // checker) e usa `find_method_owner` apenas como fallback — um fallback que, nas palavras do
+    // proprio codigo, "nao consegue distinguir duas classes com o mesmo metodo". Registrar todas as
+    // classes de antemao deixava esse fallback ambiguo (`find_method_owner` devolve "" quando dois
+    // nomes empatam) e quebrou `net_frame` e `net_packet` na suite: medido, 185/187. O que o `new`
+    // consulta e' o SIMBOLO (`lookupSymbol("__ctor_A")`), entao declarar os simbolos basta.
+    nir_declare_class_methods(ctx, node.name, node.methods);
+}
+
 static void nir_emit_class_method(nv::NIRGenerationContext& ctx,
                                    const std::string& class_name,
                                    const std::string& method_name,
