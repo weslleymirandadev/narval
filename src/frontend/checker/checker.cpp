@@ -694,6 +694,20 @@ std::shared_ptr<nv::Type> nv::Checker::infer_expr(Node* node) {
         case NodeType::InstanceofExpression: {
             auto* io = static_cast<InstanceofExprNode*>(node);
             if (io && io->object) infer_expr(io->object.get());
+
+            // O nome tem de nomear alguma coisa: `instanceof x Typo` respondia `false` em silencio,
+            // porque nada olhava o nome. A tabela de tipos ja' conhece as classes declaradas, as
+            // interfaces e os nativos.
+            //
+            // Duas medicoes definiram esta chamada. (1) `gettyptr` reporta o nome desconhecido mesmo
+            // sem error_node, entao um diagnostico proprio aqui seria codigo morto — nao ha nenhum.
+            // (2) PASSAR O NO' TIRA A POSICAO: com `node` a mensagem sai como "ERROR: Unknown type:
+            // 'AA'", sem arquivo:linha:coluna nem caret; com `nullptr` ela sai posicionada. Como o
+            // `gettyptr` pode lancar para seguir o fluxo, a consulta e' guardada e o resultado e'
+            // ignorado — a resposta do `instanceof` e' bool.
+            if (io && !io->class_name.empty()) {
+                try { gettyptr(io->class_name, nullptr); } catch (...) {}
+            }
             return gettyptr("bool");
         }
         
